@@ -390,7 +390,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
       }
       data.events.forEach(event=>{
         const tr=node("tr");
-        const stamp=event.time?new Date(Number(event.time)*1000).toLocaleString():String(event.date||"—");
+        const rawTime=event.time||event.date||"—";\n        const stamp=typeof rawTime==="number"||/^\\d{10,13}$/.test(String(rawTime))?new Date(Number(rawTime)*(String(rawTime).length===13?1:1000)).toLocaleString():String(rawTime);
         [stamp,event.country,event.event,event.impact,event.actual,event.estimate,event.prev].forEach(v=>addCell(tr,v==null?"—":String(v)));
         body.append(tr);
       });

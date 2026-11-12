@@ -23,6 +23,10 @@ for (const asset of ["apps/web/workspace-pages.js", "apps/web/workspace-pages.cs
   assert.ok(fs.existsSync(asset), "Missing workspace page asset: " + asset);
 }
 assert.ok(html.indexOf('src="realtime-events.js"') > html.indexOf('src="app.js"'), "Realtime event client must load after the main app");
+assert.ok(!html.includes("\\n"), "HTML must not contain literal escaped newline text");
+assert.ok(html.includes('id="goalImagePreview"'), "Personal goals must expose an inline image preview");
+assert.ok(html.includes('id="goalImage"'), "Personal goals must accept an image URL");
+assert.ok(!html.includes('id="goalDescription"'), "Personal goal creation should keep optional details minimal");
 console.log("Workspace page checks passed: 10 new pages, unique section IDs, valid navigation and local event client.");
 
 assert.match(realtime, /connectedOnce&&current!==lastEventId/, "A restarted event gateway must trigger a workspace snapshot resync");

@@ -108,7 +108,7 @@ def main() -> int:
 
         wait_for_url("http://127.0.0.1:8000/health", "Backend API · http://127.0.0.1:8000", api)
         wait_for_url("http://127.0.0.1:5500/", "Web workspace · http://127.0.0.1:5500", web)
-        webbrowser.open("http://127.0.0.1:5500/")
+        webbrowser.open("http://localhost:5500/")
         print("\nQUANTNEX is running. Keep this single CMD window open.", flush=True)
         print("Press CTRL+C once to stop the API, Web server and optional Desktop app.", flush=True)
 

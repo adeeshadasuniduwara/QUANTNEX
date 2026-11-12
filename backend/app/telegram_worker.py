@@ -5,9 +5,9 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from typing import Any
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, func
 from .database import SessionLocal
-from .models import Preference
+from .models import GoalContribution, PaperTrade, PersonalGoal, Preference
 from .security import decrypt_secret
 from .config import TWELVE_DATA_API_KEY
 from .signal_engine import build_signal, MarketDataError
@@ -28,11 +28,14 @@ def _publish_signal_settings_changed() -> None:
     event_hub.publish("preferences.changed","preferences","updated",{"key":"signal_settings"})
 
 MENU = {"inline_keyboard": [
-    [{"text":"📊 Dashboard","callback_data":"qx:home"},{"text":"📈 BTC Scan","callback_data":"qx:scan:BTCUSDT"}],
-    [{"text":"Ξ ETH Scan","callback_data":"qx:scan:ETHUSDT"},{"text":"◎ SOL Scan","callback_data":"qx:scan:SOLUSDT"}],
-    [{"text":"🥇 Gold Scan","callback_data":"qx:scan:XAUUSD"},{"text":"📋 Timeframes","callback_data":"qx:timeframes"}],
-    [{"text":"📄 Today PDF","callback_data":"qx:daily"},{"text":"🕗 Daily 8 PM ON/OFF","callback_data":"qx:daily_toggle"}],
-    [{"text":"🔌 Status","callback_data":"qx:status"},{"text":"❔ Help","callback_data":"qx:help"}]
+    [{"text":"📊 Dashboard","callback_data":"qx:home"},{"text":"🤖 AI Paper Desk","callback_data":"qx:paper"}],
+    [{"text":"🔎 Market Scan","callback_data":"qx:market"},{"text":"📄 Today's PDF","callback_data":"qx:daily"}],
+    [{"text":"₿ BTC","callback_data":"qx:scan:BTCUSDT"},{"text":"Ξ ETH","callback_data":"qx:scan:ETHUSDT"},
+     {"text":"◎ SOL","callback_data":"qx:scan:SOLUSDT"},{"text":"🥇 Gold","callback_data":"qx:scan:XAUUSD"}],
+    [{"text":"🎯 My Goals","callback_data":"qx:goals"},{"text":"🛡 Risk Settings","callback_data":"qx:risk"}],
+    [{"text":"⏸ Pause Alerts","callback_data":"qx:pause"},{"text":"▶ Resume Alerts","callback_data":"qx:resume"}],
+    [{"text":"📋 Timeframes","callback_data":"qx:timeframes"},{"text":"🔌 Status","callback_data":"qx:status"}],
+    [{"text":"🕗 Daily PDF 8 PM ON/OFF","callback_data":"qx:daily_toggle"},{"text":"❔ Help","callback_data":"qx:help"}]
 ]}
 
 async def _telegram_post(client, token: str, method: str, payload: dict):
@@ -90,6 +93,46 @@ async def _deliver_daily_pdf(client, db, user_id: int, token: str, chat_id: str,
         +"Profit factor: "+(stats["profit_factor"] is not None and str(stats["profit_factor"]) or "—")+" · simulated ledger only; costs may be excluded.")
     await _send_pdf(client,token,chat_id,pdf,"QUANTNEX-Paper-Report-"+stats["date"]+".pdf",caption)
     return stats
+
+def _paper_dashboard(db, user_id: int) -> str:
+    rows=list(db.scalars(select(PaperTrade).where(PaperTrade.user_id==user_id)))
+    opened=[row for row in rows if str(row.status).upper()=="OPEN"]
+    closed=[row for row in rows if str(row.status).upper()!="OPEN" and row.realized_pnl is not None]
+    recorded=sum(float(row.realized_pnl or 0) for row in closed)
+    return ("📊 QUANTNEX Paper Ledger\n"
+        +"Open paper positions: "+str(len(opened))+"\n"
+        +"Closed paper trades: "+str(len(closed))+"\n"
+        +"Recorded realized P&L: "+format(recorded,".2f")+"\n"
+        +"This is persisted paper-ledger data; it is not a live unrealized P&L snapshot or real-account balance.")
+
+
+def _goal_dashboard(db, user_id: int) -> str:
+    goals=list(db.scalars(select(PersonalGoal).where(PersonalGoal.user_id==user_id).order_by(PersonalGoal.created_at.desc())))
+    if not goals:
+        return "🎯 No personal goals yet. Add goals in the QUANTNEX website."
+    lines=["🎯 QUANTNEX Personal Goals"]
+    for goal in goals[:6]:
+        contributions=float(db.scalar(select(func.coalesce(func.sum(GoalContribution.amount),0)).where(
+            GoalContribution.goal_id==goal.id,GoalContribution.user_id==user_id)) or 0)
+        saved=float(goal.initial_amount or 0)+contributions
+        pct=min(100,saved/goal.target_amount*100) if goal.target_amount else 0
+        lines.append(goal.title+" · "+format(pct,".1f")+"% · "+goal.currency+" "+format(saved,".2f")+"/"+format(goal.target_amount,".2f"))
+    lines.append("Only user-confirmed manual real-account savings/profit are counted.")
+    return "\n".join(lines)
+
+
+def _risk_dashboard(db, user_id: int) -> str:
+    try: settings=json.loads(_get(db,user_id,"signal_settings","{}"))
+    except ValueError: settings={}
+    try: auto=json.loads(_get(db,user_id,"auto_signal_settings","{}"))
+    except ValueError: auto={}
+    return ("🛡 Risk & Alert Settings\n"
+        +"Signal risk setting: "+str(settings.get("risk_percent","not set"))+"%\n"
+        +"Minimum confluence: "+str(settings.get("min_score","not set"))+"/10\n"
+        +"Telegram Auto Signals: "+("ON" if auto.get("enabled") else "OFF")+"\n"
+        +"These are alert settings, not guaranteed account-level risk controls.")
+
+
 async def _price(client: httpx.AsyncClient) -> float | None:
     if not TWELVE_DATA_API_KEY:return None
     response=await client.get("https://api.twelvedata.com/price",
@@ -199,7 +242,18 @@ async def telegram_worker() -> None:
                                         elif action.startswith("qx:scan:"): answer=await _handle_command(client,db,user_id,token,chat_id,"/scan "+action.split(":")[-1])
                                         elif action=="qx:status": answer=await _handle_command(client,db,user_id,token,chat_id,"/status")
                                         elif action=="qx:timeframes": answer=await _handle_command(client,db,user_id,token,chat_id,"/timeframes")
-                                        elif action=="qx:help": answer="QUANTNEX menu · Choose a button to request a scan, check status or receive the daily paper PDF."
+                                        elif action=="qx:home": answer=_paper_dashboard(db,user_id)
+                                        elif action=="qx:paper": answer="🤖 AI Paper Desk is not yet running autonomously in this build. This Telegram bot currently delivers market-analysis alerts and reports only. No broker orders are placed."
+                                        elif action=="qx:goals": answer=_goal_dashboard(db,user_id)
+                                        elif action=="qx:risk": answer=_risk_dashboard(db,user_id)
+                                        elif action=="qx:market": answer=await _handle_command(client,db,user_id,token,chat_id,"/scan BTCUSDT")
+                                        elif action=="qx:pause" or action=="qx:resume":
+                                            try: auto_settings=json.loads(_get(db,user_id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}'))
+                                            except ValueError: auto_settings={"enabled":False,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}
+                                            auto_settings["enabled"]=(action=="qx:resume")
+                                            _set(db,user_id,"auto_signal_settings",json.dumps(auto_settings));db.commit()
+                                            answer="Telegram Auto Signals "+("RESUMED" if auto_settings["enabled"] else "PAUSED")+". This controls alerts only, not trading execution."
+                                        elif action=="qx:help": answer="QUANTNEX menu · Buttons provide scans, ledger summary, goals, alert settings and daily PDF. Use /scan SYMBOL as a command fallback."
                                         else: answer="📊 QUANTNEX local workspace · Signal alerts only. Paper simulation and broker execution are separate."
                                         try: await _edit_message(client,token,chat_id,int(message.get("message_id")),answer)
                                         except Exception: await _send(client,token,chat_id,answer,MENU)

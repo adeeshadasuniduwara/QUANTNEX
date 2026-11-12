@@ -4,6 +4,24 @@
 
 QUANTNEX brings trading utilities, trade records and future secure integrations together in one evolving application. The project is actively being developed across desktop, mobile and web.
 
+## Download QUANTNEX
+
+Choose the installer for your device. Each download is provided separately.
+
+### Windows
+
+**[Download QUANTNEX for Windows (.EXE)](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/43182961842)**
+
+The Windows desktop application is packaged as a standalone executable. Download the `QUANTNEX.exe` file from the **Artifacts** section on the linked build page, then double-click it to launch. No separate Python installation is required.
+
+### Android
+
+**[Download QUANTNEX for Android (.APK)](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/43182983739)**
+
+The Android package is an installable debug APK. Download `app-debug.apk` from the **Artifacts** section on the linked build page, open it on your Android device, and allow installation from that source if Android asks. This is an early Android starter build, not yet feature-complete.
+
+> Build artifacts are temporary GitHub Actions downloads and are retained for 30 days. A permanent public download link will be added to GitHub Releases after the first versioned release is published.
+
 ## Applications
 
 - **Web:** responsive browser workspace with position sizing and a local trade journal.
@@ -11,15 +29,11 @@ QUANTNEX brings trading utilities, trade records and future secure integrations 
 - **Android:** native application starter.
 - **Backend:** shared FastAPI foundation for accounts, journal sync, preferences and an optional AI gateway.
 
-## Run on Windows
+## Run from source on Windows
 
 From the repository root, double-click `run_quantnex.bat` or run it from Command Prompt. Choose Desktop, Web, or both.
 
 The Web workspace can also be opened directly from `apps/web/index.html`. For a local HTTP server, use the launcher menu.
-
-## Windows executable
-
-A Windows EXE can be built from the source using the included GitHub Actions workflow. Tagged releases are designed to publish the EXE and checksum to GitHub Releases. Downloaded updates require user confirmation before installation.
 
 ## Backend
 

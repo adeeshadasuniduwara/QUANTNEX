@@ -56,3 +56,22 @@ Twelve Data supports a server-push WebSocket for subscribed symbols, but availab
 - No promise that network/provider data arrives every millisecond.
 - No live broker orders, account execution, or public internet exposure.
 - No claim that every dashboard card is fully event-driven until the acceptance tests above pass.
+
+## Dedicated workspace pages added
+
+This increment also adds ten dedicated hash-routed workspaces to the existing single-page shell:
+
+1. **Live Watchlist** — all configured instruments, provider status, source timestamp, and shared crypto trade events.
+2. **Forex Desk** — Twelve Data-backed EURUSD, GBPUSD and USDJPY quote cards, with explicit unavailable state when key/plan/market access is missing.
+3. **Crypto Desk** — Binance Spot BTCUSDT, ETHUSDT and SOLUSDT snapshot cards updated from the existing shared browser event bus.
+4. **Gold Desk** — XAUUSD provider quote and selectable recent candle table.
+5. **Price Alerts** — local browser-stored above/below thresholds; crypto triggers from actual Binance events and other symbols are checked when their provider snapshot is refreshed.
+6. **Economic Calendar** — Finnhub events only when configured; no placeholder events are fabricated.
+7. **Trade History** — separate views for paper trades and manual journal records.
+8. **Strategy Library** — saved backtest, optimizer and forward-evaluation research runs.
+9. **Portfolio Monitor** — open paper positions, notional estimates and planned stop-risk estimates.
+10. **Connections & Integrations** — AI, Telegram, Twelve Data signal-feed and local-only execution status without rendering secret values.
+
+Market-board requests made by these pages are coalesced and cached briefly to avoid multiplying provider requests during startup. Sidebar active state follows the selected hash route. The new CI check validates all ten page IDs, unique section IDs, sidebar targets and the new JavaScript syntax.
+
+These pages are data-backed views over existing endpoints; they do not imply new broker integrations or live execution.

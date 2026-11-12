@@ -13,15 +13,18 @@ from sqlalchemy.orm import Session
 
 from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, DATABASE_URL
 from .database import Base, engine, get_db, SessionLocal
-from .models import Preference, Trade, User, WalletTransaction
+from .models import AuditEvent, Preference, Trade, User, WalletTransaction
 from .schemas import AIChatRequest, AIChatResponse, PreferenceResponse, PreferenceWrite, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TradeCreate, TradeResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
 from .security import decrypt_secret, encrypt_secret
+from .maintenance import record_audit_event
+from .system_security import router as system_security_router
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="QUANTNEX Local API", description="Loopback-only local workspace API. No user login or remote account system.", version="0.7.0")
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials=False,
                    allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Content-Type"])
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
+app.include_router(system_security_router)
 
 
 def local_workspace(db: Session = Depends(get_db)) -> User:
@@ -96,6 +99,7 @@ def create_journal(payload: TradeCreate, user: User = Depends(local_workspace), 
     db.flush()
     db.add(WalletTransaction(user_id=user.id, transaction_type="trade_pnl", amount=payload.pnl,
                              description=f"{payload.symbol} {payload.direction.upper()} journal P&L", trade_id=item.id))
+    record_audit_event(db, "journal.created", {"trade_id": item.id, "symbol": item.symbol, "direction": item.direction, "pnl": item.pnl})
     db.commit()
     db.refresh(item)
     return item
@@ -110,6 +114,7 @@ def delete_journal(trade_id: int, user: User = Depends(local_workspace), db: Ses
     if linked is not None:
         db.delete(linked)
     db.delete(item)
+    record_audit_event(db, "journal.deleted", {"trade_id": trade_id})
     db.commit()
 
 @app.get("/api/v1/wallet/summary", response_model=WalletSummaryResponse)
@@ -140,6 +145,7 @@ def create_wallet_transaction(payload: WalletTransactionCreate, user: User = Dep
     item = WalletTransaction(user_id=user.id, transaction_type=payload.transaction_type,
                              amount=signed_amount, description=payload.description.strip())
     db.add(item)
+    record_audit_event(db, "wallet.transaction_created", {"transaction_type": item.transaction_type, "amount": item.amount})
     db.commit()
     db.refresh(item)
     return item
@@ -158,6 +164,7 @@ def set_preference(key: str, payload: PreferenceWrite, user: User = Depends(loca
         db.add(item)
     else:
         item.value = payload.value
+    record_audit_event(db, "preference.updated", {"key": key})
     db.commit()
     db.refresh(item)
     return item
@@ -244,6 +251,7 @@ def get_signal_settings(user: User = Depends(local_workspace), db: Session = Dep
 def update_signal_settings(payload: SignalSettingsRequest, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     settings=payload.model_dump()
     _save_preference(db,user.id,"signal_settings",json.dumps(settings))
+    record_audit_event(db, "signals.settings_updated", {"primary": settings["primary"], "trend": settings["trend"]})
     db.commit()
     return settings
 
@@ -308,6 +316,7 @@ async def connect_telegram_bot(payload: TelegramConnectRequest, user: User = Dep
     _save_preference(db,user.id,"telegram_chat_id",payload.chat_id.strip())
     _save_preference(db,user.id,"telegram_bot_username",bot.get("username",""))
     _save_preference(db,user.id,"telegram_bot_display_name",payload.display_name.strip() or bot.get("first_name","QUANTNEX Bot"))
+    record_audit_event(db, "telegram.connected", {"bot_username": bot.get("username", "")})
     db.commit()
     return {"connected":True,"bot_username":bot.get("username"),"chat_id":payload.chat_id.strip(),
             "commands":["/help","/timeframes","/settf 5","/settrend 60","/setanalysis 1,5,15,30,60","/scan","/status"],
@@ -326,6 +335,7 @@ def disconnect_telegram_bot(user: User = Depends(local_workspace), db: Session =
     for key in ["telegram_bot_token_enc","telegram_chat_id","telegram_bot_username","telegram_bot_display_name","telegram_update_offset","active_signal","auto_signal_settings","auto_signal_last_fingerprint"]:
         row=db.scalar(select(Preference).where(Preference.user_id==user.id,Preference.key==key))
         if row:db.delete(row)
+    record_audit_event(db, "telegram.disconnected")
     db.commit()
     return {"connected":False}
 
@@ -408,6 +418,7 @@ def set_auto_signal_settings(payload: AutoSignalSettingsRequest, user: User = De
         raise HTTPException(status_code=503,detail="Add TWELVE_DATA_API_KEY to backend/.env and restart the QUANTNEX API before enabling Auto Signals.")
     settings=payload.model_dump()
     _save_preference(db,user.id,"auto_signal_settings",json.dumps(settings))
+    record_audit_event(db, "signals.auto_settings_updated", {"enabled": settings["enabled"], "interval_seconds": settings["interval_seconds"]})
     db.commit()
     return {**settings,"telegram_connected":connected,"note":"Automatic XAUUSD alerts run only while this computer's QUANTNEX API process is running."}
 

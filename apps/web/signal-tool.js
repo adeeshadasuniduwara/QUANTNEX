@@ -43,7 +43,7 @@
   }
   function applySettings(settings) {
     $("primarySignalTf").value=settings.primary||"5";$("trendSignalTf").value=settings.trend||"60";
-    $("chartSignalTf").value=settings.chart||"15";$("signalRiskPct").value=settings.risk_percent||1;
+    $("chartSignalTf").value=settings.chart||$("chartSignalTf").value||"15";$("signalRiskPct").value=settings.risk_percent||1;
     $("signalMinScore").value=String(settings.min_score||7);
     document.querySelectorAll('input[name="analysisTf"]').forEach(el=>{el.checked=(settings.enabled||["60","30","15","5","1"]).includes(el.value);});
   }
@@ -78,6 +78,9 @@
   loadLocalSettings();
   if(typeof sessionToken==="function"&&sessionToken()){
     apiRequest("/api/v1/signals/settings").then(applySettings).catch(()=>{});
+    apiRequest("/api/v1/signals/status").then(status=>{
+      $("signalEngineState").textContent=status.configured?"MARKET FEED READY":"ADD MARKET DATA KEY";
+    }).catch(()=>{});
   }
 
   function addStat(parent,label,value) {

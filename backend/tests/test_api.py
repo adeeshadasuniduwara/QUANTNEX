@@ -1,5 +1,10 @@
 from fastapi.testclient import TestClient
-from app.main import app
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
+from app.database import Base
+from app.main import app, local_workspace
+from app.models import Preference, Trade, User, WalletTransaction
 
 
 def test_health_and_local_journal_flow():
@@ -98,3 +103,41 @@ def test_auto_signal_settings_are_opt_in_without_login():
     assert saved.status_code == 200
     assert saved.json()["enabled"] is False
     assert saved.json()["interval_seconds"] == 300
+
+
+
+def test_legacy_accounts_are_consolidated_without_losing_local_data():
+    test_engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(test_engine)
+    with Session(test_engine) as db:
+        owner = User(email="first@example.com", password_hash="legacy-password-hash")
+        legacy = User(email="second@example.com", password_hash="another-legacy-hash")
+        db.add_all([owner, legacy])
+        db.flush()
+        owner_id = owner.id
+        db.add_all([
+            Preference(user_id=owner.id, key="signal_settings", value="first-value"),
+            Preference(user_id=legacy.id, key="signal_settings", value="second-value"),
+            Preference(user_id=legacy.id, key="telegram_chat_id", value="123456"),
+            Trade(user_id=legacy.id, symbol="XAUUSD", direction="buy", outcome="win", pnl=12.5, notes="keep me"),
+            WalletTransaction(user_id=legacy.id, transaction_type="deposit", amount=50, description="keep wallet"),
+        ])
+        db.commit()
+
+        workspace = local_workspace(db)
+
+        assert workspace.id == owner_id
+        assert workspace.email == "local@quantnex.invalid"
+        assert workspace.password_hash == ""
+        assert len(list(db.scalars(select(User)))) == 1
+        trades = list(db.scalars(select(Trade)))
+        wallet = list(db.scalars(select(WalletTransaction)))
+        preferences = {row.key: row.value for row in db.scalars(select(Preference))}
+        assert len(trades) == 1 and trades[0].user_id == owner_id
+        assert len(wallet) == 1 and wallet[0].user_id == owner_id
+        assert preferences["signal_settings"] == "first-value"
+        assert preferences["telegram_chat_id"] == "123456"

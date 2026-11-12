@@ -79,10 +79,10 @@
     }catch(e){$("timeframeStatus").textContent=e.message;}
   });
   $("applyChartTf").addEventListener("click",async()=>{await saveSettings();applyChartTimeframe();});
-  function loadLocalSettings(){try{const s=JSON.parse(localStorage.getItem(tfKey)||"null");if(s){applySettings(s);const selector=$("tradingViewInterval");if(selector&&s.chart!=="50")selector.value=s.chart||"15";if(typeof window.quantnexRenderChart==="function"&&s.chart!=="50")window.quantnexRenderChart({interval:s.chart||"15"});}}catch{}}
+  function loadLocalSettings(){try{const s=JSON.parse(localStorage.getItem(tfKey)||"null");if(s){applySettings(s);const selector=$("tradingViewInterval");if(selector&&s.chart!=="50")selector.value=s.chart||"15";}}catch{}}
   loadLocalSettings();
   if(typeof sessionToken==="function"&&sessionToken()){
-    apiRequest("/api/v1/signals/settings").then(applySettings).catch(()=>{});
+    apiRequest("/api/v1/signals/settings").then(settings=>{applySettings(settings);if(settings.chart&&settings.chart!=="50")applyChartTimeframe();}).catch(()=>{});
     apiRequest("/api/v1/signals/status").then(status=>{
       $("signalEngineState").textContent=status.configured?"MARKET FEED READY":"ADD MARKET DATA KEY";
     }).catch(()=>{});
@@ -181,9 +181,7 @@
   $("clearTelegram").title="Disconnect the saved Telegram bot";
   renderPosition();
 
-  // TradingView is a single dedicated chart tab with a selectable instrument.
-  $("tradingViewSymbol")?.addEventListener("change",applyChartTimeframe);
-  if($("tradingViewSymbol"))applyChartTimeframe();
+  // Market and interval controls are owned by app.js; do not register duplicate render handlers.
 
   async function loadAutoSignalSettings(){
     if(typeof sessionToken!=="function"||!sessionToken())return;

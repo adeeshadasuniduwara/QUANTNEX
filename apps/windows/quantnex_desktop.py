@@ -193,7 +193,30 @@ class App(tk.Tk):
             if not getattr(sys, "frozen", False):
                 repo_root = Path(__file__).resolve().parents[2]
                 if not (repo_root / ".git").exists():
-                    self._set_update_status("Source mode detected. This folder is not a Git checkout, so it cannot self-update safely. Open the GitHub repository and download the latest source ZIP, or use a Git clone.")
+                    # ZIP-installed source: download the latest repository archive to Downloads.
+                    # The running extracted folder is never overwritten; user replaces it manually.
+                    downloads = Path.home() / "Downloads"
+                    downloads.mkdir(parents=True, exist_ok=True)
+                    archive = downloads / "QUANTNEX-latest.zip"
+                    archive_url = f"https://codeload.github.com/{REPO}/zip/refs/heads/main"
+                    request = urllib.request.Request(archive_url, headers={"User-Agent":"QUANTNEX-Desktop"})
+                    temp_archive = archive.with_suffix(".zip.part")
+                    with urllib.request.urlopen(request, timeout=60) as response, temp_archive.open("wb") as output:
+                        shutil.copyfileobj(response, output)
+                    if temp_archive.stat().st_size < 10000:
+                        temp_archive.unlink(missing_ok=True)
+                        raise ValueError("The downloaded source archive is unexpectedly small.")
+                    # Confirm it is a readable ZIP before making it the latest download.
+                    import zipfile
+                    with zipfile.ZipFile(temp_archive, "r") as bundle:
+                        if bundle.testzip() is not None:
+                            raise ValueError("The source ZIP failed its integrity check.")
+                    temp_archive.replace(archive)
+                    self.staged_update = archive
+                    self.after(0, lambda: self.install_button.configure(text="Open Downloads folder"))
+                    self.after(0, lambda: self.install_button.configure(command=lambda: os.startfile(str(downloads))))
+                    self.after(0, lambda: self.install_button.pack(anchor="w", pady=(10,0)))
+                    self._set_update_status("Latest source ZIP downloaded and integrity-checked: Downloads\\QUANTNEX-latest.zip. Close QUANTNEX, keep a backup of your current folder, extract this ZIP to a new folder, then launch run_quantnex.bat. Your trade journal is stored separately in AppData and is not inside the ZIP.")
                     return
                 if (repo_root / ".git").exists():
                     status = subprocess.run(["git", "-C", str(repo_root), "status", "--porcelain"],

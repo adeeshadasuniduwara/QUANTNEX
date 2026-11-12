@@ -1,12 +1,25 @@
-# QUANTNEX Development Roadmap
+# QUANTNEX Product Roadmap
 
-- Phase 01 — Monorepo foundation, platform skeletons, UI prototype and security boundaries.
-- Phase 02 — Trading tools MVP: position sizing, local trade journal and bot monitor placeholder (web implementation).
-- Phase 03 — Windows desktop MVP: plain Tkinter UI, position-size calculator, local SQLite journal, GitHub Releases update check and automated Windows EXE build artifact.
-- Phase 04 — Shared backend foundation: FastAPI, Argon2/JWT authentication, user-isolated journal and preferences APIs, optional server-side AI gateway, SQLite development/PostgreSQL support, Dockerfile and tests. Client integration and cloud deployment remain follow-up tasks.
-- Phase 05 — Connect platform clients to backend; add read-only market data adapters and watchlists.
-- Phase 06 — Bot monitoring and controlled bot operations with independent execution service and risk guard.
-- Phase 07 — Verified update service, signed manifests, staged rollout, health checks, backup and rollback.
-- Phase 08 — AI assistant, market intelligence and advanced analytics.
+QUANTNEX is developed as one evolving application. New capabilities should extend the existing shared workspace rather than create disconnected duplicate apps.
 
-Current clients and backend are development MVPs. They do not connect to brokers, stream live prices, run bots or place orders. Production deployment requires security review and operational testing. No profitability claims are made.
+## Current foundation
+
+- Monorepo for Web, Android, Windows and shared backend.
+- Responsive Web workspace with position-size calculator and local trade journal.
+- Windows desktop calculator and local SQLite journal.
+- FastAPI foundation with authentication, user-isolated journal and preferences APIs.
+- Optional server-side AI gateway.
+- Automated backend tests and Windows build workflow.
+
+## Next priorities
+
+1. Bring Web and Windows UI into one consistent monochrome design system.
+2. Connect Windows, Web and Android clients to the shared authenticated API.
+3. Add secure Telegram notifications and bot status integration.
+4. Add read-only market data adapters and watchlists.
+5. Add bot control only after independent execution safeguards and risk limits are tested.
+6. Publish signed Windows and Android releases with verified update and rollback flows.
+
+## Safety boundaries
+
+Current clients do not connect to brokers, stream live prices, run trading bots or place orders. Public deployment requires security review, operational monitoring, backups and testing. No profitability claims are made.

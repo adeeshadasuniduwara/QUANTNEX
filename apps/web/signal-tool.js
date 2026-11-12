@@ -184,7 +184,8 @@
       else {$("telegramStatus").textContent="No Telegram bot connected yet. Create one with @BotFather and connect it here.";$("telegramMonitorTitle").textContent="Telegram bot not connected";$("telegramMonitorDescription").textContent="Open Signal Lab to connect your BotFather bot. Manual crypto signals and enabled Auto Signals are delivered while the local QUANTNEX API is active.";$("telegramMonitorPill").textContent="OFFLINE";}
       $("autoSignalsEnabled").checked=!!settings.enabled;
       $("autoSignalInterval").value=String(settings.interval_seconds||180);
-      document.querySelectorAll("input[name=autoSignalSymbol]").forEach(el=>{el.checked=(settings.symbols||["BTCUSDT","ETHUSDT","SOLUSDT"]).includes(el.value);});\n      $("autoSignalStatus").textContent=settings.enabled?"Auto Signals ON · selected markets scan while the QUANTNEX API is running.":"Auto Signals OFF.";
+      document.querySelectorAll("input[name=autoSignalSymbol]").forEach(el=>{el.checked=(settings.symbols||["BTCUSDT","ETHUSDT","SOLUSDT"]).includes(el.value);});
+      $("autoSignalStatus").textContent=settings.enabled?"Auto Signals ON · selected markets scan while the QUANTNEX API is running.":"Auto Signals OFF.";
     }catch(error){$("autoSignalStatus").textContent=error.message;}
   }
   $("saveAutoSignals")?.addEventListener("click",async()=>{

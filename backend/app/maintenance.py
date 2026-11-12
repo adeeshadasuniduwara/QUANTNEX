@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio, hashlib, hmac, json, logging, os, re, sqlite3, tempfile, time
 from datetime import datetime, timezone
 from pathlib import Path
+from contextlib import closing
 from sqlalchemy.orm import Session
 from .models import AuditEvent
 from .config import DATABASE_URL
@@ -79,9 +80,9 @@ def create_backup(database_url: str, backup_dir: Path = BACKUP_DIR, prune: bool 
     filename = f"quantnex-{stamp}-{os.urandom(4).hex()}.sqlite3"
     destination = _safe_backup_path(filename, backup_dir)
     try:
-        with sqlite3.connect(str(source_path), timeout=20) as source:
+        with closing(sqlite3.connect(str(source_path), timeout=20)) as source:
             source.execute("PRAGMA busy_timeout=20000")
-            with sqlite3.connect(str(destination), timeout=20) as target:
+            with closing(sqlite3.connect(str(destination), timeout=20)) as target:
                 source.backup(target, pages=256, sleep=0.05)
         _integrity_check(destination)
         _write_manifest(destination, _sha256(destination))
@@ -123,8 +124,8 @@ def restore_backup(filename: str, database_url: str, engine, backup_dir: Path = 
     os.close(fd)
     temporary_path = Path(temporary_name)
     try:
-        with sqlite3.connect(str(source_path), timeout=20) as source:
-            with sqlite3.connect(str(temporary_path), timeout=20) as target:
+        with closing(sqlite3.connect(str(source_path), timeout=20)) as source:
+            with closing(sqlite3.connect(str(temporary_path), timeout=20)) as target:
                 source.backup(target, pages=256, sleep=0.05)
         _integrity_check(temporary_path)
         os.replace(temporary_path, database_path)

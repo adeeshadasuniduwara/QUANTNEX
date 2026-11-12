@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, TOKEN_MINUTES, WEBAUTHN_RP_ID, WEBAUTHN_RP_NAME, WEBAUTHN_ALLOWED_ORIGINS
 from .database import Base, engine, get_db
 from .models import Preference, Trade, User, WalletTransaction, PasskeyCredential, WebAuthnChallenge
-from .schemas import AIChatRequest, AIChatResponse, LoginRequest, PreferenceResponse, PreferenceWrite, RegisterRequest, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TokenResponse, TradeCreate, TradeResponse, UserResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
+from .schemas import AIChatRequest, AIChatResponse, LoginRequest, PreferenceResponse, PreferenceWrite, RegisterRequest, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TokenResponse, TradeCreate, TradeResponse, UserResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse, PasskeyOptionsRequest, PasskeyVerifyRequest
 from .security import create_access_token, decode_access_token, decrypt_secret, encrypt_secret, hash_password, verify_password, enforce_auth_rate_limit
 from webauthn import (generate_registration_options, verify_registration_response, generate_authentication_options, verify_authentication_response, options_to_json, base64url_to_bytes)
 from webauthn.helpers.structs import (AuthenticatorAttachment, AuthenticatorSelectionCriteria, ResidentKeyRequirement, UserVerificationRequirement, PublicKeyCredentialDescriptor)
@@ -104,7 +104,7 @@ def _save_webauthn_challenge(db: Session, user_id: int, purpose: str, challenge:
 
 
 def _consume_webauthn_challenge(db: Session, challenge_id: str, purpose: str,
-                                user_id: int | None = None) -> WebAuthnChallenge:
+                                user_id: int | None = None) -> dict:
     item = db.get(WebAuthnChallenge, challenge_id)
     if (item is None or item.purpose != purpose or item.expires_at < time.time()
             or (user_id is not None and item.user_id != user_id)):
@@ -112,9 +112,11 @@ def _consume_webauthn_challenge(db: Session, challenge_id: str, purpose: str,
             db.delete(item)
             db.commit()
         raise HTTPException(status_code=400, detail="Passkey challenge expired or invalid. Start again.")
+    consumed = {"user_id": item.user_id, "challenge": item.challenge,
+                "expected_origin": item.expected_origin, "expected_rp_id": item.expected_rp_id}
     db.delete(item)
     db.commit()
-    return item
+    return consumed
 
 
 @app.get("/api/v1/auth/passkeys")
@@ -155,12 +157,12 @@ def passkey_registration_verify(payload: PasskeyVerifyRequest, request: Request,
                                 user: User = Depends(current_user), db: Session = Depends(get_db)):
     origin, rp_id = _webauthn_origin(request)
     ceremony = _consume_webauthn_challenge(db, payload.challenge_id, "register", user.id)
-    if ceremony.expected_origin != origin or ceremony.expected_rp_id != rp_id:
+    if ceremony["expected_origin"] != origin or ceremony["expected_rp_id"] != rp_id:
         raise HTTPException(status_code=400, detail="Passkey origin changed during registration. Start again.")
     try:
         verification = verify_registration_response(
             credential=payload.credential,
-            expected_challenge=base64url_to_bytes(ceremony.challenge),
+            expected_challenge=base64url_to_bytes(ceremony["challenge"]),
             expected_origin=ceremony.expected_origin,
             expected_rp_id=ceremony.expected_rp_id,
             require_user_verification=True,
@@ -216,7 +218,7 @@ def passkey_login_verify(payload: PasskeyVerifyRequest, request: Request,
     credential_value = payload.credential.get("id")
     stored = db.scalar(select(PasskeyCredential).where(
         PasskeyCredential.credential_id == credential_value,
-        PasskeyCredential.user_id == ceremony.user_id,
+        PasskeyCredential.user_id == ceremony["user_id"],
     ))
     if stored is None:
         raise HTTPException(status_code=401, detail="This passkey is not registered to the account.")

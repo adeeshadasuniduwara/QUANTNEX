@@ -1,6 +1,11 @@
 name: QUANTNEX Windows Build
 
 on:
+  pull_request:
+    paths:
+      - "apps/windows/**"
+      - ".github/workflows/windows-build.yml"
+      - "run_quantnex.bat"
   push:
     branches: [main]
     paths:

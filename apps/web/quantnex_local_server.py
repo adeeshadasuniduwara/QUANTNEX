@@ -127,7 +127,8 @@ def install_commit(commit: dict) -> None:
                 temporary.replace(destination)
                 installed_files.append(relative)
 
-            VERSION_FILE.write_text(
+            marker_tmp = VERSION_FILE.with_name(VERSION_FILE.name + ".tmp")
+            marker_tmp.write_text(
                 json.dumps({
                     "commit_sha": sha,
                     "version": "main@" + sha[:7],
@@ -135,6 +136,7 @@ def install_commit(commit: dict) -> None:
                 }, indent=2),
                 encoding="utf-8",
             )
+            marker_tmp.replace(VERSION_FILE)
         except Exception:
             for relative in reversed(installed_files):
                 destination = WEB / relative

@@ -275,7 +275,7 @@
  }
  async function load(){
   status("Loading "+cfg.symbol+" "+cfg.interval+" candles…");
-  if(!window.LightweightCharts){throw new Error("Chart engine could not load. Check your internet connection, then reload QUANTNEX VIEW.");}
+  if(!window.LightweightCharts){throw new Error("QUANTNEX VIEW chart engine did not load. Check your internet connection, then reload the workspace.");}
   if(!chart)host.innerHTML='<div class="qx-chart-loading">Connecting to live market data…</div>';
   try{
    const body=await fetchChartCandles();

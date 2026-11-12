@@ -3,7 +3,7 @@ from pathlib import Path
 import shutil
 import psutil
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import select, text
 from .config import DATABASE_URL
 from .database import SessionLocal, engine
 from .maintenance import create_backup, list_backups, record_audit_event, restore_backup, verify_backup
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/v1/system", tags=["local-system"])
 @router.get("/health")
 def detailed_system_health():
     try:
-        disk = shutil.disk_usage(Path.cwd())
+        with SessionLocal() as db:\n            db.execute(text("SELECT 1"))\n        disk = shutil.disk_usage(Path.cwd())
         db_size = None
         if DATABASE_URL.startswith("sqlite:///"):
             from .maintenance import sqlite_database_path

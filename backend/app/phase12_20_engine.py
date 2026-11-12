@@ -60,13 +60,14 @@ def normalize_settings(raw: dict | None) -> dict:
     return value
 
 
-def risk_snapshot(trades: list[Any], settings: dict, now: datetime | None = None) -> dict:
+def risk_snapshot(trades: list[Any], settings: dict, now: datetime | None = None,
+                  unrealized_pnl: float = 0.0, unpriced_open_position: bool = False) -> dict:
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     closed = sorted((t for t in trades if t.status == "CLOSED" and t.realized_pnl is not None),
                     key=lambda t: t.closed_at or t.created_at)
     today = now.date()
     today_pnl = sum(float(t.realized_pnl or 0) for t in closed
-                    if (t.closed_at or t.created_at).date() == today)
+                    if (t.closed_at or t.created_at).date() == today) + float(unrealized_pnl)
     cumulative = 0.0
     peak = 0.0
     max_drawdown = 0.0
@@ -75,6 +76,8 @@ def risk_snapshot(trades: list[Any], settings: dict, now: datetime | None = None
         peak = max(peak, cumulative)
         max_drawdown = max(max_drawdown, peak - cumulative)
     equity = float(settings["paper_equity"]) + cumulative
+    current_drawdown = max(0.0, peak - (cumulative + float(unrealized_pnl)))
+    max_drawdown = max(max_drawdown, current_drawdown)
     daily_limit = float(settings["paper_equity"]) * float(settings["max_daily_loss_percent"]) / 100
     drawdown_limit = float(settings["paper_equity"]) * float(settings["max_drawdown_percent"]) / 100
     open_count = sum(t.status == "OPEN" for t in trades)
@@ -85,9 +88,13 @@ def risk_snapshot(trades: list[Any], settings: dict, now: datetime | None = None
         blocks.append("MAX_DRAWDOWN_LIMIT")
     if open_count >= int(settings["max_open_positions"]):
         blocks.append("MAX_OPEN_POSITIONS")
+    if unpriced_open_position:
+        blocks.append("UNPRICED_OPEN_POSITION_DATA")
     return {
         "paper_equity_estimate": round(equity, 2),
-        "realized_pnl_today_utc": round(today_pnl, 2),
+        "realized_plus_unrealized_pnl_today_utc": round(today_pnl, 2),
+        "unrealized_pnl_estimate": round(float(unrealized_pnl), 2),
+        "unpriced_open_position": bool(unpriced_open_position),
         "daily_loss_limit": round(daily_limit, 2),
         "max_drawdown_observed": round(max_drawdown, 2),
         "max_drawdown_limit": round(drawdown_limit, 2),
@@ -217,24 +224,27 @@ async def paper_autopilot_worker() -> None:
                         continue
                     last_scan[user.id] = now_mono
                     trades = list(db.scalars(select(PaperTrade).where(PaperTrade.user_id == user.id)))
-                    # Monitor only positions created by this worker; manual paper trades
-                    # remain under the existing user-controlled close action.
+                    # Mark every open position for the risk guard, but only auto-close
+                    # positions opened by this worker. Manual positions stay user-controlled.
                     auto_ids = {e.trade_id for e in db.scalars(select(PaperTradeEvent).where(
                         PaperTradeEvent.user_id == user.id, PaperTradeEvent.event_type == "AUTO_OPENED"))}
-                    for position in [x for x in trades if x.id in auto_ids and x.status == "OPEN"]:
+                    unrealized_pnl = 0.0
+                    unpriced_open_position = False
+                    for position in [x for x in trades if x.status == "OPEN"]:
                         try:
                             quote = await get_quote(position.symbol)
                             health = assess_quote(quote)
                             if not health["trading_safe"]:
+                                unpriced_open_position = True
                                 continue
                             price = float(quote["price"])
+                            floating = (price - position.entry_price) * position.quantity * (1 if position.side == "BUY" else -1)
                             stop_hit = price <= position.stop_loss if position.side == "BUY" else price >= position.stop_loss
                             target_hit = price >= position.take_profit if position.side == "BUY" else price <= position.take_profit
-                            if stop_hit or target_hit:
+                            if position.id in auto_ids and (stop_hit or target_hit):
                                 reason = "STOP_LOSS" if stop_hit else "TAKE_PROFIT"
-                                pnl = (price - position.entry_price) * position.quantity * (1 if position.side == "BUY" else -1)
                                 position.exit_price = price
-                                position.realized_pnl = round(pnl, 8)
+                                position.realized_pnl = round(floating, 8)
                                 position.status = "CLOSED"
                                 position.closed_at = datetime.now(timezone.utc)
                                 db.add(PaperTradeEvent(user_id=user.id, trade_id=position.id,
@@ -243,10 +253,14 @@ async def paper_autopilot_worker() -> None:
                                 event_hub.publish("paper_trade.changed", "paper_trade", "auto_closed",
                                     {"trade_id": position.id, "symbol": position.symbol, "status": "CLOSED", "reason": reason})
                                 db.commit()
+                            else:
+                                unrealized_pnl += floating
                         except (IntelligenceDataError, httpx.HTTPError, ValueError, KeyError):
+                            unpriced_open_position = True
                             continue
                     trades = list(db.scalars(select(PaperTrade).where(PaperTrade.user_id == user.id)))
-                    guard = risk_snapshot(trades, settings)
+                    guard = risk_snapshot(trades, settings, unrealized_pnl=unrealized_pnl,
+                                           unpriced_open_position=unpriced_open_position)
                     if not guard["entry_allowed"]:
                         _set_pref(db, user.id, "paper_autopilot_last_block", json.dumps(guard["blocks"]))
                         db.commit()

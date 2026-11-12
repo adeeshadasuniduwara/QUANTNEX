@@ -179,7 +179,8 @@ async def build_signal(settings: dict[str,Any]) -> dict[str,Any]:
     if t["bias"]=="BULLISH":buy.append("Trend timeframe aligned")
     elif t["bias"]=="BEARISH":sell.append("Trend timeframe aligned")
     bscore=min(10,len(buy));sscore=min(10,len(sell))
-    threshold=int(settings.get("min_score",7))\n    if bscore>=threshold and bscore>sscore: side="BUY";checks=buy;score=bscore
+    threshold=int(settings.get("min_score",7))
+    if bscore>=threshold and bscore>sscore: side="BUY";checks=buy;score=bscore
     elif sscore>=threshold and sscore>bscore: side="SELL";checks=sell;score=sscore
     else: checks=buy if bscore>=sscore else sell;score=max(bscore,sscore)
     signal=None

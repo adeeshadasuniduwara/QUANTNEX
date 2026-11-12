@@ -7,7 +7,7 @@ from pathlib import Path
 import app.main as main_module
 from app.database import Base
 from app.main import app, local_workspace, backup_legacy_database
-from app.models import Preference, Trade, User, WalletTransaction
+from app.models import PaperTrade, Preference, StrategyLabRun, Trade, User, WalletTransaction
 
 
 def test_health_and_local_journal_flow():
@@ -128,6 +128,11 @@ def test_legacy_accounts_are_consolidated_without_losing_local_data():
             Preference(user_id=legacy.id, key="telegram_chat_id", value="123456"),
             Trade(user_id=legacy.id, symbol="XAUUSD", direction="buy", outcome="win", pnl=12.5, notes="keep me"),
             WalletTransaction(user_id=legacy.id, transaction_type="deposit", amount=50, description="keep wallet"),
+            PaperTrade(user_id=legacy.id, symbol="BTCUSDT", side="BUY", quantity=0.01,
+                       entry_price=65000, stop_loss=64000, take_profit=67000),
+            StrategyLabRun(user_id=legacy.id, run_type="backtest", symbol="BTCUSDT",
+                           timeframe="15m", strategy_json='{"name":"EMA"}',
+                           result_json='{"net_pnl":12.5}'),
         ])
         db.commit()
 
@@ -142,6 +147,12 @@ def test_legacy_accounts_are_consolidated_without_losing_local_data():
         preferences = {row.key: row.value for row in db.scalars(select(Preference))}
         assert len(trades) == 1 and trades[0].user_id == owner_id
         assert len(wallet) == 1 and wallet[0].user_id == owner_id
+        paper_trades = list(db.scalars(select(PaperTrade)))
+        research_runs = list(db.scalars(select(StrategyLabRun)))
+        assert len(paper_trades) == 1 and paper_trades[0].user_id == owner_id
+        assert paper_trades[0].entry_price == 65000
+        assert len(research_runs) == 1 and research_runs[0].user_id == owner_id
+        assert research_runs[0].result_json == '{"net_pnl":12.5}'
         assert preferences["signal_settings"] == "first-value"
         assert preferences["telegram_chat_id"] == "123456"
 

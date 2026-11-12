@@ -45,12 +45,12 @@ jobs:
               intro = "A new QUANTNEX version has been published."
 
           message = (
-              "🚀 <b>QUANTNEX — NEW UPDATE AVAILABLE!</b>\\n\\n"
-              + "<b>" + title + "</b>\\n"
-              + "Version: <code>" + tag + "</code>\\n\\n"
-              + intro + "\\n\\n"
-              + "📦 <a href=\\"" + release_url + "\\">Open release &amp; downloads</a>\\n"
-              + "🌐 <a href=\\"https://github.com/" + repo + "\\">QUANTNEX GitHub</a>\\n\\n"
+              "🚀 <b>QUANTNEX — NEW UPDATE AVAILABLE!</b>\n\n"
+              + "<b>" + title + "</b>\n"
+              + "Version: <code>" + tag + "</code>\n\n"
+              + intro + "\n\n"
+              + '<a href="' + release_url + '">Open release &amp; downloads</a>\n'
+              + '<a href="https://github.com/' + repo + '">QUANTNEX GitHub</a>\n\n'
               + "<i>Official automated update notification</i>"
           )
 

@@ -191,7 +191,9 @@
   async function loadAutoSignalSettings(){
     if(typeof sessionToken!=="function"||!sessionToken())return;
     try{
-      const settings=await apiRequest("/api/v1/telegram/auto-signals");
+      const [settings,bot]=await Promise.all([apiRequest("/api/v1/telegram/auto-signals"),apiRequest("/api/v1/telegram/status")]);
+      if(bot.connected){$("tgBotDisplayName").value=bot.display_name||"";$("telegramStatus").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username))+" · "+bot.chat_id;}
+      else $("telegramStatus").textContent="No Telegram bot connected yet. Create one with @BotFather and connect it here.";
       $("autoSignalsEnabled").checked=!!settings.enabled;
       $("autoSignalInterval").value=String(settings.interval_seconds||180);
       $("autoSignalStatus").textContent=settings.enabled?"Auto Signals ON · scans while the QUANTNEX API is running.":"Auto Signals OFF.";

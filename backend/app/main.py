@@ -1,9 +1,10 @@
 import asyncio
 import json
+import math
 import re
 import sqlite3
 import httpx
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -506,7 +507,7 @@ async def intelligence_signal_scan(payload: dict, user: User = Depends(local_wor
     try:
         info=market_info(symbol)
         result=await scan_market_signal(info["symbol"],threshold)
-    except ValueError as exc:
+    except (ValueError,TypeError) as exc:
         raise HTTPException(status_code=422,detail=str(exc))
     except IntelligenceDataError as exc:
         raise HTTPException(status_code=502,detail=str(exc))
@@ -557,7 +558,7 @@ async def open_paper_trade(payload: dict, user: User = Depends(local_workspace),
         quantity=float(payload.get("quantity",0))
         stop=float(payload.get("stop_loss",0))
         target=float(payload.get("take_profit",0))
-        if side not in {"BUY","SELL"} or not 0<quantity<=1000000 or stop<=0 or target<=0:
+        if side not in {"BUY","SELL"} or not all(math.isfinite(x) for x in (quantity,stop,target)) or not 0<quantity<=1000000 or stop<=0 or target<=0:
             raise ValueError("Side, quantity, stop loss and take profit are invalid.")
         quote=await get_quote(info["symbol"])
         entry=float(quote["price"])
@@ -598,7 +599,7 @@ async def close_paper_trade(trade_id: int, user: User = Depends(local_workspace)
     item.exit_price=exit_price
     item.realized_pnl=round(pnl,8)
     item.status="CLOSED"
-    item.closed_at=datetime.now().astimezone()
+    item.closed_at=datetime.now(timezone.utc)
     record_audit_event(db,"paper_trade.closed",{"trade_id":item.id,"symbol":item.symbol,
         "exit":exit_price,"realized_pnl":item.realized_pnl,"mode":"paper"})
     db.commit()

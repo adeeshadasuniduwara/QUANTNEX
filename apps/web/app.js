@@ -580,7 +580,8 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   $("p8Optimize").addEventListener("click",runOptimizer);
   $("p8Forward").addEventListener("click",runForward);
   $("p8ReplayLoad").addEventListener("click",loadReplay);
-  $("p8ReplayPrev").addEventListener("click",()=>{cursor=Math.max(0,cursor-1);renderReplay();});\n  $("p8ReplayPlay").addEventListener("click",()=>{if(replayTimer){clearInterval(replayTimer);replayTimer=null;$("p8ReplayPlay").textContent="Play";return;}if(cursor>=replay.length-1)cursor=0;$("p8ReplayPlay").textContent="Pause";replayTimer=setInterval(()=>{if(cursor>=replay.length-1){clearInterval(replayTimer);replayTimer=null;$("p8ReplayPlay").textContent="Play";return;}cursor++;renderReplay();},700);});
+  $("p8ReplayPrev").addEventListener("click",()=>{cursor=Math.max(0,cursor-1);renderReplay();});
+  $("p8ReplayPlay").addEventListener("click",()=>{if(replayTimer){clearInterval(replayTimer);replayTimer=null;$("p8ReplayPlay").textContent="Play";return;}if(cursor>=replay.length-1)cursor=0;$("p8ReplayPlay").textContent="Pause";replayTimer=setInterval(()=>{if(cursor>=replay.length-1){clearInterval(replayTimer);replayTimer=null;$("p8ReplayPlay").textContent="Play";return;}cursor++;renderReplay();},700);});
   $("p8ReplayNext").addEventListener("click",()=>{cursor=Math.min(replay.length-1,cursor+1);renderReplay();});
   $("p8ResearchRefresh").addEventListener("click",loadResearch);
   loadResearch();

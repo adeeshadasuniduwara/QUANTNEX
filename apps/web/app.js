@@ -69,7 +69,7 @@ if(sessionStorage.getItem("quantnex.webUpdateComplete")==="1"){
   window.addEventListener("load",()=>showUpdateToast("✓ QUANTNEX Web has been updated. You are now using the latest workspace."));
 }
 
-async function checkLocalUpdate(){
+async async function checkLocalUpdate(){
   const status=$("webUpdateStatus"),progress=$("webUpdateProgress");
   updateButton.disabled=true;updateButton.textContent="Checking…";progress.hidden=false;
   status.textContent="Checking the latest published QUANTNEX release…";
@@ -77,7 +77,7 @@ async function checkLocalUpdate(){
     const response=await fetch("/__quantnex/check",{cache:"no-store"});
     if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||"Local updater is not running.");}
     checkedRelease=await response.json();
-    $("webInstalledVersion").textContent="v"+checkedRelease.installed;
+    $("webInstalledVersion").textContent=String(checkedRelease.installed).startsWith("v")?checkedRelease.installed:"v"+checkedRelease.installed;
     releaseVersionLabel.textContent=checkedRelease.latest;
     if(checkedRelease.release_notes)releaseNotesLink.href=checkedRelease.release_notes;
     if(checkedRelease.update_available){

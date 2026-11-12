@@ -71,10 +71,10 @@ console.log("QUANTNEX update notification and user-approved install checks passe
 
 assert.ok(html.includes("cdn.jsdelivr.net/npm/lightweight-charts"), "QUANTNEX VIEW must load its chart engine from the primary CDN");
 assert.ok(html.includes("unpkg.com/lightweight-charts"), "QUANTNEX VIEW must have a fallback chart-engine CDN");
-assert.match(signal, /api\\.binance\\.com\\/api\\/v3\\/klines/, "Crypto chart must fall back to Binance public OHLC candles");
+assert.match(signal, /api\.binance\.com\/api\/v3\/klines/, "Crypto chart must fall back to Binance public OHLC candles");
 assert.match(signal, /Binance Spot · direct fallback/, "Direct crypto fallback provider must be identified");
 assert.match(signal, /SIGNAL STATUS UNAVAILABLE/, "Signal status API errors must be visible instead of leaving a stale feed status");
 assert.match(signal, /Chart data unavailable/, "Chart load errors must use a chart-specific status");
-assert.match(signal, /if\\(!window\\.LightweightCharts\\)throw new Error/, "Missing chart library must be caught and shown in the chart panel");
-assert.match(css, /height:clamp\\(390px,58vh,620px\\)/, "QUANTNEX VIEW must use a responsive chart height");
+assert.match(signal, /if\(!window\.LightweightCharts\)throw new Error/, "Missing chart library must be caught and shown in the chart panel");
+assert.match(css, /height:clamp\(390px,58vh,620px\)/, "QUANTNEX VIEW must use a responsive chart height");
 console.log("QUANTNEX VIEW CDN fallback, direct market fallback and error-state checks passed.");

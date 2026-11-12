@@ -43,6 +43,13 @@ function renderAlerts(){
 async function loadMarketBoard(){
  const data=await api("/api/v1/intelligence/markets");
  latestMarkets=new Map((data.items||[]).map(item=>[item.symbol,item]));
+ let triggered=false;
+ (data.items||[]).filter(item=>item.status==="ok").forEach(item=>{
+  alerts.filter(alert=>alert.symbol===item.symbol).forEach(alert=>{
+   if(checkAlert(alert,item.price,item.provider||"provider refresh"))triggered=true;
+  });
+ });
+ if(triggered){saveAlerts();renderAlerts();}
  return data;
 }
 function renderMarketRows(body,items,cols=6){

@@ -192,7 +192,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
       if($id("goldLkrNote"))$id("goldLkrNote").textContent="BTC and Gold use keyless fallback providers; USD/LKR uses a daily reference rate. Check that the local QUANTNEX API is running.";
     }
   }
-  if($id("btcLivePrice")){refresh();window.setInterval(refresh,30000);}
+  if($id("btcLivePrice")){refresh();window.setInterval(refresh,300000);}
 })();
 
 ;
@@ -333,21 +333,32 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   function connectCryptoTicker(){
     if(document.hidden||tickerSocket||!window.WebSocket)return;
     try{
-      tickerSocket=new WebSocket("wss://stream.binance.com:9443/stream?streams=btcusdt@ticker/ethusdt@ticker/solusdt@ticker");
+      tickerSocket=new WebSocket("wss://stream.binance.com:9443/stream?streams=btcusdt@trade/ethusdt@trade/solusdt@trade/btcusdt@ticker/ethusdt@ticker/solusdt@ticker");
+      tickerSocket.onopen=()=>window.dispatchEvent(new CustomEvent("quantnex:stream-status",{detail:{feed:"crypto",status:"connected"}}));
       tickerSocket.onmessage=event=>{
         try{
           const packet=JSON.parse(event.data),data=packet.data||packet;
           const symbol=String(data.s||"").toUpperCase(),refs=marketCards.get(symbol);
-          if(!refs)return;
-          const price=Number(data.c),change=Number(data.P),high=Number(data.h),low=Number(data.l);
-          if(Number.isFinite(price))refs.price.textContent=fmt(price,priceDigits(symbol));
-          refs.change.textContent=(change>=0?"+":"")+fmt(change,2)+"% · 24h change";
-          refs.change.className=change>=0?"positive":"negative";
-          refs.range.textContent="High "+fmt(high,priceDigits(symbol))+" · Low "+fmt(low,priceDigits(symbol));
-          refs.source.textContent="Binance WebSocket · "+new Date(Number(data.E)||Date.now()).toLocaleTimeString();
+          const isTrade=data.e==="trade";
+          const price=Number(isTrade?data.p:data.c),change=Number(data.P),high=Number(data.h),low=Number(data.l);
+          const eventTime=Number(isTrade?data.T:data.E)||Date.now();
+          if(refs){
+            if(Number.isFinite(price))refs.price.textContent=fmt(price,priceDigits(symbol));
+            if(!isTrade){
+              refs.change.textContent=(change>=0?"+":"")+fmt(change,2)+"% · 24h change";
+              refs.change.className=change>=0?"positive":"negative";
+              refs.range.textContent="High "+fmt(high,priceDigits(symbol))+" · Low "+fmt(low,priceDigits(symbol));
+            }
+            refs.source.textContent="Binance WebSocket · "+new Date(eventTime).toLocaleTimeString();
+          }
+          if(symbol==="BTCUSDT"&&Number.isFinite(price)&&$("btcLivePrice")){
+            $("btcLivePrice").textContent=fmt(price,2);
+            $("btcLiveUpdated").textContent="Live trade · "+new Date(eventTime).toLocaleTimeString()+" · Binance";
+          }
+          window.dispatchEvent(new CustomEvent("quantnex:market-tick",{detail:{symbol,price,eventTime,kind:isTrade?"trade":"ticker",source:"Binance WebSocket"}}));
         }catch{}
       };
-      tickerSocket.onclose=()=>{tickerSocket=null;if(!document.hidden){clearTimeout(tickerRetry);tickerRetry=setTimeout(connectCryptoTicker,2500);}};
+      tickerSocket.onclose=()=>{tickerSocket=null;window.dispatchEvent(new CustomEvent("quantnex:stream-status",{detail:{feed:"crypto",status:"reconnecting"}}));if(!document.hidden){clearTimeout(tickerRetry);tickerRetry=setTimeout(connectCryptoTicker,2500);}};
       tickerSocket.onerror=()=>{try{tickerSocket.close();}catch{}};
     }catch{tickerSocket=null;}
   }

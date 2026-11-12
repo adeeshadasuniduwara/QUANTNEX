@@ -116,7 +116,7 @@
       const title=document.createElement("h4");title.textContent="Confirmations ("+s.confirmations.length+")";result.append(title);
       const list=document.createElement("ul");list.className="confirmation-list";
       s.confirmations.forEach(x=>{const li=document.createElement("li");li.textContent="✓ "+x;list.append(li);});result.append(list);
-      $("telegramStatus").textContent=data.telegram_sent?"Signal sent to your connected Telegram bot.":"Signal calculated. Connect Telegram to receive automatic signal messages.";
+      $("telegramStatus").textContent=data.telegram_sent?"Signal sent to your connected Telegram bot.":(data.telegram_note||"Signal calculated. Enable Auto Signals to receive automatic Telegram alerts.");
     } else {
       const p=document.createElement("p");p.textContent=data.message||"No high-confluence setup. Wait for confirmation.";result.append(p);
     }

@@ -145,16 +145,15 @@ async def build_signal(settings: dict[str,Any]) -> dict[str,Any]:
     needed=set(enabled+["1","5","15","30","60",str(settings.get("primary","5")),str(settings.get("trend","60"))])
     tasks={}
     for tf in needed:
-        if tf in INTERVALS: tasks[tf]=fetch_candles(INTERVALS[tf],320)
-    if "50" in needed: tasks["50"]=fetch_candles("1min",3200)
+        if tf in INTERVALS: tasks[tf]=fetch_candles(INTERVALS[tf],3200 if tf=="1" and "50" in needed else 320)
     results=await asyncio.gather(*tasks.values(),return_exceptions=True)
     candles={}
     errors=[]
     for tf,result in zip(tasks,results):
         if isinstance(result,Exception):
             errors.append(f"{tf}m: {str(result)}")
-        elif tf=="50": candles[tf]=aggregate_minutes(result,50)
         else: candles[tf]=result
+    if "50" in needed and "1" in candles: candles["50"]=aggregate_minutes(candles["1"],50)
     if errors: raise MarketDataError("; ".join(errors))
     analysis={tf:inspect_tf(candles[tf]) for tf in needed if tf in candles and len(candles[tf])>=(50 if tf=="50" else 210)}
     primary=str(settings.get("primary","5")); trend=str(settings.get("trend","60"))

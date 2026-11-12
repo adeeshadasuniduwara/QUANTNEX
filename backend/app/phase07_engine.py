@@ -6,6 +6,7 @@ Missing providers are reported as unavailable; no synthetic prices are generated
 """
 from __future__ import annotations
 import asyncio
+import math
 from datetime import datetime, timezone, date, timedelta
 from typing import Any
 import httpx
@@ -57,7 +58,7 @@ async def get_quote(symbol: str) -> dict:
             data=await _get_json(client,TWELVE+"/quote",{"symbol":info["twelve"],"apikey":TWELVE_DATA_API_KEY})
             price=float(data["close"]); change=float(data.get("percent_change") or 0)
             high=float(data.get("high") or price); low=float(data.get("low") or price); volume=None
-    if price<=0: raise IntelligenceDataError("Provider returned a non-positive price.")
+    if not math.isfinite(price) or price<=0: raise IntelligenceDataError("Provider returned an invalid price.")
     return {"symbol":info["symbol"],"label":info["label"],"kind":info["kind"],"provider":info["provider"],
             "price":price,"change_percent":change,"high_24h":high,"low_24h":low,"quote_volume":volume,
             "timestamp":datetime.now(timezone.utc).isoformat(),"indicative":True}
@@ -125,6 +126,16 @@ async def scan_market_signal(symbol: str, threshold: int=6) -> dict:
     elif structure["bos_mss"]=="BEARISH": sell_checks.append("Bearish BOS / MSS")
     if structure["liquidity_sweep"]=="BULLISH": buy_checks.append("Sell-side liquidity sweep")
     elif structure["liquidity_sweep"]=="BEARISH": sell_checks.append("Buy-side liquidity sweep")
+    bullish_zone=(structure.get("bullish_fvg") or structure.get("bullish_order_block") or
+                  structure.get("bullish_breaker_block") or structure.get("bullish_ifvg"))
+    bearish_zone=(structure.get("bearish_fvg") or structure.get("bearish_order_block") or
+                  structure.get("bearish_breaker_block") or structure.get("bearish_ifvg"))
+    if bullish_zone and bullish_zone["low"]<=close<=bullish_zone["high"]:
+        buy_checks.append("Bullish OB / FVG reaction zone")
+    if bearish_zone and bearish_zone["low"]<=close<=bearish_zone["high"]:
+        sell_checks.append("Bearish OB / FVG reaction zone")
+    if structure.get("premium_discount")=="DISCOUNT": buy_checks.append("Discount pricing")
+    elif structure.get("premium_discount")=="PREMIUM": sell_checks.append("Premium pricing")
     bscore=min(10,len(buy_checks));sscore=min(10,len(sell_checks))
     side="BUY" if bscore>=threshold and bscore>sscore else "SELL" if sscore>=threshold and sscore>bscore else None
     filters={}
@@ -184,7 +195,7 @@ async def get_economic_calendar(days: int=7) -> dict:
             "timestamp":datetime.now(timezone.utc).isoformat(),"note":"Provider calendar data; verify event time and impact before trading."}
 
 def calculate_risk(equity: float, risk_percent: float, entry: float, stop_loss: float) -> dict:
-    if equity<=0 or not 0<risk_percent<=5 or entry<=0 or stop_loss<=0 or entry==stop_loss:
+    if not all(math.isfinite(x) for x in (equity,risk_percent,entry,stop_loss)) or equity<=0 or not 0<risk_percent<=5 or entry<=0 or stop_loss<=0 or entry==stop_loss:
         raise ValueError("Equity and prices must be positive; risk percentage must be above 0 and at most 5%.")
     risk_amount=equity*risk_percent/100
     distance=abs(entry-stop_loss)

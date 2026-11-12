@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, TOKEN_MINUTES
 from .database import Base, engine, get_db
 from .models import Preference, Trade, User, WalletTransaction
-from .schemas import AIChatRequest, AIChatResponse, LoginRequest, PreferenceResponse, PreferenceWrite, RegisterRequest, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, TokenResponse, TradeCreate, TradeResponse, UserResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
+from .schemas import AIChatRequest, AIChatResponse, LoginRequest, PreferenceResponse, PreferenceWrite, RegisterRequest, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TokenResponse, TradeCreate, TradeResponse, UserResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
 from .security import create_access_token, decode_access_token, decrypt_secret, encrypt_secret, hash_password, verify_password
 
 Base.metadata.create_all(bind=engine)
@@ -292,6 +292,7 @@ async def connect_telegram_bot(payload: TelegramConnectRequest, user: User = Dep
     _save_preference(db,user.id,"telegram_bot_token_enc",encrypt_secret(payload.bot_token))
     _save_preference(db,user.id,"telegram_chat_id",payload.chat_id.strip())
     _save_preference(db,user.id,"telegram_bot_username",bot.get("username",""))
+    _save_preference(db,user.id,"telegram_bot_display_name",payload.display_name.strip() or bot.get("first_name","QUANTNEX Bot"))
     db.commit()
     return {"connected":True,"bot_username":bot.get("username"),"chat_id":payload.chat_id.strip(),
             "commands":["/help","/timeframes","/settf 5","/settrend 60","/setanalysis 1,5,15,30,60","/scan","/status"],
@@ -301,12 +302,13 @@ async def connect_telegram_bot(payload: TelegramConnectRequest, user: User = Dep
 def telegram_status(user: User = Depends(current_user), db: Session = Depends(get_db)):
     connected=bool(_preference(db,user.id,"telegram_bot_token_enc") and _preference(db,user.id,"telegram_chat_id"))
     return {"connected":connected,"bot_username":_preference(db,user.id,"telegram_bot_username") if connected else None,
+            "display_name":_preference(db,user.id,"telegram_bot_display_name") if connected else None,
             "chat_id":_preference(db,user.id,"telegram_chat_id") if connected else None,
             "worker":"active while this API process is running"}
 
 @app.delete("/api/v1/telegram/connect")
 def disconnect_telegram_bot(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    for key in ["telegram_bot_token_enc","telegram_chat_id","telegram_bot_username","telegram_update_offset","active_signal"]:
+    for key in ["telegram_bot_token_enc","telegram_chat_id","telegram_bot_username","telegram_bot_display_name","telegram_update_offset","active_signal","auto_signal_settings","auto_signal_last_fingerprint"]:
         row=db.scalar(select(Preference).where(Preference.user_id==user.id,Preference.key==key))
         if row:db.delete(row)
     db.commit()
@@ -324,6 +326,24 @@ async def stop_telegram_background_worker():
         task.cancel()
         try:await task
         except asyncio.CancelledError:pass
+
+@app.get("/api/v1/telegram/auto-signals")
+def get_auto_signal_settings(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    raw=_preference(db,user.id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180}')
+    try: settings=json.loads(raw)
+    except ValueError: settings={"enabled":False,"interval_seconds":180}
+    settings["telegram_connected"]=bool(_preference(db,user.id,"telegram_bot_token_enc") and _preference(db,user.id,"telegram_chat_id"))
+    return settings
+
+@app.put("/api/v1/telegram/auto-signals")
+def set_auto_signal_settings(payload: AutoSignalSettingsRequest, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    connected=bool(_preference(db,user.id,"telegram_bot_token_enc") and _preference(db,user.id,"telegram_chat_id"))
+    if payload.enabled and not connected:
+        raise HTTPException(status_code=409,detail="Connect and test your personal Telegram bot before enabling Auto Signals.")
+    settings=payload.model_dump()
+    _save_preference(db,user.id,"auto_signal_settings",json.dumps(settings))
+    db.commit()
+    return {**settings,"telegram_connected":connected,"note":"Automatic XAUUSD alerts run only while this computer's QUANTNEX API process is running."}
 
 @app.post("/api/v1/telegram/notify")
 async def notify_connected_telegram(payload: dict, user: User = Depends(current_user), db: Session = Depends(get_db)):

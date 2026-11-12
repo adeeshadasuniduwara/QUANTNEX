@@ -51,6 +51,6 @@ assert.match(app, /volume:isTrade\?Number\(data\.q\|\|0\):0/, "Live Binance trad
 
 console.log("QUANTNEX VIEW and crypto Telegram signal checks passed.");
 
-assert.match(html, /cdn\.jsdelivr\.net\\/npm\\/lightweight-charts/, "QUANTNEX VIEW must have a primary chart-engine CDN");
+assert.ok(html.includes("cdn.jsdelivr.net/npm/lightweight-charts"), "QUANTNEX VIEW must have a primary chart-engine CDN");
 assert.match(html, /unpkg\.com\\/lightweight-charts/, "QUANTNEX VIEW must have a fallback chart-engine CDN");
 assert.match(signal, /chart engine did not load/, "Chart engine load failures must be visible instead of leaving a blank chart");

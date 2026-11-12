@@ -5,6 +5,9 @@ FastAPI shared API foundation for Windows, Android and Web.
 ## Included
 - Health endpoint and OpenAPI documentation.
 - Registration/login, Argon2 password hashes and expiring JWT bearer tokens.
+- Authentication endpoint throttling: up to five login/registration attempts per client IP per minute (per local API process).
+- Telegram commands restricted to the configured owner's private chat; group/channel posts cannot control settings.
+- Telegram `/help`, `/settings`, `/pause` and `/resume` commands in addition to timeframe, scan and status commands.
 - Authenticated user profile.
 - User-isolated trade journal list/create/delete APIs.
 - Wallet ledger for manual deposits and withdrawals, with balance checks.
@@ -83,7 +86,9 @@ The "Reaper" name does not identify a verified formula or source script in this 
 3. Sign in to QUANTNEX Web and use **Connect bot & enable commands**. The API verifies the token and stores it encrypted using a key derived from `QUANTNEX_SECRET_KEY`.
 4. Keep the local API running. The background worker polls the bot and watches active XAU/USD signal levels while the API process is alive.
 
-Commands: `/help`, `/timeframes`, `/settf 5`, `/settrend 60`, `/setanalysis 1,5,15,30,60`, `/scan`, `/status`.
+Commands: `/help`, `/status`, `/settings`, `/timeframes`, `/settf 5`, `/settrend 60`, `/setanalysis 1,5,15,30,50,60`, `/scan`, `/pause`, `/resume`.
+
+Interactive commands are accepted only from the configured numeric private chat. Group/channel messages are ignored for command control, even if the bot is a member or administrator. A channel can still be configured as an alert destination, but use your own private chat ID for bot control. Login and registration are throttled per source IP in this single API process; this in-memory guard is intended for local single-computer use and is not a substitute for a shared rate limiter behind a public deployment.
 
 When a signal is active, the worker checks price levels approximately once per minute and sends SL/TP1/TP2/TP3 touch alerts. TP1 alert advises moving SL to breakeven; it does not change a broker order. This is price-level monitoring, not guaranteed tick-by-tick execution. Provider quotas, outages, stale data and network delays can delay or miss alerts.
 

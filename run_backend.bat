@@ -5,7 +5,12 @@ cd /d "%~dp0backend"
 
 if not exist ".venv\Scripts\python.exe" (
   echo Creating QUANTNEX Python environment...
-  py -m venv .venv
+  where py >nul 2>nul
+  if not errorlevel 1 (
+    py -m venv .venv
+  ) else (
+    python -m venv .venv
+  )
   if errorlevel 1 (
     echo ERROR: Could not create the Python virtual environment.
     goto failed

@@ -251,9 +251,9 @@ async def telegram_worker() -> None:
                                             except (ValueError,TypeError):
                                                 paper_settings=normalize_settings(DEFAULT_SETTINGS)
                                             answer=("🤖 QUANTNEX Paper Autopilot · "+("RUNNING" if paper_settings["enabled"] else "PAUSED")+
-                                                "\\nMarkets: "+", ".join(paper_settings["symbols"])+
-                                                "\\nRisk/trade: "+str(paper_settings["risk_percent"])+"% · Daily stop: "+str(paper_settings["max_daily_loss_percent"])+"%"+
-                                                "\\nMode: LOCAL PAPER ONLY · no broker orders.")
+                                                "\nMarkets: "+", ".join(paper_settings["symbols"])+
+                                                "\nRisk/trade: "+str(paper_settings["risk_percent"])+"% · Daily stop: "+str(paper_settings["max_daily_loss_percent"])+"%"+
+                                                "\nMode: LOCAL PAPER ONLY · no broker orders.")
                                         elif action in {"qx:paper_start","qx:paper_pause"}:
                                             from .phase12_20_engine import DEFAULT_SETTINGS, normalize_settings
                                             try:
@@ -263,7 +263,7 @@ async def telegram_worker() -> None:
                                                 _set(db,user_id,"paper_autopilot_settings",json.dumps(paper_settings))
                                                 db.commit()
                                                 answer=("▶ Paper autopilot STARTED" if paper_settings["enabled"] else "⏸ Paper autopilot PAUSED")+
-                                                    "\\nLocal simulated trades only. No broker or real-money orders."
+                                                    "\nLocal simulated trades only. No broker or real-money orders."
                                             except (ValueError,TypeError) as exc:
                                                 answer="Cannot change paper mode: "+str(exc)
                                         elif action=="qx:goals": answer=_goal_dashboard(db,user_id)

@@ -12,6 +12,7 @@ def test_goal_certificate_is_a4_print_ready_pdf_with_integrity_id():
         elapsed_days=2507,
         certificate_id="QX-TEST-CERTIFICATE",
         integrity_fingerprint="a" * 64,
+        target_amount=90000, saved_amount=95000, currency="USD",
     )
     assert pdf.startswith(b"%PDF")
     assert len(pdf) > 2000

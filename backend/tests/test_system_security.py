@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from app.maintenance import create_backup, restore_backup, verify_backup
 
 def make_db(path: Path):
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn:
         conn.execute("CREATE TABLE sample (value TEXT NOT NULL)")
         conn.execute("INSERT INTO sample(value) VALUES ('before')")
         conn.commit()
@@ -34,7 +34,7 @@ def test_restore_creates_safety_backup_and_restores_verified_snapshot(tmp_path):
     make_db(database)
     engine = create_engine("sqlite:///" + database.as_posix())
     backup = create_backup("sqlite:///" + database.as_posix(), backup_dir)
-    with sqlite3.connect(database) as conn:
+    with closing(sqlite3.connect(database)) as conn:
         conn.execute("UPDATE sample SET value='after'")
         conn.commit()
     result = restore_backup(backup["filename"], "sqlite:///" + database.as_posix(), engine, backup_dir)

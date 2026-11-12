@@ -224,7 +224,7 @@ function init(){
   if(type==="journal.changed")loadTradeHistory();
   if(type==="paper_trade.changed"){loadTradeHistory();loadPortfolioMonitor();}
   if(type==="strategy.research.changed")loadStrategyLibrary();
-  if(type==="preferences.changed")loadIntegrations();
+  if(type==="preferences.changed"||type==="integration.changed")loadIntegrations();
  });
  window.addEventListener("quantnex:workspace-resync",()=>{
   loadTradeHistory();loadPortfolioMonitor();loadStrategyLibrary();loadIntegrations();

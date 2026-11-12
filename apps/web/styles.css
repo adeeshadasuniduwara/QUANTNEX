@@ -50,7 +50,7 @@
 .chart-kicker i,.chart-footer>span:first-child i{width:7px;height:7px;border-radius:50%;background:#42d69a;box-shadow:0 0 12px #42d69a99;display:inline-block}
 .chart-toolbar{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
 .chart-toolbar .chart-select-label{display:grid;gap:5px;font-size:8px;letter-spacing:.13em;font-weight:800;color:#87919e}
-.chart-toolbar select{min-width:130px;background:#0b1017;color:#f0f3f7;border:1px solid #303a47;border-radius:8px;padding:10px 12px;font:650 11px/1.2 inherit;outline:none}
+.chart-toolbar select{min-width:130px;background:#0b1017;color:#f0f3f7;border:1px solid #303a47;border-radius:8px;padding:10px 12px;font-family:inherit;font-size:11px;font-weight:650;line-height:1.2;outline:none}
 .chart-toolbar select:focus{border-color:#7d94b1;box-shadow:0 0 0 3px #8da8ca1a}
 .chart-fullscreen-btn{display:flex;align-items:center;gap:7px;min-height:37px;padding:0 12px;border:1px solid #465364;border-radius:8px;background:linear-gradient(135deg,#293544,#17212d);color:#eaf0f7;font-size:10px;font-weight:800;letter-spacing:.06em;cursor:pointer;transition:all .2s}
 .chart-fullscreen-btn:hover{border-color:#91a8c5;background:#334459;transform:translateY(-1px)}

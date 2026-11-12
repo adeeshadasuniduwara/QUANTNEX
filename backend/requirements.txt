@@ -11,3 +11,6 @@ pytest==8.3.5
 python-dotenv==1.1.0
 # Python 3.14-compatible cryptography wheels.
 cryptography>=46.0.0,<47.0
+
+# Standards-based passkey verification (Windows Hello, Touch ID, security keys).
+webauthn==3.0.1

@@ -134,7 +134,7 @@ def structure(c: list[dict[str,Any]]) -> dict[str,Any]:
 def inspect_tf(c: list[dict[str,Any]]) -> dict[str,Any]:
     close=[x["close"] for x in c]; e20=ema(close,20)[-1];e50=ema(close,50)[-1];e200=ema(close,200)[-1] if len(close)>=200 else None
     m,ms,mh=macd(close); rv=rsi(close); av=atr(c); dx=adx(c); last=close[-1]
-    bias="BULLISH" if last>e20 and e20>e50 else "BEARISH" if last<e20 and e20<e50 else "NEUTRAL"
+    bias="BULLISH" if last>e20 and e20>e50 and (e200 is None or last>e200) else "BEARISH" if last<e20 and e20<e50 and (e200 is None or last<e200) else "NEUTRAL"
     return {"bias":bias,"close":last,"ema20":e20,"ema50":e50,"ema200":e200,"macd":m,"macd_signal":ms,
             "macd_histogram":mh,"rsi":rv,"atr":av,"adx":dx,"structure":structure(c)}
 

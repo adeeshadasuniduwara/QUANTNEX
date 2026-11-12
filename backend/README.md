@@ -77,3 +77,14 @@ When a signal is active, the worker checks price levels approximately once per m
 - Keep QUANTNEX_SECRET_KEY stable and private. Changing it makes stored bot tokens undecryptable; reconnect the bot after key rotation.
 - The local API has no per-user authentication because it is intentionally loopback-only. Do not expose it outside the trusted Windows computer.
 - Test strategies on historical data and paper trading before relying on them. A 7/10 confluence score does not imply a 70% win rate.
+
+
+## Phase 06.3 — Local database and system security
+
+- Local SQLite backups use SQLite's online backup API so an active database is snapshotted consistently. Each backup has a SHA256 sidecar and is checked with PRAGMA integrity_check.
+- The local API keeps the newest 14 backups. Backup creation, verification and restore are available under /api/v1/system/backups.
+- Restore accepts only a generated backup filename, verifies both the SHA256 manifest and SQLite integrity, creates a separate pre-restore safety backup, then atomically replaces the database file.
+- GET /api/v1/system/health reports database status/size, CPU, memory, disk capacity and backup status. GET /api/v1/system/audit shows local maintenance and workspace audit events.
+- Audit records contain allow-listed metadata only; API keys, Telegram bot tokens, passwords, request bodies and secret values are not recorded.
+- Automated file backup/restore currently supports persistent SQLite databases. PostgreSQL backup/restore is intentionally reported as unsupported until a separately tested pg_dump / pg_restore workflow is implemented.
+- All system endpoints rely on the existing loopback-only API boundary. Do not bind to 0.0.0.0, port-forward the API, or expose it to a LAN/public network. This local-only mode trusts the Windows desktop user.

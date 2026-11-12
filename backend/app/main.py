@@ -368,7 +368,7 @@ def telegram_status(user: User = Depends(local_workspace), db: Session = Depends
 
 @app.delete("/api/v1/telegram/connect")
 def disconnect_telegram_bot(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
-    for key in ["telegram_bot_token_enc","telegram_chat_id","telegram_bot_username","telegram_bot_display_name","telegram_update_offset","active_signal","auto_signal_settings","auto_signal_last_fingerprint"]:
+    for key in ["telegram_bot_token_enc","telegram_chat_id","telegram_bot_username","telegram_bot_display_name","telegram_update_offset","active_signal","auto_signal_settings","auto_signal_last_fingerprint","auto_signal_last_fingerprint_btcusdt","auto_signal_last_fingerprint_ethusdt","auto_signal_last_fingerprint_solusdt","auto_signal_last_fingerprint_xauusd"]:
         row=db.scalar(select(Preference).where(Preference.user_id==user.id,Preference.key==key))
         if row:db.delete(row)
     record_audit_event(db, "telegram.disconnected")

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, TOKEN_MINUTES
 from .database import Base, engine, get_db
 from .models import Preference, Trade, User, WalletTransaction
-from .schemas import AIChatRequest, AIChatResponse, LoginRequest, PreferenceResponse, PreferenceWrite, RegisterRequest, TokenResponse, TradeCreate, TradeResponse, UserResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
+from .schemas import AIChatRequest, AIChatResponse, LoginRequest, PreferenceResponse, PreferenceWrite, RegisterRequest, TelegramSendRequest, TokenResponse, TradeCreate, TradeResponse, UserResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
 from .security import create_access_token, decode_access_token, hash_password, verify_password
 
 Base.metadata.create_all(bind=engine)
@@ -168,3 +168,27 @@ async def ai_chat(payload: AIChatRequest, user: User = Depends(current_user)):
         return AIChatResponse(reply=reply.strip(), model=AI_MODEL)
     except (httpx.HTTPError, KeyError, IndexError, ValueError):
         raise HTTPException(status_code=502, detail="AI provider request failed. Check server configuration.")
+
+
+@app.post("/api/v1/telegram/send")
+async def send_telegram_message(payload: TelegramSendRequest, user: User = Depends(current_user)):
+    """Send one user-triggered Telegram message; bot credentials are never stored."""
+    import re
+    if not re.fullmatch(r"[0-9]{5,12}:[A-Za-z0-9_-]{20,}", payload.bot_token):
+        raise HTTPException(status_code=422, detail="Telegram bot token format is invalid.")
+    if not re.fullmatch(r"(?:@[A-Za-z0-9_]{5,}|-?[0-9]{1,20})", payload.chat_id.strip()):
+        raise HTTPException(status_code=422, detail="Use a numeric chat ID or @channel username.")
+    url = "https://api.telegram.org/bot" + payload.bot_token + "/sendMessage"
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            response = await client.post(url, json={"chat_id": payload.chat_id.strip(),
+                                                    "text": payload.message,
+                                                    "disable_web_page_preview": True})
+        data = response.json()
+        if response.status_code >= 400 or not data.get("ok"):
+            raise HTTPException(status_code=502, detail="Telegram rejected the message. Check the bot token, chat ID and bot permissions.")
+        return {"ok": True, "message_id": data.get("result", {}).get("message_id")}
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Telegram request timed out.")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="Could not reach Telegram. Check the server internet connection.")

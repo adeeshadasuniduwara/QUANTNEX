@@ -8,6 +8,7 @@
   <meta name="description" content="QUANTNEX is a modern trading workspace for risk planning and trade review.">
   <title>QUANTNEX — Trading Workspace</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="signal-tool.css">
 </head>
 <body>
   <div class="layout">
@@ -66,6 +67,58 @@
         <article class="panel chart-panel"><div class="chart-heading"><div><strong>Gold / US Dollar</strong><span>OANDA · XAUUSD</span></div><span class="chart-live"><i></i> LIVE</span></div><div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div><script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>{"autosize":true,"symbol":"OANDA:XAUUSD","interval":"15","timezone":"Etc/UTC","theme":"dark","style":"1","locale":"en","allow_symbol_change":true,"calendar":false,"support_host":"https://www.tradingview.com"}</script></div></article>
       </section>
 
+      <section class="section-heading" id="signals"><div><div class="overline">XAUUSD · POSITION PLANNING</div><h2>Trade setup &amp; risk / reward</h2><p>Plan Entry, Stop Loss and three targets, then send the plan or TP1 warning to your Telegram.</p></div><span class="signal-pill">MANUAL PLAN · NO AUTO EXECUTION</span></section>
+      <section class="signal-workspace">
+        <article class="panel signal-panel">
+          <div class="signal-intro"><div><strong>Position tool</strong><p>Red = risk / loss zone · Green = potential profit zone</p></div><span class="signal-pill">XAUUSD</span></div>
+          <div class="signal-inputs">
+            <label>Direction<select id="side"><option value="BUY">BUY / LONG</option><option value="SELL">SELL / SHORT</option></select></label>
+            <label>Entry price<input id="entry" type="number" min="0" step="0.01" value="4000"></label>
+            <label>Stop Loss<input id="stopLoss" type="number" min="0" step="0.01" value="3990"></label>
+            <label>Take Profit 1<input id="tp1" type="number" min="0" step="0.01" value="4010"></label>
+            <label>Take Profit 2<input id="tp2" type="number" min="0" step="0.01" value="4020"></label>
+            <label>Take Profit 3<input id="tp3" type="number" min="0" step="0.01" value="4030"></label>
+            <label>Account equity ($)<input id="equity" type="number" min="0" step="any" value="1000"></label>
+            <label>Risk per trade (%)<input id="riskPct" type="number" min="0" max="5" step="0.1" value="1"></label>
+            <label>USD per $1 move / 1 lot<input id="usdPerDollarMove" type="number" min="0" step="any" value="100"></label>
+          </div>
+          <div class="signal-visual" id="riskRewardVisual"><div class="loss-zone" id="lossZone">LOSS / SL</div><div class="profit-zone" id="profitZone">PROFIT / TARGETS</div></div>
+          <div class="entry-marker" id="entryMarker">ENTRY</div>
+          <div class="position-summary" id="positionSummary"></div>
+          <p class="signal-status" id="signalCalcStatus" aria-live="polite">Enter your setup to calculate.</p>
+          <div class="signal-actions"><button class="primary-btn" id="sendPlanTelegram">Send trade plan to Telegram</button><button class="secondary-btn" id="tp1Breakeven">TP1 hit · Send breakeven warning</button></div>
+          <div class="signal-warning">TP1 automation is not active: when you confirm TP1 manually, this button sends the warning to move SL to Entry. QUANTNEX does not monitor price touches or modify broker orders yet. Always move the stop manually in your broker platform.</div>
+        </article>
+        <article class="panel signal-panel">
+          <div class="signal-intro"><div><strong>Telegram bot connection</strong><p>Use your own private bot and chat.</p></div><span class="signal-pill">LOCAL SETUP</span></div>
+          <div class="telegram-config">
+            <label>Telegram bot token<input id="tgBotToken" type="password" autocomplete="off" placeholder="Paste token from BotFather"></label>
+            <label>Telegram chat ID / channel<input id="tgChatId" type="text" autocomplete="off" placeholder="Your chat ID or @channel"></label>
+            <div class="signal-actions"><button class="primary-btn" id="testTelegram">Test Telegram connection</button><button class="secondary-btn" id="clearTelegram">Clear credentials</button></div>
+            <p class="telegram-status" id="telegramStatus" aria-live="polite">Credentials are used for this request only and are not saved by this page.</p>
+          </div>
+          <div class="signal-actions"><button class="secondary-btn" id="openBotGuide">Show bot setup guide</button></div>
+          <div class="telegram-guide" id="telegramGuide" hidden>
+            <ol>
+              <li>Open Telegram and search for <strong>@BotFather</strong>.</li>
+              <li>Send <code>/newbot</code>, follow the prompts and choose a bot name and unique username.</li>
+              <li>Copy the new bot token privately. Never post it in GitHub, screenshots or public chats.</li>
+              <li>Open your new bot and press <strong>Start</strong>.</li>
+              <li>For a private chat, send a message to your bot, then obtain your chat ID using a trusted Telegram bot/API tool. For a channel, add your bot as an administrator with permission to post and enter <code>@ChannelUsername</code>.</li>
+              <li>Start the QUANTNEX local API, enter token and chat ID above, then press Test.</li>
+            </ol>
+            <p>Keep the token private. If it is exposed, revoke it with BotFather and create a new one.</p>
+          </div>
+          <div class="signal-bullet-list">
+            <div><span>Signal feed</span><strong>Not connected</strong></div>
+            <div><span>Automatic TP / SL watcher</span><strong>Not enabled</strong></div>
+            <div><span>Broker order execution</span><strong>Disabled</strong></div>
+            <div><span>Telegram plan alerts</span><strong>Manual send</strong></div>
+          </div>
+          <p class="signal-feed-note">The embedded TradingView chart is a live chart widget, but TradingView does not expose its chart candles to this page for external calculations. Automated EMA / MACD / RSI / ATR, market-structure, OB / FVG confluence and multi-timeframe signal generation require a separate licensed market-data feed and backend engine. No fabricated signal or confidence score is shown.</p>
+        </article>
+      </section>
+
       <section class="section-heading" id="tools"><div><div class="overline">RISK MANAGEMENT</div><h2>Position size calculator</h2><p>Estimate position size using your broker's pip value.</p></div></section>
       <section class="panel calculator-panel">
         <div class="field-grid">
@@ -99,5 +152,6 @@
     </main>
   </div>
   <script src="app.js"></script>
+  <script src="signal-tool.js"></script>
 </body>
 </html>

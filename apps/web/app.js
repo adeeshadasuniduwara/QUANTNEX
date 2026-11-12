@@ -487,3 +487,101 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   });
   loadMarkets();loadBook();refreshAnalytics();
 })();
+
+
+// Phase 08 — Strategy Laboratory. All evaluations remain research / paper-only.
+(function initPhase08(){
+  if(!$("p8Backtest"))return;
+  const fmt=(v,d=2)=>v==null||!Number.isFinite(Number(v))?"—":Number(v).toLocaleString(undefined,{maximumFractionDigits:d});
+  const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=String(text);if(cls)n.className=cls;return n;};
+  let replay=[],cursor=0;
+  const config=()=>({name:"EMA Trend Cross",fast_ema:Number($("p8Fast").value),slow_ema:Number($("p8Slow").value),risk_reward:Number($("p8RR").value)});
+  const market=()=>({symbol:$("p8Symbol").value,timeframe:$("p8Timeframe").value});
+  const status=(message,error=false)=>{const n=$("p8Status");n.textContent=message;n.className=error?"p7-note p7-status-error":"p7-note p7-status-ok";};
+  const renderKpis=(data)=>{const root=$("p8Kpis");root.replaceChildren();
+    [["Backtest trades",data.trade_count],["Win rate",data.win_rate==null?"—":fmt(data.win_rate,1)+"%"],
+     ["Profit factor",data.profit_factor==null?"—":data.profit_factor==="infinite"?"∞":fmt(data.profit_factor,2)],
+     ["Net P&L",fmt(data.net_pnl,5)]].forEach(([a,b])=>{const card=el("article");card.append(el("span",a),el("strong",b));root.append(card);});
+  };
+  const runBacktest=async()=>{
+    const b=$("p8Backtest");b.disabled=true;b.textContent="Testing…";
+    try{
+      const data=await apiRequest("/api/v1/strategy-lab/backtest",{method:"POST",body:JSON.stringify({...market(),strategy:config()})});
+      renderKpis(data);const root=$("p8Result");root.replaceChildren();
+      root.append(el("p",data.strategy.name+" · EMA "+data.strategy.fast_ema+"/"+data.strategy.slow_ema+" · "+data.strategy.risk_reward+"R","p8-result-title"));
+      root.append(el("p","Historical candles: "+data.candle_count+" · Wins: "+data.wins+" · Losses: "+data.losses+" · Maximum drawdown: "+fmt(data.max_drawdown,5),"p7-note"));
+      root.append(el("p",data.limitations,"p7-note"));
+      const table=document.createElement("table"),head=document.createElement("tr");
+      ["Side","Entry","Stop","Target","Exit","P&L","Reason"].forEach(x=>head.append(el("th",x)));
+      const thead=document.createElement("thead");thead.append(head);table.append(thead);
+      const body=document.createElement("tbody");
+      data.trades.slice(-20).reverse().forEach(t=>{const tr=document.createElement("tr");
+        [t.side,fmt(t.entry,5),fmt(t.stop_loss,5),fmt(t.take_profit,5),fmt(t.exit,5),fmt(t.pnl,5),t.exit_reason].forEach(x=>tr.append(el("td",x)));body.append(tr);});
+      table.append(body);const wrap=el("div",undefined,"p7-table-wrap");wrap.append(table);root.append(wrap);
+      status("Backtest saved to local Strategy Research history. This is an in-sample simulation, not a future performance promise.");
+      await loadResearch();
+    }catch(e){status("Backtest failed: "+e.message,true);}
+    finally{b.disabled=false;b.textContent="Run backtest";}
+  };
+  const runOptimizer=async()=>{
+    const b=$("p8Optimize");b.disabled=true;b.textContent="Testing combinations…";
+    try{
+      const data=await apiRequest("/api/v1/strategy-lab/optimize",{method:"POST",body:JSON.stringify(market())});
+      const root=$("p8Result");root.replaceChildren(el("p",data.tested+" parameter combinations tested","p8-result-title"));
+      const table=document.createElement("table"),head=document.createElement("tr");
+      ["Rank","Fast / Slow EMA","R:R","Trades","Win rate","Net P&L","Profit factor"].forEach(x=>head.append(el("th",x)));
+      const thead=document.createElement("thead");thead.append(head);table.append(thead);
+      const body=document.createElement("tbody");
+      data.ranked.forEach((x,i)=>{const tr=document.createElement("tr");
+        [i+1,x.strategy.fast_ema+" / "+x.strategy.slow_ema,x.strategy.risk_reward,x.trade_count,x.win_rate==null?"—":x.win_rate+"%",fmt(x.net_pnl,5),x.profit_factor??"—"].forEach(v=>tr.append(el("td",v)));body.append(tr);});
+      table.append(body);const wrap=el("div",undefined,"p7-table-wrap");wrap.append(table);root.append(wrap);root.append(el("p",data.warning,"p7-note"));
+      status("Optimizer run saved. Select candidate settings and validate on unseen candles before forward observation.");await loadResearch();
+    }catch(e){status("Optimization failed: "+e.message,true);}
+    finally{b.disabled=false;b.textContent="Optimize settings";}
+  };
+  const runForward=async()=>{
+    const b=$("p8Forward");b.disabled=true;b.textContent="Evaluating…";
+    try{const data=await apiRequest("/api/v1/strategy-lab/forward/evaluate",{method:"POST",body:JSON.stringify({...market(),strategy:config()})});
+      status("Forward observation: "+data.symbol+" "+data.timeframe+" · "+data.side+" at "+fmt(data.price,5)+". "+data.note);
+      await loadResearch();
+    }catch(e){status("Forward observation failed: "+e.message,true);}
+    finally{b.disabled=false;b.textContent="Forward evaluate";}
+  };
+  const renderReplay=()=>{
+    const candle=replay[cursor];if(!candle)return;
+    $("p8ReplayIndex").textContent=(cursor+1)+" / "+replay.length+" candles";
+    $("p8ReplayCandle").textContent="O "+fmt(candle.open,5)+" · H "+fmt(candle.high,5)+" · L "+fmt(candle.low,5)+" · C "+fmt(candle.close,5)+" · "+candle.time;
+    $("p8ReplayPrev").disabled=cursor<=0;$("p8ReplayNext").disabled=cursor>=replay.length-1;
+    const body=$("p8ReplayRows");body.replaceChildren();
+    replay.slice(Math.max(0,cursor-4),cursor+1).reverse().forEach(x=>{const tr=document.createElement("tr");
+      [x.time,fmt(x.open,5),fmt(x.high,5),fmt(x.low,5),fmt(x.close,5)].forEach(v=>tr.append(el("td",v)));body.append(tr);});
+  };
+  const loadReplay=async()=>{
+    const b=$("p8ReplayLoad");b.disabled=true;
+    try{const data=await apiRequest("/api/v1/strategy-lab/replay?"+new URLSearchParams(market()));
+      replay=data.candles;cursor=0;renderReplay();status("Market replay loaded: "+data.count+" "+data.timeframe+" candles from "+data.symbol+".");}
+    catch(e){status("Replay unavailable: "+e.message,true);}
+    finally{b.disabled=false;}
+  };
+  const loadResearch=async()=>{
+    try{const data=await apiRequest("/api/v1/strategy-lab/research"),body=$("p8ResearchRows");body.replaceChildren();
+      $("p8ResearchSummary").textContent="Closed paper trades: "+data.paper_trades.closed+" · Wins: "+data.paper_trades.wins+
+        " · Losses: "+data.paper_trades.losses+" · Win rate: "+(data.paper_trades.win_rate==null?"—":data.paper_trades.win_rate+"%")+
+        " · Net P&L: "+fmt(data.paper_trades.net_pnl,2)+". "+data.guidance;
+      if(!data.runs.length){body.append(el("tr"));body.lastChild.append(el("td","No research runs yet."));body.lastChild.firstChild.colSpan=5;return;}
+      data.runs.forEach(x=>{const tr=el("tr");const result=x.result||{};
+        [x.type,x.symbol,x.timeframe,new Date(x.created_at).toLocaleString(),
+         x.type==="BACKTEST"?"Trades "+(result.trade_count??"—")+" · Win "+(result.win_rate??"—")+"%":
+         x.type==="OPTIMIZER"?(result.tested??"—")+" combinations":(result.side??"—")+" @ "+fmt(result.price,5)
+        ].forEach(v=>tr.append(el("td",v)));body.append(tr);});
+    }catch(e){$("p8ResearchSummary").textContent="Research history unavailable: "+e.message;}
+  };
+  $("p8Backtest").addEventListener("click",runBacktest);
+  $("p8Optimize").addEventListener("click",runOptimizer);
+  $("p8Forward").addEventListener("click",runForward);
+  $("p8ReplayLoad").addEventListener("click",loadReplay);
+  $("p8ReplayPrev").addEventListener("click",()=>{cursor=Math.max(0,cursor-1);renderReplay();});
+  $("p8ReplayNext").addEventListener("click",()=>{cursor=Math.min(replay.length-1,cursor+1);renderReplay();});
+  $("p8ResearchRefresh").addEventListener("click",loadResearch);
+  loadResearch();
+})();

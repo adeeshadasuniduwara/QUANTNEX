@@ -22,6 +22,15 @@
       <a class="nav-link" href="#account"><span>◈</span>Account &amp; wallet</a>
       <a class="nav-link" href="#signal-lab"><span>⌁</span>Signal Lab</a>
       <a class="nav-link" href="#updates"><span>↻</span>Updates</a>
+      <div class="side-caption">INTELLIGENCE</div>
+      <a class="nav-link" href="#market-intelligence"><span>◉</span>Market Intelligence</a>
+      <a class="nav-link" href="#ai-signal-center"><span>⌁</span>AI Signal Center</a>
+      <a class="nav-link" href="#orderflow-liquidity"><span>≋</span>Order Flow &amp; Liquidity</a>
+      <a class="nav-link" href="#news-intelligence"><span>▤</span>News Intelligence</a>
+      <a class="nav-link" href="#paper-trading"><span>▣</span>Paper Trading</a>
+      <a class="nav-link" href="#performance-lab"><span>▥</span>Performance Lab</a>
+      <a class="nav-link" href="#risk-management"><span>◇</span>Risk Management</a>
+      <div class="side-caption">WORKSPACE TOOLS</div>
       <a class="nav-link" href="#system-security"><span>⚙</span>System security</a>
       <div class="sidebar-bottom"><span class="live-dot"></span>Local workspace</div>
     </aside>
@@ -64,6 +73,63 @@
         </div>
       </section>
       <section class="section-heading" id="signal-lab"><div><div class="overline">QUANTNEX · MARKET INTELLIGENCE</div><h2>Signal Lab</h2><p>Multi-timeframe technical analysis and optional Telegram signal delivery.</p></div><span class="pill live-pill">PAPER / ALERTS ONLY</span></section>
+      <section class="section-heading" id="market-intelligence"><div><div class="overline">PHASE 07 · MULTI-ASSET MONITOR</div><h2>Market Intelligence</h2><p>Live provider quotes, daily range and market availability across Crypto, Gold and Forex.</p></div><span class="pill live-pill">LIVE DATA</span></section>
+      <section class="panel phase07-panel">
+        <div class="phase07-toolbar"><div><strong>Market watch</strong><p>BTC, ETH, SOL, XAUUSD, EURUSD, GBPUSD and USDJPY.</p></div><button class="secondary-btn" id="p7RefreshMarkets">Refresh markets</button></div>
+        <div class="p7-market-grid" id="p7MarketCards"><div class="p7-empty">Loading live provider quotes…</div></div>
+        <p class="p7-note" id="p7MarketNote">Indicative quotes. Provider availability and timestamps are shown per market.</p>
+      </section>
+      <section class="section-heading" id="ai-signal-center"><div><div class="overline">PHASE 07 · MULTI-TIMEFRAME ANALYSIS</div><h2>AI Signal Center</h2><p>Transparent rule-based analysis. Signal scores are confluence counts, not win probabilities.</p></div><span class="pill">WAIT / BUY / SELL</span></section>
+      <section class="panel phase07-panel">
+        <div class="p7-form-row"><label>Market <select id="p7SignalSymbol"><option value="XAUUSD">XAUUSD</option><option value="BTCUSDT">BTCUSDT</option><option value="ETHUSDT">ETHUSDT</option><option value="SOLUSDT">SOLUSDT</option><option value="EURUSD">EURUSD</option><option value="GBPUSD">GBPUSD</option><option value="USDJPY">USDJPY</option></select></label><label>Minimum score <select id="p7SignalThreshold"><option value="6">6 / 10</option><option value="7">7 / 10</option><option value="8">8 / 10</option></select></label><button class="primary-btn" id="p7RunScan">Scan market</button></div>
+        <div class="p7-signal-result" id="p7SignalResult"><div class="p7-empty">Choose a market and run a multi-timeframe scan.</div></div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Timeframe</th><th>Bias</th><th>Price</th><th>RSI</th><th>ADX</th><th>ATR</th></tr></thead><tbody id="p7SignalFrames"><tr><td colspan="6" class="empty-row">No analysis yet.</td></tr></tbody></table></div>
+        <div class="p7-signal-ticket" id="p7SignalTicket" hidden><strong>Send this setup to Paper Trading</strong><button class="secondary-btn" id="p7UseSignal">Use signal in paper ticket</button></div>
+      </section>
+      <section class="section-heading" id="orderflow-liquidity"><div><div class="overline">PHASE 07 · EXCHANGE DEPTH</div><h2>Order Flow &amp; Liquidity</h2><p>Real Binance Spot depth snapshots for supported crypto pairs. Gold/Forex depth is not simulated.</p></div><span class="pill">ORDER BOOK</span></section>
+      <section class="panel phase07-panel">
+        <div class="p7-form-row"><label>Crypto market <select id="p7BookSymbol"><option value="BTCUSDT">BTCUSDT</option><option value="ETHUSDT">ETHUSDT</option><option value="SOLUSDT">SOLUSDT</option></select></label><button class="secondary-btn" id="p7LoadBook">Load order book</button><span class="p7-book-imbalance" id="p7BookImbalance">—</span></div>
+        <div class="p7-book-grid"><div><h3>Bids · Buy orders</h3><div class="p7-table-wrap"><table><thead><tr><th>Price</th><th>Quantity</th></tr></thead><tbody id="p7Bids"><tr><td colspan="2" class="empty-row">Load depth snapshot.</td></tr></tbody></table></div></div><div><h3>Asks · Sell orders</h3><div class="p7-table-wrap"><table><thead><tr><th>Price</th><th>Quantity</th></tr></thead><tbody id="p7Asks"><tr><td colspan="2" class="empty-row">Load depth snapshot.</td></tr></tbody></table></div></div></div>
+        <p class="p7-note" id="p7BookNote">Order-book snapshots are not proof of executed volume or total market liquidity.</p>
+      </section>
+      <section class="section-heading" id="news-intelligence"><div><div class="overline">PHASE 07 · MACRO EVENTS</div><h2>News Intelligence</h2><p>Economic calendar and high-impact event awareness.</p></div><span class="pill">ECONOMIC CALENDAR</span></section>
+      <section class="panel phase07-panel">
+        <div class="phase07-toolbar"><div><strong>Upcoming economic events</strong><p>Finnhub calendar integration is optional and requires a local API key.</p></div><div class="p7-form-row"><select id="p7NewsDays"><option value="7">Next 7 days</option><option value="14">Next 14 days</option><option value="30">Next 30 days</option></select><button class="secondary-btn" id="p7LoadNews">Load calendar</button></div></div>
+        <p class="p7-note" id="p7NewsStatus">Calendar not loaded.</p>
+        <div class="p7-table-wrap"><table><thead><tr><th>Date / Time</th><th>Country</th><th>Event</th><th>Impact</th><th>Actual</th><th>Forecast</th><th>Previous</th></tr></thead><tbody id="p7NewsRows"><tr><td colspan="7" class="empty-row">Load the calendar to view events.</td></tr></tbody></table></div>
+      </section>
+      <section class="section-heading" id="paper-trading"><div><div class="overline">PHASE 07 · SIMULATED EXECUTION</div><h2>Paper Trading</h2><p>Virtual positions only. Orders use a fresh indicative market quote; no broker orders are sent.</p></div><span class="pill">PAPER ONLY · REAL MONEY OFF</span></section>
+      <section class="panel phase07-panel">
+        <div class="p7-kpi-grid" id="p7PaperSummary"><article><span>Open trades</span><strong>—</strong></article><article><span>Closed trades</span><strong>—</strong></article><article><span>Win rate</span><strong>—</strong></article><article><span>Realized P&amp;L</span><strong>—</strong></article></div>
+        <div class="p7-subheading"><strong>Open a virtual position</strong><span>Position quantity is in base units, not broker lots.</span></div>
+        <div class="p7-paper-form">
+          <label>Symbol <select id="p7PaperSymbol"><option value="XAUUSD">XAUUSD</option><option value="BTCUSDT">BTCUSDT</option><option value="ETHUSDT">ETHUSDT</option><option value="SOLUSDT">SOLUSDT</option><option value="EURUSD">EURUSD</option><option value="GBPUSD">GBPUSD</option><option value="USDJPY">USDJPY</option></select></label>
+          <label>Side <select id="p7PaperSide"><option value="BUY">BUY</option><option value="SELL">SELL</option></select></label>
+          <label>Quantity <input id="p7PaperQty" type="number" min="0.000001" step="any" value="0.01"></label>
+          <label>Stop Loss <input id="p7PaperSL" type="number" min="0.00000001" step="any" placeholder="Stop price"></label>
+          <label>Take Profit <input id="p7PaperTP" type="number" min="0.00000001" step="any" placeholder="Target price"></label>
+          <button class="primary-btn" id="p7OpenPaper">Open paper trade</button>
+        </div>
+        <p class="p7-note" id="p7PaperStatus">Paper account is separate from your existing wallet and journal.</p>
+        <div class="p7-table-wrap"><table><thead><tr><th>Opened</th><th>Market</th><th>Side</th><th>Qty</th><th>Entry</th><th>SL</th><th>TP</th><th>Status</th><th>Action</th></tr></thead><tbody id="p7PaperRows"><tr><td colspan="9" class="empty-row">No paper trades yet.</td></tr></tbody></table></div>
+      </section>
+      <section class="section-heading" id="performance-lab"><div><div class="overline">PHASE 07 · STRATEGY REVIEW</div><h2>Performance Lab</h2><p>Closed paper-trade statistics, equity results and strategy feedback.</p></div><span class="pill">PAPER STATISTICS</span></section>
+      <section class="panel phase07-panel">
+        <div class="p7-kpi-grid" id="p7PerformanceKpis"><article><span>Trades</span><strong>—</strong></article><article><span>Win rate</span><strong>—</strong></article><article><span>Profit factor</span><strong>—</strong></article><article><span>Net P&amp;L</span><strong>—</strong></article></div>
+        <p class="p7-note" id="p7PerformanceNote">Statistics are calculated from closed QUANTNEX paper trades only. No win-rate guarantee.</p>
+      </section>
+      <section class="section-heading" id="risk-management"><div><div class="overline">PHASE 07 · CAPITAL PROTECTION</div><h2>Risk Management</h2><p>Estimate risk amount and theoretical base-unit size before opening a paper trade.</p></div><span class="pill">MAX CALCULATOR RISK 5%</span></section>
+      <section class="panel phase07-panel">
+        <div class="p7-risk-form">
+          <label>Account equity (USD) <input id="p7RiskEquity" type="number" min="0.01" step="any" value="10000"></label>
+          <label>Risk per trade (%) <input id="p7RiskPercent" type="number" min="0.01" max="5" step="0.01" value="1"></label>
+          <label>Entry price <input id="p7RiskEntry" type="number" min="0.00000001" step="any" placeholder="Entry"></label>
+          <label>Stop Loss <input id="p7RiskStop" type="number" min="0.00000001" step="any" placeholder="Stop"></label>
+          <button class="primary-btn" id="p7CalculateRisk">Calculate risk</button>
+        </div>
+        <div class="p7-risk-result" id="p7RiskResult"><div class="p7-empty">Enter equity, risk percentage, entry and stop loss.</div></div>
+        <p class="p7-note">Estimated units are not broker lots. Contract sizes, tick values, margin, spread, commissions and slippage are not included.</p>
+      </section>
       <section class="section-heading" id="tradingview"><div><div class="overline">CHARTING</div><h2>TradingView</h2><p>One dedicated chart workspace. Select a symbol and timeframe.</p></div><span class="pill live-pill">CHART TAB</span></section>
       <section class="panel chart-panel"><div class="chart-heading"><div><strong>TradingView Advanced Chart</strong><span>Choose XAUUSD or BTCUSDT</span></div><label class="chart-select-label">Symbol <select id="tradingViewSymbol"><option value="OANDA:XAUUSD">XAUUSD</option><option value="BINANCE:BTCUSDT">BTCUSDT</option></select></label></div><div id="xauTradingView" class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div><script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>{"autosize":true,"symbol":"OANDA:XAUUSD","interval":"15","timezone":"Etc/UTC","theme":"dark","style":"1","locale":"en","allow_symbol_change":true,"calendar":false,"support_host":"https://www.tradingview.com"}</script></div></section>
       <section class="panel timeframe-panel">

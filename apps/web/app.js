@@ -1,6 +1,18 @@
 const $ = (id) => document.getElementById(id);
 const storageKey = "quantnex.journal.v2";
-function loadTrades(){try{const rows=JSON.parse(localStorage.getItem(storageKey)||"[]");return Array.isArray(rows)?rows:[];}catch{return[];}}
+function loadTrades(){
+  try{
+    const current=JSON.parse(localStorage.getItem(storageKey)||"null");
+    if(Array.isArray(current)&&current.length)return current;
+    const legacy=JSON.parse(localStorage.getItem("quantnex.phase2.journal.v1")||"[]");
+    if(Array.isArray(legacy)&&legacy.length){
+      const migrated=legacy.map(t=>({date:t.date||"",symbol:String(t.symbol||"").toUpperCase(),direction:t.direction||"Buy",outcome:t.outcome||"Breakeven",pnl:Number(t.pnl)||0,notes:String(t.notes||"")}));
+      localStorage.setItem(storageKey,JSON.stringify(migrated));
+      return migrated;
+    }
+    return Array.isArray(current)?current:[];
+  }catch{return[];}
+}
 function saveTrades(rows){localStorage.setItem(storageKey,JSON.stringify(rows));}
 function money(value){return (value<0?"−":"")+"$"+Math.abs(value).toFixed(2);}
 function renderJournal(){

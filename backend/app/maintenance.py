@@ -89,7 +89,8 @@ def create_backup(database_url: str, backup_dir: Path = BACKUP_DIR, prune: bool 
                 source.backup(target, pages=256, sleep=0.05)
         _integrity_check(destination)
         _write_manifest(destination, _sha256(destination))
-        _prune_backups(backup_dir)
+        if prune:
+            _prune_backups(backup_dir)
         return verify_backup(filename, backup_dir)
     except Exception:
         destination.unlink(missing_ok=True)

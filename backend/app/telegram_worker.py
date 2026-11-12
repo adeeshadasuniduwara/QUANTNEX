@@ -1,6 +1,6 @@
 """Background Telegram command and TP1 notification worker."""
 from __future__ import annotations
-import asyncio, json
+import asyncio, json, logging
 from typing import Any
 import httpx
 from sqlalchemy import select
@@ -9,6 +9,8 @@ from .models import Preference
 from .security import decrypt_secret
 from .config import TWELVE_DATA_API_KEY
 from .signal_engine import build_signal, MarketDataError
+
+logger = logging.getLogger("quantnex.telegram")
 
 def _get(db, user_id: int, key: str, default: str="") -> str:
     row=db.scalar(select(Preference).where(Preference.user_id==user_id,Preference.key==key))
@@ -40,6 +42,8 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
     raw=_get(db,user_id,"signal_settings",'{"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":7}')
     try: settings=json.loads(raw)
     except ValueError: settings={"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":7}
+    # Release the SQLite read snapshot before any provider/Telegram network wait.
+    db.commit()
     names={"1":"M1","5":"M5","15":"M15","30":"M30","50":"M50","60":"H1","240":"H4"}
     if command in {"/start","/help"}:
         return ("QUANTNEX Crypto + Gold Signal Bot\n"
@@ -101,6 +105,8 @@ async def telegram_worker() -> None:
                         try:token=decrypt_secret(token_row.value)
                         except ValueError:continue
                         offset=int(_get(db,user_id,"telegram_update_offset","0") or "0")
+                        # Do not hold a SQLite read snapshot while waiting on Telegram.
+                        db.commit()
                         try:
                             resp=await client.get(f"https://api.telegram.org/bot{token}/getUpdates",
                                 params={"offset":offset,"timeout":0,"allowed_updates":'["message","channel_post"]'})
@@ -115,10 +121,12 @@ async def telegram_worker() -> None:
                                     answer=await _handle_command(client,db,user_id,token,chat_id,command)
                                     if answer:await _send(client,token,chat_id,answer)
                                 _set(db,user_id,"telegram_update_offset",str(offset));db.commit()
-                        except (httpx.HTTPError,ValueError):pass
+                        except (httpx.HTTPError,ValueError) as exc:
+                            logger.warning("Telegram polling failed for local user %s: %s",user_id,type(exc).__name__)
                         now=asyncio.get_running_loop().time()
                         if now-last_monitor.get(user_id,0)>=60:
                             active_raw=_get(db,user_id,"active_signal")
+                            db.commit()
                             if active_raw and TWELVE_DATA_API_KEY:
                                 try:
                                     active=json.loads(active_raw);price=await _price(client)
@@ -143,9 +151,11 @@ async def telegram_worker() -> None:
                                         if active_raw:_set(db,user_id,"active_signal",json.dumps(active))
                                         else:_set(db,user_id,"active_signal","")
                                         db.commit()
-                                except (ValueError,KeyError,httpx.HTTPError):pass
+                                except (ValueError,KeyError,httpx.HTTPError) as exc:
+                                    logger.warning("Gold level monitor failed for local user %s: %s",user_id,type(exc).__name__)
                         # Automatic signals scan each selected market independently.
                         auto_raw=_get(db,user_id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}')
+                        db.commit()
                         try: auto_settings=json.loads(auto_raw)
                         except ValueError: auto_settings={"enabled":False,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}
                         interval=max(60,min(3600,int(auto_settings.get("interval_seconds",180) or 180)))
@@ -157,6 +167,7 @@ async def telegram_worker() -> None:
                             try: signal_settings=json.loads(signal_raw)
                             except ValueError: signal_settings={"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":8}
                             signal_settings["min_score"]=max(8,int(signal_settings.get("min_score",8)))
+                            db.commit()
                             for market_symbol in selected:
                                 if market_symbol=="XAUUSD" and not TWELVE_DATA_API_KEY:
                                     continue
@@ -167,6 +178,7 @@ async def telegram_worker() -> None:
                                     if candidate:
                                         fingerprint="|".join([market_symbol,str(candidate.get("side")),str(candidate.get("timeframe")),str(candidate.get("signal_candle_time"))])
                                         previous=_get(db,user_id,fingerprint_key)
+                                        db.commit()
                                         if fingerprint and fingerprint!=previous:
                                             msg=("QUANTNEX · AUTO SIGNAL · "+market_symbol+" "+candidate["side"]+"\n"
                                                 +"Signal TF: "+str(candidate["timeframe"])+"m · Trend TF: "+str(candidate["trend_timeframe"])+"m\n"
@@ -186,6 +198,8 @@ async def telegram_worker() -> None:
                                     print(f"[QUANTNEX auto-signal] user {user_id} {market_symbol}: {exc}",flush=True)
                             last_monitor[auto_key]=now
                         last_monitor[user_id]=now
-            except Exception:
-                pass
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("Telegram worker cycle failed: %s",type(exc).__name__)
             await asyncio.sleep(8)

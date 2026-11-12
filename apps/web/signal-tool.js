@@ -147,7 +147,7 @@
     button.disabled=true;button.textContent="Connecting…";
     try{
       const data=await apiRequest("/api/v1/telegram/connect",{method:"POST",body:JSON.stringify({bot_token:token,chat_id:chat,display_name:$("tgBotDisplayName").value.trim()})});
-      $("telegramStatus").textContent="Connected to "+($("tgBotDisplayName").value.trim()||"@"+(data.bot_username||"your bot"))+" (@"+(data.bot_username||"bot")+"). Commands enabled: /help, /timeframes, /settf, /settrend, /setanalysis, /scan, /status.";
+      $("telegramStatus").textContent="Connected to "+($("tgBotDisplayName").value.trim()||"@"+(data.bot_username||"your bot"))+" (@"+(data.bot_username||"bot")+"). Commands enabled: /help, /timeframes, /settf, /settrend, /setanalysis, /scan BTCUSDT, /scan ETHUSDT, /scan SOLUSDT, /scan XAUUSD, /status.";
       $("tgBotToken").value="";
     }catch(e){$("telegramStatus").textContent=e.message;}
     finally{button.disabled=false;button.textContent="Connect bot & enable commands";}

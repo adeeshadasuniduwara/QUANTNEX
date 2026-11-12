@@ -231,5 +231,5 @@ if(sessionToken()){
       if($id("goldLkrNote"))$id("goldLkrNote").textContent="BTC uses Binance public data; Gold and USD/LKR require the server-side Twelve Data API key.";
     }
   }
-  if($id("btcLivePrice")){refresh();window.setInterval(refresh,15000);}
+  if($id("btcLivePrice")){refresh();window.setInterval(refresh,30000);}
 })();

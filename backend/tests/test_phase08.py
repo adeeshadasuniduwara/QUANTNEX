@@ -27,7 +27,7 @@ def test_backtest_returns_auditable_metrics_and_limitations():
     result=run_backtest(candles,{"fast_ema":5,"slow_ema":20,"risk_reward":2})
     assert result["candle_count"]==len(candles)
     assert result["trade_count"]>=1
-    assert "no future" in result["limitations"].lower()
+    assert "do not predict future" in result["limitations"].lower()
     assert all("exit_reason" in trade and "r_multiple" in trade for trade in result["trades"])
 
 def test_optimizer_limits_search_to_explicit_parameter_grid():

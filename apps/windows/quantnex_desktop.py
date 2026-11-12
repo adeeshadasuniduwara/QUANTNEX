@@ -1,11 +1,11 @@
 from __future__ import annotations
-import json, sqlite3, urllib.error, urllib.request, webbrowser
+import json, os, shutil, sqlite3, subprocess, sys, threading, urllib.error, urllib.request, webbrowser
 from datetime import datetime
 from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.4.0"
 REPO = "adeeshadasuniduwara/QUANTNEX"
 LATEST_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 
@@ -39,19 +39,20 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("QUANTNEX — Trading Workspace")
-        self.geometry("1000x680"); self.minsize(850, 560); self.configure(bg="#f3f5f8")
+        self.geometry("1000x680"); self.minsize(850, 560); self.configure(bg="#ffffff")
         self.journal = TradeJournal()
         self.style = ttk.Style(self)
         try: self.style.theme_use("clam")
         except tk.TclError: pass
-        self.style.configure("TFrame", background="#f3f5f8")
-        self.style.configure("TLabel", background="#f3f5f8", foreground="#182235", font=("Segoe UI", 10))
+        self.style.configure("TFrame", background="#ffffff")
+        self.style.configure("TLabel", background="#f3f5f8", foreground="#111111", font=("Segoe UI", 10))
         self.style.configure("Title.TLabel", font=("Segoe UI", 22, "bold"))
-        self.style.configure("Muted.TLabel", foreground="#697589")
+        self.style.configure("Muted.TLabel", foreground="#777777")
         self.style.configure("TButton", font=("Segoe UI", 10), padding=8)
-        self.style.configure("Accent.TButton", background="#2457d6", foreground="white")
+        self.style.configure("Accent.TButton", background="#111111", foreground="white")
         self.style.configure("Treeview", rowheight=28, font=("Segoe UI", 9))
         self._build()
+        self.after(1600, self._check_background)
 
     def _build(self):
         root = ttk.Frame(self, padding=22); root.pack(fill="both", expand=True)
@@ -132,25 +133,76 @@ class App(tk.Tk):
     def _updates(self):
         ttk.Label(self.updates,text="Software Updates",font=("Segoe UI",17,"bold")).pack(anchor="w")
         ttk.Label(self.updates,text=f"Installed version: {APP_VERSION}",style="Muted.TLabel").pack(anchor="w",pady=(5,15))
-        ttk.Button(self.updates,text="Check for updates",style="Accent.TButton",command=self._check).pack(anchor="w")
-        self.update_status=ttk.Label(self.updates,text="Checks the public QUANTNEX GitHub Releases page.",style="Muted.TLabel",wraplength=780)
+        ttk.Button(self.updates,text="Check for updates",style="Accent.TButton",command=self._check_background).pack(anchor="w")
+        self.update_status=ttk.Label(self.updates,text="QUANTNEX checks for published updates automatically at startup.",style="Muted.TLabel",wraplength=780)
         self.update_status.pack(anchor="w",pady=14)
+        self.install_button=ttk.Button(self.updates,text="Install downloaded update and restart",command=self._install_update)
         ttk.Button(self.updates,text="Open releases page",command=lambda:webbrowser.open(f"https://github.com/{REPO}/releases")).pack(anchor="w")
 
-    def _check(self):
-        self.update_status.configure(text="Checking for updates…"); self.update_status.update_idletasks()
+    def _set_update_status(self, message):
+        self.after(0, lambda: self.update_status.configure(text=message))
+
+    def _check_background(self):
+        self.update_status.configure(text="Checking GitHub Releases…")
+        threading.Thread(target=self._check_worker, daemon=True).start()
+
+    def _check_worker(self):
         try:
-            req=urllib.request.Request(LATEST_URL,headers={"User-Agent":"QUANTNEX-Desktop"})
-            with urllib.request.urlopen(req,timeout=8) as response: release=json.loads(response.read().decode())
+            req=urllib.request.Request(LATEST_URL,headers={"User-Agent":"QUANTNEX-Desktop","Accept":"application/vnd.github+json"})
+            with urllib.request.urlopen(req,timeout=12) as response:
+                release=json.loads(response.read().decode("utf-8"))
             latest=str(release.get("tag_name","")).lstrip("v")
-            if not latest: raise ValueError("No release version tag found.")
-            if latest != APP_VERSION:
-                self.update_status.configure(text=f"Version {latest} is available. Open Releases to review it.")
-                if messagebox.askyesno("Update available",f"QUANTNEX {latest} is available. Open the official release page?"):
-                    webbrowser.open(release.get("html_url",f"https://github.com/{REPO}/releases"))
-            else: self.update_status.configure(text="You have the latest published version.")
-        except (urllib.error.URLError,TimeoutError,ValueError,json.JSONDecodeError) as e:
-            self.update_status.configure(text=f"Could not check now: {e}. Try the Releases page later.")
+            if not latest:
+                raise ValueError("No release version tag found.")
+            def version(value):
+                try: return tuple(int(x) for x in value.split(".")[:3])
+                except ValueError: return (0,)
+            if version(latest) <= version(APP_VERSION):
+                self._set_update_status("You have the latest published version ("+latest+").")
+                return
+            asset=next((a for a in release.get("assets",[]) if a.get("name","").lower()=="quantnex.exe"),None)
+            if not asset:
+                self._set_update_status("Version "+latest+" is available, but the Windows EXE is not attached yet.")
+                return
+            staged=app_data()/"updates"/"QUANTNEX.exe"
+            staged.parent.mkdir(parents=True,exist_ok=True)
+            download=urllib.request.Request(asset["browser_download_url"],headers={"User-Agent":"QUANTNEX-Desktop"})
+            with urllib.request.urlopen(download,timeout=45) as response, staged.open("wb") as output:
+                shutil.copyfileobj(response,output)
+            if staged.stat().st_size < 100000:
+                staged.unlink(missing_ok=True)
+                raise ValueError("Downloaded file failed the basic size check.")
+            self.staged_update=staged
+            self.after(0,lambda:self.install_button.pack(anchor="w",pady=(10,0)))
+            self._set_update_status("Version "+latest+" downloaded. Review release notes, then choose Install and restart.")
+        except (urllib.error.URLError,TimeoutError,ValueError,json.JSONDecodeError,OSError,KeyError) as exc:
+            self._set_update_status("Could not check or download an update: "+str(exc))
+
+    def _install_update(self):
+        if not getattr(self,"staged_update",None) or not self.staged_update.exists():
+            messagebox.showerror("Update","No downloaded update is available.")
+            return
+        if not getattr(sys,"frozen",False):
+            messagebox.showinfo("Development mode","The installer works with the packaged Windows EXE. Build and run the EXE to test it.")
+            return
+        if not messagebox.askyesno("Install update","Install the downloaded QUANTNEX update and restart now?"):
+            return
+        target=Path(sys.executable).resolve()
+        staged=self.staged_update.resolve()
+        backup=target.with_name(target.stem+".previous.exe")
+        helper=app_data()/"updates"/"apply_update.cmd"
+        helper.write_text(
+            "@echo off\r\nsetlocal\r\n"
+            "set \"TARGET="+str(target)+"\"\r\n"
+            "set \"STAGED="+str(staged)+"\"\r\n"
+            "set \"BACKUP="+str(backup)+"\"\r\n"
+            "timeout /t 2 /nobreak >nul\r\ncopy /y \"%TARGET%\" \"%BACKUP%\" >nul\r\n"
+            "set TRY=0\r\n:retry\r\ncopy /y \"%STAGED%\" \"%TARGET%\" >nul\r\n"
+            "if errorlevel 1 (set /a TRY+=1 & if %TRY% LSS 20 (timeout /t 1 /nobreak >nul & goto retry) else (exit /b 1))\r\n"
+            "start \"\" \"%TARGET%\"\r\ndel \"%STAGED%\"\r\nendlocal\r\n",
+            encoding="utf-8")
+        subprocess.Popen(["cmd.exe","/c",str(helper)],creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
+        self.destroy()
 
 if __name__ == "__main__":
     App().mainloop()

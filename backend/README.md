@@ -22,9 +22,10 @@ py -m venv .venv
 .venv\Scripts\Activate.ps1
 py -m pip install -r requirements.txt
 Copy-Item .env.example .env
+py bootstrap.py
 ```
 
-Keep the generated QUANTNEX_SECRET_KEY in backend/.env stable so saved Telegram tokens remain decryptable. Then run:
+The bootstrap step creates a strong local QUANTNEX_SECRET_KEY (if needed), validates imports and initializes the local database. Keep the generated key in backend/.env stable so saved Telegram tokens remain decryptable. Then run:
 
 ```powershell
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000

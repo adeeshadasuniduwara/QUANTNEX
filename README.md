@@ -29,7 +29,7 @@ Build artifacts are temporary and retained for 30 days. The Web Updates panel al
 
 ## Run from source on Windows
 
-From the repository root, run run_quantnex.bat. Option 1 starts the current Python source (preferred for development and source ZIP updates); option 6 starts the packaged EXE when present. Choose Web or both for the browser workspace. The Web workspace can also be opened from apps/web/index.html.
+From the repository root, run run_quantnex.bat. Option 1 starts the Windows Desktop source app; option 2 starts the local Backend API and Web updater together (recommended for the complete browser workspace); option 3 starts Desktop + Backend + Web together; option 4 starts the Backend API only; option 5 opens the Web source folder; option 6 starts the packaged EXE when present. Use option 2 or 3 for the full Web experience. Do not open apps/web/index.html directly: API-backed features require the trusted local origin served at http://127.0.0.1:5500.
 
 ## Backend
 

@@ -11,6 +11,7 @@ assert.match(html, /id="livePnlSymbol"/, "BTC/XAUUSD live P&L market selector is
 assert.match(html, /id="livePnlEntry"/, "Live P&L entry input is missing");
 assert.match(html, /id="livePnlQuantity"/, "Live P&L quantity input is missing");
 assert.match(html, /id="livePnlContractSize"/, "Gold broker contract-size input is missing");
+assert.match(html, /id="livePnlContractSizeWrap" hidden/, "Gold contract-size control must start hidden until Gold is selected");
 assert.match(html, /id="integrationConnectBot"/, "Integrations must offer a bot connection shortcut");
 assert.match(html, /id="telegram-bot-connect"/, "Telegram connection panel anchor is missing");
 assert.doesNotMatch(html, /<\/?(?:code|pre)\b/i, "User-facing HTML must not expose code snippets");
@@ -24,7 +25,7 @@ assert.match(app, /quantnex:market-tick/, "Live market events must feed the P&L 
 assert.match(app, /apiRequest\("\/api\/v1\/system\/metrics"\)/, "System health must use lightweight host telemetry");
 assert.match(app, /setInterval\(update,1000\)/, "System health must refresh automatically once per second");
 assert.match(app, /IntersectionObserver/, "System polling must pause when the health panel is off-screen");
-assert.match(app, /const pnl=\(price-entry\)\*qty\*direction/, "P&L must calculate signed gross price movement");
+assert.match(app, /const pnl=\(price-entry\)\*qty\*contractSize\*direction/, "P&L must apply the selected instrument contract size");
 
 assert.match(css, /\.p7-bookmap canvas/, "Heatmap canvas styles are missing");
 assert.match(css, /\.live-pnl-grid/, "Live P&L styles are missing");

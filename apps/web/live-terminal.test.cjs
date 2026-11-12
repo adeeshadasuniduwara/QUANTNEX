@@ -79,3 +79,9 @@ assert.match(signal, /Chart data unavailable/, "Chart load errors must use a cha
 assert.match(signal, /if\(!window\.LightweightCharts\)throw new Error/, "Missing chart library must be caught and shown in the chart panel");
 assert.match(css, /height:clamp\(390px,58vh,620px\)/, "QUANTNEX VIEW must use a responsive chart height");
 console.log("QUANTNEX VIEW CDN fallback, direct market fallback and error-state checks passed.");
+
+assert.match(signal, /quantnex:workspace-event/, "Signal Lab must react to local workspace events");
+assert.match(signal, /detail\.type==="preferences\.changed"/, "Telegram timeframe changes must refresh Signal Lab settings");
+assert.match(signal, /detail\.type==="integration\.changed"/, "Telegram connect/disconnect events must refresh the Signal Lab bot status");
+assert.match(signal, /quantnex:workspace-resync/, "Signal Lab must refresh provider/settings state after event-stream resync");
+console.log("Signal Lab local event integration checks passed.");

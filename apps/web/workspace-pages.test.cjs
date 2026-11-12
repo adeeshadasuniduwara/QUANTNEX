@@ -13,7 +13,7 @@ assert.deepEqual(missingTargets, [], "Every sidebar link must point to an existi
 const requiredPages = [
   "watchlist-desk", "forex-desk", "crypto-desk", "gold-desk", "price-alerts",
   "economic-calendar", "trade-history", "strategy-library", "portfolio-monitor",
-  "integrations-center"
+  "integrations-center", "prop-challenge"
 ];
 for (const page of requiredPages) {
   assert.ok(sectionIds.includes(page), "Missing page section: " + page);

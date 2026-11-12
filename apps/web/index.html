@@ -10,6 +10,8 @@
   <link rel="stylesheet" href="styles.css?v=20261112-quantnex-view3">
   <link rel="stylesheet" href="signal-tool.css">
   <link rel="stylesheet" href="workspace-pages.css?v=20261112-pages10">
+  <link rel="stylesheet" href="navigation.css?v=20261112-fade1">
+  <link rel="stylesheet" href="prop-challenge.css?v=20261112-challenge1">
 </head>
 <body>
   <div class="layout">
@@ -48,6 +50,7 @@
         <div class="side-caption">STRATEGY RESEARCH</div>
         <a class="nav-link" href="#strategy-laboratory"><span>⌘</span>AI Strategy Laboratory</a>
         <div class="side-caption">WORKSPACE TOOLS</div>
+        <a class="nav-link" href="#prop-challenge"><span>▣</span>Prop Firm Challenge</a>
         <a class="nav-link" href="#system-security"><span>⚙</span>System security</a>
       </nav>
       <div class="sidebar-bottom"><span class="live-dot"></span>Local workspace</div>
@@ -527,13 +530,65 @@
         <div class="workspace-page-cards" id="integrationCards"><article class="workspace-page-card">Checking provider configuration…</article></div>
         <p class="p7-note">Credentials remain in the local backend configuration or encrypted local preferences. This page never requests or displays secret values. QUANTNEX remains login-free and loopback-only.</p>
       </section>
+
+      <section class="section-heading" id="prop-challenge"><div><div class="overline">WORKSPACE TOOL · PROP FIRM TRAINING</div><h2>Prop Firm Challenge Simulator</h2><p>Practice evaluation rules with a virtual account or connect an MT5 DEMO account for local risk monitoring.</p></div><span class="pill">DEMO / PRACTICE ONLY</span></section>
+      <section class="panel workspace-page-panel prop-challenge-panel">
+        <div class="workspace-page-toolbar"><div><strong>Challenge control center</strong><p id="pcStatus" role="status">Loading local challenge state…</p></div><span class="pill" id="pcStateBadge">NOT STARTED</span></div>
+        <div class="workspace-page-cards" id="pcMetrics">
+          <article class="workspace-page-card"><span>Starting balance</span><strong id="pcStartingBalance">—</strong></article>
+          <article class="workspace-page-card"><span>Current equity</span><strong id="pcEquity">—</strong></article>
+          <article class="workspace-page-card"><span>Daily loss used</span><strong id="pcDailyLoss">—</strong><small id="pcDailyLossMeta">Daily limit</small></article>
+          <article class="workspace-page-card"><span>Profit target remaining</span><strong id="pcTargetRemaining">—</strong><small id="pcTargetMeta">Target</small></article>
+        </div>
+        <div class="pc-setup-block">
+          <h3>Create a challenge</h3>
+          <form id="pcCreateForm" class="workspace-page-form">
+            <label>Practice mode<select id="pcMode"><option value="virtual">Virtual practice account</option><option value="mt5_demo">Connect MT5 Demo account</option></select></label>
+            <label>Starting balance (USD)<input id="pcStartingInput" type="number" min="1" max="100000000" step="any" value="10000" required></label>
+            <label>Profit target (%)<input id="pcTargetInput" type="number" min="0.01" max="100" step="0.1" value="10" required></label>
+            <label>Daily maximum loss (%)<input id="pcDailyInput" type="number" min="0.01" max="50" step="0.1" value="5" required></label>
+            <label>Maximum overall loss (%)<input id="pcMaxInput" type="number" min="0.01" max="90" step="0.1" value="10" required></label>
+            <label>Minimum trading days<input id="pcDaysInput" type="number" min="0" max="365" step="1" value="5" required></label>
+            <label>Drawdown model<select id="pcDrawdownInput"><option value="static">Static maximum loss</option><option value="trailing">Trailing maximum loss</option></select></label>
+            <label>Daily reset timezone<select id="pcTimezoneInput"><option value="Asia/Colombo">Asia/Colombo</option><option value="Europe/London">Europe/London</option><option value="America/New_York">America/New_York</option><option value="Etc/UTC">UTC</option></select></label>
+            <div class="pc-form-actions"><button class="primary-btn" type="submit" id="pcCreateButton">Create challenge</button><span class="helper">A new challenge cannot overwrite an active one. Reset it first.</span></div>
+          </form>
+        </div>
+        <div class="pc-connection-block">
+          <div class="workspace-page-toolbar"><div><strong>MT5 Demo connection</strong><p id="pcMt5Status" role="status">Not connected. Only DEMO accounts are accepted.</p></div><span class="pill">LOCAL WINDOWS BRIDGE</span></div>
+          <form id="pcMt5ConnectForm" class="workspace-page-form" hidden>
+            <label>MT5 login<input id="pcMt5Login" type="number" min="1" step="1" required autocomplete="off"></label>
+            <label>MT5 server<input id="pcMt5Server" type="text" maxlength="128" placeholder="Broker-Demo" required autocomplete="off"></label>
+            <label>MT5 password<input id="pcMt5Password" type="password" maxlength="256" required autocomplete="new-password"></label>
+            <label>Terminal path (optional)<input id="pcMt5Path" type="text" maxlength="500" placeholder="C:\Program Files\MetaTrader 5\terminal64.exe" autocomplete="off"></label>
+            <div class="pc-form-actions"><button class="primary-btn" type="submit" id="pcMt5ConnectButton">Connect DEMO account</button><span class="helper">Password is sent only to the loopback backend for this connection and is not saved.</span></div>
+          </form>
+          <div id="pcMt5ConnectedActions" class="pc-connected-actions" hidden><span id="pcMt5AccountSummary"></span><button class="secondary-btn" type="button" id="pcMt5Disconnect">Disconnect MT5</button></div>
+        </div>
+        <div class="pc-practice-block" id="pcVirtualPractice" hidden>
+          <h3>Record a virtual practice result</h3>
+          <form id="pcVirtualTradeForm" class="workspace-page-form">
+            <label>Market<input id="pcVirtualSymbol" type="text" maxlength="20" value="XAUUSD" required></label>
+            <label>Closed trade P&amp;L (USD)<input id="pcVirtualPnl" type="number" step="any" required placeholder="-50 or 75"></label>
+            <div class="pc-form-actions"><button class="primary-btn" type="submit">Record practice trade</button><span class="helper">Virtual mode records closed results only; it does not create market orders or track floating P&amp;L.</span></div>
+          </form>
+        </div>
+        <div class="pc-history-block">
+          <div class="workspace-page-toolbar"><div><strong>Recent practice results</strong><p id="pcHistoryMeta">No virtual trades recorded.</p></div><button class="secondary-btn" type="button" id="pcRefresh">Refresh status</button></div>
+          <div class="p7-table-wrap"><table><thead><tr><th>Time</th><th>Market</th><th>Realized P&amp;L</th><th>Balance after</th></tr></thead><tbody id="pcTradeRows"><tr><td colspan="4" class="empty-row">No challenge trades yet.</td></tr></tbody></table></div>
+        </div>
+        <div class="pc-footer-actions"><p class="p7-note" id="pcGuardianNote">MT5 Guardian runs in the local backend while it is connected. On a DEMO-only breach it attempts to close open positions and locks the challenge. Broker rejection, terminal shutdown or network loss can prevent closure; this is not a guaranteed broker-side risk limit.</p><button class="secondary-btn" type="button" id="pcReset" hidden>Reset challenge</button></div>
+      </section>
+
       <footer><span>QUANTNEX</span><span>Build carefully. Trade responsibly.</span></footer>
     </main>
   </div>
   <script src="app.js"></script>
   <script src="realtime-events.js"></script>
   <script src="workspace-pages.js"></script>
+  <script src="prop-challenge.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.0.8/dist/lightweight-charts.standalone.production.js" onerror="this.onerror=null;this.src='https://unpkg.com/lightweight-charts@5.0.8/dist/lightweight-charts.standalone.production.js';"></script>
   <script src="signal-tool.js"></script>
+  <script src="navigation.js"></script>
 </body>
 </html>

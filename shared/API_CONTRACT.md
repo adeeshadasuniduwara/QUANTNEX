@@ -101,6 +101,28 @@ Paper trading is simulated and local. Backtests and confluence scores are not
 verified win rates or guarantees. No broker order, live execution, or automatic
 broker stop modification is exposed by these routes.
 
+## Prop Firm Challenge Simulator
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/prop-challenge/state` | Read the local challenge and optional MT5 demo connection state |
+| POST | `/api/v1/prop-challenge/challenge` | Create a virtual or MT5 DEMO challenge with explicit rules |
+| POST | `/api/v1/prop-challenge/virtual-trades` | Record a closed practice result in virtual mode |
+| POST | `/api/v1/prop-challenge/mt5/connect` | Connect an installed Windows MT5 terminal, DEMO accounts only |
+| POST | `/api/v1/prop-challenge/mt5/disconnect` | Disconnect the local MT5 bridge |
+| GET | `/api/v1/prop-challenge/mt5/status` | Read MT5 bridge status |
+| POST | `/api/v1/prop-challenge/reset` | Reset the local challenge and its virtual practice history |
+
+Challenge rules are saved in the existing local preferences store. The optional
+MT5 bridge requires the Windows MetaTrader 5 terminal and the optional
+`MetaTrader5` Python package. Login credentials are used only for the in-memory
+connection and are not persisted. The adapter rejects REAL and CONTEST account
+modes. On a DEMO challenge breach the local guardian attempts to close open
+positions and locks the challenge; broker rejection, terminal/network failure,
+or a stopped local backend can prevent closure. This is not a broker-side
+guaranteed loss limit. Virtual mode records manually entered closed P&L only and
+does not track floating equity or send market orders.
+
 ## Local system maintenance
 
 | Method | Path | Purpose |
@@ -129,5 +151,5 @@ verified local backup. PostgreSQL backup/restore is not implemented.
 
 - No `/api/v1/auth/*`, login, registration, password reset, or cloud identity.
 - No public cloud relay or multi-user remote API.
-- No broker account connection, live broker order placement, or auto execution.
+- No live broker account connection, live order placement, or real-money execution. The optional MT5 bridge is restricted to DEMO accounts and close-only guardian actions.
 - Android is currently a starter UI and is not connected to this local backend.

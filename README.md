@@ -29,7 +29,7 @@ Build artifacts are temporary and retained for 30 days. The Web Updates panel al
 
 ## Run from source on Windows
 
-From the repository root, run run_quantnex.bat. Option 1 starts the Windows Desktop source app; option 2 starts the local Backend API and Web updater together (recommended for the complete browser workspace); option 3 starts Desktop + Backend + Web together; option 4 starts the Backend API only; option 5 opens the Web source folder; option 6 starts the packaged EXE when present. Use option 2 or 3 for the full Web experience. Do not open apps/web/index.html directly: API-backed features require the trusted local origin served at http://127.0.0.1:5500.
+From the repository root, run run_quantnex.bat. Option 1 starts the current Python source (preferred for development and source ZIP updates); option 6 starts the packaged EXE when present. Choose Web or both for the browser workspace. The Web workspace can also be opened from apps/web/index.html.
 
 ## Backend
 
@@ -58,3 +58,11 @@ QUANTNEX includes an optional GitHub Actions workflow that announces published r
 - The laptop must remain powered on, connected to the internet and running the QUANTNEX API for Auto Signals. A VPS can host the same API process for continuous operation. The browser itself does not need to stay open once Auto Signals are saved.
 - Reaper is not implemented because its exact formula/source has not been provided. There is no broker execution, automatic SL movement, or verified win-rate calculation.
 
+
+
+## Prop Firm Challenge Simulator
+
+- The Toolkit includes a local Prop Firm Challenge Simulator with virtual practice rules and optional Windows MT5 DEMO monitoring.
+- Configure profit target, daily maximum loss, maximum overall loss, minimum trading days, daily reset timezone and static or trailing drawdown.
+- MT5 mode accepts DEMO accounts only. On a rule breach the local guardian attempts to close open demo positions and locks the challenge; this is best-effort protection, not a broker-guaranteed loss limit. Virtual mode records manually entered closed P&L and does not create orders.
+- Sidebar navigation now switches between single-page workspace views with a short fade transition; the sidebar and topbar remain mounted, and reduced-motion preferences are respected.

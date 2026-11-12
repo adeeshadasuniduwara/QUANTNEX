@@ -99,3 +99,8 @@ class WalletSummaryResponse(BaseModel):
     deposits: float
     withdrawals: float
     trading_pnl: float
+
+class TelegramSendRequest(BaseModel):
+    bot_token: str = Field(min_length=20, max_length=200)
+    chat_id: str = Field(min_length=1, max_length=128)
+    message: str = Field(min_length=1, max_length=4096)

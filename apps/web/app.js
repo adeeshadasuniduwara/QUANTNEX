@@ -586,3 +586,63 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   $("p8ResearchRefresh").addEventListener("click",loadResearch);
   loadResearch();
 })();
+
+
+// Phase 09 — portfolio risk, drawdown guardian and paper-only smart sizing.
+(function initPhase09(){
+  if(!$("p9Refresh"))return;
+  const fmt=(v,d=2)=>v==null||!Number.isFinite(Number(v))?"—":Number(v).toLocaleString(undefined,{maximumFractionDigits:d});
+  const val=id=>Number($(id).value);
+  const cfg=()=>({equity:val("p9Equity"),daily_loss_limit_percent:val("p9DailyLimit"),
+    max_drawdown_percent:val("p9MaxDD"),max_consecutive_losses:val("p9LossStreak")});
+  const status=(s,bad=false)=>{const n=$("p9Status");n.textContent=s;n.className=bad?"p7-note p7-status-error":"p7-note p7-status-ok";};
+  const render=(root,data)=>{root.replaceChildren();const pre=document.createElement("pre");pre.className="p9-report";pre.textContent=JSON.stringify(data,null,2);root.append(pre);};
+  async function refresh(){
+    try{
+      const data=await apiRequest("/api/v1/risk/portfolio");
+      const k=$("p9PortfolioKpis");k.replaceChildren();
+      [["Open positions",data.open_positions],["Gross notional estimate","$"+fmt(data.gross_notional_estimate)],
+       ["Planned stop risk","$"+fmt(data.planned_stop_risk_estimate)],["Symbols",Object.keys(data.by_symbol_notional||{}).length]
+      ].forEach(([a,b])=>{const card=document.createElement("article");card.append(document.createElement("span"),document.createElement("strong"));card.firstChild.textContent=a;card.lastChild.textContent=b;k.append(card);});
+      const body=$("p9Positions");body.replaceChildren();
+      if(!data.positions.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=6;td.className="empty-row";td.textContent="No open paper positions.";tr.append(td);body.append(tr);}
+      data.positions.forEach(p=>{const tr=document.createElement("tr");[p.id,p.symbol,p.side,fmt(p.quantity,6),fmt(p.notional_estimate,4),fmt(p.planned_stop_risk_estimate,4)].forEach(v=>{const td=document.createElement("td");td.textContent=v;tr.append(td);});body.append(tr);});
+      render($("p9Result"),{by_symbol_notional:data.by_symbol_notional,concentration_percent:data.symbol_concentration_percent,limitations:data.limitations});
+      status("Portfolio snapshot refreshed from the local paper ledger.");
+    }catch(e){status("Portfolio unavailable: "+e.message,true);}
+  }
+  async function guardian(){
+    try{const data=await apiRequest("/api/v1/risk/guardian",{method:"POST",body:JSON.stringify(cfg())});
+      render($("p9Result"),data);status(data.trading_allowed?"Risk Guardian: no configured limit is currently breached.":"Risk Guardian blocked smart paper entries: "+data.triggers.join(", "),!data.trading_allowed);
+    }catch(e){status("Guardian failed: "+e.message,true);}
+  }
+  async function stress(){
+    try{const data=await apiRequest("/api/v1/risk/stress",{method:"POST",body:JSON.stringify({})});
+      render($("p9Result"),data);status("Stress scenarios calculated using the displayed parallel-shock assumptions.");
+    }catch(e){status("Stress test failed: "+e.message,true);}
+  }
+  async function size(){
+    try{const data=await apiRequest("/api/v1/risk/position-size",{method:"POST",body:JSON.stringify({
+      equity:val("p9Equity"),risk_percent:val("p9RiskPercent"),entry:val("p9Entry")||0,
+      stop_loss:val("p9Stop"),contract_multiplier:val("p9Multiplier")
+    })});render($("p9Result"),data);status("Sizing complete. Set entry via live quote by using Smart Paper Open; this preview requires a valid entry.");
+    }catch(e){status("Sizing failed: "+e.message,true);}
+  }
+  async function smartOpen(){
+    const b=$("p9SmartOpen");b.disabled=true;
+    try{
+      const data=await apiRequest("/api/v1/paper-trading/smart-open",{method:"POST",body:JSON.stringify({
+        ...cfg(),symbol:$("p9Symbol").value,side:$("p9Side").value,risk_percent:val("p9RiskPercent"),
+        stop_loss:val("p9Stop"),take_profit:val("p9Target"),contract_multiplier:val("p9Multiplier")
+      })});
+      render($("p9Result"),data);status("Risk-checked paper trade #"+data.id+" opened. No broker order was sent.");await refresh();
+    }catch(e){status("Smart paper entry rejected: "+e.message,true);}
+    finally{b.disabled=false;}
+  }
+  $("p9Refresh").addEventListener("click",refresh);
+  $("p9Guardian").addEventListener("click",guardian);
+  $("p9Stress").addEventListener("click",stress);
+  $("p9Size").addEventListener("click",size);
+  $("p9SmartOpen").addEventListener("click",smartOpen);
+  refresh();
+})();

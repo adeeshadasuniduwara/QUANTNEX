@@ -86,8 +86,8 @@ async def _deliver_daily_pdf(client, db, user_id: int, token: str, chat_id: str,
     caption=("📊 QUANTNEX Daily Paper Report · "+stats["date"]+"\n"
         +"Closed: "+str(stats["closed"])+" · Win rate: "+format(stats["win_rate"],".2f")+"%\n"
         +"Gross profit: $"+format(stats["gross_profit"],".2f")+" · Losses: $"+format(stats["total_loss"],".2f")+"\n"
-        +"Net paper P&L: $"+format(stats["net"],".2f")+" · Open at cutoff: "+str(stats["open_at_cutoff"])+"\n"
-        +"Simulated ledger only — not real-account profit.")
+        +"Recorded paper P&L: $"+format(stats["net"],".2f")+" · Open at cutoff: "+str(stats["open_at_cutoff"])+"\n"
+        +"Profit factor: "+(stats["profit_factor"] is not None and str(stats["profit_factor"]) or "—")+" · simulated ledger only; costs may be excluded.")
     await _send_pdf(client,token,chat_id,pdf,"QUANTNEX-Paper-Report-"+stats["date"]+".pdf",caption)
     return stats
 async def _price(client: httpx.AsyncClient) -> float | None:

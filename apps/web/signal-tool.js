@@ -99,6 +99,11 @@
     const result=$("signalResult"),state=$("signalEngineState"),readout=$("indicatorReadout");
     result.replaceChildren();readout.replaceChildren();
     state.textContent=data.status==="SIGNAL"?"SIGNAL READY":"WAIT / NO SETUP";
+    if(data.quality_filters){
+      const filters=document.createElement("p");filters.className="signal-feed-note";
+      filters.textContent="Directional quality gates: "+Object.entries(data.quality_filters).map(([k,v])=>k.replaceAll("_"," ")+": "+(v?"PASS":"FAIL")).join(" · ");
+      result.append(filters);
+    }
     const score=document.createElement("div");score.className="signal-score";
     score.textContent="Confluence "+data.confluence_score+"/"+data.score_out_of+" · "+(data.score_note||"Rule-based score, not win probability");result.append(score);
     if(data.signal){

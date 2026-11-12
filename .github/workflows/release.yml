@@ -53,8 +53,7 @@ jobs:
           files: |
             dist/QUANTNEX.exe
             dist/SHA256SUMS.txt
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Announce release on Telegram
         shell: bash

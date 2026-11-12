@@ -1,6 +1,8 @@
 """Background Telegram command and TP1 notification worker."""
 from __future__ import annotations
 import asyncio, json, logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Any
 import httpx
 from sqlalchemy import select
@@ -25,13 +27,69 @@ def _set(db, user_id: int, key: str, value: str) -> None:
 def _publish_signal_settings_changed() -> None:
     event_hub.publish("preferences.changed","preferences","updated",{"key":"signal_settings"})
 
-async def _send(client: httpx.AsyncClient, token: str, chat_id: str, text: str) -> None:
-    response=await client.post(f"https://api.telegram.org/bot{token}/sendMessage",
-        json={"chat_id":chat_id,"text":text[:4000],"disable_web_page_preview":True})
-    response.raise_for_status()
-    if not response.json().get("ok"):
-        raise httpx.HTTPStatusError("Telegram did not accept the message.",request=response.request,response=response)
+MENU = {"inline_keyboard": [
+    [{"text":"📊 Dashboard","callback_data":"qx:home"},{"text":"📈 BTC Scan","callback_data":"qx:scan:BTCUSDT"}],
+    [{"text":"Ξ ETH Scan","callback_data":"qx:scan:ETHUSDT"},{"text":"◎ SOL Scan","callback_data":"qx:scan:SOLUSDT"}],
+    [{"text":"🥇 Gold Scan","callback_data":"qx:scan:XAUUSD"},{"text":"📋 Timeframes","callback_data":"qx:timeframes"}],
+    [{"text":"📄 Today PDF","callback_data":"qx:daily"},{"text":"🕗 Daily 8 PM ON/OFF","callback_data":"qx:daily_toggle"}],
+    [{"text":"🔌 Status","callback_data":"qx:status"},{"text":"❔ Help","callback_data":"qx:help"}]
+]}
 
+async def _telegram_post(client, token: str, method: str, payload: dict):
+    url=f"https://api.telegram.org/bot{token}/{method}"
+    for attempt in range(3):
+        response=await client.post(url,json=payload)
+        try: data=response.json()
+        except ValueError: data={}
+        if response.status_code == 429 and attempt < 2:
+            await asyncio.sleep(max(1,min(10,int((data.get("parameters") or {}).get("retry_after",2)))))
+            continue
+        if response.status_code >= 500 and attempt < 2:
+            await asyncio.sleep(2 ** attempt)
+            continue
+        response.raise_for_status()
+        if not data.get("ok"):
+            raise httpx.HTTPStatusError("Telegram rejected the request.",request=response.request,response=response)
+        return data.get("result",{})
+    raise RuntimeError("Telegram retry limit reached.")
+
+async def _send(client, token: str, chat_id: str, text: str, reply_markup: dict | None = None):
+    payload={"chat_id":chat_id,"text":text[:4000],"disable_web_page_preview":True}
+    if reply_markup: payload["reply_markup"]=reply_markup
+    return await _telegram_post(client,token,"sendMessage",payload)
+
+async def _send_pdf(client, token: str, chat_id: str, pdf: bytes, filename: str, caption: str):
+    url=f"https://api.telegram.org/bot{token}/sendDocument"
+    for attempt in range(3):
+        response=await client.post(url,data={"chat_id":chat_id,"caption":caption[:1024]},
+            files={"document":(filename,pdf,"application/pdf")})
+        try: data=response.json()
+        except ValueError: data={}
+        if response.status_code == 429 and attempt < 2:
+            await asyncio.sleep(max(1,min(10,int((data.get("parameters") or {}).get("retry_after",2)))))
+            continue
+        if response.status_code >= 500 and attempt < 2:
+            await asyncio.sleep(2 ** attempt)
+            continue
+        response.raise_for_status()
+        if not data.get("ok"):
+            raise httpx.HTTPStatusError("Telegram rejected the PDF.",request=response.request,response=response)
+        return data.get("result",{})
+    raise RuntimeError("Telegram PDF retry limit reached.")
+
+async def _edit_message(client, token: str, chat_id: str, message_id: int, text: str):
+    return await _telegram_post(client,token,"editMessageText",{"chat_id":chat_id,"message_id":message_id,"text":text[:4000],"reply_markup":MENU})
+
+async def _deliver_daily_pdf(client, db, user_id: int, token: str, chat_id: str, report_day=None):
+    from .telegram_reporting import build_daily_paper_pdf
+    pdf, stats=build_daily_paper_pdf(db,user_id,report_day)
+    caption=("📊 QUANTNEX Daily Paper Report · "+stats["date"]+"\n"
+        +"Closed: "+str(stats["closed"])+" · Win rate: "+format(stats["win_rate"],".2f")+"%\n"
+        +"Gross profit: $"+format(stats["gross_profit"],".2f")+" · Losses: $"+format(stats["total_loss"],".2f")+"\n"
+        +"Net paper P&L: $"+format(stats["net"],".2f")+" · Open at cutoff: "+str(stats["open_at_cutoff"])+"\n"
+        +"Simulated ledger only — not real-account profit.")
+    await _send_pdf(client,token,chat_id,pdf,"QUANTNEX-Paper-Report-"+stats["date"]+".pdf",caption)
+    return stats
 async def _price(client: httpx.AsyncClient) -> float | None:
     if not TWELVE_DATA_API_KEY:return None
     response=await client.get("https://api.twelvedata.com/price",

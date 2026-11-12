@@ -100,7 +100,7 @@ async def telegram_worker() -> None:
                                     offset=max(offset,int(update.get("update_id",0))+1)
                                     message=update.get("message") or {}
                                     chat=message.get("chat") or {}
-                                    if str(chat.get("id"))!=str(chat_id):continue
+                                    if str(chat.get("id"))!=str(chat_id) and not (str(chat_id).startswith("@") and ("@"+str(chat.get("username","")).lower())==str(chat_id).lower()):continue
                                     command=message.get("text","")
                                     answer=await _handle_command(client,db,user_id,token,chat_id,command)
                                     if answer:await _send(client,token,chat_id,answer)

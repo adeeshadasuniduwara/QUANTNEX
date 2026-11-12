@@ -49,12 +49,12 @@ QUANTNEX includes an optional GitHub Actions workflow that announces published r
 
 ## Live market overview, Signal Lab and Telegram Auto Signals
 
-- The Overview displays Binance BTC/USDT and Twelve Data XAU/USD spot prices, plus an indicative LKR/gram and LKR/8g conversion using the Twelve Data USD/LKR rate. The LKR conversion is a spot-price estimate, not a local jeweller's retail quote; purity, taxes and dealer premiums are excluded.
+- The Overview displays BTC/USD and XAU/USD spot estimates from keyless Gold-API feeds with provider fallbacks, plus indicative LKR/gram and LKR/8g conversions using a daily USD/LKR reference rate. The LKR conversion is a spot-price estimate, not a local jeweller's retail quote; purity, taxes and dealer premiums are excluded.
 - The two embedded TradingView charts are replaced by one dedicated TradingView workspace tab with XAUUSD/BTCUSDT symbol selection.
 - The Signal Lab retains XAUUSD multi-timeframe analysis and adds directional quality gates for primary/trend EMA bias, selected-timeframe consensus, MACD direction, ADX strength and RSI range. Scores remain rule-count confluence, not win probability.
 - The local user creates a Telegram bot through @BotFather, then connects its token and destination chat to the QUANTNEX workspace. Tokens are encrypted in the local database using a key derived from QUANTNEX_SECRET_KEY.
 - Auto Signals are opt-in for the local workspace. When enabled, the local API scans XAUUSD at the selected interval (minimum 60 seconds), requires at least 8/10 confluence plus directional filters, and sends only a new primary-timeframe candle signal to the connected local bot. It does not place trades.
-- Start Web Workspace using `run_quantnex.bat` option 2 to launch both the local API and Web updater. Keep the single CMD window open behind the browser. Configure `TWELVE_DATA_API_KEY` in `backend/.env` for Gold, USD/LKR and signal analysis; BTC ticker uses Binance public market data.
+- Start Web + Backend using `run_quantnex.bat` option 2 to launch both the local API and Web updater. Keep the single CMD window open behind the browser. Configure `TWELVE_DATA_API_KEY` in `backend/.env` for Gold, USD/LKR and signal analysis; BTC ticker uses Binance public market data.
 - The laptop must remain powered on, connected to the internet and running the QUANTNEX API for Auto Signals. A VPS can host the same API process for continuous operation. The browser itself does not need to stay open once Auto Signals are saved.
 - Reaper is not implemented because its exact formula/source has not been provided. There is no broker execution, automatic SL movement, or verified win-rate calculation.
 

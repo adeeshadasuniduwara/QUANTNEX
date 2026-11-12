@@ -311,10 +311,10 @@ async def scan_market_signal(symbol: str = "BTCUSDT", user: User = Depends(local
             try:
                 token=decrypt_secret(token_enc)
                 market_symbol=result.get("symbol",symbol)
-                message=("QUANTNEX · "+market_symbol+" "+signal["side"]+" SIGNAL\\nEntry: "+str(signal["entry"])+"\\nSL: "+str(signal["stop_loss"])+
-                    "\\nTP1: "+str(signal["tp1"])+"\\nTP2: "+str(signal["tp2"])+"\\nTP3: "+str(signal["tp3"])+
-                    "\\nConfluence: "+str(signal["score"])+"/10 (rule count, not win probability)\\nConfirmations: "+", ".join(signal["confirmations"])+
-                    "\\nSignal only. Verify spread, fees and execution. No broker order is placed.")
+                message=("QUANTNEX · "+market_symbol+" "+signal["side"]+" SIGNAL\nEntry: "+str(signal["entry"])+"\nSL: "+str(signal["stop_loss"])+
+                    "\nTP1: "+str(signal["tp1"])+"\nTP2: "+str(signal["tp2"])+"\nTP3: "+str(signal["tp3"])+
+                    "\nConfluence: "+str(signal["score"])+"/10 (rule count, not win probability)\nConfirmations: "+", ".join(signal["confirmations"])+
+                    "\nSignal only. Verify spread, fees and execution. No broker order is placed.")
                 async with httpx.AsyncClient(timeout=12) as client:
                     response=await client.post("https://api.telegram.org/bot"+token+"/sendMessage",
                         json={"chat_id":chat_id,"text":message,"disable_web_page_preview":True})

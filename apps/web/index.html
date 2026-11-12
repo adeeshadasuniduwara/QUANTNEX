@@ -80,6 +80,7 @@
         </div>
         <div class="signal-actions"><button class="primary-btn" id="saveTimeframes">Save signal settings</button><button class="secondary-btn" id="applyChartTf">Apply to XAUUSD chart</button><button class="secondary-btn" id="runSignalScan">Run XAUUSD signal scan</button></div>
         <p class="telegram-status" id="timeframeStatus" aria-live="polite">Connect your QUANTNEX account to save shared settings and run live analysis. M50 is aggregated from 1-minute candles and has shorter indicator history.</p>
+        <div class="signal-warning">Market data setup: create an API key at <a href="https://twelvedata.com/" target="_blank" rel="noreferrer">Twelve Data</a>, then add <code>TWELVE_DATA_API_KEY=your_key</code> to <code>backend/.env</code> on this computer and restart the QUANTNEX API. Keep the key server-side; do not paste it into this website or GitHub. Provider plan limits and data entitlements apply.</div>
       </section>
       <section class="panel signal-panel signal-results-panel">
         <div class="signal-intro"><div><strong>Live signal analysis</strong><p>EMA 20/50/200 · MACD · RSI · ADX · ATR · Structure · Liquidity · OB / Breaker / FVG / iFVG</p></div><span class="signal-pill" id="signalEngineState">NOT SCANNED</span></div>

@@ -73,6 +73,14 @@
     host.append(script);$("timeframeStatus").textContent="TradingView XAUUSD chart changed to "+tfNames[s.chart]+".";
   }
   $("saveTimeframes").addEventListener("click",saveSettings);
+  $("syncTimeframes").addEventListener("click",async()=>{
+    try{
+      if(typeof sessionToken!=="function"||!sessionToken())throw new Error("Sign in to QUANTNEX first.");
+      const remote=await apiRequest("/api/v1/signals/settings");applySettings(remote);
+      localStorage.setItem(tfKey,JSON.stringify({...remote,chart:$("chartSignalTf").value}));
+      $("timeframeStatus").textContent="Loaded the latest settings from your QUANTNEX account / Telegram bot.";
+    }catch(e){$("timeframeStatus").textContent=e.message;}
+  });
   $("applyChartTf").addEventListener("click",async()=>{await saveSettings();applyChartTimeframe();});
   function loadLocalSettings(){try{const s=JSON.parse(localStorage.getItem(tfKey)||"null");if(s)applySettings(s);}catch{}}
   loadLocalSettings();

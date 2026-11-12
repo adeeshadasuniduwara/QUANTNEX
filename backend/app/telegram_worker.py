@@ -262,8 +262,8 @@ async def telegram_worker() -> None:
                                                 paper_settings=normalize_settings(paper_settings)
                                                 _set(db,user_id,"paper_autopilot_settings",json.dumps(paper_settings))
                                                 db.commit()
-                                                answer=("▶ Paper autopilot STARTED" if paper_settings["enabled"] else "⏸ Paper autopilot PAUSED")+
-                                                    "\nLocal simulated trades only. No broker or real-money orders."
+                                                answer=(("▶ Paper autopilot STARTED" if paper_settings["enabled"] else "⏸ Paper autopilot PAUSED")
+                                                    + "\nLocal simulated trades only. No broker or real-money orders.")
                                             except (ValueError,TypeError) as exc:
                                                 answer="Cannot change paper mode: "+str(exc)
                                         elif action=="qx:goals": answer=_goal_dashboard(db,user_id)

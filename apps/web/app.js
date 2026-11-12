@@ -194,3 +194,105 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   }
   if($id("btcLivePrice")){refresh();window.setInterval(refresh,30000);}
 })();
+
+;
+
+// Phase 06.3 local system health, backup and audit UI.
+(function initSystemSecurity(){
+  const panel=$("system-security");
+  if(!panel)return;
+  const status=$("systemSecurityMessage");
+  const setStatus=(message,error=false)=>{status.textContent=message;status.dataset.state=error?"error":"ok";};
+  const bytes=value=>{
+    if(value==null)return "—";
+    const units=["B","KB","MB","GB","TB"];let n=Number(value),i=0;
+    while(n>=1024&&i<units.length-1){n/=1024;i++;}
+    return n.toFixed(i===0?0:1)+" "+units[i];
+  };
+  const cell=(row,value,className="")=>{
+    const td=document.createElement("td");td.textContent=value??"—";if(className)td.className=className;row.append(td);return td;
+  };
+  async function refreshHealth(){
+    try{
+      const data=await apiRequest("/api/v1/system/health");
+      $("systemDbStatus").textContent=data.database.connected?"Connected":"Unavailable";
+      $("systemDbSize").textContent=data.database.size_bytes==null?"Size not available":bytes(data.database.size_bytes);
+      $("systemCpu").textContent=Number(data.system.cpu_percent).toFixed(0)+"%";
+      $("systemMemory").textContent=Number(data.system.memory_percent).toFixed(0)+"%";
+      $("systemDisk").textContent=bytes(data.system.disk_free_bytes);
+      $("systemDiskTotal").textContent=bytes(data.system.disk_total_bytes)+" total";
+      $("systemHealthStatus").textContent="Healthy · "+data.backups.count+" local backups · latest "+(data.backups.latest?"recorded":"not yet created");
+    }catch(error){
+      $("systemHealthStatus").textContent="Local API unavailable: "+error.message;
+      $("systemDbStatus").textContent="Offline";
+    }
+  }
+  async function refreshBackups(){
+    const body=$("systemBackupRows");body.replaceChildren();
+    try{
+      const data=await apiRequest("/api/v1/system/backups");
+      if(!data.items.length){const tr=document.createElement("tr");cell(tr,"No backups yet. Create one now or wait for the daily backup worker.","empty-row").colSpan=5;body.append(tr);return;}
+      data.items.forEach(item=>{
+        const tr=document.createElement("tr");
+        cell(tr,item.filename);
+        cell(tr,item.created_at?new Date(item.created_at).toLocaleString():"—");
+        cell(tr,bytes(item.size_bytes));
+        cell(tr,item.verified?"Verified":"Needs verification",item.verified?"positive":"negative");
+        const actions=cell(tr,"");
+        const verify=document.createElement("button");verify.className="secondary-btn compact-btn";verify.textContent="Verify";
+        verify.addEventListener("click",async()=>{
+          try{await apiRequest("/api/v1/system/backups/"+encodeURIComponent(item.filename)+"/verify",{method:"POST"});setStatus("Backup integrity check passed: "+item.filename);await refreshBackups();}
+          catch(error){setStatus("Backup verification failed: "+error.message,true);await refreshBackups();}
+        });
+        actions.append(verify);
+        if(item.verified){
+          const restore=document.createElement("button");restore.className="secondary-btn compact-btn restore-btn";restore.textContent="Restore";
+          restore.addEventListener("click",async()=>{
+            if(!window.confirm("Restore this backup? QUANTNEX will first create a separate backup of the current database. The current wallet and journal will be replaced with the selected snapshot."))return;
+            try{
+              restore.disabled=true;setStatus("Restoring database safely…");
+              const result=await apiRequest("/api/v1/system/backups/"+encodeURIComponent(item.filename)+"/restore",{method:"POST"});
+              setStatus("Restore complete. Safety backup: "+(result.pre_restore_backup||"not needed")+". Refreshing workspace…");
+              await Promise.all([refreshHealth(),refreshBackups(),refreshAudit()]);
+            }catch(error){setStatus("Restore failed: "+error.message,true);}
+            finally{restore.disabled=false;}
+          });
+          actions.append(restore);
+        }
+        body.append(tr);
+      });
+    }catch(error){
+      const tr=document.createElement("tr");cell(tr,"Could not load backups: "+error.message,"empty-row").colSpan=5;body.append(tr);
+    }
+  }
+  async function refreshAudit(){
+    const body=$("systemAuditRows");body.replaceChildren();
+    try{
+      const data=await apiRequest("/api/v1/system/audit?limit=100");
+      if(!data.items.length){const tr=document.createElement("tr");cell(tr,"No audit events recorded yet.","empty-row").colSpan=4;body.append(tr);return;}
+      data.items.forEach(item=>{
+        const tr=document.createElement("tr");
+        cell(tr,new Date(item.created_at).toLocaleString());
+        cell(tr,item.event_type);
+        cell(tr,item.severity,item.severity==="warning"?"negative":"");
+        cell(tr,item.details);
+        body.append(tr);
+      });
+    }catch(error){
+      const tr=document.createElement("tr");cell(tr,"Could not load audit log: "+error.message,"empty-row").colSpan=4;body.append(tr);
+    }
+  }
+  $("refreshSystemHealth").addEventListener("click",refreshHealth);
+  $("refreshSystemBackups").addEventListener("click",refreshBackups);
+  $("refreshSystemAudit").addEventListener("click",refreshAudit);
+  $("createSystemBackup").addEventListener("click",async()=>{
+    try{
+      $("createSystemBackup").disabled=true;setStatus("Creating a consistent SQLite snapshot and checking its integrity…");
+      const result=await apiRequest("/api/v1/system/backups",{method:"POST"});
+      setStatus("Backup created and verified: "+result.filename);
+      await Promise.all([refreshHealth(),refreshBackups(),refreshAudit()]);
+    }catch(error){setStatus("Backup failed: "+error.message,true);}
+    finally{$("createSystemBackup").disabled=false;}
+  });
+  refreshHealth();refreshBackups();refreshAudit();
+})();

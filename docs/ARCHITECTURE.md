@@ -2,30 +2,28 @@
 
 ## Repository layout
 
-- `apps/web`: responsive browser client.
-- `apps/android`: native Android client (Kotlin + Jetpack Compose).
-- `apps/windows`: reserved for the Windows desktop client.
-- `core/`: future shared domain logic and risk rules.
-- `backend/`: future authenticated API and service orchestration.
-- `shared/`: API contracts and platform-independent documentation.
-- `docs/`: project plans, threat model and operating guides.
+- apps/web: browser client.
+- apps/android: native Android client (Kotlin + Jetpack Compose).
+- apps/windows: Windows desktop client.
+- backend: Phase 04 FastAPI service, authentication, journal and preferences API.
+- core: future shared domain logic and risk rules.
+- shared: future versioned API contracts.
+- docs: plans, threat model and operating guides.
 
 ## Runtime model
 
-Clients should remain lightweight. Market data processing, AI inference and bot orchestration belong in a separately deployed backend or an explicitly configured local engine, not in every mobile client.
+Windows, Android and Web clients are intended to call the same HTTPS API. The backend owns identity, authorization, synchronized journal data and user preferences. SQLite is for local development; PostgreSQL is intended for multi-user deployment. AI provider credentials stay on the server and are never shipped to client applications.
 
-The Android app must not run a permanent heavy trading process. Use short-lived network requests and scheduled background work only when required. Push notifications should be delivered through a push provider rather than a continuously running socket.
+## Security boundaries
 
-## Safety boundaries
-
-- UI clients are not trusted execution environments.
-- Broker credentials must never be embedded in APKs or web bundles.
-- The backend must authenticate users and authorize every action.
+- UI clients are untrusted; authorize every user-owned record on the server.
+- Passwords are hashed with Argon2; API sessions use expiring JWT bearer tokens.
+- Never embed API keys, broker credentials or signing keys in APKs or web bundles.
+- Configure exact CORS origins and HTTPS in deployed environments.
 - Read-only market data access is the default.
 - Trading execution requires a separate explicit opt-in, risk limits and audit logs.
 - Software updates must be staged, verified and recoverable.
-- A client update must not be treated as proof that a broker-side position is safe; open positions remain at the broker and require independent monitoring.
 
-## Update design
+## Current limitations
 
-Windows and Android have separate update mechanisms. Android can notify about a mandatory update and open the system package installer, but the user must confirm installation unless the device is managed under an appropriate enterprise device-owner policy. Preserve app data and verify the installed version after restart.
+Phase 04 establishes the backend API foundation, but the existing Windows, Android and Web clients are not yet integrated with it. No live market feeds, broker connections, bot execution or order placement are implemented. Before public deployment, add migrations, rate limiting, audit logs, monitoring, backups, HTTPS and security testing.

@@ -142,7 +142,7 @@ async function loadStrategyLibrary(){
  try{
   const data=await api("/api/v1/strategy-lab/research"),summary=$("strategyLibrarySummary");summary.replaceChildren();
   const p=data.paper_trades||{};
-  [["Saved research runs",(data.runs||[]).length],["Closed paper trades",p.closed||0],["Paper win rate",p.win_rate==null?"—":fmt(p.win_rate,1)+"%"],["Net P&L · raw quote units",fmt(p.net_pnl,4)]].forEach(([label,value])=>{
+  [["Saved research runs",(data.runs||[]).length],["Closed paper trades",p.closed||0],["Paper win rate",p.win_rate==null?"—":fmt(p.win_rate,1)+"%"],["Net P&L · unconverted",fmt(p.net_pnl,4)]].forEach(([label,value])=>{
    const card=el("article",undefined,"workspace-page-card");card.append(el("span",label),el("strong",value));summary.append(card);
   });
   const body=$("strategyLibraryRows");body.replaceChildren();
@@ -158,13 +158,13 @@ async function loadStrategyLibrary(){
 async function loadPortfolioMonitor(){
  try{
   const data=await api("/api/v1/risk/portfolio"),cards=$("portfolioMonitorCards");cards.replaceChildren();
-  [["Open positions",data.open_positions],["Gross notional · quote units",fmt(data.gross_notional_estimate,4)],["Planned stop risk · quote units",fmt(data.planned_stop_risk_estimate,4)],["Markets represented",Object.keys(data.by_symbol_notional||{}).length]].forEach(([label,value])=>{
+  [["Open positions",data.open_positions],["Gross notional · unconverted",fmt(data.gross_notional_estimate,4)],["Planned stop risk · unconverted",fmt(data.planned_stop_risk_estimate,4)],["Markets represented",Object.keys(data.by_symbol_notional||{}).length]].forEach(([label,value])=>{
    const card=el("article",undefined,"workspace-page-card");card.append(el("span",label),el("strong",value??"—"));cards.append(card);
   });
   const body=$("portfolioMonitorRows");body.replaceChildren();
   if(!(data.positions||[]).length)empty(body,6,"No open paper positions.");
   else data.positions.forEach(p=>{const tr=el("tr");[p.id,p.symbol,p.side,fmt(p.quantity,6),fmt(p.notional_estimate,4),fmt(p.planned_stop_risk_estimate,4)].forEach(v=>cell(tr,v));body.append(tr);});
-  setStatus("portfolioMonitorStatus","Portfolio snapshot refreshed. Amounts are raw price × quantity estimates in each instrument’s quote units; no FX conversion, contract multiplier or broker margin is inferred.");
+  setStatus("portfolioMonitorStatus","Portfolio snapshot refreshed. Amounts are unconverted price × quantity estimates. Cross-currency totals, contract multipliers and broker margin are not inferred.");
  }catch(e){setStatus("portfolioMonitorStatus","Portfolio monitor unavailable: "+e.message,true);}
 }
 async function loadIntegrations(){

@@ -180,7 +180,9 @@ async def workspace_event_stream(websocket: WebSocket) -> None:
     except RuntimeError:
         pass
     finally:
-        for task in (outgoing, incoming):
+        tasks = (outgoing, incoming)
+        for task in tasks:
             if not task.done():
                 task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
         event_hub.disconnect(queue)

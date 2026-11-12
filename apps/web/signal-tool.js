@@ -178,7 +178,7 @@
   $("clearTelegram").addEventListener("click",async()=>{
     try{if(typeof sessionToken==="function"&&sessionToken())await apiRequest("/api/v1/telegram/connect",{method:"DELETE"});}
     catch(e){$("telegramStatus").textContent=e.message;return;}
-    $("tgBotToken").value="";$("tgChatId").value="";$("telegramStatus").textContent="Telegram bot disconnected and stored token removed.";
+    $("tgBotToken").value="";$("tgChatId").value="";$("autoSignalsEnabled").checked=false;$("autoSignalStatus").textContent="Auto Signals OFF. Reconnect a bot before enabling it again.";$("telegramStatus").textContent="Telegram bot disconnected and stored token removed.";
   });
   $("openBotGuide").addEventListener("click",()=>{$("telegramGuide").hidden=!$("telegramGuide").hidden;});
   $("clearTelegram").title="Disconnect the saved Telegram bot";

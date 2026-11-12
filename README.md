@@ -24,8 +24,8 @@ The Android package is an installable debug APK. Download `app-debug.apk` from t
 
 ## Applications
 
-- **Web:** responsive browser workspace with position sizing and a local trade journal.
-- **Windows:** desktop workspace with position sizing, local SQLite journal and update checking.
+- **Web:** responsive browser workspace with position sizing, a local trade journal, a dedicated Charts section, and embedded TradingView BTCUSDT / XAUUSD charts.
+- **Windows:** desktop workspace with position sizing, local SQLite journal, update checking, a Binance BTCUSDT 15-minute candlestick chart, and a local installation ID.
 - **Android:** native application starter.
 - **Backend:** shared FastAPI foundation for accounts, journal sync, preferences and an optional AI gateway.
 
@@ -41,4 +41,4 @@ See [backend setup](backend/README.md) and [architecture](docs/ARCHITECTURE.md).
 
 ## Current capability and safety
 
-The calculator uses broker-specific pip values entered by the user. The web journal stores data in that browser; the Windows journal stores data locally on that computer. Bot monitoring is currently a status panel only. Live market feeds, broker connections, Telegram control and automated order execution are not enabled. Never commit API keys, passwords, signing keys or broker tokens. Public deployment requires HTTPS, managed secrets, backups, monitoring and security testing.
+The calculator uses broker-specific pip values entered by the user. The web journal stores data in that browser; the Windows journal stores data locally on that computer. Bot monitoring is currently a status panel only. The Web chart view embeds third-party TradingView charts. The Windows Charts tab reads public BTCUSDT candles from Binance; its Gold button opens the TradingView XAUUSD chart in your browser. The Windows installation ID is a random local identifier, not a login credential. Broker connections, Telegram control and automated order execution are not enabled. Never commit API keys, passwords, signing keys or broker tokens. Public deployment requires HTTPS, managed secrets, backups, monitoring and security testing.

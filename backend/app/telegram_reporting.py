@@ -111,7 +111,7 @@ def build_daily_paper_pdf(db, user_id: int, report_day: date | None = None) -> t
                         +" · Current ledger does not store fees, spread or slippage; P&L below is the recorded realized amount.",
                         ParagraphStyle("scope", parent=styles["Normal"], fontSize=7, textColor=colors.HexColor("#555555"))),
               Paragraph("Closed paper trades", heading)]
-    data = [["Symbol","Side","Qty","Entry","SL","TP","Exit","Opened","Exited","Net P&L"]]
+    data = [["Symbol","Side","Qty","Entry","SL","TP","Exit","Opened","Exited","Recorded P&L"]]
     for trade in closed_today:
         exit_time = _local(trade.closed_at)
         open_time = _local(trade.created_at)

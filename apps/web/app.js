@@ -140,7 +140,7 @@ if(installButton)installButton.addEventListener("click",async()=>{
     installButton.disabled=false;installButton.textContent="Install update & restart workspace";
   }
 });
-if(updateButton&&location.hostname==="127.0.0.1"&&location.port==="5500"){
+if(updateButton&&(location.hostname==="127.0.0.1"||location.hostname==="localhost")&&location.port==="5500"){
   checkLocalUpdate();
 }
 

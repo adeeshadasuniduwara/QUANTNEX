@@ -1,6 +1,10 @@
 import asyncio
 import json
 import re
+import time
+import uuid
+import base64
+from urllib.parse import urlsplit
 import httpx
 import jwt
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -10,11 +14,13 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, TOKEN_MINUTES
+from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, TOKEN_MINUTES, WEBAUTHN_RP_ID, WEBAUTHN_RP_NAME, WEBAUTHN_ALLOWED_ORIGINS
 from .database import Base, engine, get_db
-from .models import Preference, Trade, User, WalletTransaction
+from .models import Preference, Trade, User, WalletTransaction, PasskeyCredential, WebAuthnChallenge
 from .schemas import AIChatRequest, AIChatResponse, LoginRequest, PreferenceResponse, PreferenceWrite, RegisterRequest, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TokenResponse, TradeCreate, TradeResponse, UserResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
 from .security import create_access_token, decode_access_token, decrypt_secret, encrypt_secret, hash_password, verify_password, enforce_auth_rate_limit
+from webauthn import (generate_registration_options, verify_registration_response, generate_authentication_options, verify_authentication_response, options_to_json, base64url_to_bytes)
+from webauthn.helpers.structs import (AuthenticatorAttachment, AuthenticatorSelectionCriteria, ResidentKeyRequirement, UserVerificationRequirement, PublicKeyCredentialDescriptor)
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="QUANTNEX API", description="Shared backend for the QUANTNEX trading workspace.", version="0.5.0")
@@ -72,6 +78,177 @@ def login(payload: LoginRequest, request: Request, _rate_limit: None = Depends(e
 @app.get("/api/v1/auth/me", response_model=UserResponse)
 def me(user: User = Depends(current_user)):
     return user
+
+
+def _webauthn_origin(request: Request) -> tuple[str, str]:
+    origin = (request.headers.get("origin") or "").rstrip("/")
+    if not origin or origin not in WEBAUTHN_ALLOWED_ORIGINS:
+        raise HTTPException(status_code=400, detail="Passkeys are enabled only for the configured QUANTNEX browser origin. Open http://localhost:5500.")
+    parsed = urlsplit(origin)
+    if parsed.scheme != "https" and not (parsed.scheme == "http" and parsed.hostname == "localhost"):
+        raise HTTPException(status_code=400, detail="Passkeys require HTTPS, or localhost for local development.")
+    if not parsed.hostname or parsed.hostname.lower() != WEBAUTHN_RP_ID:
+        raise HTTPException(status_code=400, detail="The configured WebAuthn RP ID does not match this browser origin.")
+    return origin, WEBAUTHN_RP_ID
+
+
+def _save_webauthn_challenge(db: Session, user_id: int, purpose: str, challenge: bytes,
+                             origin: str, rp_id: str) -> str:
+    challenge_id = str(uuid.uuid4())
+    encoded = base64.urlsafe_b64encode(challenge).rstrip(b"=").decode("ascii")
+    db.add(WebAuthnChallenge(id=challenge_id, user_id=user_id, purpose=purpose,
+                             challenge=encoded, expected_origin=origin,
+                             expected_rp_id=rp_id, expires_at=time.time() + 300))
+    db.commit()
+    return challenge_id
+
+
+def _consume_webauthn_challenge(db: Session, challenge_id: str, purpose: str,
+                                user_id: int | None = None) -> WebAuthnChallenge:
+    item = db.get(WebAuthnChallenge, challenge_id)
+    if (item is None or item.purpose != purpose or item.expires_at < time.time()
+            or (user_id is not None and item.user_id != user_id)):
+        if item is not None:
+            db.delete(item)
+            db.commit()
+        raise HTTPException(status_code=400, detail="Passkey challenge expired or invalid. Start again.")
+    db.delete(item)
+    db.commit()
+    return item
+
+
+@app.get("/api/v1/auth/passkeys")
+def list_passkeys(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    credentials = list(db.scalars(select(PasskeyCredential).where(PasskeyCredential.user_id == user.id)
+                                  .order_by(PasskeyCredential.id)))
+    return {"enabled": bool(credentials), "count": len(credentials),
+            "credentials": [{"id": item.id, "created_at": item.created_at,
+                             "label": "Windows Hello / Passkey"} for item in credentials]}
+
+
+@app.post("/api/v1/auth/passkeys/register/options")
+def passkey_registration_options(request: Request, user: User = Depends(current_user),
+                                  db: Session = Depends(get_db)):
+    origin, rp_id = _webauthn_origin(request)
+    existing = list(db.scalars(select(PasskeyCredential).where(PasskeyCredential.user_id == user.id)))
+    options = generate_registration_options(
+        rp_id=rp_id,
+        rp_name=WEBAUTHN_RP_NAME,
+        user_id=str(user.id).encode("utf-8"),
+        user_name=user.email,
+        user_display_name=user.email,
+        authenticator_selection=AuthenticatorSelectionCriteria(
+            authenticator_attachment=AuthenticatorAttachment.PLATFORM,
+            resident_key=ResidentKeyRequirement.REQUIRED,
+            user_verification=UserVerificationRequirement.REQUIRED,
+        ),
+        exclude_credentials=[PublicKeyCredentialDescriptor(id=base64url_to_bytes(item.credential_id))
+                             for item in existing],
+        timeout=60000,
+    )
+    challenge_id = _save_webauthn_challenge(db, user.id, "register", options.challenge, origin, rp_id)
+    return {"challenge_id": challenge_id, "publicKey": json.loads(options_to_json(options))}
+
+
+@app.post("/api/v1/auth/passkeys/register/verify")
+def passkey_registration_verify(payload: PasskeyVerifyRequest, request: Request,
+                                user: User = Depends(current_user), db: Session = Depends(get_db)):
+    origin, rp_id = _webauthn_origin(request)
+    ceremony = _consume_webauthn_challenge(db, payload.challenge_id, "register", user.id)
+    if ceremony.expected_origin != origin or ceremony.expected_rp_id != rp_id:
+        raise HTTPException(status_code=400, detail="Passkey origin changed during registration. Start again.")
+    try:
+        verification = verify_registration_response(
+            credential=payload.credential,
+            expected_challenge=base64url_to_bytes(ceremony.challenge),
+            expected_origin=ceremony.expected_origin,
+            expected_rp_id=ceremony.expected_rp_id,
+            require_user_verification=True,
+        )
+    except Exception:
+        raise HTTPException(status_code=400, detail="Windows Hello could not verify this passkey. Try again.")
+    credential_id = base64.urlsafe_b64encode(verification.credential_id).rstrip(b"=").decode("ascii")
+    if db.scalar(select(PasskeyCredential).where(PasskeyCredential.credential_id == credential_id)):
+        raise HTTPException(status_code=409, detail="This passkey is already registered.")
+    transports = payload.credential.get("response", {}).get("transports", [])
+    db.add(PasskeyCredential(
+        user_id=user.id,
+        credential_id=credential_id,
+        public_key=base64.urlsafe_b64encode(verification.credential_public_key).rstrip(b"=").decode("ascii"),
+        sign_count=verification.sign_count,
+        transports=json.dumps(transports if isinstance(transports, list) else []),
+    ))
+    db.commit()
+    return {"registered": True, "message": "Passkey registered. You can now sign in with Windows Hello."}
+
+
+@app.post("/api/v1/auth/passkeys/login/options")
+def passkey_login_options(payload: PasskeyOptionsRequest, request: Request,
+                          _rate_limit: None = Depends(enforce_auth_rate_limit),
+                          db: Session = Depends(get_db)):
+    origin, rp_id = _webauthn_origin(request)
+    user = db.scalar(select(User).where(User.email == payload.email))
+    if user is None:
+        raise HTTPException(status_code=401, detail="Email or passkey is not recognised.")
+    credentials = list(db.scalars(select(PasskeyCredential).where(PasskeyCredential.user_id == user.id)))
+    if not credentials:
+        raise HTTPException(status_code=400, detail="No passkey is registered for this account. Sign in with your existing password and add a passkey first.")
+    options = generate_authentication_options(
+        rp_id=rp_id,
+        allow_credentials=[PublicKeyCredentialDescriptor(
+            id=base64url_to_bytes(item.credential_id),
+            transports=json.loads(item.transports or "[]"),
+        ) for item in credentials],
+        user_verification=UserVerificationRequirement.REQUIRED,
+        timeout=60000,
+    )
+    challenge_id = _save_webauthn_challenge(db, user.id, "login", options.challenge, origin, rp_id)
+    return {"challenge_id": challenge_id, "publicKey": json.loads(options_to_json(options))}
+
+
+@app.post("/api/v1/auth/passkeys/login/verify", response_model=TokenResponse)
+def passkey_login_verify(payload: PasskeyVerifyRequest, request: Request,
+                         _rate_limit: None = Depends(enforce_auth_rate_limit),
+                         db: Session = Depends(get_db)):
+    origin, rp_id = _webauthn_origin(request)
+    ceremony = _consume_webauthn_challenge(db, payload.challenge_id, "login")
+    if ceremony.expected_origin != origin or ceremony.expected_rp_id != rp_id:
+        raise HTTPException(status_code=400, detail="Passkey origin changed during login. Start again.")
+    credential_value = payload.credential.get("id")
+    stored = db.scalar(select(PasskeyCredential).where(
+        PasskeyCredential.credential_id == credential_value,
+        PasskeyCredential.user_id == ceremony.user_id,
+    ))
+    if stored is None:
+        raise HTTPException(status_code=401, detail="This passkey is not registered to the account.")
+    try:
+        verification = verify_authentication_response(
+            credential=payload.credential,
+            expected_challenge=base64url_to_bytes(ceremony.challenge),
+            expected_origin=ceremony.expected_origin,
+            expected_rp_id=ceremony.expected_rp_id,
+            credential_public_key=base64url_to_bytes(stored.public_key),
+            credential_current_sign_count=stored.sign_count,
+            require_user_verification=True,
+        )
+    except Exception:
+        raise HTTPException(status_code=401, detail="Passkey verification failed. Try again.")
+    stored.sign_count = verification.new_sign_count
+    db.commit()
+    return TokenResponse(access_token=create_access_token(stored.user_id), expires_in=TOKEN_MINUTES * 60)
+
+
+@app.delete("/api/v1/auth/passkeys/{credential_pk}")
+def delete_passkey(credential_pk: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    credentials = list(db.scalars(select(PasskeyCredential).where(PasskeyCredential.user_id == user.id)))
+    target = next((item for item in credentials if item.id == credential_pk), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Passkey not found.")
+    if len(credentials) == 1:
+        raise HTTPException(status_code=409, detail="Register another passkey before removing the last one.")
+    db.delete(target)
+    db.commit()
+    return {"deleted": True}
 
 @app.get("/api/v1/journal", response_model=list[TradeResponse])
 def list_journal(limit: int = 100, user: User = Depends(current_user), db: Session = Depends(get_db)):

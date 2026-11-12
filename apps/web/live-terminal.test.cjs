@@ -4,7 +4,8 @@ const fs = require("node:fs");
 const html = fs.readFileSync("apps/web/index.html", "utf8");
 const app = fs.readFileSync("apps/web/app.js", "utf8");
 const css = fs.readFileSync("apps/web/styles.css", "utf8");
-const workspace = fs.readFileSync("apps/web/workspace-pages.js", "utf8");\nconst signal = fs.readFileSync("apps/web/signal-tool.js", "utf8");
+const workspace = fs.readFileSync("apps/web/workspace-pages.js", "utf8");
+const signal = fs.readFileSync("apps/web/signal-tool.js", "utf8");
 
 assert.match(html, /id="p7BookmapCanvas"/, "Bookmap must render through a canvas");
 assert.match(html, /id="livePnlSymbol"/, "BTC/XAUUSD live P&L market selector is missing");

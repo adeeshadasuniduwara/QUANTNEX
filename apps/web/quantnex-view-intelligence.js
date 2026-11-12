@@ -23,7 +23,7 @@
     if(!data.signal){
       const note=document.createElement("div");note.className="qx-signal-empty";
       note.textContent="WAIT · No setup passed the selected confluence threshold and directional filters. No forced trade.";
-      host.append(note);preview.hidden=true;return;
+      host.append(note);preview.hidden=true;window.quantnexViewSetTradePlan?.(null);return;
     }
     const s=data.signal,head=document.createElement("div");head.className="qx-signal-head";
     const title=document.createElement("strong");title.className=s.side==="BUY"?"qx-buy":"qx-sell";title.textContent=s.side+" · "+s.symbol;
@@ -39,7 +39,7 @@
       item.style.borderColor=color;const name=document.createElement("span"),val=document.createElement("strong");
       name.textContent=label;val.textContent=price(value);val.style.color=color;item.append(name,val);levels.append(item);
     });
-    preview.hidden=false;
+    preview.hidden=false;window.quantnexViewSetTradePlan?.(s,{stop:colorStop,target:colorTarget,entry:colorEntry});
   }
   function renderBacktest(data){
     const host=$("qxBacktestMetrics");host.replaceChildren();

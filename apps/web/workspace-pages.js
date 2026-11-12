@@ -187,6 +187,13 @@ async function loadIntegrations(){
  }catch(e){setStatus("integrationStatus","Could not check every integration: "+e.message,true);}
 }
 function init(){
+ const connectBot=$("integrationConnectBot");
+ if(connectBot)connectBot.addEventListener("click",()=>{
+  const target=$("telegram-bot-connect");
+  if(target)target.scrollIntoView({behavior:"smooth",block:"start"});
+  const token=$("tgBotToken");
+  if(token)token.focus({preventScroll:true});
+ });
  const navLinks=[...document.querySelectorAll(".sidebar .nav-link")];
  const pageTitle=document.querySelector(".topbar h1");
  const syncActiveNav=()=>{

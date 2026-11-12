@@ -233,4 +233,4 @@ if(sessionToken()){
     }
   }
   if($id("btcLivePrice")){refresh();window.setInterval(refresh,30000);}
-})();;
+})();

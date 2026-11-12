@@ -56,3 +56,41 @@ jobs:
             dist/SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Announce release on Telegram
+        if: startsWith(github.ref, 'refs/tags/') && secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != ''
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          python - <<'PY'
+          import html, json, os, urllib.request
+          tag = html.escape(os.environ["RELEASE_TAG"])
+          repo = os.environ["REPO"]
+          release_url = os.environ["RELEASE_URL"]
+          message = (
+              "🚀 <b>QUANTNEX — NEW UPDATE AVAILABLE!</b>\\n\\n"
+              + "Version: <code>" + tag + "</code>\\n\\n"
+              + "A new QUANTNEX release has been published.\\n\\n"
+              + '<a href="' + release_url + '">Open release &amp; downloads</a>\\n'
+              + '<a href="https://github.com/' + repo + '">QUANTNEX GitHub</a>\\n\\n'
+              + "<i>Official automated update notification</i>"
+          )
+          payload = json.dumps({
+              "chat_id": os.environ["TELEGRAM_CHAT_ID"],
+              "text": message,
+              "parse_mode": "HTML"
+          }).encode("utf-8")
+          request = urllib.request.Request(
+              "https://api.telegram.org/bot" + os.environ["TELEGRAM_BOT_TOKEN"] + "/sendMessage",
+              data=payload, headers={"Content-Type": "application/json"}, method="POST"
+          )
+          with urllib.request.urlopen(request, timeout=20) as response:
+              result = json.loads(response.read().decode("utf-8"))
+          if not result.get("ok"):
+              raise SystemExit("Telegram API rejected the release announcement.")
+          print("Telegram release announcement sent.")
+          PY

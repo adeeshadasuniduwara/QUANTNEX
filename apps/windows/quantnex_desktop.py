@@ -202,7 +202,7 @@ class App(tk.Tk):
                 price = candles[-1]["close"] if candles else None
                 self.after(0, lambda:self._chart_loaded(candles, price, None))
             except Exception as exc:
-                self.after(0, lambda:self._chart_loaded([], None, str(exc)))
+                self.after(0, lambda message=str(exc):self._chart_loaded([], None, message))
         threading.Thread(target=worker, daemon=True).start()
 
     def _chart_loaded(self, candles, price, error):

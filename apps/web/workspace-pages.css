@@ -60,3 +60,5 @@
 .goal-error{color:#ff9292!important}
 @keyframes goalBubble{0%,100%{transform:translateY(5px) scale(.7);opacity:.25}50%{transform:translateY(-9px) scale(1.25);opacity:.9}}
 @media(max-width:760px){.goal-create-grid{grid-template-columns:1fr}.goal-form .goal-wide{grid-column:auto}}
+
+.paper-engine-panel{gap:20px}.paper-engine-settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px}.paper-engine-settings label{display:grid;gap:7px;color:#aaa;font-size:12px}.paper-engine-settings input,.paper-engine-settings select{width:100%;min-height:40px;padding:9px 11px;border:1px solid #343434;border-radius:8px;background:#111;color:#eee}.paper-engine-actions{display:flex;gap:8px;flex-wrap:wrap}.paper-engine-actions button{min-width:135px}@media(max-width:600px){.paper-engine-actions{display:grid;width:100%}.paper-engine-actions button{width:100%}}

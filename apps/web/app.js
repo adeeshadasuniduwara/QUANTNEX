@@ -46,25 +46,79 @@ $("exportJournal").addEventListener("click",()=>{
   const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),link=document.createElement("a");link.href=url;link.download="quantnex-trading-journal.csv";link.click();URL.revokeObjectURL(url);
 });
 renderJournal();
-// Local QUANTNEX updater. It checks the latest main-branch commit and installs it safely.
+// Local QUANTNEX updater. New versions are announced first; installation always needs user approval.
 const updateButton=$("webCheckUpdate");
+const installButton=$("webInstallUpdate");
 const releaseVersionLabel=$("webReleaseVersion");
 const releaseNotesLink=$("webReleaseNotes");
+const updateModal=$("webUpdateModal");
+const modalInstallButton=$("webUpdateModalInstall");
 let updatePolling=false;
+let updateChecking=false;
+let latestUpdateCommit="";
 
 function showUpdateToast(message){
   let toast=$("quantnexUpdateToast");
   if(!toast){
     toast=document.createElement("div");toast.id="quantnexUpdateToast";
-    toast.setAttribute("role","status");toast.style.cssText="position:fixed;right:22px;bottom:22px;z-index:9999;max-width:360px;padding:15px 18px;border:1px solid #777;border-radius:12px;background:#f2f2f2;color:#090909;box-shadow:0 12px 45px #0009;font:600 13px/1.5 system-ui;animation:rise .3s ease both";
+    toast.setAttribute("role","status");
+    toast.style.cssText="position:fixed;right:22px;bottom:22px;z-index:9999;max-width:360px;padding:15px 18px;border:1px solid #777;border-radius:12px;background:#f2f2f2;color:#090909;box-shadow:0 12px 45px #0009;font:600 13px/1.5 system-ui;animation:rise .3s ease both";
     document.body.append(toast);
   }
   toast.textContent=message;
   window.setTimeout(()=>toast.remove(),7000);
 }
+
+function updateDismissed(sha){
+  try{return sessionStorage.getItem("quantnex.updateNoticeDismissed")===sha;}catch{return false;}
+}
+function rememberUpdateDismissed(sha){
+  try{sessionStorage.setItem("quantnex.updateNoticeDismissed",sha);}catch{}
+}
+function renderUpdateDetails(result){
+  const details=$("webUpdateDetails"),summary=$("webUpdateSummary"),list=$("webUpdateChanges"),meta=$("webUpdateMeta");
+  const messages=Array.isArray(result.changes)?result.changes.filter(Boolean).slice(0,8):[];
+  summary.textContent=result.latest_message||"A new QUANTNEX source update is available.";
+  list.replaceChildren();
+  messages.forEach(message=>{
+    const item=document.createElement("li");item.textContent=String(message);list.append(item);
+  });
+  if(!messages.length){const item=document.createElement("li");item.textContent="Workspace improvements and fixes.";list.append(item);}
+  const commits=Number(result.commits_behind)||0,files=Number(result.files_changed)||0;
+  meta.textContent=(commits?commits+" commit"+(commits===1?"":"s"):"Latest commit")+(files?" · "+files+" files changed":"")+" · Source verified from GitHub main";
+  details.hidden=false;
+  $("webUpdateModalSummary").textContent=summary.textContent;
+  const modalList=$("webUpdateModalChanges");modalList.replaceChildren();
+  messages.forEach(message=>{const item=document.createElement("li");item.textContent=String(message);modalList.append(item);});
+  if(!messages.length){const item=document.createElement("li");item.textContent="Workspace improvements and fixes.";modalList.append(item);}
+  $("webUpdateModalMeta").textContent=meta.textContent;
+  $("webUpdateModalVersion").textContent=result.latest||"Latest version";
+}
+function openUpdateModal(result){
+  if(!updateModal)return;
+  const sha=result.commit_sha||result.latest||"";
+  if(updateDismissed(sha))return;
+  updateModal.hidden=false;
+  document.body.classList.add("web-update-modal-open");
+  const section=$("updates");
+  section?.scrollIntoView({behavior:"smooth",block:"start"});
+  window.setTimeout(()=>modalInstallButton?.focus(),180);
+}
+function closeUpdateModal(remindLater=true){
+  if(!updateModal)return;
+  if(remindLater&&latestUpdateCommit)rememberUpdateDismissed(latestUpdateCommit);
+  updateModal.hidden=true;
+  document.body.classList.remove("web-update-modal-open");
+  installButton?.focus();
+}
+$("webUpdateModalClose")?.addEventListener("click",()=>closeUpdateModal(true));
+$("webUpdateModalLater")?.addEventListener("click",()=>closeUpdateModal(true));
+updateModal?.addEventListener("click",event=>{if(event.target===updateModal)closeUpdateModal(true);});
+window.addEventListener("keydown",event=>{if(event.key==="Escape"&&updateModal&&!updateModal.hidden)closeUpdateModal(true);});
+
 if(sessionStorage.getItem("quantnex.webUpdateComplete")==="1"){
   sessionStorage.removeItem("quantnex.webUpdateComplete");
-  window.addEventListener("load",()=>showUpdateToast("✓ QUANTNEX Web is now updated to the latest verified GitHub commit."));
+  window.addEventListener("load",()=>showUpdateToast("✓ QUANTNEX has been updated successfully."));
 }
 
 async function watchUpdateInstall(){
@@ -72,6 +126,9 @@ async function watchUpdateInstall(){
   updatePolling=true;
   const status=$("webUpdateStatus"),progress=$("webUpdateProgress");
   progress.hidden=false;
+  updateButton.disabled=true;
+  if(installButton)installButton.disabled=true;
+  if(modalInstallButton)modalInstallButton.disabled=true;
   const started=Date.now();
   try{
     while(Date.now()-started<180000){
@@ -90,52 +147,75 @@ async function watchUpdateInstall(){
     throw new Error("The update is taking longer than expected. Check the QUANTNEX Web Server CMD window.");
   }catch(error){
     status.textContent="Update did not finish: "+error.message;
+    showUpdateToast("Update could not be installed. Your current workspace is unchanged.");
   }finally{
     progress.hidden=true;updatePolling=false;
-    updateButton.disabled=false;updateButton.textContent="Check & install updates";
+    updateButton.disabled=false;updateButton.textContent="Check for updates";
+    if(installButton)installButton.disabled=false;
+    if(modalInstallButton)modalInstallButton.disabled=false;
   }
 }
 
 async function installLatestCommit(){
+  if(updatePolling)return;
+  closeUpdateModal(false);
   const status=$("webUpdateStatus");
-  status.textContent="Starting the verified GitHub update…";
+  status.textContent="Preparing the verified GitHub update…";
+  if(installButton){installButton.disabled=true;installButton.textContent="Installing…";}
   const response=await fetch("/__quantnex/install",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
   const data=await response.json().catch(()=>({}));
-  if(!response.ok)throw new Error(data.error||"Could not start update.");
+  if(!response.ok){
+    if(installButton){installButton.disabled=false;installButton.textContent="Download & install now";}
+    throw new Error(data.error||"Could not start update.");
+  }
   await watchUpdateInstall();
 }
+modalInstallButton?.addEventListener("click",()=>installLatestCommit().catch(error=>showUpdateToast(error.message)));
+installButton?.addEventListener("click",()=>installLatestCommit().catch(error=>showUpdateToast(error.message)));
 
-async function checkLocalUpdate(){
+async function checkLocalUpdate(options={}){
+  if(updateChecking||updatePolling)return;
+  updateChecking=true;
+  const silent=Boolean(options.silent);
   const status=$("webUpdateStatus"),progress=$("webUpdateProgress");
-  updateButton.disabled=true;updateButton.textContent="Checking…";progress.hidden=false;
-  status.textContent="Checking the latest QUANTNEX main-branch commit on GitHub…";
+  updateButton.disabled=true;
+  if(!silent){updateButton.textContent="Checking…";progress.hidden=false;status.textContent="Checking the latest QUANTNEX version on GitHub…";}
   try{
     const response=await fetch("/__quantnex/check",{cache:"no-store"});
     if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||"Local updater is not running.");}
     const result=await response.json();
-    $("webInstalledVersion").textContent=result.installed;
-    releaseVersionLabel.textContent=result.latest;
+    $("webInstalledVersion").textContent=result.installed||"Unknown";
+    releaseVersionLabel.textContent=result.latest||"Not available";
     if(result.release_notes)releaseNotesLink.href=result.release_notes;
     if(result.update_available){
-      status.textContent="New GitHub update found: "+result.latest+". "+(result.latest_message||"")+" Starting automatic installation…";
-      progress.hidden=false;
-      await installLatestCommit();
+      latestUpdateCommit=result.commit_sha||result.latest||"";
+      renderUpdateDetails(result);
+      status.textContent="New update released: "+result.latest+". Review the changes and choose when to install.";
+      if(installButton)installButton.hidden=false;
+      if(!updateDismissed(latestUpdateCommit)){
+        openUpdateModal(result);
+      }
     }else{
-      status.textContent="You are already using the latest GitHub source ("+result.latest+").";
+      latestUpdateCommit="";
+      $("webUpdateDetails").hidden=true;
+      if(installButton)installButton.hidden=true;
+      status.textContent="You are using the latest QUANTNEX version ("+result.latest+").";
     }
   }catch(error){
-    status.textContent="Automatic update check failed safely: "+error.message;
+    if(!silent)status.textContent="Update check failed safely: "+error.message;
   }finally{
+    updateChecking=false;
     progress.hidden=true;
-    if(!updatePolling){updateButton.disabled=false;updateButton.textContent="Check & install updates";}
+    updateButton.disabled=false;updateButton.textContent="Check for updates";
   }
 }
-if(updateButton)updateButton.addEventListener("click",checkLocalUpdate);
+if(updateButton)updateButton.addEventListener("click",()=>checkLocalUpdate());
 if(updateButton&&location.hostname==="127.0.0.1"&&location.port==="5500"){
   checkLocalUpdate();
+  window.setInterval(()=>{
+    if(document.visibilityState==="visible")checkLocalUpdate({silent:true});
+  },300000);
 }
-
-
 // Local-only wallet API. The backend listens on loopback and has no login/session system.
 const accountMessage = $("accountMessage");
 function setAccountMessage(message, error=false){ accountMessage.textContent=message; accountMessage.dataset.state=error?"error":"ok"; }

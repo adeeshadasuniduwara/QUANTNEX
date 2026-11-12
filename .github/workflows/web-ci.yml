@@ -41,7 +41,8 @@ jobs:
           grep -q 'id="walletWithdraw"' apps/web/index.html
           grep -q 'id="walletArea">' apps/web/index.html
           grep -q 'LOCAL DEVICE MODE' apps/web/index.html
-          grep -q 'Check &amp; install updates' apps/web/index.html
+          grep -q 'Download &amp; install now' apps/web/index.html
+          grep -q 'id="webUpdateModal"' apps/web/index.html
           ! grep -q 'id="accountLogin"' apps/web/index.html
           ! grep -q 'id="accountRegister"' apps/web/index.html
           ! grep -q 'id="accountPassword"' apps/web/index.html

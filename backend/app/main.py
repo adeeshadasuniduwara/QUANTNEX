@@ -120,6 +120,49 @@ async def chart_candles(symbol: str = "BTCUSDT", interval: str = "15m", limit: i
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="Chart market-data provider is temporarily unavailable.")
 
+@app.get("/api/v1/quantnex-view/strategies")
+def quantnex_view_strategies():
+    from .quantnex_view_intelligence import STRATEGY_CATALOG
+    return {"count": len(STRATEGY_CATALOG), "strategies": STRATEGY_CATALOG,
+            "note": "100 catalog variants across 10 transparent setup families; variants are not 100 independent proven edges."}
+
+
+@app.get("/api/v1/quantnex-view/analyze")
+async def quantnex_view_analyze(symbol: str = "BTCUSDT", interval: str = "15m", min_score: int = 6):
+    from .quantnex_view_intelligence import analyze_candles
+    from .signal_engine import fetch_candles, MarketDataError
+    allowed = {"1m", "5m", "15m", "30m", "1h", "4h"}
+    if interval not in allowed or not 4 <= min_score <= 20:
+        raise HTTPException(status_code=422, detail="Choose a supported timeframe and confluence threshold 4–20.")
+    symbol = symbol.upper()
+    try:
+        candles = await fetch_candles({"1m":"1min","5m":"5min","15m":"15min","30m":"30min","1h":"1h","4h":"4h"}[interval], 320, symbol)
+        return analyze_candles(candles, symbol, interval, min_score)
+    except MarketDataError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except (ValueError, KeyError, IndexError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@app.get("/api/v1/quantnex-view/backtest")
+async def quantnex_view_backtest(symbol: str = "BTCUSDT", interval: str = "15m",
+                                 initial_balance: float = 10000, risk_percent: float = 1,
+                                 min_score: int = 6):
+    from .quantnex_view_intelligence import backtest_candles
+    from .signal_engine import fetch_candles, MarketDataError
+    allowed = {"1m", "5m", "15m", "30m", "1h", "4h"}
+    if interval not in allowed or not 4 <= min_score <= 20:
+        raise HTTPException(status_code=422, detail="Choose a supported timeframe and confluence threshold 4–20.")
+    symbol = symbol.upper()
+    try:
+        candles = await fetch_candles({"1m":"1min","5m":"5min","15m":"15min","30m":"30min","1h":"1h","4h":"4h"}[interval], 1000, symbol)
+        return backtest_candles(candles, symbol, interval, initial_balance, risk_percent, min_score)
+    except MarketDataError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
 @app.get("/api/v1/market/overview")
 async def market_overview():
     """Indicative BTC/USD, XAU/USD and converted Sri Lankan gold values."""

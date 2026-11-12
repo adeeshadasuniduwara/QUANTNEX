@@ -8,7 +8,7 @@
   <meta name="description" content="QUANTNEX is a modern trading workspace for risk planning and trade review.">
   <title>QUANTNEX — QUANTNEX VIEW</title>
   <link rel="stylesheet" href="styles.css?v=20261112-quantnex-view3">
-  <link rel="stylesheet" href="signal-tool.css">
+  <link rel="stylesheet" href="signal-tool.css">\n  <link rel="stylesheet" href="quantnex-view-intelligence.css">
   <link rel="stylesheet" href="workspace-pages.css?v=20261112-pages10">
 </head>
 <body>
@@ -190,9 +190,9 @@
         </div>
         <div class="qx-chart-options">
           <label><input type="checkbox" id="qxVolume" checked> Volume</label>
-          <label><input type="checkbox" id="qxEma20"> EMA 20</label>
-          <label><input type="checkbox" id="qxEma50"> EMA 50</label>
-          <label><input type="checkbox" id="qxSma200"> SMA 200</label>
+          <label><input type="checkbox" id="qxEma20" checked> EMA 20</label>
+          <label><input type="checkbox" id="qxEma50" checked> EMA 50</label>
+          <label><input type="checkbox" id="qxEma200" checked> EMA 200</label>
           <label><input type="checkbox" id="qxLogScale"> Log scale</label>
           <label><input type="checkbox" id="qxGrid" checked> Grid</label>
           <label>Up candle <input type="color" id="qxUpColor" value="#20c997"></label>
@@ -307,6 +307,35 @@
         </article>
       </section>
 
+      <section class="panel qx-intelligence-panel" id="qxSignalIntelligence">
+        <div class="qx-intel-heading"><div><div class="overline">QUANTNEX VIEW · SIGNAL INTELLIGENCE</div><h2>Live Strategy Engine</h2><p>100 catalogue variants across ICT, SMC, trend and volume setup families.</p></div><span class="pill" id="qxIntelStatus">INITIALISING</span></div>
+        <div class="qx-intel-controls">
+          <label>Minimum confluence <select id="qxIntelMinScore"><option value="4">4 / 20</option><option value="6" selected>6 / 20</option><option value="8">8 / 20</option><option value="10">10 / 20</option><option value="12">12 / 20</option></select></label>
+          <label>Paper balance ($) <input id="qxBacktestBalance" type="number" min="100" max="10000000" value="10000"></label>
+          <label>Risk per trade (%) <input id="qxBacktestRisk" type="number" min="0.05" max="2" step="0.05" value="1"></label>
+          <button class="primary-btn" id="qxRunBacktest" type="button">Run historical backtest</button>
+        </div>
+        <div class="qx-intel-grid">
+          <div class="qx-intel-card"><span>EMA 20 / 50 / 200</span><strong id="qxIndEma">—</strong></div>
+          <div class="qx-intel-card"><span>RSI · MACD</span><strong id="qxIndMomentum">—</strong></div>
+          <div class="qx-intel-card"><span>ADX · ATR</span><strong id="qxIndVolatility">—</strong></div>
+          <div class="qx-intel-card"><span>Relative volume</span><strong id="qxIndVolume">—</strong></div>
+          <div class="qx-intel-card"><span>Market structure</span><strong id="qxIndStructure">—</strong></div>
+          <div class="qx-intel-card"><span>Premium / Discount</span><strong id="qxIndLocation">—</strong></div>
+        </div>
+        <div class="qx-signal-card" id="qxMainSignal"><div class="qx-signal-empty">Waiting for a confirmed setup. The engine will show one selected trade only.</div></div>
+        <div class="qx-position-preview" id="qxPositionPreview" hidden>
+          <div class="qx-position-controls"><label>Stop colour <input type="color" id="qxStopColor" value="#e6535d"></label><label>Target colour <input type="color" id="qxTargetColor" value="#20c997"></label><label>Entry colour <input type="color" id="qxEntryColor" value="#e5c15b"></label></div>
+          <div class="qx-position-levels" id="qxPositionLevels"></div>
+          <p>TP1 hit → stop moves to entry (break-even). Remaining size is managed toward TP2 and TP3.</p>
+        </div>
+        <div class="qx-backtest-card">
+          <div class="qx-intel-heading"><div><h3>Autonomous Research Backtest</h3><p>Runs on historical closed candles; one position per symbol. Results are separate from live signals.</p></div><span class="pill" id="qxBacktestStatus">NOT RUN</span></div>
+          <div class="qx-backtest-metrics" id="qxBacktestMetrics"><span>Run a backtest to populate win rate, profit factor, drawdown and simulated balance.</span></div>
+        </div>
+        <div class="qx-strategy-details"><details><summary>View setup catalogue and active confluence</summary><div id="qxStrategyList">Loading strategy catalogue…</div></details></div>
+        <p class="qx-intel-disclaimer">Confluence score is not a win probability. No 70% accuracy is promised. Backtest outcomes are historical simulations, not live results or financial advice. This engine does not place broker orders.</p>
+      </section>
       <section class="section-heading" id="tools"><div><div class="overline">RISK MANAGEMENT</div><h2>Position size calculator</h2><p>Estimate position size using your broker's pip value.</p></div></section>
       <section class="panel calculator-panel">
         <div class="field-grid">
@@ -534,6 +563,6 @@
   <script src="realtime-events.js"></script>
   <script src="workspace-pages.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.0.8/dist/lightweight-charts.standalone.production.js" onerror="this.onerror=null;this.src='https://unpkg.com/lightweight-charts@5.0.8/dist/lightweight-charts.standalone.production.js';"></script>
-  <script src="signal-tool.js"></script>
+  <script src="signal-tool.js"></script>\n  <script src="quantnex-view-intelligence.js"></script>
 </body>
 </html>

@@ -29,6 +29,7 @@ jobs:
           node --check apps/web/app.js
           node --check apps/web/realtime-events.js
           node --check apps/web/signal-tool.js
+          node --check apps/web/quantnex-view-intelligence.js
           node --check apps/web/workspace-pages.js
           node apps/web/workspace-pages.test.cjs
           node apps/web/live-terminal.test.cjs
@@ -37,6 +38,9 @@ jobs:
         run: python -m py_compile apps/web/quantnex_local_server.py
       - name: Verify local-only wallet and updater UI
         run: |
+          grep -q 'id="qxSignalIntelligence"' apps/web/index.html
+          grep -q 'quantnex-view-intelligence.js' apps/web/index.html
+          grep -q 'quantnex-view-intelligence.css' apps/web/index.html
           grep -q 'id="account"' apps/web/index.html
           grep -q 'id="walletDeposit"' apps/web/index.html
           grep -q 'id="walletWithdraw"' apps/web/index.html

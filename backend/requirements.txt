@@ -12,3 +12,5 @@ cryptography>=46.0.0,<47.0
 psutil>=6.1.0,<8.0.0
 # Print-ready A4 Telegram PDF reports.
 reportlab>=4.2,<5
+# Render the repository's SVG brand mark as vector artwork in certificates.
+svglib>=1.5,<2

@@ -251,7 +251,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
 
 // Phase 06.3 local system health, backup and audit UI.
 (function initSystemSecurity(){
-  const panel=$("system-security");
+  const panel=document.querySelector(".system-security-panel");
   if(!panel)return;
   const status=$("systemSecurityMessage");
   const setStatus=(message,error=false)=>{status.textContent=message;status.dataset.state=error?"error":"ok";};

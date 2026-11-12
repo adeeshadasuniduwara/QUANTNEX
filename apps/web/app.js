@@ -709,3 +709,63 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   // Low-frequency background health refresh; skips hidden tabs and overlapping requests.
   setInterval(()=>{if(!document.hidden&&!$("p10ScanMarkets").disabled)scan();},300000);
 })();
+
+(function initPhase11(){
+  if(!$("p11Refresh"))return;
+  const fmt=(v,d=2)=>v==null||!Number.isFinite(Number(v))?"—":Number(v).toLocaleString(undefined,{maximumFractionDigits:d});
+  const node=(tag,value,cls)=>{const n=document.createElement(tag);if(value!==undefined)n.textContent=String(value);if(cls)n.className=cls;return n;};
+  const status=(message,bad=false)=>{const n=$("p11Methodology");n.textContent=message;n.className=bad?"p7-note p7-status-error":"p7-note";};
+  const svgNS="http://www.w3.org/2000/svg";
+  function svg(tag,attrs={}){const n=document.createElementNS(svgNS,tag);Object.entries(attrs).forEach(([k,v])=>n.setAttribute(k,String(v)));return n;}
+  function empty(root,message){root.replaceChildren(node("p",message,"p7-note"));}
+  function renderEquity(rows){
+    const root=$("p11EquityChart");root.replaceChildren();
+    if(!rows.length){empty(root,"No closed paper trades in this period.");return;}
+    const values=[0,...rows.map(x=>Number(x.cumulative_pnl))],min=Math.min(...values),max=Math.max(...values);
+    const range=Math.max(max-min,1),width=700,height=230,pad=24;
+    const points=values.map((v,i)=>(pad+i*(width-2*pad)/Math.max(values.length-1,1))+","+(height-pad-(v-min)/range*(height-2*pad))).join(" ");
+    const chart=svg("svg",{viewBox:"0 0 "+width+" "+height,role:"img","aria-label":"Cumulative realized paper trade profit and loss chart"});
+    const zeroY=height-pad-(0-min)/range*(height-2*pad);
+    chart.append(svg("line",{x1:pad,y1:zeroY,x2:width-pad,y2:zeroY,stroke:"#666","stroke-dasharray":"5 5"}));
+    chart.append(svg("polyline",{points:points,fill:"none",stroke:"#e5e5e5","stroke-width":3,"stroke-linecap":"round","stroke-linejoin":"round"}));
+    values.forEach((v,i)=>{if(i===0)return;const x=pad+i*(width-2*pad)/Math.max(values.length-1,1),y=height-pad-(v-min)/range*(height-2*pad);const dot=svg("circle",{cx:x,cy:y,r:3,fill:"#fff"});const title=svg("title");title.textContent="Trade "+i+": "+fmt(v);dot.append(title);chart.append(dot);});
+    root.append(chart,node("div","Start $0.00 · End $"+fmt(values[values.length-1])+" · Peak $"+fmt(max),"p11-chart-caption"));
+  }
+  function renderDaily(rows){
+    const root=$("p11DailyChart");root.replaceChildren();
+    if(!rows.length){empty(root,"No daily results yet.");return;}
+    const width=700,height=230,pad=25,values=rows.map(x=>Number(x.pnl)),limit=Math.max(...values.map(Math.abs),1),zero=height/2;
+    const chart=svg("svg",{viewBox:"0 0 "+width+" "+height,role:"img","aria-label":"Daily realized paper profit and loss bar chart"});
+    chart.append(svg("line",{x1:pad,y1:zero,x2:width-pad,y2:zero,stroke:"#777"}));
+    const step=(width-2*pad)/rows.length,bar=Math.max(3,Math.min(24,step*.55));
+    rows.forEach((item,i)=>{const v=Number(item.pnl),h=Math.abs(v)/limit*(height/2-pad),x=pad+i*step+(step-bar)/2,y=v>=0?zero-h:zero;const rect=svg("rect",{x:x,y:y,width:bar,height:h,rx:2,fill:v>=0?"#cfcfcf":"#777"});const title=svg("title");title.textContent=item.date+": $"+fmt(v);rect.append(title);chart.append(rect);});
+    root.append(chart,node("div",rows.length+" trading day(s) · positive and negative daily totals","p11-chart-caption"));
+  }
+  function renderSymbols(data){
+    const body=$("p11SymbolRows");body.replaceChildren();
+    const entries=Object.entries(data||{});
+    if(!entries.length){const tr=node("tr"),td=node("td","No closed trades by market.","empty-row");td.colSpan=5;tr.append(td);body.append(tr);return;}
+    entries.forEach(([symbol,row])=>{const tr=node("tr");[symbol,row.trades,row.win_rate==null?"—":fmt(row.win_rate,1)+"%","$"+fmt(row.net_pnl),row.profit_factor==="infinite"?"∞":fmt(row.profit_factor,2)].forEach(v=>tr.append(node("td",v)));body.append(tr);});
+  }
+  function renderConsistency(data){
+    const root=$("p11Consistency");root.replaceChildren();
+    const items=[["Largest win",data.largest_win==null?"—":"$"+fmt(data.largest_win)],["Largest loss",data.largest_loss==null?"—":"$"+fmt(data.largest_loss)],["Maximum win streak",data.max_consecutive_wins],["Maximum loss streak",data.max_consecutive_losses],["R-multiple sample",data.r_multiple_sample],["Best trade",data.best_trade?data.best_trade.symbol+" · $"+fmt(data.best_trade.pnl):"—"],["Worst trade",data.worst_trade?data.worst_trade.symbol+" · $"+fmt(data.worst_trade.pnl):"—"]];
+    items.forEach(([label,value])=>{const row=node("div",undefined,"p11-stat-row");row.append(node("span",label),node("strong",String(value)));root.append(row);});
+  }
+  async function refresh(){
+    const button=$("p11Refresh");button.disabled=true;
+    try{
+      const period=Number($("p11Period").value);
+      const data=await apiRequest("/api/v1/performance/advanced?period_days="+period);
+      const root=$("p11ExtraKpis");root.replaceChildren();
+      [["Expectancy / trade",data.expectancy_per_trade==null?"—":"$"+fmt(data.expectancy_per_trade)],["Average R (estimate)",data.average_r_multiple==null?"—":fmt(data.average_r_multiple,3)+"R"],["Max drawdown","$"+fmt(data.max_drawdown_amount)],["Average hold",data.average_holding_minutes==null?"—":fmt(data.average_holding_minutes,1)+" min"]].forEach(([label,value])=>{const card=node("article");card.append(node("span",label),node("strong",String(value)));root.append(card);});
+      renderEquity(data.equity_curve||[]);renderDaily(data.daily_pnl||[]);renderSymbols(data.by_symbol||{});renderConsistency(data);
+      $("p11Methodology").textContent=data.total_trades+" closed paper trades · "+data.wins+" wins · "+data.losses+" losses · "+data.breakeven+" breakeven. "+(data.methodology?.r_multiple||"")+" "+(data.methodology?.drawdown||"")+" "+(data.methodology?.limitations||"");
+      status("Advanced analytics refreshed · "+(period===0?"all history":"last "+period+" days")+".");
+    }catch(error){status("Advanced analytics unavailable: "+error.message,true);}
+    finally{button.disabled=false;}
+  }
+  $("p11Refresh").addEventListener("click",refresh);
+  $("p11Period").addEventListener("change",refresh);
+  refresh();
+})();

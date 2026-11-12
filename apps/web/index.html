@@ -8,7 +8,8 @@
   <meta name="description" content="QUANTNEX is a modern trading workspace for risk planning and trade review.">
   <title>QUANTNEX — QUANTNEX VIEW</title>
   <link rel="stylesheet" href="styles.css?v=20261112-quantnex-view3">
-  <link rel="stylesheet" href="signal-tool.css">\n  <link rel="stylesheet" href="quantnex-view-intelligence.css">
+  <link rel="stylesheet" href="signal-tool.css">
+  <link rel="stylesheet" href="quantnex-view-intelligence.css">
   <link rel="stylesheet" href="workspace-pages.css?v=20261112-pages10">
 </head>
 <body>
@@ -229,7 +230,8 @@
       <section class="panel timeframe-panel">
         <div class="signal-intro"><div><strong>Signal timeframe preferences</strong><p>Choose the market, analysis timeframes and confluence threshold used by the multi-market signal engine.</p></div><span class="signal-pill">USER CONFIGURABLE</span></div>
         <div class="timeframe-grid">
-          <label>Signal market<select id="signalMarketSymbol"><option value="BTCUSDT" selected>Bitcoin · BTCUSDT</option><option value="ETHUSDT">Ethereum · ETHUSDT</option><option value="SOLUSDT">Solana · SOLUSDT</option><option value="XAUUSD">Gold · XAUUSD</option></select></label>\n          <label>Primary signal timeframe<select id="primarySignalTf"><option value="1">1 Minute</option><option value="5" selected>5 Minutes</option><option value="15">15 Minutes</option><option value="30">30 Minutes</option><option value="60">1 Hour</option><option value="50">50 Minutes (custom)</option></select></label>
+          <label>Signal market<select id="signalMarketSymbol"><option value="BTCUSDT" selected>Bitcoin · BTCUSDT</option><option value="ETHUSDT">Ethereum · ETHUSDT</option><option value="SOLUSDT">Solana · SOLUSDT</option><option value="XAUUSD">Gold · XAUUSD</option></select></label>
+          <label>Primary signal timeframe<select id="primarySignalTf"><option value="1">1 Minute</option><option value="5" selected>5 Minutes</option><option value="15">15 Minutes</option><option value="30">30 Minutes</option><option value="60">1 Hour</option><option value="50">50 Minutes (custom)</option></select></label>
           <label>Trend timeframe<select id="trendSignalTf"><option value="15">15 Minutes</option><option value="30" selected>30 Minutes</option><option value="60">1 Hour</option><option value="240">4 Hours</option></select></label>
           <label>Chart timeframe<select id="chartSignalTf"><option value="1">1 Minute</option><option value="5">5 Minutes</option><option value="15" selected>15 Minutes</option><option value="30">30 Minutes</option><option value="60">1 Hour</option><option value="50">50 Minutes (custom)</option></select></label>
         </div>
@@ -551,18 +553,14 @@
             <label>Goal name<input id="goalTitle" maxlength="120" required placeholder="e.g. Nissan GT-R"></label>
             <label>Target amount<input id="goalTarget" type="number" min="0.01" step="0.01" required placeholder="Target amount"></label>
             <label>Currency<select id="goalCurrency"><option>USD</option><option>LKR</option><option>EUR</option><option>GBP</option><option>AUD</option><option>CAD</option></select></label>
-            <label>Target date<input id="goalTargetDate" type="date"></label>
-            <label>Goal image URL (optional)<input id="goalImage" type="url" placeholder="https://…"></label>
-            <label class="goal-wide">Description<textarea id="goalDescription" maxlength="2000" rows="2" placeholder="Why this goal matters to you…"></textarea></label>
-            <label>Starting savings<input id="goalInitial" type="number" min="0" step="0.01" value="0"></label>
-            <label class="goal-confirm"><input id="goalInitialConfirm" type="checkbox"> I confirm this starting amount is genuinely available real money.</label>
+            <label>Image URL (optional)<input id="goalImage" type="url" placeholder="Paste a direct image URL"></label>
+            <div class="goal-image-preview goal-wide" id="goalImagePreview" aria-live="polite"><span>Image preview will appear here.</span></div>
             <button class="primary-btn" type="submit" id="goalCreateButton">Create personal goal</button>
           </form>
           <div class="goal-contribution-panel">
             <h3>Add real savings / realized profit</h3>
             <label>Goal<select id="goalContributionSelect"><option value="">Choose a goal</option></select></label>
             <label>Amount<input id="goalContributionAmount" type="number" min="0.01" step="0.01" placeholder="Amount"></label>
-            <label>Note<input id="goalContributionNote" maxlength="240" placeholder="Optional note"></label>
             <label class="goal-confirm"><input id="goalContributionConfirm" type="checkbox"> I confirm this is available real-account profit or savings, not paper-trading or backtest P&amp;L.</label>
             <button class="secondary-btn" id="goalAddContribution">Add contribution</button>
             <p class="p7-note" id="goalContributionStatus">Contributions are manual and require your confirmation.</p>
@@ -607,6 +605,7 @@
   <script src="workspace-pages.js"></script>
   <script src="goals.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.0.8/dist/lightweight-charts.standalone.production.js" onerror="this.onerror=null;this.src='https://unpkg.com/lightweight-charts@5.0.8/dist/lightweight-charts.standalone.production.js';"></script>
-  <script src="signal-tool.js"></script>\n  <script src="quantnex-view-intelligence.js"></script>
+  <script src="signal-tool.js"></script>
+  <script src="quantnex-view-intelligence.js"></script>
 </body>
 </html>

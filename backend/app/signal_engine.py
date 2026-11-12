@@ -196,7 +196,7 @@ async def build_signal(settings: dict[str,Any]) -> dict[str,Any]:
         sl=close-risk if side=="BUY" else close+risk
         sign=1 if side=="BUY" else -1
         signal={"symbol":"XAU/USD","side":side,"timeframe":primary,"trend_timeframe":trend,
-                "entry":round(close,2),"stop_loss":round(sl,2),"tp1":round(close+sign*risk,2),
+                "entry":round(close,2),"signal_candle_time":candles[primary][-1]["time"],"stop_loss":round(sl,2),"tp1":round(close+sign*risk,2),
                 "tp2":round(close+sign*risk*2,2),"tp3":round(close+sign*risk*3,2),
                 "score":score,"out_of":10,"confirmations":checks,"risk_distance":round(risk,2)}
     return {"symbol":"XAU/USD","provider":"Twelve Data","generated_at":datetime.now(timezone.utc).isoformat(),

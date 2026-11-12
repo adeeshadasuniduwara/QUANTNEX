@@ -3,6 +3,10 @@ from __future__ import annotations
 
 from datetime import datetime
 from io import BytesIO
+from pathlib import Path
+
+from reportlab.graphics import renderPDF
+from svglib.svglib import svg2rlg
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
@@ -15,12 +19,19 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
                                created_at: datetime, achieved_at: datetime,
                                elapsed_days: int, certificate_id: str,
-                               integrity_fingerprint: str) -> bytes:
+                               integrity_fingerprint: str, target_amount: float,
+                               saved_amount: float, currency: str) -> bytes:
     buffer = BytesIO()
     page_w, page_h = A4
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=24*mm, leftMargin=24*mm,
                             topMargin=36*mm, bottomMargin=32*mm,
                             title="QUANTNEX Achievement Certificate")
+
+    logo_path = Path(__file__).resolve().parents[2] / "apps" / "web" / "quantnex-mark.svg"
+    try:
+        logo = svg2rlg(str(logo_path))
+    except Exception:
+        logo = None
 
     def decorate(canvas, _doc):
         canvas.saveState()
@@ -29,12 +40,20 @@ def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
         canvas.rect(10*mm, 10*mm, page_w-20*mm, page_h-20*mm)
         canvas.setLineWidth(0.45)
         canvas.rect(13*mm, 13*mm, page_w-26*mm, page_h-26*mm)
-        # Original vector monogram/wordmark lockup, crisp at any print resolution.
-        canvas.setFillColor(colors.HexColor("#111111"))
-        canvas.circle(page_w/2, page_h-25*mm, 7*mm, fill=1, stroke=0)
-        canvas.setFillColor(colors.white)
-        canvas.setFont("Times-BoldItalic", 13)
-        canvas.drawCentredString(page_w/2, page_h-27.2*mm, "Q")
+        # Use the repository's actual vector mark; retain a vector fallback for packaged builds.
+        if logo and logo.width and logo.height:
+            scale=(15*mm)/max(logo.width,logo.height)
+            canvas.saveState()
+            canvas.translate(page_w/2-(logo.width*scale)/2,page_h-33*mm)
+            canvas.scale(scale,scale)
+            renderPDF.draw(logo,canvas,0,0)
+            canvas.restoreState()
+        else:
+            canvas.setFillColor(colors.HexColor("#111111"))
+            canvas.circle(page_w/2, page_h-25*mm, 7*mm, fill=1, stroke=0)
+            canvas.setFillColor(colors.white)
+            canvas.setFont("Times-BoldItalic", 13)
+            canvas.drawCentredString(page_w/2, page_h-27.2*mm, "Q")
         canvas.setFillColor(colors.black)
         canvas.setFont("Helvetica-Bold", 9)
         canvas.drawCentredString(page_w/2, 20*mm, "QUANTNEX  ·  PERSONAL DISCIPLINE SERIES")
@@ -69,7 +88,9 @@ def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
         Paragraph(goal_title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"), goal),
         Spacer(1, 5*mm),
         Paragraph("A meaningful result built through patience, consistency and self-discipline.", lead),
-        Spacer(1, 12*mm),
+        Spacer(1, 4*mm),
+        Paragraph(f"GOAL VALUE  ·  {currency} {target_amount:,.2f}  ·  RECORDED SAVINGS {currency} {saved_amount:,.2f}", small),
+        Spacer(1, 8*mm),
         Paragraph(f"GOAL STARTED  ·  {created_at.strftime('%d %B %Y')}", small),
         Spacer(1, 2*mm),
         Paragraph(f"ACHIEVED  ·  {achieved_at.strftime('%d %B %Y')}", small),

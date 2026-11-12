@@ -550,8 +550,6 @@ def set_telegram_report_settings(payload: dict, user: User = Depends(local_works
     if enabled and not connected:
         raise HTTPException(status_code=409,detail="Connect your Telegram bot before enabling daily PDF reports.")
     _save_preference(db,user.id,"telegram_daily_report_enabled","true" if enabled else "false")
-    if not enabled:
-        _save_preference(db,user.id,"telegram_daily_report_sent_date","")
     record_audit_event(db,"telegram.daily_report_settings_updated",{"enabled":enabled,"schedule":"20:00","timezone":"Asia/Colombo"})
     db.commit()
     return {"enabled":enabled,"schedule":"20:00","timezone":"Asia/Colombo","telegram_connected":connected}

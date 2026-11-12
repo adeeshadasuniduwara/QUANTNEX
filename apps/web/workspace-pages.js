@@ -186,6 +186,18 @@ async function loadIntegrations(){
  }catch(e){setStatus("integrationStatus","Could not check every integration: "+e.message,true);}
 }
 function init(){
+ const navLinks=[...document.querySelectorAll(".sidebar .nav-link")];
+ const syncActiveNav=()=>{
+  const current=window.location.hash||"#overview";
+  navLinks.forEach(link=>{
+   const active=link.getAttribute("href")===current;
+   link.classList.toggle("active",active);
+   if(active)link.setAttribute("aria-current","location");else link.removeAttribute("aria-current");
+  });
+ };
+ navLinks.forEach(link=>link.addEventListener("click",()=>{navLinks.forEach(item=>{item.classList.remove("active");item.removeAttribute("aria-current");});link.classList.add("active");link.setAttribute("aria-current","location");}));
+ window.addEventListener("hashchange",syncActiveNav);
+ syncActiveNav();
  alerts=loadAlerts();renderAlerts();
  if($("watchlistRefresh")){$("watchlistRefresh").addEventListener("click",()=>refreshWatchlist(true));refreshWatchlist();}
  if($("forexDeskRefresh")){$("forexDeskRefresh").addEventListener("click",()=>renderDeskCards("forexDeskCards","forexDeskStatus","forex",true));renderDeskCards("forexDeskCards","forexDeskStatus","forex");}

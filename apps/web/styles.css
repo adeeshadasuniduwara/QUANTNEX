@@ -31,3 +31,5 @@
 .release-asset-link small{color:#888;font-size:9px}
 .update-manual-note{margin:13px 0 0!important;max-width:850px;font-size:10px!important;line-height:1.65;color:#888!important}
 @media(max-width:720px){.release-version-row{gap:8px;flex-direction:column}.update-actions{align-items:stretch}.update-actions>*{justify-content:center}}
+
+.update-actions [hidden],.link-btn[hidden],.release-assets[hidden]{display:none!important}

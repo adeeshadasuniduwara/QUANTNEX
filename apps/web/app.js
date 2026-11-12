@@ -46,3 +46,20 @@ $("exportJournal").addEventListener("click",()=>{
   const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),link=document.createElement("a");link.href=url;link.download="quantnex-trading-journal.csv";link.click();URL.revokeObjectURL(url);
 });
 renderJournal();
+const updateButton = $("webCheckUpdate");
+if (updateButton) updateButton.addEventListener("click", async () => {
+  const status = $("webUpdateStatus"), progress = $("webUpdateProgress");
+  updateButton.disabled = true; updateButton.textContent = "Checking…"; progress.hidden = false;
+  status.textContent = "Connecting to the official QUANTNEX release channel…";
+  try {
+    const response = await fetch("https://api.github.com/repos/adeeshadasuniduwara/QUANTNEX/releases/latest", {headers:{"Accept":"application/vnd.github+json"}});
+    if (response.status === 404) { status.textContent = "No published release is available yet. Check back when the next release is published."; return; }
+    if (!response.ok) throw new Error("Release service returned " + response.status);
+    const release = await response.json();
+    const tag = release.tag_name || "Latest";
+    status.textContent = "Latest published release: " + tag + ". Open release notes to review available downloads. Web updates are installed manually; Windows desktop updates use the built-in updater.";
+    const link = document.createElement("a"); link.href = release.html_url; link.target = "_blank"; link.rel = "noreferrer"; link.className = "secondary-btn link-btn"; link.textContent = "Open " + tag + " release";
+    const actions = document.querySelector(".update-actions"); const old = actions.querySelector(".release-link"); if(old) old.remove(); link.classList.add("release-link"); actions.append(link);
+  } catch (error) { status.textContent = "Could not check updates: " + error.message + ". You can open the official releases page instead."; }
+  finally { updateButton.disabled = false; updateButton.textContent = "Check for updates"; progress.hidden = true; }
+});

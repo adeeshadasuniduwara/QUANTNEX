@@ -74,6 +74,26 @@ def local_workspace(db: Session = Depends(get_db)) -> User:
         db.refresh(owner)
     return owner
 
+@app.get("/api/v1/charts/candles")
+async def chart_candles(symbol: str = "BTCUSDT", interval: str = "15m", limit: int = 500):
+    """Historical OHLC candles for the first-party QUANTNEX VIEW chart."""
+    from .signal_engine import fetch_candles, MarketDataError, CRYPTO_SYMBOLS, BINANCE_INTERVALS
+    allowed_intervals = {"1m":"1min","5m":"5min","15m":"15min","30m":"30min","1h":"1h","4h":"4h"}
+    symbol = symbol.upper()
+    if symbol not in CRYPTO_SYMBOLS and symbol != "XAUUSD":
+        raise HTTPException(status_code=422, detail="Supported chart markets: BTCUSDT, ETHUSDT, SOLUSDT and XAUUSD.")
+    if interval not in allowed_intervals or not 210 <= limit <= 1000:
+        raise HTTPException(status_code=422, detail="Choose a supported interval and 210–1000 candles.")
+    try:
+        candles = await fetch_candles(allowed_intervals[interval], limit, symbol)
+        return {"symbol":symbol,"interval":interval,"provider":"Binance Spot" if symbol in CRYPTO_SYMBOLS else "Twelve Data",
+                "candles":candles[-limit:],"count":min(limit,len(candles)),
+                "timestamp":datetime.now(timezone.utc).isoformat()}
+    except MarketDataError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="Chart market-data provider is temporarily unavailable.")
+
 @app.get("/api/v1/market/overview")
 async def market_overview():
     """Indicative BTC/USD, XAU/USD and converted Sri Lankan gold values."""
@@ -247,8 +267,9 @@ DEFAULT_SIGNAL_SETTINGS = {"primary":"5","trend":"60","enabled":["60","30","15",
 @app.get("/api/v1/signals/status")
 def signal_engine_status(user: User = Depends(local_workspace)):
     from .config import TWELVE_DATA_API_KEY
-    return {"configured": bool(TWELVE_DATA_API_KEY), "provider":"Twelve Data",
-            "symbol":"XAU/USD", "note":"Live analysis requires a valid server-side TWELVE_DATA_API_KEY. The TradingView embed does not expose its candles to this API."}
+    return {"configured": True, "crypto_configured": True, "gold_configured": bool(TWELVE_DATA_API_KEY),
+            "providers":{"crypto":"Binance Spot public market data","gold":"Twelve Data" if TWELVE_DATA_API_KEY else None},
+            "note":"Crypto candles and signals use Binance Spot public data. XAUUSD requires a configured Twelve Data key."}
 
 @app.get("/api/v1/signals/settings")
 def get_signal_settings(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
@@ -266,33 +287,36 @@ def update_signal_settings(payload: SignalSettingsRequest, user: User = Depends(
     return settings
 
 @app.post("/api/v1/signals/scan")
-async def scan_xauusd_signal(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
-    from .signal_engine import build_signal, MarketDataError
+async def scan_market_signal(symbol: str = "BTCUSDT", user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .signal_engine import build_signal, MarketDataError, CRYPTO_SYMBOLS
     from .config import TWELVE_DATA_API_KEY
-    if not TWELVE_DATA_API_KEY:
-        raise HTTPException(status_code=503,detail="Market feed not configured. Add TWELVE_DATA_API_KEY to backend/.env and restart the API.")
+    symbol = symbol.upper()
+    if symbol not in CRYPTO_SYMBOLS and symbol != "XAUUSD":
+        raise HTTPException(status_code=422, detail="Supported signal markets: BTCUSDT, ETHUSDT, SOLUSDT and XAUUSD.")
+    if symbol == "XAUUSD" and not TWELVE_DATA_API_KEY:
+        raise HTTPException(status_code=503,detail="Gold market feed not configured. Add TWELVE_DATA_API_KEY to backend/.env and restart the API.")
     try: settings=json.loads(_preference(db,user.id,"signal_settings",json.dumps(DEFAULT_SIGNAL_SETTINGS)))
     except ValueError: settings=DEFAULT_SIGNAL_SETTINGS
     try:
-        result=await build_signal(settings)
+        result=await build_signal(settings, symbol)
     except MarketDataError as exc:
         raise HTTPException(status_code=502,detail=str(exc))
     except httpx.HTTPError:
-        raise HTTPException(status_code=502,detail="Could not retrieve XAUUSD candles from the configured market-data provider.")
+        raise HTTPException(status_code=502,detail="Could not retrieve "+symbol+" candles from the configured market-data provider.")
     signal=result.get("signal")
     if signal:
-        _save_preference(db,user.id,"active_signal",json.dumps({**signal,"tp1_notified":False,"tp2_notified":False,"tp3_notified":False,"sl_notified":False}))
+        if symbol=="XAUUSD":
+            _save_preference(db,user.id,"active_signal",json.dumps({**signal,"tp1_notified":False,"tp2_notified":False,"tp3_notified":False,"sl_notified":False}))
         token_enc=_preference(db,user.id,"telegram_bot_token_enc")
         chat_id=_preference(db,user.id,"telegram_chat_id")
-        try: auto_settings=json.loads(_preference(db,user.id,"auto_signal_settings",'{"enabled":false}'))
-        except ValueError: auto_settings={"enabled":False}
-        if token_enc and chat_id and auto_settings.get("enabled"):
+        if token_enc and chat_id:
             try:
                 token=decrypt_secret(token_enc)
-                message=("QUANTNEX · XAUUSD "+signal["side"]+"\\nEntry: "+str(signal["entry"])+"\\nSL: "+str(signal["stop_loss"])+
-                    "\\nTP1: "+str(signal["tp1"])+"\\nTP2: "+str(signal["tp2"])+"\\nTP3: "+str(signal["tp3"])+
-                    "\\nConfluence: "+str(signal["score"])+"/10 (not win probability)\\nConfirmations: "+", ".join(signal["confirmations"])+
-                    "\\nTP1/SL level alerts run while the local API is active. No broker order is placed.")
+                market_symbol=result.get("symbol",symbol)
+                message=("QUANTNEX · "+market_symbol+" "+signal["side"]+" SIGNAL\nEntry: "+str(signal["entry"])+"\nSL: "+str(signal["stop_loss"])+
+                    "\nTP1: "+str(signal["tp1"])+"\nTP2: "+str(signal["tp2"])+"\nTP3: "+str(signal["tp3"])+
+                    "\nConfluence: "+str(signal["score"])+"/10 (rule count, not win probability)\nConfirmations: "+", ".join(signal["confirmations"])+
+                    "\nSignal only. Verify spread, fees and execution. No broker order is placed.")
                 async with httpx.AsyncClient(timeout=12) as client:
                     response=await client.post("https://api.telegram.org/bot"+token+"/sendMessage",
                         json={"chat_id":chat_id,"text":message,"disable_web_page_preview":True})
@@ -301,8 +325,8 @@ async def scan_xauusd_signal(user: User = Depends(local_workspace), db: Session 
             except Exception: result["telegram_sent"]=False
         else:
             result["telegram_sent"]=False
-            result["telegram_note"]="Auto Signals is OFF; this manual scan did not send a Telegram alert."
-    else:
+            result["telegram_note"]="Connect your Telegram bot to send this signal."
+    elif symbol=="XAUUSD":
         _save_preference(db,user.id,"active_signal","")
     db.commit()
     event_hub.publish("signals.changed", "signals", "scan_completed", {"symbol": result.get("symbol")})
@@ -331,7 +355,7 @@ async def connect_telegram_bot(payload: TelegramConnectRequest, user: User = Dep
     db.commit()
     event_hub.publish("integration.changed", "telegram", "connected", {"bot_username": bot.get("username", "")})
     return {"connected":True,"bot_username":bot.get("username"),"chat_id":payload.chat_id.strip(),
-            "commands":["/help","/timeframes","/settf 5","/settrend 60","/setanalysis 1,5,15,30,60","/scan","/status"],
+            "commands":["/help","/timeframes","/settf 5","/settrend 60","/setanalysis 1,5,15,30,60","/scan BTCUSDT","/scan ETHUSDT","/scan SOLUSDT","/scan XAUUSD","/status"],
             "note":"The local API must remain running for bot commands and TP1/SL level alerts."}
 
 @app.get("/api/v1/telegram/status")
@@ -344,7 +368,7 @@ def telegram_status(user: User = Depends(local_workspace), db: Session = Depends
 
 @app.delete("/api/v1/telegram/connect")
 def disconnect_telegram_bot(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
-    for key in ["telegram_bot_token_enc","telegram_chat_id","telegram_bot_username","telegram_bot_display_name","telegram_update_offset","active_signal","auto_signal_settings","auto_signal_last_fingerprint"]:
+    for key in ["telegram_bot_token_enc","telegram_chat_id","telegram_bot_username","telegram_bot_display_name","telegram_update_offset","active_signal","auto_signal_settings","auto_signal_last_fingerprint","auto_signal_last_fingerprint_btcusdt","auto_signal_last_fingerprint_ethusdt","auto_signal_last_fingerprint_solusdt","auto_signal_last_fingerprint_xauusd"]:
         row=db.scalar(select(Preference).where(Preference.user_id==user.id,Preference.key==key))
         if row:db.delete(row)
     record_audit_event(db, "telegram.disconnected")
@@ -413,12 +437,14 @@ async def stop_telegram_background_worker():
 
 @app.get("/api/v1/telegram/auto-signals")
 def get_auto_signal_settings(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
-    raw=_preference(db,user.id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180}')
+    raw=_preference(db,user.id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}')
     try: settings=json.loads(raw)
-    except ValueError: settings={"enabled":False,"interval_seconds":180}
+    except ValueError: settings={"enabled":False,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}
+    settings.setdefault("symbols",["BTCUSDT","ETHUSDT","SOLUSDT"])
     settings["telegram_connected"]=bool(_preference(db,user.id,"telegram_bot_token_enc") and _preference(db,user.id,"telegram_chat_id"))
     from .config import TWELVE_DATA_API_KEY
-    settings["market_feed_configured"]=bool(TWELVE_DATA_API_KEY)
+    settings["crypto_feed_configured"]=True
+    settings["gold_feed_configured"]=bool(TWELVE_DATA_API_KEY)
     return settings
 
 @app.put("/api/v1/telegram/auto-signals")
@@ -427,14 +453,14 @@ def set_auto_signal_settings(payload: AutoSignalSettingsRequest, user: User = De
     if payload.enabled and not connected:
         raise HTTPException(status_code=409,detail="Connect and test your personal Telegram bot before enabling Auto Signals.")
     from .config import TWELVE_DATA_API_KEY
-    if payload.enabled and not TWELVE_DATA_API_KEY:
-        raise HTTPException(status_code=503,detail="Add TWELVE_DATA_API_KEY to backend/.env and restart the QUANTNEX API before enabling Auto Signals.")
+    if payload.enabled and "XAUUSD" in payload.symbols and not TWELVE_DATA_API_KEY:
+        raise HTTPException(status_code=503,detail="XAUUSD is selected but TWELVE_DATA_API_KEY is not configured. Remove Gold from selected markets or configure the provider.")
     settings=payload.model_dump()
     _save_preference(db,user.id,"auto_signal_settings",json.dumps(settings))
-    record_audit_event(db, "signals.auto_settings_updated", {"enabled": settings["enabled"], "interval_seconds": settings["interval_seconds"]})
+    record_audit_event(db, "signals.auto_settings_updated", {"enabled": settings["enabled"], "interval_seconds": settings["interval_seconds"], "symbols": settings["symbols"]})
     db.commit()
-    event_hub.publish("preferences.changed", "signals", "auto_settings_updated", {"key": "auto_signal_settings", "enabled": settings["enabled"]})
-    return {**settings,"telegram_connected":connected,"note":"Automatic XAUUSD alerts run only while this computer's QUANTNEX API process is running."}
+    event_hub.publish("preferences.changed", "signals", "auto_settings_updated", {"key": "auto_signal_settings", "enabled": settings["enabled"], "symbols": settings["symbols"]})
+    return {**settings,"telegram_connected":connected,"note":"Automatic crypto signal alerts run while this computer's QUANTNEX API and Telegram worker are running."}
 
 @app.post("/api/v1/telegram/notify")
 async def notify_connected_telegram(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):

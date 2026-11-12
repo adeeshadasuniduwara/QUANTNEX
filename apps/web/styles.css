@@ -299,3 +299,39 @@
 }
 
 .live-pnl-grid [hidden]{display:none!important}
+
+/* QUANTNEX VIEW — compact first-party chart workspace */
+.qx-chart-panel{padding:14px;overflow:hidden}
+.qx-chart-topbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.qx-chart-market{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.qx-chart-market>div{display:flex;flex-direction:column;gap:4px}
+.qx-chart-market strong{font-size:23px;font-variant-numeric:tabular-nums}
+.qx-chart-market small{font-size:10px;color:var(--muted)}
+.qx-chart-toolbar{display:flex;align-items:end;gap:8px;flex-wrap:wrap}
+.qx-chart-toolbar label,.qx-chart-market label{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:10px}
+.qx-chart-toolbar select,.qx-chart-market select{min-width:88px;padding:9px 10px;border:1px solid var(--line);border-radius:7px;background:#101820;color:var(--text)}
+.qx-chart-market select{min-width:132px}
+.qx-chart-options{display:flex;align-items:center;gap:13px;flex-wrap:wrap;padding:12px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-top:12px}
+.qx-chart-options label,.qx-auto-markets label{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:10px;white-space:nowrap}
+.qx-chart-options input[type=checkbox],.qx-auto-markets input[type=checkbox]{accent-color:#4b9fff}
+.qx-chart-options input[type=color]{width:25px;height:22px;padding:0;border:0;background:transparent}
+.qx-drawing-toolbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:11px 0}
+.qx-drawing-toolbar>span:first-child{font-size:10px;color:var(--muted);margin-right:4px}
+.qx-drawing-toolbar .active{border-color:#4b9fff;color:#8ec5ff;background:rgba(75,159,255,.12)}
+.qx-chart-status{font-size:10px;color:var(--muted);margin-left:auto}
+.qx-chart-status[data-state=error]{color:#f08a91}
+.qx-chart-host{height:470px;min-height:320px;width:100%;position:relative;overflow:hidden;border-radius:8px;background:#080d13}
+.qx-chart-loading{height:100%;min-height:320px;display:grid;place-items:center;padding:24px;color:var(--muted);font-size:12px;text-align:center}
+.qx-chart-error{color:#f08a91}
+.qx-chart-footer{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-top:10px;color:var(--muted);font-size:10px}
+.qx-auto-markets{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 0}
+.qx-auto-markets>span{font-size:10px;color:var(--muted);margin-right:3px}
+@media(max-width:700px){
+ .qx-chart-panel{padding:10px}
+ .qx-chart-topbar{align-items:stretch}
+ .qx-chart-toolbar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%}
+ .qx-chart-toolbar label select{width:100%;min-width:0}
+ .qx-chart-host{height:390px;min-height:340px}
+ .qx-chart-status{width:100%;margin-left:0}
+ .qx-chart-market{justify-content:space-between}
+}

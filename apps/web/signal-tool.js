@@ -60,14 +60,14 @@
     return s;
   }
   function applyChartTimeframe() {
-    const s=readSettings();
-    if(s.chart==="50"){$("timeframeStatus").textContent="M50 is a custom aggregation and is not supported by the TradingView embed. Use M1/M5/M15/M30/H1 for the chart; M50 can be used by the analysis engine.";return;}
-    const host=$("xauTradingView");if(!host)return;
-    host.replaceChildren();const widget=document.createElement("div");widget.className="tradingview-widget-container__widget";host.append(widget);
-    const script=document.createElement("script");script.type="text/javascript";script.async=true;
-    script.src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
-    script.text=JSON.stringify({autosize:true,symbol:$("tradingViewSymbol")?.value||"OANDA:XAUUSD",interval:s.chart,timezone:"Etc/UTC",theme:"dark",style:"1",locale:"en",allow_symbol_change:true,calendar:false,support_host:"https://www.tradingview.com"});
-    host.append(script);$("timeframeStatus").textContent="TradingView XAUUSD chart changed to "+tfNames[s.chart]+".";
+    const settings=readSettings(),market=$("signalMarketSymbol")?.value||"BTCUSDT";
+    const symbol=$("qxSymbol"),timeframe=$("qxInterval");
+    if(symbol){symbol.value=market;symbol.dispatchEvent(new Event("change"));}
+    if(timeframe){
+      timeframe.value=settings.chart==="50"?"15m":({"1":"1m","5":"5m","15":"15m","30":"30m","60":"1h"}[settings.chart]||"15m");
+      timeframe.dispatchEvent(new Event("change"));
+    }
+    $("timeframeStatus").textContent="QUANTNEX VIEW updated · "+market+" · "+(tfNames[settings.chart]||settings.chart)+(settings.chart==="50"?" (chart uses M15; M50 remains available for analysis)":"")+".";
   }
   $("saveTimeframes").addEventListener("click",saveSettings);
   $("syncTimeframes").addEventListener("click",async()=>{
@@ -82,7 +82,7 @@
   loadLocalSettings();
   apiRequest("/api/v1/signals/settings").then(applySettings).catch(()=>{});
   apiRequest("/api/v1/signals/status").then(status=>{
-    $("signalEngineState").textContent=status.configured?"MARKET FEED READY":"ADD MARKET DATA KEY";
+    $("signalEngineState").textContent=status.crypto_configured?(status.gold_configured?"CRYPTO + GOLD FEEDS READY":"CRYPTO FEED READY · GOLD OPTIONAL"):"MARKET FEED UNAVAILABLE";
   }).catch(()=>{});
 
   function addStat(parent,label,value) {
@@ -101,7 +101,7 @@
     const score=document.createElement("div");score.className="signal-score";
     score.textContent="Confluence "+data.confluence_score+"/"+data.score_out_of+" · "+(data.score_note||"Rule-based score, not win probability");result.append(score);
     if(data.signal){
-      const s=data.signal;const head=document.createElement("h3");head.textContent=s.side+" XAUUSD · "+(tfNames[s.timeframe]||s.timeframe);result.append(head);
+      const s=data.signal;const head=document.createElement("h3");head.textContent=s.side+" "+(data.symbol||"MARKET")+" · "+(tfNames[s.timeframe]||s.timeframe);result.append(head);
       const grid=document.createElement("div");grid.className="position-summary signal-levels";
       [["Entry",s.entry],["Stop Loss",s.stop_loss],["TP1",s.tp1],["TP2",s.tp2],["TP3",s.tp3]].forEach(([a,b])=>addStat(grid,a,String(b)));
       result.append(grid);
@@ -110,7 +110,7 @@
       const title=document.createElement("h4");title.textContent="Confirmations ("+s.confirmations.length+")";result.append(title);
       const list=document.createElement("ul");list.className="confirmation-list";
       s.confirmations.forEach(x=>{const li=document.createElement("li");li.textContent="✓ "+x;list.append(li);});result.append(list);
-      $("telegramStatus").textContent=data.telegram_sent?"Signal sent to your connected Telegram bot.":(data.telegram_note||"Signal calculated. Enable Auto Signals to receive automatic Telegram alerts.");
+      $("telegramStatus").textContent=data.telegram_sent?"Signal sent to your connected Telegram bot.":(data.telegram_note||"Signal calculated, but Telegram delivery did not complete. Check your bot connection.");
     } else {
       const p=document.createElement("p");p.textContent=data.message||"No high-confluence setup. Wait for confirmation.";result.append(p);
     }
@@ -130,11 +130,12 @@
     $("signalEngineState").textContent="FETCHING MARKET DATA";
     try{
       const s=await saveSettings();if(!s)throw new Error("Check timeframe settings.");
-      const data=await apiRequest("/api/v1/signals/scan",{method:"POST"});
+      const symbol=$("signalMarketSymbol")?.value||"BTCUSDT";
+      const data=await apiRequest("/api/v1/signals/scan?symbol="+encodeURIComponent(symbol),{method:"POST"});
       renderScan(data);
       $("timeframeStatus").textContent="Analysis updated at "+new Date(data.generated_at).toLocaleString()+". Source: "+data.provider+".";
     }catch(e){$("signalEngineState").textContent="FEED / API ERROR";$("signalResult").textContent=e.message;}
-    finally{button.disabled=false;button.textContent="Run XAUUSD signal scan";}
+    finally{button.disabled=false;button.textContent="Run market signal scan";}
   });
 
   async function storedTelegramMessage(message){
@@ -146,7 +147,7 @@
     button.disabled=true;button.textContent="Connecting…";
     try{
       const data=await apiRequest("/api/v1/telegram/connect",{method:"POST",body:JSON.stringify({bot_token:token,chat_id:chat,display_name:$("tgBotDisplayName").value.trim()})});
-      $("telegramStatus").textContent="Connected to "+($("tgBotDisplayName").value.trim()||"@"+(data.bot_username||"your bot"))+" (@"+(data.bot_username||"bot")+"). Commands enabled: /help, /timeframes, /settf, /settrend, /setanalysis, /scan, /status.";
+      $("telegramStatus").textContent="Connected to "+($("tgBotDisplayName").value.trim()||"@"+(data.bot_username||"your bot"))+" (@"+(data.bot_username||"bot")+"). Commands enabled: /help, /timeframes, /settf, /settrend, /setanalysis, /scan BTCUSDT, /scan ETHUSDT, /scan SOLUSDT, /scan XAUUSD, /status.";
       $("tgBotToken").value="";
     }catch(e){$("telegramStatus").textContent=e.message;}
     finally{button.disabled=false;button.textContent="Connect bot & enable commands";}
@@ -176,31 +177,96 @@
   $("clearTelegram").title="Disconnect the saved Telegram bot";
   renderPosition();
 
-  // TradingView is a single dedicated chart tab with a selectable instrument.
-  $("tradingViewSymbol")?.addEventListener("change",applyChartTimeframe);
-  if($("tradingViewSymbol"))applyChartTimeframe();
-
+  // QUANTNEX VIEW is the first-party chart workspace.
   async function loadAutoSignalSettings(){
     try{
       const [settings,bot]=await Promise.all([apiRequest("/api/v1/telegram/auto-signals"),apiRequest("/api/v1/telegram/status")]);
-      if(bot.connected){$("tgBotDisplayName").value=bot.display_name||"";$("telegramStatus").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username))+" · "+bot.chat_id;$("telegramMonitorTitle").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username));$("telegramMonitorDescription").textContent="Your personal Telegram bot is connected. Turn on Auto Signals in Signal Lab to receive new high-confluence XAUUSD setups.";$("telegramMonitorPill").textContent=settings.enabled?"AUTO ON":"CONNECTED";}
-      else {$("telegramStatus").textContent="No Telegram bot connected yet. Create one with @BotFather and connect it here.";$("telegramMonitorTitle").textContent="Telegram bot not connected";$("telegramMonitorDescription").textContent="Open Signal Lab to connect your BotFather bot and explicitly enable Auto Signals. Alerts run while the QUANTNEX API is active.";$("telegramMonitorPill").textContent="OFFLINE";}
+      if(bot.connected){$("tgBotDisplayName").value=bot.display_name||"";$("telegramStatus").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username))+" · "+bot.chat_id;$("telegramMonitorTitle").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username));$("telegramMonitorDescription").textContent="Your personal Telegram bot is connected. Turn on Auto Signals in Signal Lab to receive fresh BTC, ETH, SOL and optional Gold setups.";$("telegramMonitorPill").textContent=settings.enabled?"AUTO ON":"CONNECTED";}
+      else {$("telegramStatus").textContent="No Telegram bot connected yet. Create one with @BotFather and connect it here.";$("telegramMonitorTitle").textContent="Telegram bot not connected";$("telegramMonitorDescription").textContent="Open Signal Lab to connect your BotFather bot. Manual crypto signals and enabled Auto Signals are delivered while the local QUANTNEX API is active.";$("telegramMonitorPill").textContent="OFFLINE";}
       $("autoSignalsEnabled").checked=!!settings.enabled;
       $("autoSignalInterval").value=String(settings.interval_seconds||180);
-      $("autoSignalStatus").textContent=settings.enabled?"Auto Signals ON · scans while the QUANTNEX API is running.":"Auto Signals OFF.";
+      document.querySelectorAll("input[name=autoSignalSymbol]").forEach(el=>{el.checked=(settings.symbols||["BTCUSDT","ETHUSDT","SOLUSDT"]).includes(el.value);});
+      $("autoSignalStatus").textContent=settings.enabled?"Auto Signals ON · selected markets scan while the QUANTNEX API is running.":"Auto Signals OFF.";
     }catch(error){$("autoSignalStatus").textContent=error.message;}
   }
   $("saveAutoSignals")?.addEventListener("click",async()=>{
     const enabled=$("autoSignalsEnabled").checked;
     const interval_seconds=Number($("autoSignalInterval").value||180);
+    const symbols=[...document.querySelectorAll('input[name="autoSignalSymbol"]:checked')].map(el=>el.value);
+    if(!symbols.length){$("autoSignalStatus").textContent="Select at least one market.";return;}
     const button=$("saveAutoSignals");button.disabled=true;button.textContent="Saving…";
     try{
-      const result=await apiRequest("/api/v1/telegram/auto-signals",{method:"PUT",body:JSON.stringify({enabled,interval_seconds})});
-      $("autoSignalStatus").textContent=result.enabled?"Auto Signals ON · strict 8/10 minimum · every "+(interval_seconds/60)+" minute(s). Keep this computer/VPS and QUANTNEX API running.":"Auto Signals OFF. No automatic Telegram signals will be sent.";$("telegramMonitorPill").textContent=result.enabled?"AUTO ON":"CONNECTED";
+      const result=await apiRequest("/api/v1/telegram/auto-signals",{method:"PUT",body:JSON.stringify({enabled,interval_seconds,symbols})});
+      $("autoSignalStatus").textContent=result.enabled?"Auto Signals ON · "+symbols.join(", ")+" · strict 8/10 minimum · every "+(interval_seconds/60)+" minute(s). Keep this computer and QUANTNEX API running.":"Auto Signals OFF. No automatic Telegram signals will be sent.";$("telegramMonitorPill").textContent=result.enabled?"AUTO ON":"CONNECTED";
     }catch(error){
       $("autoSignalsEnabled").checked=false;
       $("autoSignalStatus").textContent=error.message;
     }finally{button.disabled=false;button.textContent="Save Auto Signal settings";}
   });
   loadAutoSignalSettings();
+})();
+ 
+// QUANTNEX VIEW chart controller — first-party candles, live updates and local chart preferences.
+(()=> {
+ "use strict";
+ const $=id=>document.getElementById(id),host=$("qxChartHost");if(!host)return;
+ const API="http://127.0.0.1:8000",KEY="quantnex.view.settings.v1";
+ const defaults={symbol:"BTCUSDT",interval:"15m",type:"candles",theme:"dark",volume:true,ema20:false,ema50:false,sma200:false,log:false,grid:true,up:"#20c997",down:"#f05d68"};
+ let cfg={...defaults};try{cfg={...cfg,...JSON.parse(localStorage.getItem(KEY)||"{}")};}catch{}
+ let chart=null,priceSeries=null,volumeSeries=null,indicators=[],bars=[],drawings=[],mode="cursor",firstPoint=null,observer=null;
+ const secs={"1m":60,"5m":300,"15m":900,"30m":1800,"1h":3600,"4h":14400};
+ const status=(m,bad=false)=>{const e=$("qxChartStatus");if(e){e.textContent=m;e.dataset.state=bad?"error":"ok";}};
+ const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(cfg));}catch{}};
+ const timeOf=v=>{if(typeof v==="number")return Math.floor(v);let t=String(v||"");if(/^\d{4}-\d{2}-\d{2} \d/.test(t))t=t.replace(" ","T")+"Z";const n=Date.parse(t);return Number.isFinite(n)?Math.floor(n/1000):NaN;};
+ const clean=r=>({time:timeOf(r.time),open:+r.open,high:+r.high,low:+r.low,close:+r.close,volume:+(r.volume||0)});
+ const ha=data=>{let prev=null;return data.map(c=>{const close=(c.open+c.high+c.low+c.close)/4,open=prev?(prev.open+prev.close)/2:(c.open+c.close)/2,x={time:c.time,open,high:Math.max(c.high,open,close),low:Math.min(c.low,open,close),close};prev=x;return x;});};
+ const avg=(data,n,kind)=>{let sum=0,value=data[0]?.close||0,out=[],k=2/(n+1);data.forEach((c,i)=>{if(kind==="sma"){sum+=c.close;if(i>=n)sum-=data[i-n].close;if(i>=n-1)out.push({time:c.time,value:sum/n});}else{value=i===0?c.close:c.close*k+value*(1-k);if(i>=n-1)out.push({time:c.time,value});}});return out;};
+ function removeDrawings(){drawings.forEach(d=>{try{if(d.kind==="price")priceSeries?.removePriceLine(d.line);else chart?.removeSeries(d.series);}catch{}});drawings=[];firstPoint=null;}
+ function clearSeries(){if(!chart)return;removeDrawings();if(priceSeries){chart.removeSeries(priceSeries);priceSeries=null;}if(volumeSeries){chart.removeSeries(volumeSeries);volumeSeries=null;}indicators.forEach(x=>chart.removeSeries(x.series));indicators=[];}
+ function updateHeader(price){if(!Number.isFinite(price))return;$("qxChartLastPrice").textContent="$"+price.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});const prev=bars.length>1?bars[bars.length-2].close:price,delta=prev?(price-prev)/prev*100:0;$("qxChartChange").textContent=(delta>=0?"+":"")+delta.toFixed(2)+"% vs previous candle";$("qxChartChange").className=delta>=0?"positive":"negative";}
+ function render(){
+  if(!chart||!bars.length)return;clearSeries();const L=window.LightweightCharts,data=cfg.type==="heikin"?ha(bars):bars,up=cfg.up,down=cfg.down;
+  if(cfg.type==="line"){priceSeries=chart.addSeries(L.LineSeries,{color:"#5da9ff",lineWidth:2});priceSeries.setData(data.map(c=>({time:c.time,value:c.close})));}
+  else if(cfg.type==="area"){priceSeries=chart.addSeries(L.AreaSeries,{lineColor:"#5da9ff",topColor:"rgba(93,169,255,.28)",bottomColor:"rgba(93,169,255,.015)",lineWidth:2});priceSeries.setData(data.map(c=>({time:c.time,value:c.close})));}
+  else if(cfg.type==="bar"){priceSeries=chart.addSeries(L.BarSeries,{upColor:up,downColor:down,openVisible:true});priceSeries.setData(data);}
+  else{priceSeries=chart.addSeries(L.CandlestickSeries,{upColor:up,downColor:down,borderVisible:false,wickUpColor:up,wickDownColor:down});priceSeries.setData(data);}
+  if(cfg.volume){volumeSeries=chart.addSeries(L.HistogramSeries,{priceScaleId:"",priceFormat:{type:"volume"},lastValueVisible:false,priceLineVisible:false,base:0});volumeSeries.setData(bars.map(c=>({time:c.time,value:c.volume,color:c.close>=c.open?"rgba(32,201,151,.38)":"rgba(240,93,104,.38)"})));chart.priceScale("").applyOptions({scaleMargins:{top:.8,bottom:0}});}
+  [["ema20",20,"#e8b44f","ema"],["ema50",50,"#a78bfa","ema"],["sma200",200,"#f08b5d","sma"]].forEach(([key,n,color,kind])=>{if(!cfg[key])return;const series=chart.addSeries(L.LineSeries,{color,lineWidth:1,priceLineVisible:false,lastValueVisible:false});series.setData(avg(data,n,kind));indicators.push({series,n,kind});});
+  chart.applyOptions({rightPriceScale:{mode:cfg.log?L.PriceScaleMode.Logarithmic:L.PriceScaleMode.Normal,scaleMargins:{top:.08,bottom:cfg.volume?.22:.08}}});updateHeader(bars[bars.length-1].close);
+ }
+ function draw(param){
+  if(mode==="cursor"||!priceSeries||!param.point||!param.time)return;
+  const price=priceSeries.coordinateToPrice(param.point.y);if(!Number.isFinite(price))return;
+  if(mode==="horizontal"){const line=priceSeries.createPriceLine({price,color:"#e8bd55",lineWidth:1,lineStyle:2,axisLabelVisible:true,title:"Level"});drawings.push({kind:"price",line});status("Horizontal level added.");return;}
+  if(mode==="trend"){if(!firstPoint){firstPoint={time:param.time,price};status("Trend line: click its second point.");return;}if(firstPoint.time===param.time){status("Choose a different candle for the second point.",true);return;}const pts=[firstPoint,{time:param.time,price}].sort((a,b)=>a.time-b.time),series=chart.addSeries(window.LightweightCharts.LineSeries,{color:"#e8bd55",lineWidth:2,priceLineVisible:false,lastValueVisible:false});series.setData(pts.map(p=>({time:p.time,value:p.price})));drawings.push({kind:"trend",series});firstPoint=null;status("Trend line added.");}
+ }
+ async function load(){
+  status("Loading "+cfg.symbol+" "+cfg.interval+" candles…");if(!chart)host.innerHTML='<div class="qx-chart-loading">Loading real market candles…</div>';
+  try{
+   const res=await fetch(API+"/api/v1/charts/candles?symbol="+encodeURIComponent(cfg.symbol)+"&interval="+encodeURIComponent(cfg.interval)+"&limit=500",{cache:"no-store",headers:{Accept:"application/json"}}),body=await res.json().catch(()=>null);if(!res.ok)throw new Error(body?.detail||"Market data request failed ("+res.status+").");
+   bars=(body.candles||[]).map(clean).filter(c=>Number.isFinite(c.time)&&[c.open,c.high,c.low,c.close].every(Number.isFinite));if(!bars.length)throw new Error("The market provider returned no valid candles.");
+   if(!chart){host.replaceChildren();const dark=cfg.theme==="dark";chart=window.LightweightCharts.createChart(host,{width:Math.max(320,host.clientWidth),height:Math.max(320,host.clientHeight||460),layout:{background:{type:"solid",color:dark?"#080d13":"#f7f9fc"},textColor:dark?"#cbd5e1":"#334155",fontFamily:"Inter,Arial,sans-serif",fontSize:11},grid:{vertLines:{color:cfg.grid?(dark?"rgba(148,163,184,.09)":"rgba(100,116,139,.13)"):"transparent"},horzLines:{color:cfg.grid?(dark?"rgba(148,163,184,.09)":"rgba(100,116,139,.13)"):"transparent"}},crosshair:{mode:window.LightweightCharts.CrosshairMode.Normal,vertLine:{color:"#8295ad",width:1,style:2},horzLine:{color:"#8295ad",width:1,style:2}},rightPriceScale:{borderColor:dark?"#263241":"#d8dee8"},timeScale:{borderColor:dark?"#263241":"#d8dee8",timeVisible:true,secondsVisible:false,rightOffset:8,barSpacing:7},handleScroll:{mouseWheel:true,pressedMouseMove:true,horzTouchDrag:true,vertTouchDrag:false},handleScale:{axisPressedMouseMove:true,mouseWheel:true,pinch:true}});chart.subscribeClick(draw);observer=new ResizeObserver(entries=>{const b=entries[0]?.contentRect;if(b&&chart)chart.applyOptions({width:Math.max(320,Math.floor(b.width)),height:Math.max(320,Math.floor(b.height))});});observer.observe(host);}
+   const dark=cfg.theme==="dark";chart.applyOptions({layout:{background:{type:"solid",color:dark?"#080d13":"#f7f9fc"},textColor:dark?"#cbd5e1":"#334155"},grid:{vertLines:{color:cfg.grid?(dark?"rgba(148,163,184,.09)":"rgba(100,116,139,.13)"):"transparent"},horzLines:{color:cfg.grid?(dark?"rgba(148,163,184,.09)":"rgba(100,116,139,.13)"):"transparent"}}});
+   render();chart.timeScale().fitContent();$("qxChartProvider").textContent=body.provider+" · "+bars.length+" candles · "+cfg.symbol;status("LIVE READY · "+cfg.symbol+" · "+cfg.interval);
+  }catch(e){if(!chart){host.innerHTML='<div class="qx-chart-loading qx-chart-error"></div>';$("qxChartHost").firstElementChild.textContent=e.message;}status("Market feed unavailable",true);$("qxChartProvider").textContent="Check local API and market-data provider";}
+ }
+ function tick(event){
+  const d=event.detail||{};if(!chart||!priceSeries||String(d.symbol||"").toUpperCase()!==cfg.symbol||!bars.length)return;const price=Number(d.price),ms=Number(d.eventTime)||Date.now();if(!Number.isFinite(price)||price<=0)return;
+  const seconds=secs[cfg.interval]||900,time=Math.floor(ms/1000/seconds)*seconds;let last=bars[bars.length-1];if(time<last.time)return;
+  if(time>last.time){last={time,open:price,high:price,low:price,close:price,volume:0};bars.push(last);if(bars.length>1000)bars.shift();}else{last.high=Math.max(last.high,price);last.low=Math.min(last.low,price);last.close=price;}
+  if(d.kind==="trade"&&Number.isFinite(Number(d.volume)))last.volume+=Number(d.volume);
+  const display=cfg.type==="heikin"?ha(bars):bars,point=display[display.length-1];if(cfg.type==="line"||cfg.type==="area")priceSeries.update({time:point.time,value:point.close});else priceSeries.update(point);
+  if(volumeSeries)volumeSeries.update({time:last.time,value:last.volume||0,color:last.close>=last.open?"rgba(32,201,151,.38)":"rgba(240,93,104,.38)"});
+  indicators.forEach(x=>{const vals=avg(display,x.n,x.kind),lastValue=vals[vals.length-1];if(lastValue)x.series.update(lastValue);});
+  updateHeader(price);$("qxChartProvider").textContent=(d.source||"Market provider")+" · live tick · "+new Date(ms).toLocaleTimeString();
+ }
+ function setMode(value){mode=value;firstPoint=null;document.querySelectorAll("[data-qx-draw]").forEach(b=>b.classList.toggle("active",b.dataset.qxDraw===value));status(value==="cursor"?"Cursor mode":value==="horizontal"?"Click chart to add a horizontal level":"Click two candles to draw a trend line");}
+ const controls={qxSymbol:"symbol",qxInterval:"interval",qxChartType:"type",qxChartTheme:"theme",qxVolume:"volume",qxEma20:"ema20",qxEma50:"ema50",qxSma200:"sma200",qxLogScale:"log",qxGrid:"grid",qxUpColor:"up",qxDownColor:"down"};
+ Object.entries(controls).forEach(([id,key])=>{const el=$(id);if(!el)return;if(el.type==="checkbox")el.checked=!!cfg[key];else el.value=cfg[key];el.addEventListener("change",()=>{cfg[key]=el.type==="checkbox"?el.checked:el.value;save();if(key==="symbol"||key==="interval")load();else if(key==="theme"){chart?.remove();chart=null;priceSeries=null;volumeSeries=null;indicators=[];drawings=[];observer?.disconnect();observer=null;load();}else if(key==="type"||key==="volume"||key==="ema20"||key==="ema50"||key==="sma200"||key==="up"||key==="down")render();else if(chart){const dark=cfg.theme==="dark";chart.applyOptions({rightPriceScale:{mode:cfg.log?window.LightweightCharts.PriceScaleMode.Logarithmic:window.LightweightCharts.PriceScaleMode.Normal},grid:{vertLines:{color:cfg.grid?(dark?"rgba(148,163,184,.09)":"rgba(100,116,139,.13)"):"transparent"},horzLines:{color:cfg.grid?(dark?"rgba(148,163,184,.09)":"rgba(100,116,139,.13)"):"transparent"}}});}});});
+ $("qxFitChart").addEventListener("click",()=>chart?.timeScale().fitContent());
+ $("qxScreenshot").addEventListener("click",()=>{if(!chart)return;const canvas=chart.takeScreenshot(),a=document.createElement("a");a.href=canvas.toDataURL("image/png");a.download="quantnex-view-"+cfg.symbol+".png";a.click();});
+ $("qxClearDrawings").addEventListener("click",()=>{removeDrawings();status("Chart drawings cleared.");});
+ document.querySelectorAll("[data-qx-draw]").forEach(b=>b.addEventListener("click",()=>setMode(b.dataset.qxDraw)));
+ window.addEventListener("quantnex:market-tick",tick);document.addEventListener("visibilitychange",()=>{if(!document.hidden&&!bars.length)load();});
+ load();
 })();

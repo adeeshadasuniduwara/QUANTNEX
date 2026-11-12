@@ -5,6 +5,7 @@ const html = fs.readFileSync("apps/web/index.html", "utf8");
 const app = fs.readFileSync("apps/web/app.js", "utf8");
 const css = fs.readFileSync("apps/web/styles.css", "utf8");
 const workspace = fs.readFileSync("apps/web/workspace-pages.js", "utf8");
+const signal = fs.readFileSync("apps/web/signal-tool.js", "utf8");
 
 assert.match(html, /id="p7BookmapCanvas"/, "Bookmap must render through a canvas");
 assert.match(html, /id="livePnlSymbol"/, "BTC/XAUUSD live P&L market selector is missing");
@@ -32,3 +33,20 @@ assert.match(css, /\.live-pnl-grid/, "Live P&L styles are missing");
 assert.match(workspace, /scrollIntoView\(\{behavior:"smooth"/, "Bot shortcut must navigate to the connection panel");
 
 console.log("Live terminal checks passed: BTC/XAUUSD P&L, bounded 100ms depth heatmap, auto health and bot shortcut.");
+
+assert.match(html, /QUANTNEX VIEW/, "The chart workspace must use the exact QUANTNEX VIEW name");
+assert.match(html, /id="qxChartHost"/, "First-party QUANTNEX VIEW chart container is missing");
+assert.match(html, /id="qxChartType"/, "Chart type selector is missing");
+assert.match(html, /Heikin Ashi/, "Heikin Ashi chart option is missing");
+assert.match(html, /name="autoSignalSymbol"/, "Selectable Telegram auto-signal markets are missing");
+assert.match(html, /id="signalMarketSymbol"/, "Manual signal market selector is missing");
+assert.doesNotMatch(html, /external-embedding\/embed-widget-advanced-chart|TradingView Advanced Chart/, "The embedded TradingView widget must be removed");
+assert.match(signal, /api\/v1\/charts\/candles/, "QUANTNEX VIEW must load real local OHLC candles");
+assert.match(signal, /CandlestickSeries/, "First-party candlestick rendering is missing");
+assert.match(signal, /const ha=/, "Heikin Ashi candle calculation is missing");
+assert.match(signal, /data-qx-draw/, "Chart drawing tools are missing");
+assert.match(signal, /apiRequest\("\/api\/v1\/signals\/scan\?symbol=/, "Manual signal scan must use the selected market");
+assert.match(signal, /symbols\}\)/, "Telegram auto-signal settings must save selected markets");
+assert.match(app, /volume:isTrade\?Number\(data\.q\|\|0\):0/, "Live Binance trade size must feed chart volume");
+
+console.log("QUANTNEX VIEW and crypto Telegram signal checks passed.");

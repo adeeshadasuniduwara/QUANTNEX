@@ -42,10 +42,10 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
     except ValueError: settings={"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":7}
     names={"1":"M1","5":"M5","15":"M15","30":"M30","50":"M50","60":"H1","240":"H4"}
     if command in {"/start","/help"}:
-        return ("QUANTNEX XAUUSD Signal Bot\n"
+        return ("QUANTNEX Crypto + Gold Signal Bot\n"
             "/timeframes — show settings\n/settf 1|5|15|30|50|60 — primary signal timeframe\n"
             "/settrend 15|30|60|240 — trend filter\n/setanalysis 1,5,15,30,60 — analysis timeframes\n"
-            "/scan — run a fresh confluence scan\n/status — connection status")
+            "/scan [BTCUSDT|ETHUSDT|SOLUSDT|XAUUSD] — run a fresh market scan (default BTCUSDT)\n/status — connection status")
     if command=="/timeframes":
         enabled=", ".join(names.get(str(x),str(x)) for x in settings.get("enabled",[]))
         return f"Primary: {names.get(str(settings.get('primary')))}\nTrend: {names.get(str(settings.get('trend')))}\nAnalysis: {enabled}"
@@ -61,20 +61,27 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
         settings["enabled"]=selected;_set(db,user_id,"signal_settings",json.dumps(settings));db.commit()
         return "Analysis timeframes saved: "+", ".join(names[x] for x in selected)
     if command=="/status":
-        return "QUANTNEX bot connected. Market feed: "+("configured" if TWELVE_DATA_API_KEY else "not configured")+". Broker execution: disabled."
+        return "QUANTNEX bot connected. Crypto feed: Binance Spot public data ready. Gold feed: "+("configured" if TWELVE_DATA_API_KEY else "not configured")+". Broker execution: disabled."
     if command=="/scan":
+        market=parts[1].upper() if len(parts)>1 else "BTCUSDT"
+        if market not in {"BTCUSDT","ETHUSDT","SOLUSDT","XAUUSD"}:
+            return "Choose /scan BTCUSDT, /scan ETHUSDT, /scan SOLUSDT or /scan XAUUSD."
+        if market=="XAUUSD" and not TWELVE_DATA_API_KEY:
+            return "XAUUSD feed is not configured. Crypto scans work with Binance public data and need no API key."
         try:
-            result=await build_signal(settings)
+            result=await build_signal(settings,market)
             sig=result.get("signal")
             if not sig:
-                _set(db,user_id,"active_signal","");db.commit()
-                return "QUANTNEX · XAUUSD\nWAIT — no setup reached the minimum confluence threshold.\nScore: "+str(result["confluence_score"])+"/10\n"+result["score_note"]
-            _set(db,user_id,"active_signal",json.dumps({**sig,"tp1_notified":False,"tp2_notified":False,"tp3_notified":False,"sl_notified":False}))
-            db.commit()
-            return ("QUANTNEX · XAUUSD "+sig["side"]+"\nEntry: "+str(sig["entry"])+"\nSL: "+str(sig["stop_loss"])+
+                if market=="XAUUSD":
+                    _set(db,user_id,"active_signal","");db.commit()
+                return "QUANTNEX · "+market+"\nWAIT — no setup reached the minimum confluence threshold.\nScore: "+str(result["confluence_score"])+"/10\n"+result["score_note"]
+            if market=="XAUUSD":
+                _set(db,user_id,"active_signal",json.dumps({**sig,"tp1_notified":False,"tp2_notified":False,"tp3_notified":False,"sl_notified":False}))
+                db.commit()
+            return ("QUANTNEX · "+market+" "+sig["side"]+"\nEntry: "+str(sig["entry"])+"\nSL: "+str(sig["stop_loss"])+
                 "\nTP1: "+str(sig["tp1"])+"\nTP2: "+str(sig["tp2"])+"\nTP3: "+str(sig["tp3"])+
-                "\nConfluence: "+str(sig["score"])+"/10 (not win probability)\nConfirmations: "+", ".join(sig["confirmations"])+
-                "\nTP1 hit alert monitoring is active while the local API is running. No broker order is placed.")
+                "\nConfluence: "+str(sig["score"])+"/10 (rule count, not win probability)\nConfirmations: "+", ".join(sig["confirmations"])+
+                "\nSignal only. Verify spread, fees and execution. No broker order is placed.")
         except MarketDataError as exc:return "Signal scan unavailable: "+str(exc)
         except Exception:return "Signal scan failed. Check the local API logs and market-data provider configuration."
     return "Unknown command. Send /help."
@@ -137,41 +144,46 @@ async def telegram_worker() -> None:
                                         else:_set(db,user_id,"active_signal","")
                                         db.commit()
                                 except (ValueError,KeyError,httpx.HTTPError):pass
-                        # Optional per-user automatic XAUUSD signal scanning.
-                        auto_raw=_get(db,user_id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180}')
+                        # Automatic signals scan each selected market independently.
+                        auto_raw=_get(db,user_id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}')
                         try: auto_settings=json.loads(auto_raw)
-                        except ValueError: auto_settings={"enabled":False,"interval_seconds":180}
+                        except ValueError: auto_settings={"enabled":False,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}
                         interval=max(60,min(3600,int(auto_settings.get("interval_seconds",180) or 180)))
                         auto_key=(user_id,"auto")
-                        if auto_settings.get("enabled") and TWELVE_DATA_API_KEY and now-last_monitor.get(auto_key,0)>=interval:
-                            try:
-                                signal_raw=_get(db,user_id,"signal_settings",'{"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":8}')
-                                try: signal_settings=json.loads(signal_raw)
-                                except ValueError: signal_settings={"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":8}
-                                # Auto delivery is deliberately stricter than manual scans.
-                                signal_settings["min_score"]=max(8,int(signal_settings.get("min_score",8)))
-                                scan=await build_signal(signal_settings)
-                                candidate=scan.get("signal")
-                                if candidate:
-                                    fingerprint="|".join([str(candidate.get("side")),str(candidate.get("timeframe")),str(candidate.get("signal_candle_time"))])
-                                    previous=_get(db,user_id,"auto_signal_last_fingerprint")
-                                    if fingerprint and fingerprint!=previous:
-                                        msg=("QUANTNEX · AUTO SIGNAL · XAUUSD "+candidate["side"]+"\n"
-                                            +"Signal TF: "+str(candidate["timeframe"])+"m · Trend TF: "+str(candidate["trend_timeframe"])+"m\n"
-                                            +"Entry: "+str(candidate["entry"])+"\nSL: "+str(candidate["stop_loss"])+"\n"
-                                            +"TP1: "+str(candidate["tp1"])+"\nTP2: "+str(candidate["tp2"])+"\nTP3: "+str(candidate["tp3"])+"\n"
-                                            +"Confluence: "+str(candidate["score"])+"/10 (rule count, not win probability)\n"
-                                            +"Confirmations: "+", ".join(candidate["confirmations"])+"\n"
-                                            +"Signal only; verify price, spread and broker execution. No order is placed.")
-                                        await _send(client,token,chat_id,msg)
-                                        _set(db,user_id,"auto_signal_last_fingerprint",fingerprint)
-                                        _set(db,user_id,"active_signal",json.dumps({**candidate,"tp1_notified":False,"tp2_notified":False,"tp3_notified":False,"sl_notified":False}))
-                                        db.commit()
-                                else:
-                                    _set(db,user_id,"auto_signal_last_fingerprint","")
-                                    db.commit()
-                            except (MarketDataError,httpx.HTTPError,ValueError,KeyError) as exc:
-                                print(f"[QUANTNEX auto-signal] user {user_id}: {exc}",flush=True)
+                        selected=list(dict.fromkeys(str(value).upper() for value in auto_settings.get("symbols",["BTCUSDT","ETHUSDT","SOLUSDT"])
+                            if str(value).upper() in {"BTCUSDT","ETHUSDT","SOLUSDT","XAUUSD"}))
+                        if auto_settings.get("enabled") and selected and now-last_monitor.get(auto_key,0)>=interval:
+                            signal_raw=_get(db,user_id,"signal_settings",'{"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":8}')
+                            try: signal_settings=json.loads(signal_raw)
+                            except ValueError: signal_settings={"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":8}
+                            signal_settings["min_score"]=max(8,int(signal_settings.get("min_score",8)))
+                            for market_symbol in selected:
+                                if market_symbol=="XAUUSD" and not TWELVE_DATA_API_KEY:
+                                    continue
+                                fingerprint_key="auto_signal_last_fingerprint_"+market_symbol.lower()
+                                try:
+                                    scan=await build_signal(signal_settings,market_symbol)
+                                    candidate=scan.get("signal")
+                                    if candidate:
+                                        fingerprint="|".join([market_symbol,str(candidate.get("side")),str(candidate.get("timeframe")),str(candidate.get("signal_candle_time"))])
+                                        previous=_get(db,user_id,fingerprint_key)
+                                        if fingerprint and fingerprint!=previous:
+                                            msg=("QUANTNEX · AUTO SIGNAL · "+market_symbol+" "+candidate["side"]+"\n"
+                                                +"Signal TF: "+str(candidate["timeframe"])+"m · Trend TF: "+str(candidate["trend_timeframe"])+"m\n"
+                                                +"Entry: "+str(candidate["entry"])+"\nSL: "+str(candidate["stop_loss"])+"\n"
+                                                +"TP1: "+str(candidate["tp1"])+"\nTP2: "+str(candidate["tp2"])+"\nTP3: "+str(candidate["tp3"])+"\n"
+                                                +"Confluence: "+str(candidate["score"])+"/10 (rule count, not win probability)\n"
+                                                +"Confirmations: "+", ".join(candidate["confirmations"])+"\n"
+                                                +"Signal only; verify spread, fees and execution. No order is placed.")
+                                            await _send(client,token,chat_id,msg)
+                                            _set(db,user_id,fingerprint_key,fingerprint)
+                                            if market_symbol=="XAUUSD":
+                                                _set(db,user_id,"active_signal",json.dumps({**candidate,"tp1_notified":False,"tp2_notified":False,"tp3_notified":False,"sl_notified":False}))
+                                            db.commit()
+                                    # Keep the last delivered fingerprint when no setup is present.
+                                    # This prevents duplicate alerts if the same candle briefly loses and regains confluence.
+                                except (MarketDataError,httpx.HTTPError,ValueError,KeyError) as exc:
+                                    print(f"[QUANTNEX auto-signal] user {user_id} {market_symbol}: {exc}",flush=True)
                             last_monitor[auto_key]=now
                         last_monitor[user_id]=now
             except Exception:

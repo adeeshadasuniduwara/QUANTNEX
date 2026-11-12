@@ -15,9 +15,49 @@ INTERVALS = {"1": "1min", "5": "5min", "15": "15min", "30": "30min", "60": "1h",
 class MarketDataError(RuntimeError):
     pass
 
-async def fetch_candles(interval: str, outputsize: int = 320) -> list[dict[str, Any]]:
+CRYPTO_SYMBOLS = {"BTCUSDT", "ETHUSDT", "SOLUSDT"}
+BINANCE_INTERVALS = {"1min":"1m", "5min":"5m", "15min":"15m", "30min":"30m", "1h":"1h", "4h":"4h"}
+
+async def fetch_candles(interval: str, outputsize: int = 320, symbol: str = "XAUUSD") -> list[dict[str, Any]]:
+    symbol = str(symbol).upper()
+    if symbol in CRYPTO_SYMBOLS:
+        binance_interval = BINANCE_INTERVALS.get(interval)
+        if not binance_interval:
+            raise MarketDataError(f"Unsupported Binance candle interval: {interval}.")
+        requested = min(max(outputsize, 210), 3200)
+        interval_ms = {"1m":60000,"5m":300000,"15m":900000,"30m":1800000,"1h":3600000,"4h":14400000}[binance_interval]
+        rows = []
+        end_time = None
+        async with httpx.AsyncClient(timeout=18) as client:
+            while len(rows) < requested:
+                limit = min(1000, requested - len(rows))
+                params = {"symbol":symbol,"interval":binance_interval,"limit":limit}
+                if end_time is not None:
+                    params["endTime"] = end_time
+                response = await client.get("https://api.binance.com/api/v3/klines", params=params)
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, list) or not payload:
+                    break
+                rows = payload + rows
+                end_time = int(payload[0][0]) - 1
+                if len(payload) < limit:
+                    break
+        candles=[]
+        for row in rows[-requested:]:
+            try:
+                stamp=datetime.fromtimestamp(int(row[0])/1000, timezone.utc).isoformat()
+                candles.append({"time":stamp,"open":float(row[1]),"high":float(row[2]),
+                                "low":float(row[3]),"close":float(row[4]),"volume":float(row[5])})
+            except (IndexError,TypeError,ValueError,OverflowError):
+                continue
+        if len(candles) < 210:
+            raise MarketDataError(f"Not enough {symbol} {interval} Binance candles for stable indicator calculations ({len(candles)} received).")
+        return candles
+    if symbol != "XAUUSD":
+        raise MarketDataError("Supported markets are BTCUSDT, ETHUSDT, SOLUSDT and XAUUSD.")
     if not TWELVE_DATA_API_KEY:
-        raise MarketDataError("Market data is not configured. Add TWELVE_DATA_API_KEY to backend/.env.")
+        raise MarketDataError("Gold market data is not configured. Add TWELVE_DATA_API_KEY to backend/.env.")
     async with httpx.AsyncClient(timeout=18) as client:
         response = await client.get(BASE, params={"symbol":"XAU/USD","interval":interval,
             "outputsize":min(outputsize, 5000),"timezone":"UTC","apikey":TWELVE_DATA_API_KEY})
@@ -142,14 +182,17 @@ def inspect_tf(c: list[dict[str,Any]]) -> dict[str,Any]:
     return {"bias":bias,"close":last,"ema20":e20,"ema50":e50,"ema200":e200,"macd":m,"macd_signal":ms,
             "macd_histogram":mh,"rsi":rv,"atr":av,"adx":dx,"structure":structure(c)}
 
-async def build_signal(settings: dict[str,Any]) -> dict[str,Any]:
+async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[str,Any]:
+    symbol = str(symbol).upper()
+    if symbol not in CRYPTO_SYMBOLS and symbol != "XAUUSD":
+        raise MarketDataError("Supported signal markets: BTCUSDT, ETHUSDT, SOLUSDT and XAUUSD.")
     enabled=[str(x) for x in settings.get("enabled",["60","30","15","5","1"])]
     if not enabled: enabled=["60","30","15","5","1"]
     needed=set(enabled+[str(settings.get("primary","5")),str(settings.get("trend","60"))])
     if "50" in needed: needed.add("1")
     tasks={}
     for tf in needed:
-        if tf in INTERVALS: tasks[tf]=fetch_candles(INTERVALS[tf],3200 if tf=="1" and "50" in needed else 320)
+        if tf in INTERVALS: tasks[tf]=fetch_candles(INTERVALS[tf],3200 if tf=="1" and "50" in needed else 320,symbol)
     results=await asyncio.gather(*tasks.values(),return_exceptions=True)
     candles={}
     errors=[]
@@ -214,11 +257,11 @@ async def build_signal(settings: dict[str,Any]) -> dict[str,Any]:
         risk=max(risk,p["atr"]*0.8)
         sl=close-risk if side=="BUY" else close+risk
         sign=1 if side=="BUY" else -1
-        signal={"symbol":"XAU/USD","side":side,"timeframe":primary,"trend_timeframe":trend,
+        signal={"symbol":symbol,"side":side,"timeframe":primary,"trend_timeframe":trend,
                 "entry":round(close,2),"signal_candle_time":candles[primary][-1]["time"],"stop_loss":round(sl,2),"tp1":round(close+sign*risk,2),
                 "tp2":round(close+sign*risk*2,2),"tp3":round(close+sign*risk*3,2),
                 "score":score,"out_of":10,"confirmations":checks,"risk_distance":round(risk,2)}
-    return {"symbol":"XAU/USD","provider":"Twelve Data","generated_at":datetime.now(timezone.utc).isoformat(),
+    return {"symbol":symbol,"provider":"Binance Spot" if symbol in CRYPTO_SYMBOLS else "Twelve Data","generated_at":datetime.now(timezone.utc).isoformat(),
             "signal":signal,"confluence_score":score,"score_out_of":10,"score_note":"Rule-based confluence count, not a measured win probability.",
             "timeframes":{tf:{"bias":v["bias"],"close":round(v["close"],2),"ema20":round(v["ema20"],2),
                 "ema50":round(v["ema50"],2),"ema200":round(v["ema200"],2) if v["ema200"] is not None else None,"macd_histogram":round(v["macd_histogram"],4),

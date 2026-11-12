@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#080808">
   <link rel="icon" type="image/svg+xml" href="quantnex-mark.svg">
   <meta name="description" content="QUANTNEX is a modern trading workspace for risk planning and trade review.">
-  <title>QUANTNEX — Trading Workspace</title>
-  <link rel="stylesheet" href="styles.css?v=20261112-scrollfix2">
+  <title>QUANTNEX — QUANTNEX VIEW</title>
+  <link rel="stylesheet" href="styles.css?v=20261112-quantnex-view1">
   <link rel="stylesheet" href="signal-tool.css">
   <link rel="stylesheet" href="workspace-pages.css?v=20261112-pages10">
 </head>
@@ -17,7 +17,7 @@
       <a class="brand" href="#overview"><img class="brand-mark-img" src="quantnex-mark.svg" alt=""><span>QUANTNEX</span></a>
       <div class="side-caption">WORKSPACE</div>
       <a class="nav-link active" href="#overview"><span>⌂</span>Overview</a>
-      <a class="nav-link" href="#tradingview"><span>▥</span>TradingView</a>
+      <a class="nav-link" href="#tradingview"><span>▥</span>QUANTNEX VIEW</a>
       <a class="nav-link" href="#tools"><span>⌗</span>Position calculator</a>
       <a class="nav-link" href="#journal"><span>▤</span>Trade journal</a>
       <a class="nav-link" href="#account"><span>◈</span>Account &amp; wallet</a>
@@ -171,8 +171,42 @@
         <div class="p7-risk-result" id="p7RiskResult"><div class="p7-empty">Enter equity, risk percentage, entry and stop loss.</div></div>
         <p class="p7-note">Estimated units are not broker lots. Contract sizes, tick values, margin, spread, commissions and slippage are not included.</p>
       </section>
-      <section class="section-heading" id="tradingview"><div><div class="overline">CHARTING</div><h2>TradingView</h2><p>One dedicated chart workspace. Select a symbol and timeframe.</p></div><span class="pill live-pill">CHART TAB</span></section>
-      <section class="panel chart-panel"><div class="chart-heading"><div><strong>TradingView Advanced Chart</strong><span>Choose XAUUSD or BTCUSDT</span></div><label class="chart-select-label">Symbol <select id="tradingViewSymbol"><option value="OANDA:XAUUSD">XAUUSD</option><option value="BINANCE:BTCUSDT">BTCUSDT</option></select></label></div><div id="xauTradingView" class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div><script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>{"autosize":true,"symbol":"OANDA:XAUUSD","interval":"15","timezone":"Etc/UTC","theme":"dark","style":"1","locale":"en","allow_symbol_change":true,"calendar":false,"support_host":"https://www.tradingview.com"}</script></div></section>
+      <section class="section-heading" id="tradingview"><div><div class="overline">FIRST-PARTY CHARTING</div><h2>QUANTNEX VIEW</h2><p>Your own live chart workspace for Crypto and Gold.</p></div><span class="pill live-pill">QUANTNEX VIEW</span></section>
+      <section class="panel chart-panel qx-chart-panel" aria-label="QUANTNEX VIEW live chart">
+        <div class="qx-chart-topbar">
+          <div class="qx-chart-market">
+            <label>Market<select id="qxSymbol"><option value="BTCUSDT">BTC / USDT</option><option value="ETHUSDT">ETH / USDT</option><option value="SOLUSDT">SOL / USDT</option><option value="XAUUSD">Gold / XAUUSD</option></select></label>
+            <div><strong id="qxChartLastPrice">—</strong><small id="qxChartChange">Waiting for market data</small></div>
+          </div>
+          <div class="qx-chart-toolbar">
+            <label>Timeframe<select id="qxInterval"><option value="1m">1m</option><option value="5m">5m</option><option value="15m" selected>15m</option><option value="30m">30m</option><option value="1h">1H</option><option value="4h">4H</option></select></label>
+            <label>Chart type<select id="qxChartType"><option value="candles">Candles</option><option value="heikin">Heikin Ashi</option><option value="line">Line</option><option value="area">Area</option><option value="bar">Bars</option></select></label>
+            <label>Theme<select id="qxChartTheme"><option value="dark">Dark</option><option value="light">Light</option></select></label>
+            <button class="secondary-btn compact-btn" id="qxFitChart" type="button">Fit</button>
+            <button class="secondary-btn compact-btn" id="qxScreenshot" type="button">Snapshot</button>
+          </div>
+        </div>
+        <div class="qx-chart-options">
+          <label><input type="checkbox" id="qxVolume" checked> Volume</label>
+          <label><input type="checkbox" id="qxEma20"> EMA 20</label>
+          <label><input type="checkbox" id="qxEma50"> EMA 50</label>
+          <label><input type="checkbox" id="qxSma200"> SMA 200</label>
+          <label><input type="checkbox" id="qxLogScale"> Log scale</label>
+          <label><input type="checkbox" id="qxGrid" checked> Grid</label>
+          <label>Up candle <input type="color" id="qxUpColor" value="#20c997"></label>
+          <label>Down candle <input type="color" id="qxDownColor" value="#f05d68"></label>
+        </div>
+        <div class="qx-drawing-toolbar">
+          <span>Draw</span>
+          <button class="secondary-btn compact-btn active" type="button" data-qx-draw="cursor">Cursor</button>
+          <button class="secondary-btn compact-btn" type="button" data-qx-draw="horizontal">Horizontal line</button>
+          <button class="secondary-btn compact-btn" type="button" data-qx-draw="trend">Trend line</button>
+          <button class="secondary-btn compact-btn" type="button" id="qxClearDrawings">Clear drawings</button>
+          <span class="qx-chart-status" id="qxChartStatus" role="status">Connecting to local market data…</span>
+        </div>
+        <div id="qxChartHost" class="qx-chart-host"><div class="qx-chart-loading">Loading live candles…</div></div>
+        <div class="qx-chart-footer"><span id="qxChartProvider">Market feed: waiting</span><span>Live updates · local chart settings · Chart engine by <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">TradingView Lightweight Charts™</a></span></div>
+      </section>
       <section class="panel live-pnl-panel" aria-label="Live trade result calculator">
         <div class="signal-intro"><div><strong>Live trade result calculator</strong><p>Estimate unrealized P&amp;L using the latest BTC or XAUUSD market quote. No broker order is placed.</p></div><span class="signal-pill">LIVE PRICE</span></div>
         <div class="live-pnl-grid">
@@ -189,9 +223,9 @@
         <p class="p7-note">BTC quantity is measured in BTC. Gold quantity is measured in broker lots using the editable ounces-per-lot contract size (default 100 oz; confirm with your broker). This gross estimate excludes spread, commission, swap, funding and slippage.</p>
       </section>
       <section class="panel timeframe-panel">
-        <div class="signal-intro"><div><strong>Signal timeframe preferences</strong><p>Choose the timeframes and confluence threshold used by the live XAUUSD analysis engine.</p></div><span class="signal-pill">USER CONFIGURABLE</span></div>
+        <div class="signal-intro"><div><strong>Signal timeframe preferences</strong><p>Choose the market, analysis timeframes and confluence threshold used by the multi-market signal engine.</p></div><span class="signal-pill">USER CONFIGURABLE</span></div>
         <div class="timeframe-grid">
-          <label>Primary signal timeframe<select id="primarySignalTf"><option value="1">1 Minute</option><option value="5" selected>5 Minutes</option><option value="15">15 Minutes</option><option value="30">30 Minutes</option><option value="60">1 Hour</option><option value="50">50 Minutes (custom)</option></select></label>
+          <label>Signal market<select id="signalMarketSymbol"><option value="BTCUSDT" selected>Bitcoin · BTCUSDT</option><option value="ETHUSDT">Ethereum · ETHUSDT</option><option value="SOLUSDT">Solana · SOLUSDT</option><option value="XAUUSD">Gold · XAUUSD</option></select></label>\n          <label>Primary signal timeframe<select id="primarySignalTf"><option value="1">1 Minute</option><option value="5" selected>5 Minutes</option><option value="15">15 Minutes</option><option value="30">30 Minutes</option><option value="60">1 Hour</option><option value="50">50 Minutes (custom)</option></select></label>
           <label>Trend timeframe<select id="trendSignalTf"><option value="15">15 Minutes</option><option value="30" selected>30 Minutes</option><option value="60">1 Hour</option><option value="240">4 Hours</option></select></label>
           <label>Chart timeframe<select id="chartSignalTf"><option value="1">1 Minute</option><option value="5">5 Minutes</option><option value="15" selected>15 Minutes</option><option value="30">30 Minutes</option><option value="60">1 Hour</option><option value="50">50 Minutes (custom)</option></select></label>
         </div>
@@ -200,13 +234,13 @@
           <label>Minimum confirmations<select id="signalMinScore"><option value="6">6 / 10 · Aggressive</option><option value="7" selected>7 / 10 · Balanced</option><option value="8">8 / 10 · Selective</option><option value="9">9 / 10 · Very selective</option></select></label>
           <label>Risk per signal (%)<input id="signalRiskPct" type="number" min="0.1" max="5" step="0.1" value="1"></label>
         </div>
-        <div class="signal-actions"><button class="primary-btn" id="saveTimeframes">Save signal settings</button><button class="secondary-btn" id="syncTimeframes">Load settings from Telegram</button><button class="secondary-btn" id="applyChartTf">Apply to XAUUSD chart</button><button class="secondary-btn" id="runSignalScan">Run XAUUSD signal scan</button></div>
-        <p class="telegram-status" id="timeframeStatus" aria-live="polite">Connect your QUANTNEX account to save shared settings and run live analysis. M50 is aggregated from 1-minute candles and has shorter indicator history.</p>
+        <div class="signal-actions"><button class="primary-btn" id="saveTimeframes">Save signal settings</button><button class="secondary-btn" id="syncTimeframes">Load settings from Telegram</button><button class="secondary-btn" id="applyChartTf">Apply to QUANTNEX VIEW</button><button class="secondary-btn" id="runSignalScan">Run market signal scan</button></div>
+        <p class="telegram-status" id="timeframeStatus" aria-live="polite">Connect your Telegram bot to receive generated signals. Crypto analysis uses Binance public data; Gold needs a configured local provider. M50 is aggregated from 1-minute candles.</p>
         <div class="signal-warning">Gold and Forex analysis require a supported market-data provider configured on this computer. Keep provider credentials private; QUANTNEX never displays secret values in the website. Provider plan limits and market-data entitlements apply.</div>
       </section>
       <section class="panel signal-panel signal-results-panel">
         <div class="signal-intro"><div><strong>Live signal analysis</strong><p>EMA 20/50/200 · MACD · RSI · ADX · ATR · Structure · Liquidity · OB / Breaker / FVG / iFVG</p></div><span class="signal-pill" id="signalEngineState">NOT SCANNED</span></div>
-        <div id="signalResult" class="signal-result-empty">Configure a market-data key on the local API, then run a scan. No live signal is assumed until the feed responds.</div>
+        <div id="signalResult" class="signal-result-empty">Select BTC, ETH, SOL or XAUUSD and run a scan. Crypto uses Binance public candles; XAUUSD requires the configured local provider.</div>
         <div id="indicatorReadout" class="indicator-readout"></div>
         <p class="signal-feed-note">The 0–10 score counts matching rules; it is not a measured win rate or probability. Reaper is a named third-party/custom indicator with no confirmed formula in this project, so it is not represented as a working confirmation. The engine uses its own documented rule-based approximations for market structure and zones.</p>
       </section>
@@ -242,6 +276,7 @@
             <div class="signal-actions"><button class="primary-btn" id="connectTelegram">Connect bot &amp; enable commands</button><button class="secondary-btn" id="testTelegram">Test Telegram message</button><button class="secondary-btn" id="clearTelegram">Clear credentials</button></div>
             <div class="auto-signal-controls">
               <label class="auto-signal-toggle"><input type="checkbox" id="autoSignalsEnabled"><span><strong>Enable Auto Signals</strong><small>Only send a Telegram alert when a fresh setup passes the strict confirmation rules.</small></span></label>
+              <div class="qx-auto-markets"><span>Markets to scan</span><label><input type="checkbox" name="autoSignalSymbol" value="BTCUSDT" checked> BTC</label><label><input type="checkbox" name="autoSignalSymbol" value="ETHUSDT" checked> ETH</label><label><input type="checkbox" name="autoSignalSymbol" value="SOLUSDT" checked> SOL</label><label><input type="checkbox" name="autoSignalSymbol" value="XAUUSD"> Gold</label></div>
               <label>Scan interval<select id="autoSignalInterval"><option value="60">Every 1 minute</option><option value="180" selected>Every 3 minutes</option><option value="300">Every 5 minutes</option><option value="900">Every 15 minutes</option></select></label>
               <button class="primary-btn" id="saveAutoSignals">Save Auto Signal settings</button>
               <p class="telegram-status" id="autoSignalStatus">Auto signals are OFF until you explicitly enable them.</p>
@@ -266,7 +301,7 @@
             <div><span>Broker order execution</span><strong>Disabled</strong></div>
             <div><span>Telegram plan alerts</span><strong>Manual send</strong></div>
           </div>
-          <p class="signal-feed-note">The embedded TradingView chart is a live chart widget, but TradingView does not expose its chart candles to this page for external calculations. Automated EMA / MACD / RSI / ATR, market-structure, OB / FVG confluence and multi-timeframe signal generation require a separate licensed market-data feed and backend engine. No fabricated signal or confidence score is shown.</p>
+          <p class="signal-feed-note">QUANTNEX VIEW uses first-party local chart rendering. Crypto candles and signals use Binance Spot market data; XAUUSD requires the configured local market-data provider. A confluence score counts matching rules, not a win probability.</p>
         </article>
       </section>
 
@@ -476,6 +511,7 @@
   <script src="app.js"></script>
   <script src="realtime-events.js"></script>
   <script src="workspace-pages.js"></script>
+  <script src="https://unpkg.com/lightweight-charts@5.0.8/dist/lightweight-charts.standalone.production.js"></script>
   <script src="signal-tool.js"></script>
 </body>
 </html>

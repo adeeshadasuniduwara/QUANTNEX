@@ -87,6 +87,16 @@ class TelegramConnectRequest(BaseModel):
 class AutoSignalSettingsRequest(BaseModel):
     enabled: bool = False
     interval_seconds: int = Field(default=180, ge=60, le=3600)
+    symbols: list[str] = Field(default_factory=lambda: ["BTCUSDT","ETHUSDT","SOLUSDT"], max_length=4)
+
+    @field_validator("symbols")
+    @classmethod
+    def valid_auto_signal_symbols(cls, values):
+        allowed = {"BTCUSDT","ETHUSDT","SOLUSDT","XAUUSD"}
+        normalized = list(dict.fromkeys(str(value).upper() for value in values))
+        if not normalized or any(value not in allowed for value in normalized):
+            raise ValueError("Select one or more supported crypto markets or XAUUSD.")
+        return normalized
 
 class SignalSettingsRequest(BaseModel):
     primary: str = Field(default="5", pattern="^(1|5|15|30|50|60)$")

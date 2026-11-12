@@ -257,7 +257,9 @@ async def scan_xauusd_signal(user: User = Depends(current_user), db: Session = D
         _save_preference(db,user.id,"active_signal",json.dumps({**signal,"tp1_notified":False,"tp2_notified":False,"tp3_notified":False,"sl_notified":False}))
         token_enc=_preference(db,user.id,"telegram_bot_token_enc")
         chat_id=_preference(db,user.id,"telegram_chat_id")
-        if token_enc and chat_id:
+        try: auto_settings=json.loads(_preference(db,user.id,"auto_signal_settings",'{"enabled":false}'))
+        except ValueError: auto_settings={"enabled":False}
+        if token_enc and chat_id and auto_settings.get("enabled"):
             try:
                 token=decrypt_secret(token_enc)
                 message=("QUANTNEX · XAUUSD "+signal["side"]+"\\nEntry: "+str(signal["entry"])+"\\nSL: "+str(signal["stop_loss"])+
@@ -265,10 +267,14 @@ async def scan_xauusd_signal(user: User = Depends(current_user), db: Session = D
                     "\\nConfluence: "+str(signal["score"])+"/10 (not win probability)\\nConfirmations: "+", ".join(signal["confirmations"])+
                     "\\nTP1/SL level alerts run while the local API is active. No broker order is placed.")
                 async with httpx.AsyncClient(timeout=12) as client:
-                    await client.post("https://api.telegram.org/bot"+token+"/sendMessage",
+                    response=await client.post("https://api.telegram.org/bot"+token+"/sendMessage",
                         json={"chat_id":chat_id,"text":message,"disable_web_page_preview":True})
+                    response.raise_for_status()
                 result["telegram_sent"]=True
             except Exception: result["telegram_sent"]=False
+        else:
+            result["telegram_sent"]=False
+            result["telegram_note"]="Auto Signals is OFF; this manual scan did not send a Telegram alert."
     else:
         _save_preference(db,user.id,"active_signal","")
     db.commit()

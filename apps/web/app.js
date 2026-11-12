@@ -494,7 +494,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   if(!$("p8Backtest"))return;
   const fmt=(v,d=2)=>v==null||!Number.isFinite(Number(v))?"—":Number(v).toLocaleString(undefined,{maximumFractionDigits:d});
   const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=String(text);if(cls)n.className=cls;return n;};
-  let replay=[],cursor=0;
+  let replay=[],cursor=0,replayTimer=null;
   const config=()=>({name:"EMA Trend Cross",fast_ema:Number($("p8Fast").value),slow_ema:Number($("p8Slow").value),risk_reward:Number($("p8RR").value)});
   const market=()=>({symbol:$("p8Symbol").value,timeframe:$("p8Timeframe").value});
   const status=(message,error=false)=>{const n=$("p8Status");n.textContent=message;n.className=error?"p7-note p7-status-error":"p7-note p7-status-ok";};
@@ -551,7 +551,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     const candle=replay[cursor];if(!candle)return;
     $("p8ReplayIndex").textContent=(cursor+1)+" / "+replay.length+" candles";
     $("p8ReplayCandle").textContent="O "+fmt(candle.open,5)+" · H "+fmt(candle.high,5)+" · L "+fmt(candle.low,5)+" · C "+fmt(candle.close,5)+" · "+candle.time;
-    $("p8ReplayPrev").disabled=cursor<=0;$("p8ReplayNext").disabled=cursor>=replay.length-1;
+    $("p8ReplayPrev").disabled=cursor<=0;$("p8ReplayNext").disabled=cursor>=replay.length-1;$("p8ReplayPlay").disabled=!replay.length;
     const body=$("p8ReplayRows");body.replaceChildren();
     replay.slice(Math.max(0,cursor-4),cursor+1).reverse().forEach(x=>{const tr=document.createElement("tr");
       [x.time,fmt(x.open,5),fmt(x.high,5),fmt(x.low,5),fmt(x.close,5)].forEach(v=>tr.append(el("td",v)));body.append(tr);});
@@ -580,7 +580,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   $("p8Optimize").addEventListener("click",runOptimizer);
   $("p8Forward").addEventListener("click",runForward);
   $("p8ReplayLoad").addEventListener("click",loadReplay);
-  $("p8ReplayPrev").addEventListener("click",()=>{cursor=Math.max(0,cursor-1);renderReplay();});
+  $("p8ReplayPrev").addEventListener("click",()=>{cursor=Math.max(0,cursor-1);renderReplay();});\n  $("p8ReplayPlay").addEventListener("click",()=>{if(replayTimer){clearInterval(replayTimer);replayTimer=null;$("p8ReplayPlay").textContent="Play";return;}if(cursor>=replay.length-1)cursor=0;$("p8ReplayPlay").textContent="Pause";replayTimer=setInterval(()=>{if(cursor>=replay.length-1){clearInterval(replayTimer);replayTimer=null;$("p8ReplayPlay").textContent="Play";return;}cursor++;renderReplay();},700);});
   $("p8ReplayNext").addEventListener("click",()=>{cursor=Math.min(replay.length-1,cursor+1);renderReplay();});
   $("p8ResearchRefresh").addEventListener("click",loadResearch);
   loadResearch();

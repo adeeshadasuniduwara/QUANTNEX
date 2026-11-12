@@ -36,15 +36,15 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           python - <<'PY'
-          import json, os
+          import os, html
           if os.environ["EVENT_NAME"] == "workflow_dispatch":
               title = "Telegram notification test"
               tag = "Configuration test"
               url = "https://github.com/" + os.environ["REPO"]
               intro = "The QUANTNEX Telegram release notification is connected."
           else:
-              title = os.environ.get("RELEASE_NAME") or os.environ.get("RELEASE_TAG") or "New release"
-              tag = os.environ.get("RELEASE_TAG") or "Release"
+              title = html.escape(os.environ.get("RELEASE_NAME") or os.environ.get("RELEASE_TAG") or "New release")
+              tag = html.escape(os.environ.get("RELEASE_TAG") or "Release")
               url = os.environ.get("RELEASE_URL") or ("https://github.com/" + os.environ["REPO"] + "/releases")
               intro = "A new QUANTNEX version has been published."
           text = (

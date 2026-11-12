@@ -34,6 +34,15 @@ def current_user(credentials: HTTPAuthorizationCredentials | None = Depends(bear
         raise HTTPException(status_code=401, detail="User account not found.")
     return user
 
+@app.get("/api/v1/market/overview")
+async def market_overview():
+    """Indicative BTC/USD, XAU/USD and converted Sri Lankan gold values."""
+    from .market_data import get_market_overview
+    try:
+        return await get_market_overview()
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="A market price provider is temporarily unavailable.")
+
 @app.get("/health")
 def health(db: Session = Depends(get_db)):
     db.execute(text("SELECT 1"))

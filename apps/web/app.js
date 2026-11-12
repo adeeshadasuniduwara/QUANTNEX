@@ -46,24 +46,78 @@ $("exportJournal").addEventListener("click",()=>{
   const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),link=document.createElement("a");link.href=url;link.download="quantnex-trading-journal.csv";link.click();URL.revokeObjectURL(url);
 });
 renderJournal();
+// Web release checker: checks published GitHub releases and offers a direct source ZIP download.
+const WEB_APP_VERSION = "0.6.0";
 const updateButton = $("webCheckUpdate");
+const releaseVersionLabel = $("webReleaseVersion");
+const releaseZipLink = $("webDownloadReleaseZip");
+const releaseNotesLink = $("webReleaseNotes");
+const releaseAssetsBox = $("webReleaseAssets");
+function versionParts(value){
+  const match=String(value||"").trim().replace(/^v/i,"").match(/^(\\d+)\\.(\\d+)\\.(\\d+)/);
+  return match?match.slice(1).map(Number):[0,0,0];
+}
+function compareVersions(a,b){
+  const aa=versionParts(a),bb=versionParts(b);
+  for(let i=0;i<3;i++){if(aa[i]>bb[i])return 1;if(aa[i]<bb[i])return -1;}
+  return 0;
+}
+function renderReleaseAssets(assets){
+  releaseAssetsBox.replaceChildren();
+  const usable=(assets||[]).filter(asset=>asset&&asset.browser_download_url&&asset.name);
+  if(!usable.length){releaseAssetsBox.hidden=true;return;}
+  const heading=document.createElement("strong");heading.textContent="Release downloads";releaseAssetsBox.append(heading);
+  const list=document.createElement("div");list.className="release-asset-list";
+  usable.forEach(asset=>{
+    const link=document.createElement("a");link.href=asset.browser_download_url;link.target="_blank";link.rel="noreferrer";
+    link.className="release-asset-link";link.textContent=asset.name;
+    const size=document.createElement("small");size.textContent=asset.size?(" · "+(asset.size/1024/1024).toFixed(1)+" MB"):"";
+    link.append(size);list.append(link);
+  });
+  releaseAssetsBox.append(list);releaseAssetsBox.hidden=false;
+}
 if (updateButton) updateButton.addEventListener("click", async () => {
-  const status = $("webUpdateStatus"), progress = $("webUpdateProgress");
-  updateButton.disabled = true; updateButton.textContent = "Checking…"; progress.hidden = false;
-  status.textContent = "Connecting to the official QUANTNEX release channel…";
-  try {
-    const response = await fetch("https://api.github.com/repos/adeeshadasuniduwara/QUANTNEX/releases/latest", {headers:{"Accept":"application/vnd.github+json"}});
-    if (response.status === 404) { status.textContent = "No published release is available yet. Check back when the next release is published."; return; }
-    if (!response.ok) throw new Error("Release service returned " + response.status);
-    const release = await response.json();
-    const tag = release.tag_name || "Latest";
-    status.textContent = "Latest published release: " + tag + ". Open release notes to review available downloads. Web updates are installed manually; Windows desktop updates use the built-in updater.";
-    const link = document.createElement("a"); link.href = release.html_url; link.target = "_blank"; link.rel = "noreferrer"; link.className = "secondary-btn link-btn"; link.textContent = "Open " + tag + " release";
-    const actions = document.querySelector(".update-actions"); const old = actions.querySelector(".release-link"); if(old) old.remove(); link.classList.add("release-link"); actions.append(link);
-  } catch (error) { status.textContent = "Could not check updates: " + error.message + ". You can open the official releases page instead."; }
-  finally { updateButton.disabled = false; updateButton.textContent = "Check for updates"; progress.hidden = true; }
+  const status=$("webUpdateStatus"),progress=$("webUpdateProgress");
+  updateButton.disabled=true;updateButton.textContent="Checking…";progress.hidden=false;
+  status.textContent="Connecting to the official QUANTNEX GitHub release channel…";
+  releaseVersionLabel.textContent="Checking…";
+  releaseZipLink.hidden=true;releaseAssetsBox.hidden=true;
+  try{
+    const response=await fetch("https://api.github.com/repos/adeeshadasuniduwara/QUANTNEX/releases/latest",{
+      headers:{"Accept":"application/vnd.github+json"}
+    });
+    if(response.status===404){
+      releaseVersionLabel.textContent="No published release";
+      status.textContent="No stable published release is available yet. You can still download the current main-branch source ZIP, but it is a development snapshot.";
+      releaseNotesLink.href="https://github.com/adeeshadasuniduwara/QUANTNEX/releases";
+      return;
+    }
+    if(!response.ok)throw new Error("GitHub release service returned HTTP "+response.status);
+    const release=await response.json();
+    const tag=release.tag_name||release.name||"Latest";
+    releaseVersionLabel.textContent=tag;
+    if(release.zipball_url){
+      releaseZipLink.href=release.zipball_url;
+      releaseZipLink.hidden=false;
+      releaseZipLink.textContent="Download "+tag+" source ZIP";
+    }
+    if(release.html_url)releaseNotesLink.href=release.html_url;
+    renderReleaseAssets(release.assets);
+    const comparison=compareVersions(tag,WEB_APP_VERSION);
+    if(comparison>0){
+      status.textContent="Update available: "+tag+" (installed Web version v"+WEB_APP_VERSION+"). Download the release ZIP and install it manually.";
+    }else if(comparison===0){
+      status.textContent="You have the latest published Web version ("+tag+"). You can download its ZIP again or review the release notes.";
+    }else{
+      status.textContent="Latest published release is "+tag+". This Web source build ("+WEB_APP_VERSION+") is newer than that release; check the release notes before replacing files.";
+    }
+  }catch(error){
+    releaseVersionLabel.textContent="Check failed";
+    status.textContent="Could not check GitHub releases: "+error.message+". You can still download the current main-branch source ZIP.";
+  }finally{
+    updateButton.disabled=false;updateButton.textContent="Check for updates";progress.hidden=true;
+  }
 });
-
 
 // Authenticated shared API wallet. Access tokens stay in this browser tab's session storage.
 const API_BASE_KEY = "quantnex.apiBase.v1";

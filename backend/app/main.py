@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, DATABASE_URL
 from .database import Base, engine, get_db, SessionLocal
-from .models import AuditEvent, Preference, Trade, User, WalletTransaction
+from .models import AuditEvent, PaperTrade, Preference, Trade, User, WalletTransaction
 from .schemas import AIChatRequest, AIChatResponse, PreferenceResponse, PreferenceWrite, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TradeCreate, TradeResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
 from .security import decrypt_secret, encrypt_secret
 from .maintenance import daily_backup_worker, record_audit_event
@@ -459,3 +459,172 @@ async def stop_daily_backup_worker():
             await task
         except asyncio.CancelledError:
             pass
+
+
+# ---------------------------------------------------------------------------
+# Phase 07 — multi-market intelligence, paper trading, performance and risk.
+# All trading endpoints are simulation-only. No broker execution is available.
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/intelligence/markets")
+async def intelligence_markets(user: User = Depends(local_workspace)):
+    from .phase07_engine import get_market_board
+    return await get_market_board()
+
+@app.get("/api/v1/intelligence/market/{symbol}/candles")
+async def intelligence_candles(symbol: str, timeframe: str = "15m",
+                                user: User = Depends(local_workspace)):
+    from .phase07_engine import get_candles, market_info, IntelligenceDataError
+    try:
+        info=market_info(symbol)
+        candles=await get_candles(info["symbol"],timeframe)
+        return {"symbol":info["symbol"],"timeframe":timeframe,"provider":info["provider"],
+                "candles":candles,"count":len(candles)}
+    except ValueError as exc:
+        raise HTTPException(status_code=422,detail=str(exc))
+    except (IntelligenceDataError,httpx.HTTPError) as exc:
+        raise HTTPException(status_code=502,detail=str(exc))
+
+@app.get("/api/v1/intelligence/market/{symbol}/orderbook")
+async def intelligence_orderbook(symbol: str, user: User = Depends(local_workspace)):
+    from .phase07_engine import get_order_book, market_info
+    try:
+        return await get_order_book(market_info(symbol)["symbol"])
+    except ValueError as exc:
+        raise HTTPException(status_code=422,detail=str(exc))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502,detail="Order-book provider is temporarily unavailable.")
+
+@app.post("/api/v1/intelligence/signals/scan")
+async def intelligence_signal_scan(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .phase07_engine import scan_market_signal, market_info, IntelligenceDataError
+    symbol=payload.get("symbol","XAUUSD")
+    threshold=payload.get("min_score",6)
+    if not isinstance(threshold,int) or not 4<=threshold<=10:
+        raise HTTPException(status_code=422,detail="min_score must be an integer between 4 and 10.")
+    try:
+        info=market_info(symbol)
+        result=await scan_market_signal(info["symbol"],threshold)
+    except ValueError as exc:
+        raise HTTPException(status_code=422,detail=str(exc))
+    except (IntelligenceDataError,httpx.HTTPError) as exc:
+        raise HTTPException(status_code=502,detail=str(exc))
+    if result.get("signal"):
+        record_audit_event(db,"phase07.signal_generated",{"symbol":result["symbol"],"side":result["signal"]["side"],
+            "score":result["signal"]["score"],"mode":"paper_only"})
+        db.commit()
+    return result
+
+@app.get("/api/v1/intelligence/news")
+async def intelligence_news(days: int = 7, user: User = Depends(local_workspace)):
+    from .phase07_engine import get_economic_calendar
+    try:
+        return await get_economic_calendar(days)
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502,detail="Economic calendar provider is temporarily unavailable.")
+
+@app.post("/api/v1/intelligence/risk/calculate")
+def intelligence_risk_calculate(payload: dict, user: User = Depends(local_workspace)):
+    from .phase07_engine import calculate_risk
+    try:
+        return calculate_risk(float(payload.get("equity",0)),float(payload.get("risk_percent",0)),
+                              float(payload.get("entry",0)),float(payload.get("stop_loss",0)))
+    except (ValueError,TypeError) as exc:
+        raise HTTPException(status_code=422,detail=str(exc))
+
+@app.get("/api/v1/paper-trading/trades")
+def list_paper_trades(limit: int = 100, status: str = "ALL",
+                      user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    if not 1<=limit<=500: raise HTTPException(status_code=422,detail="Limit must be between 1 and 500.")
+    query=select(PaperTrade).where(PaperTrade.user_id==user.id)
+    if status.upper() in {"OPEN","CLOSED"}: query=query.where(PaperTrade.status==status.upper())
+    elif status.upper()!="ALL": raise HTTPException(status_code=422,detail="Status must be OPEN, CLOSED or ALL.")
+    rows=list(db.scalars(query.order_by(PaperTrade.id.desc()).limit(limit)))
+    return [{"id":x.id,"symbol":x.symbol,"side":x.side,"quantity":x.quantity,"entry_price":x.entry_price,
+             "stop_loss":x.stop_loss,"take_profit":x.take_profit,"status":x.status,"exit_price":x.exit_price,
+             "realized_pnl":x.realized_pnl,"created_at":x.created_at.isoformat(),
+             "closed_at":x.closed_at.isoformat() if x.closed_at else None} for x in rows]
+
+@app.post("/api/v1/paper-trading/trades",status_code=201)
+async def open_paper_trade(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .phase07_engine import get_quote, market_info, IntelligenceDataError
+    try:
+        info=market_info(str(payload.get("symbol","")))
+        side=str(payload.get("side","")).upper()
+        quantity=float(payload.get("quantity",0))
+        stop=float(payload.get("stop_loss",0))
+        target=float(payload.get("take_profit",0))
+        if side not in {"BUY","SELL"} or not 0<quantity<=1000000 or stop<=0 or target<=0:
+            raise ValueError("Side, quantity, stop loss and take profit are invalid.")
+        quote=await get_quote(info["symbol"])
+        entry=float(quote["price"])
+        if (side=="BUY" and not stop<entry<target) or (side=="SELL" and not target<entry<stop):
+            raise ValueError("For BUY, Stop Loss < live entry < Take Profit. For SELL, Take Profit < live entry < Stop Loss.")
+        item=PaperTrade(user_id=user.id,symbol=info["symbol"],side=side,quantity=quantity,
+                        entry_price=entry,stop_loss=stop,take_profit=target,status="OPEN")
+        db.add(item)
+        db.flush()
+        record_audit_event(db,"paper_trade.opened",{"trade_id":item.id,"symbol":item.symbol,"side":side,
+            "quantity":quantity,"entry":entry,"mode":"paper"})
+        db.commit()
+        db.refresh(item)
+        return {"id":item.id,"symbol":item.symbol,"side":item.side,"quantity":item.quantity,
+                "entry_price":item.entry_price,"stop_loss":item.stop_loss,"take_profit":item.take_profit,
+                "status":item.status,"mode":"PAPER"}
+    except ValueError as exc:
+        raise HTTPException(status_code=422,detail=str(exc))
+    except (IntelligenceDataError,httpx.HTTPError) as exc:
+        raise HTTPException(status_code=502,detail=str(exc))
+
+@app.post("/api/v1/paper-trading/trades/{trade_id}/close")
+async def close_paper_trade(trade_id: int, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .phase07_engine import get_quote, IntelligenceDataError
+    item=db.scalar(select(PaperTrade).where(PaperTrade.id==trade_id,PaperTrade.user_id==user.id))
+    if item is None: raise HTTPException(status_code=404,detail="Paper trade not found.")
+    if item.status!="OPEN": raise HTTPException(status_code=409,detail="Paper trade is already closed.")
+    try:
+        quote=await get_quote(item.symbol)
+        exit_price=float(quote["price"])
+    except (IntelligenceDataError,httpx.HTTPError) as exc:
+        raise HTTPException(status_code=502,detail=str(exc))
+    pnl=(exit_price-item.entry_price)*item.quantity*(1 if item.side=="BUY" else -1)
+    item.exit_price=exit_price
+    item.realized_pnl=round(pnl,8)
+    item.status="CLOSED"
+    item.closed_at=datetime.now().astimezone()
+    record_audit_event(db,"paper_trade.closed",{"trade_id":item.id,"symbol":item.symbol,
+        "exit":exit_price,"realized_pnl":item.realized_pnl,"mode":"paper"})
+    db.commit()
+    return {"id":item.id,"status":item.status,"exit_price":exit_price,"realized_pnl":item.realized_pnl,"mode":"PAPER"}
+
+@app.get("/api/v1/paper-trading/summary")
+def paper_trading_summary(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    rows=list(db.scalars(select(PaperTrade).where(PaperTrade.user_id==user.id)))
+    closed=[x for x in rows if x.status=="CLOSED"]
+    wins=[x for x in closed if (x.realized_pnl or 0)>0]
+    losses=[x for x in closed if (x.realized_pnl or 0)<0]
+    gross_profit=sum(x.realized_pnl or 0 for x in wins)
+    gross_loss=abs(sum(x.realized_pnl or 0 for x in losses))
+    return {"mode":"PAPER ONLY","open_trades":sum(x.status=="OPEN" for x in rows),
+            "closed_trades":len(closed),"wins":len(wins),"losses":len(losses),
+            "win_rate":round(len(wins)/len(closed)*100,2) if closed else None,
+            "realized_pnl":round(sum(x.realized_pnl or 0 for x in closed),2),
+            "profit_factor":round(gross_profit/gross_loss,3) if gross_loss else (None if not gross_profit else "infinite"),
+            "starting_balance":10000.0,
+            "note":"Separate virtual ledger. Existing wallet and journal balances are not changed."}
+
+@app.get("/api/v1/intelligence/performance")
+def intelligence_performance(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    rows=list(db.scalars(select(PaperTrade).where(PaperTrade.user_id==user.id,PaperTrade.status=="CLOSED")))
+    wins=[x for x in rows if (x.realized_pnl or 0)>0]
+    losses=[x for x in rows if (x.realized_pnl or 0)<0]
+    gross_profit=sum(x.realized_pnl or 0 for x in wins)
+    gross_loss=abs(sum(x.realized_pnl or 0 for x in losses))
+    return {"mode":"PAPER ONLY","total_trades":len(rows),"wins":len(wins),"losses":len(losses),
+            "breakeven":len(rows)-len(wins)-len(losses),
+            "win_rate":round(len(wins)/len(rows)*100,2) if rows else None,
+            "gross_profit":round(gross_profit,2),"gross_loss":round(gross_loss,2),
+            "net_pnl":round(gross_profit-gross_loss,2),
+            "profit_factor":round(gross_profit/gross_loss,3) if gross_loss else None,
+            "average_win":round(gross_profit/len(wins),2) if wins else None,
+            "average_loss":round(gross_loss/len(losses),2) if losses else None,
+            "note":"Statistics use closed QUANTNEX paper trades only; no performance or win-rate guarantee."}

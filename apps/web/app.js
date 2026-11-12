@@ -487,3 +487,285 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   });
   loadMarkets();loadBook();refreshAnalytics();
 })();
+
+
+// Phase 08 — Strategy Laboratory. All evaluations remain research / paper-only.
+(function initPhase08(){
+  if(!$("p8Backtest"))return;
+  const fmt=(v,d=2)=>v==null||!Number.isFinite(Number(v))?"—":Number(v).toLocaleString(undefined,{maximumFractionDigits:d});
+  const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=String(text);if(cls)n.className=cls;return n;};
+  let replay=[],cursor=0,replayTimer=null;
+  const config=()=>({name:"EMA Trend Cross",fast_ema:Number($("p8Fast").value),slow_ema:Number($("p8Slow").value),risk_reward:Number($("p8RR").value)});
+  const market=()=>({symbol:$("p8Symbol").value,timeframe:$("p8Timeframe").value});
+  const status=(message,error=false)=>{const n=$("p8Status");n.textContent=message;n.className=error?"p7-note p7-status-error":"p7-note p7-status-ok";};
+  const renderKpis=(data)=>{const root=$("p8Kpis");root.replaceChildren();
+    [["Backtest trades",data.trade_count],["Win rate",data.win_rate==null?"—":fmt(data.win_rate,1)+"%"],
+     ["Profit factor",data.profit_factor==null?"—":data.profit_factor==="infinite"?"∞":fmt(data.profit_factor,2)],
+     ["Net P&L",fmt(data.net_pnl,5)]].forEach(([a,b])=>{const card=el("article");card.append(el("span",a),el("strong",b));root.append(card);});
+  };
+  const runBacktest=async()=>{
+    const b=$("p8Backtest");b.disabled=true;b.textContent="Testing…";
+    try{
+      const data=await apiRequest("/api/v1/strategy-lab/backtest",{method:"POST",body:JSON.stringify({...market(),strategy:config()})});
+      renderKpis(data);const root=$("p8Result");root.replaceChildren();
+      root.append(el("p",data.strategy.name+" · EMA "+data.strategy.fast_ema+"/"+data.strategy.slow_ema+" · "+data.strategy.risk_reward+"R","p8-result-title"));
+      root.append(el("p","Historical candles: "+data.candle_count+" · Wins: "+data.wins+" · Losses: "+data.losses+" · Maximum drawdown: "+fmt(data.max_drawdown,5),"p7-note"));
+      root.append(el("p",data.limitations,"p7-note"));
+      const table=document.createElement("table"),head=document.createElement("tr");
+      ["Side","Entry","Stop","Target","Exit","P&L","Reason"].forEach(x=>head.append(el("th",x)));
+      const thead=document.createElement("thead");thead.append(head);table.append(thead);
+      const body=document.createElement("tbody");
+      data.trades.slice(-20).reverse().forEach(t=>{const tr=document.createElement("tr");
+        [t.side,fmt(t.entry,5),fmt(t.stop_loss,5),fmt(t.take_profit,5),fmt(t.exit,5),fmt(t.pnl,5),t.exit_reason].forEach(x=>tr.append(el("td",x)));body.append(tr);});
+      table.append(body);const wrap=el("div",undefined,"p7-table-wrap");wrap.append(table);root.append(wrap);
+      status("Backtest saved to local Strategy Research history. This is an in-sample simulation, not a future performance promise.");
+      await loadResearch();
+    }catch(e){status("Backtest failed: "+e.message,true);}
+    finally{b.disabled=false;b.textContent="Run backtest";}
+  };
+  const runOptimizer=async()=>{
+    const b=$("p8Optimize");b.disabled=true;b.textContent="Testing combinations…";
+    try{
+      const data=await apiRequest("/api/v1/strategy-lab/optimize",{method:"POST",body:JSON.stringify(market())});
+      const root=$("p8Result");root.replaceChildren(el("p",data.tested+" parameter combinations tested","p8-result-title"));
+      const table=document.createElement("table"),head=document.createElement("tr");
+      ["Rank","Fast / Slow EMA","R:R","Trades","Win rate","Net P&L","Profit factor"].forEach(x=>head.append(el("th",x)));
+      const thead=document.createElement("thead");thead.append(head);table.append(thead);
+      const body=document.createElement("tbody");
+      data.ranked.forEach((x,i)=>{const tr=document.createElement("tr");
+        [i+1,x.strategy.fast_ema+" / "+x.strategy.slow_ema,x.strategy.risk_reward,x.trade_count,x.win_rate==null?"—":x.win_rate+"%",fmt(x.net_pnl,5),x.profit_factor??"—"].forEach(v=>tr.append(el("td",v)));body.append(tr);});
+      table.append(body);const wrap=el("div",undefined,"p7-table-wrap");wrap.append(table);root.append(wrap);root.append(el("p",data.warning,"p7-note"));
+      status("Optimizer run saved. Select candidate settings and validate on unseen candles before forward observation.");await loadResearch();
+    }catch(e){status("Optimization failed: "+e.message,true);}
+    finally{b.disabled=false;b.textContent="Optimize settings";}
+  };
+  const runForward=async()=>{
+    const b=$("p8Forward");b.disabled=true;b.textContent="Evaluating…";
+    try{const data=await apiRequest("/api/v1/strategy-lab/forward/evaluate",{method:"POST",body:JSON.stringify({...market(),strategy:config()})});
+      status("Forward observation: "+data.symbol+" "+data.timeframe+" · "+data.side+" at "+fmt(data.price,5)+". "+data.note);
+      await loadResearch();
+    }catch(e){status("Forward observation failed: "+e.message,true);}
+    finally{b.disabled=false;b.textContent="Forward evaluate";}
+  };
+  const renderReplay=()=>{
+    const candle=replay[cursor];if(!candle)return;
+    $("p8ReplayIndex").textContent=(cursor+1)+" / "+replay.length+" candles";
+    $("p8ReplayCandle").textContent="O "+fmt(candle.open,5)+" · H "+fmt(candle.high,5)+" · L "+fmt(candle.low,5)+" · C "+fmt(candle.close,5)+" · "+candle.time;
+    $("p8ReplayPrev").disabled=cursor<=0;$("p8ReplayNext").disabled=cursor>=replay.length-1;$("p8ReplayPlay").disabled=!replay.length;
+    const body=$("p8ReplayRows");body.replaceChildren();
+    replay.slice(Math.max(0,cursor-4),cursor+1).reverse().forEach(x=>{const tr=document.createElement("tr");
+      [x.time,fmt(x.open,5),fmt(x.high,5),fmt(x.low,5),fmt(x.close,5)].forEach(v=>tr.append(el("td",v)));body.append(tr);});
+  };
+  const loadReplay=async()=>{
+    const b=$("p8ReplayLoad");b.disabled=true;
+    try{const data=await apiRequest("/api/v1/strategy-lab/replay?"+new URLSearchParams(market()));
+      replay=data.candles;cursor=0;renderReplay();status("Market replay loaded: "+data.count+" "+data.timeframe+" candles from "+data.symbol+".");}
+    catch(e){status("Replay unavailable: "+e.message,true);}
+    finally{b.disabled=false;}
+  };
+  const loadResearch=async()=>{
+    try{const data=await apiRequest("/api/v1/strategy-lab/research"),body=$("p8ResearchRows");body.replaceChildren();
+      $("p8ResearchSummary").textContent="Closed paper trades: "+data.paper_trades.closed+" · Wins: "+data.paper_trades.wins+
+        " · Losses: "+data.paper_trades.losses+" · Win rate: "+(data.paper_trades.win_rate==null?"—":data.paper_trades.win_rate+"%")+
+        " · Net P&L: "+fmt(data.paper_trades.net_pnl,2)+". "+data.guidance;
+      if(!data.runs.length){body.append(el("tr"));body.lastChild.append(el("td","No research runs yet."));body.lastChild.firstChild.colSpan=5;return;}
+      data.runs.forEach(x=>{const tr=el("tr");const result=x.result||{};
+        [x.type,x.symbol,x.timeframe,new Date(x.created_at).toLocaleString(),
+         x.type==="BACKTEST"?"Trades "+(result.trade_count??"—")+" · Win "+(result.win_rate??"—")+"%":
+         x.type==="OPTIMIZER"?(result.tested??"—")+" combinations":(result.side??"—")+" @ "+fmt(result.price,5)
+        ].forEach(v=>tr.append(el("td",v)));body.append(tr);});
+    }catch(e){$("p8ResearchSummary").textContent="Research history unavailable: "+e.message;}
+  };
+  $("p8Backtest").addEventListener("click",runBacktest);
+  $("p8Optimize").addEventListener("click",runOptimizer);
+  $("p8Forward").addEventListener("click",runForward);
+  $("p8ReplayLoad").addEventListener("click",loadReplay);
+  $("p8ReplayPrev").addEventListener("click",()=>{cursor=Math.max(0,cursor-1);renderReplay();});
+  $("p8ReplayPlay").addEventListener("click",()=>{if(replayTimer){clearInterval(replayTimer);replayTimer=null;$("p8ReplayPlay").textContent="Play";return;}if(cursor>=replay.length-1)cursor=0;$("p8ReplayPlay").textContent="Pause";replayTimer=setInterval(()=>{if(cursor>=replay.length-1){clearInterval(replayTimer);replayTimer=null;$("p8ReplayPlay").textContent="Play";return;}cursor++;renderReplay();},700);});
+  $("p8ReplayNext").addEventListener("click",()=>{cursor=Math.min(replay.length-1,cursor+1);renderReplay();});
+  $("p8ResearchRefresh").addEventListener("click",loadResearch);
+  loadResearch();
+})();
+
+
+// Phase 09 — portfolio risk, drawdown guardian and paper-only smart sizing.
+(function initPhase09(){
+  if(!$("p9Refresh"))return;
+  const fmt=(v,d=2)=>v==null||!Number.isFinite(Number(v))?"—":Number(v).toLocaleString(undefined,{maximumFractionDigits:d});
+  const val=id=>Number($(id).value);
+  const cfg=()=>({equity:val("p9Equity"),daily_loss_limit_percent:val("p9DailyLimit"),
+    max_drawdown_percent:val("p9MaxDD"),max_consecutive_losses:val("p9LossStreak")});
+  const status=(s,bad=false)=>{const n=$("p9Status");n.textContent=s;n.className=bad?"p7-note p7-status-error":"p7-note p7-status-ok";};
+  const render=(root,data)=>{root.replaceChildren();const pre=document.createElement("pre");pre.className="p9-report";pre.textContent=JSON.stringify(data,null,2);root.append(pre);};
+  async function refresh(){
+    try{
+      const data=await apiRequest("/api/v1/risk/portfolio");
+      const k=$("p9PortfolioKpis");k.replaceChildren();
+      [["Open positions",data.open_positions],["Gross notional estimate","$"+fmt(data.gross_notional_estimate)],
+       ["Planned stop risk","$"+fmt(data.planned_stop_risk_estimate)],["Symbols",Object.keys(data.by_symbol_notional||{}).length]
+      ].forEach(([a,b])=>{const card=document.createElement("article");card.append(document.createElement("span"),document.createElement("strong"));card.firstChild.textContent=a;card.lastChild.textContent=b;k.append(card);});
+      const body=$("p9Positions");body.replaceChildren();
+      if(!data.positions.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=6;td.className="empty-row";td.textContent="No open paper positions.";tr.append(td);body.append(tr);}
+      data.positions.forEach(p=>{const tr=document.createElement("tr");[p.id,p.symbol,p.side,fmt(p.quantity,6),fmt(p.notional_estimate,4),fmt(p.planned_stop_risk_estimate,4)].forEach(v=>{const td=document.createElement("td");td.textContent=v;tr.append(td);});body.append(tr);});
+      render($("p9Result"),{by_symbol_notional:data.by_symbol_notional,concentration_percent:data.symbol_concentration_percent,limitations:data.limitations});
+      status("Portfolio snapshot refreshed from the local paper ledger.");
+    }catch(e){status("Portfolio unavailable: "+e.message,true);}
+  }
+  async function guardian(){
+    try{const data=await apiRequest("/api/v1/risk/guardian",{method:"POST",body:JSON.stringify(cfg())});
+      render($("p9Result"),data);status(data.trading_allowed?"Risk Guardian: no configured limit is currently breached.":"Risk Guardian blocked smart paper entries: "+data.triggers.join(", "),!data.trading_allowed);
+    }catch(e){status("Guardian failed: "+e.message,true);}
+  }
+  async function stress(){
+    try{const data=await apiRequest("/api/v1/risk/stress",{method:"POST",body:JSON.stringify({})});
+      render($("p9Result"),data);status("Stress scenarios calculated using the displayed parallel-shock assumptions.");
+    }catch(e){status("Stress test failed: "+e.message,true);}
+  }
+  async function size(){
+    try{const data=await apiRequest("/api/v1/risk/position-size",{method:"POST",body:JSON.stringify({
+      equity:val("p9Equity"),risk_percent:val("p9RiskPercent"),entry:val("p9Entry")||0,
+      stop_loss:val("p9Stop"),contract_multiplier:val("p9Multiplier")
+    })});render($("p9Result"),data);status("Sizing complete. Set entry via live quote by using Smart Paper Open; this preview requires a valid entry.");
+    }catch(e){status("Sizing failed: "+e.message,true);}
+  }
+  async function smartOpen(){
+    const b=$("p9SmartOpen");b.disabled=true;
+    try{
+      const data=await apiRequest("/api/v1/paper-trading/smart-open",{method:"POST",body:JSON.stringify({
+        ...cfg(),symbol:$("p9Symbol").value,side:$("p9Side").value,risk_percent:val("p9RiskPercent"),
+        stop_loss:val("p9Stop"),take_profit:val("p9Target"),contract_multiplier:val("p9Multiplier")
+      })});
+      render($("p9Result"),data);status("Risk-checked paper trade #"+data.id+" opened. No broker order was sent.");await refresh();
+    }catch(e){status("Smart paper entry rejected: "+e.message,true);}
+    finally{b.disabled=false;}
+  }
+  $("p9Refresh").addEventListener("click",refresh);
+  $("p9Guardian").addEventListener("click",guardian);
+  $("p9Stress").addEventListener("click",stress);
+  $("p9Size").addEventListener("click",size);
+  $("p9SmartOpen").addEventListener("click",smartOpen);
+  refresh();
+})();
+
+ 
+// Phase 10 — Market Data Reliability dashboard.
+(function initPhase10(){
+  if(!$("p10ScanMarkets"))return;
+  const fmt=(v,d=2)=>v==null||!Number.isFinite(Number(v))?"—":Number(v).toLocaleString(undefined,{maximumFractionDigits:d});
+  const el=(tag,value,cls)=>{const n=document.createElement(tag);if(value!==undefined)n.textContent=value;if(cls)n.className=cls;return n;};
+  const status=(message,bad=false)=>{const n=$("p10Status");n.textContent=message;n.className=bad?"p7-note p7-status-error":"p7-note p7-status-ok";};
+  function renderDetail(data){
+    const root=$("p10DetailResult");root.replaceChildren();
+    const header=el("div",data.symbol+" · "+data.status,"p10-detail-heading "+(data.trading_safe?"safe":"unsafe"));root.append(header);
+    const quote=data.quote||{},candles=data.candles||{};
+    const lines=[
+      "Quote age: "+fmt(quote.age_seconds)+" sec · limit "+fmt(quote.max_age_seconds)+" sec",
+      "Provider timestamp: "+(quote.provider_timestamp||"Unavailable"),
+      "Candles checked: "+fmt(candles.count,0)+" · gaps: "+fmt(candles.gap_count,0),
+      "Latest candle: "+(candles.latest_candle_timestamp||"Unavailable"),
+      "Issues: "+((data.issues||[]).join(", ")||"None"),
+      "Warnings: "+((data.warnings||[]).join(", ")||"None")
+    ];
+    lines.forEach(x=>root.append(el("p",x,"p7-note")));
+  }
+  async function scan(){
+    const button=$("p10ScanMarkets");button.disabled=true;
+    status("Checking source timestamps and market availability…");
+    try{
+      const data=await apiRequest("/api/v1/data-reliability/markets");
+      const rows=data.items||[],counts={HEALTHY:0,DEGRADED:0,UNSAFE:0};
+      const body=$("p10MarketRows");body.replaceChildren();
+      rows.forEach(item=>{
+        counts[item.status]=(counts[item.status]||0)+1;
+        const tr=document.createElement("tr"),health=item.health||{};
+        const age=health.age_seconds;
+        [item.symbol,item.provider||"—",item.status,fmt(item.price,5),fmt(age),[...(health.issues||item.issues||[]),...(health.warnings||[])].join(", ")||"None"].forEach((v,i)=>{
+          const td=el("td",String(v));if(i===2)td.className=item.status==="HEALTHY"?"p10-health-good":item.status==="DEGRADED"?"p10-health-warn":"p10-health-bad";tr.append(td);
+        });
+        body.append(tr);
+      });
+      const k=$("p10Kpis");k.replaceChildren();
+      [["Healthy",counts.HEALTHY],["Degraded",counts.DEGRADED],["Unsafe",counts.UNSAFE],["Safe to paper-enter",rows.every(x=>x.trading_safe)?"YES":"NO"]].forEach(([label,value])=>{
+        const card=el("article");card.append(el("span",label),el("strong",String(value)));k.append(card);
+      });
+      status("Scan complete · "+counts.HEALTHY+" healthy · "+counts.DEGRADED+" degraded · "+counts.UNSAFE+" unsafe. "+(data.trading_safe?"All returned feeds passed quote checks.":"At least one feed is unavailable or unsafe; affected symbols cannot open new paper positions."));
+    }catch(error){status("Reliability scan failed: "+error.message,true);}
+    finally{button.disabled=false;}
+  }
+  async function detail(){
+    const button=$("p10CheckCandles");button.disabled=true;
+    try{
+      const symbol=$("p10Symbol").value,tf=$("p10Timeframe").value;
+      const data=await apiRequest("/api/v1/data-reliability/market/"+encodeURIComponent(symbol)+"?timeframe="+encodeURIComponent(tf));
+      renderDetail(data);status(symbol+" candle integrity check: "+data.status,data.status==="UNSAFE");
+    }catch(error){
+      const root=$("p10DetailResult");root.replaceChildren(el("p","Validation unavailable: "+error.message,"p7-status-error"));
+      status("Detailed market check failed. Paper entry remains blocked when provider timestamps cannot be verified.",true);
+    }finally{button.disabled=false;}
+  }
+  $("p10ScanMarkets").addEventListener("click",scan);
+  $("p10CheckCandles").addEventListener("click",detail);
+  scan();
+  // Low-frequency background health refresh; skips hidden tabs and overlapping requests.
+  setInterval(()=>{if(!document.hidden&&!$("p10ScanMarkets").disabled)scan();},300000);
+})();
+
+(function initPhase11(){
+  if(!$("p11Refresh"))return;
+  const fmt=(v,d=2)=>v==null||!Number.isFinite(Number(v))?"—":Number(v).toLocaleString(undefined,{maximumFractionDigits:d});
+  const node=(tag,value,cls)=>{const n=document.createElement(tag);if(value!==undefined)n.textContent=String(value);if(cls)n.className=cls;return n;};
+  const status=(message,bad=false)=>{const n=$("p11Status");n.textContent=message;n.className=bad?"p7-note p7-status-error":"p7-note";};
+  const svgNS="http://www.w3.org/2000/svg";
+  function svg(tag,attrs={}){const n=document.createElementNS(svgNS,tag);Object.entries(attrs).forEach(([k,v])=>n.setAttribute(k,String(v)));return n;}
+  function empty(root,message){root.replaceChildren(node("p",message,"p7-note"));}
+  function renderEquity(rows){
+    const root=$("p11EquityChart");root.replaceChildren();
+    if(!rows.length){empty(root,"No closed paper trades in this period.");return;}
+    const values=[0,...rows.map(x=>Number(x.cumulative_pnl))],min=Math.min(...values),max=Math.max(...values);
+    const range=Math.max(max-min,1),width=700,height=230,pad=24;
+    const points=values.map((v,i)=>(pad+i*(width-2*pad)/Math.max(values.length-1,1))+","+(height-pad-(v-min)/range*(height-2*pad))).join(" ");
+    const chart=svg("svg",{viewBox:"0 0 "+width+" "+height,role:"img","aria-label":"Cumulative realized paper trade profit and loss chart"});
+    const zeroY=height-pad-(0-min)/range*(height-2*pad);
+    chart.append(svg("line",{x1:pad,y1:zeroY,x2:width-pad,y2:zeroY,stroke:"#666","stroke-dasharray":"5 5"}));
+    chart.append(svg("polyline",{points:points,fill:"none",stroke:"#e5e5e5","stroke-width":3,"stroke-linecap":"round","stroke-linejoin":"round"}));
+    values.forEach((v,i)=>{if(i===0)return;const x=pad+i*(width-2*pad)/Math.max(values.length-1,1),y=height-pad-(v-min)/range*(height-2*pad);const dot=svg("circle",{cx:x,cy:y,r:3,fill:"#fff"});const title=svg("title");title.textContent="Trade "+i+": "+fmt(v);dot.append(title);chart.append(dot);});
+    root.append(chart,node("div","Start $0.00 · End $"+fmt(values[values.length-1])+" · Peak $"+fmt(max),"p11-chart-caption"));
+  }
+  function renderDaily(rows){
+    const root=$("p11DailyChart");root.replaceChildren();
+    if(!rows.length){empty(root,"No daily results yet.");return;}
+    const width=700,height=230,pad=25,values=rows.map(x=>Number(x.pnl)),limit=Math.max(...values.map(Math.abs),1),zero=height/2;
+    const chart=svg("svg",{viewBox:"0 0 "+width+" "+height,role:"img","aria-label":"Daily realized paper profit and loss bar chart"});
+    chart.append(svg("line",{x1:pad,y1:zero,x2:width-pad,y2:zero,stroke:"#777"}));
+    const step=(width-2*pad)/rows.length,bar=Math.max(3,Math.min(24,step*.55));
+    rows.forEach((item,i)=>{const v=Number(item.pnl),h=Math.abs(v)/limit*(height/2-pad),x=pad+i*step+(step-bar)/2,y=v>=0?zero-h:zero;const rect=svg("rect",{x:x,y:y,width:bar,height:h,rx:2,fill:v>=0?"#cfcfcf":"#777"});const title=svg("title");title.textContent=item.date+": $"+fmt(v);rect.append(title);chart.append(rect);});
+    root.append(chart,node("div",rows.length+" trading day(s) · positive and negative daily totals","p11-chart-caption"));
+  }
+  function renderSymbols(data){
+    const body=$("p11SymbolRows");body.replaceChildren();
+    const entries=Object.entries(data||{});
+    if(!entries.length){const tr=node("tr"),td=node("td","No closed trades by market.","empty-row");td.colSpan=5;tr.append(td);body.append(tr);return;}
+    entries.forEach(([symbol,row])=>{const tr=node("tr");[symbol,row.trades,row.win_rate==null?"—":fmt(row.win_rate,1)+"%","$"+fmt(row.net_pnl),row.profit_factor==="infinite"?"∞":fmt(row.profit_factor,2)].forEach(v=>tr.append(node("td",v)));body.append(tr);});
+  }
+  function renderConsistency(data){
+    const root=$("p11Consistency");root.replaceChildren();
+    const items=[["Largest win",data.largest_win==null?"—":"$"+fmt(data.largest_win)],["Largest loss",data.largest_loss==null?"—":"$"+fmt(data.largest_loss)],["Maximum win streak",data.max_consecutive_wins],["Maximum loss streak",data.max_consecutive_losses],["R-multiple sample",data.r_multiple_sample],["Best trade",data.best_trade?data.best_trade.symbol+" · $"+fmt(data.best_trade.pnl):"—"],["Worst trade",data.worst_trade?data.worst_trade.symbol+" · $"+fmt(data.worst_trade.pnl):"—"]];
+    items.forEach(([label,value])=>{const row=node("div",undefined,"p11-stat-row");row.append(node("span",label),node("strong",String(value)));root.append(row);});
+  }
+  async function refresh(){
+    const button=$("p11Refresh");button.disabled=true;
+    try{
+      const period=Number($("p11Period").value);
+      const data=await apiRequest("/api/v1/performance/advanced?period_days="+period);
+      const root=$("p11ExtraKpis");root.replaceChildren();
+      [["Expectancy / trade",data.expectancy_per_trade==null?"—":"$"+fmt(data.expectancy_per_trade)],["Average R (estimate)",data.average_r_multiple==null?"—":fmt(data.average_r_multiple,3)+"R"],["Max drawdown","$"+fmt(data.max_drawdown_amount)],["Average hold",data.average_holding_minutes==null?"—":fmt(data.average_holding_minutes,1)+" min"]].forEach(([label,value])=>{const card=node("article");card.append(node("span",label),node("strong",String(value)));root.append(card);});
+      renderEquity(data.equity_curve||[]);renderDaily(data.daily_pnl||[]);renderSymbols(data.by_symbol||{});renderConsistency(data);
+      $("p11Methodology").textContent=data.total_trades+" closed paper trades · "+data.wins+" wins · "+data.losses+" losses · "+data.breakeven+" breakeven. "+(data.methodology?.r_multiple||"")+" "+(data.methodology?.drawdown||"")+" "+(data.methodology?.limitations||"");
+      status("Advanced analytics refreshed · "+(period===0?"all history":"last "+period+" days")+".");
+    }catch(error){status("Advanced analytics unavailable: "+error.message,true);}
+    finally{button.disabled=false;}
+  }
+  $("p11Refresh").addEventListener("click",refresh);
+  $("p11Period").addEventListener("change",refresh);
+  refresh();
+})();

@@ -24,12 +24,15 @@
       <a class="nav-link" href="#updates"><span>↻</span>Updates</a>
       <div class="side-caption">INTELLIGENCE</div>
       <a class="nav-link" href="#market-intelligence"><span>◉</span>Market Intelligence</a>
+      <a class="nav-link" href="#data-reliability"><span>⌁</span>Data Reliability</a>
       <a class="nav-link" href="#ai-signal-center"><span>⌁</span>AI Signal Center</a>
       <a class="nav-link" href="#orderflow-liquidity"><span>≋</span>Order Flow &amp; Liquidity</a>
       <a class="nav-link" href="#news-intelligence"><span>▤</span>News Intelligence</a>
       <a class="nav-link" href="#paper-trading"><span>▣</span>Paper Trading</a>
       <a class="nav-link" href="#performance-lab"><span>▥</span>Performance Lab</a>
       <a class="nav-link" href="#risk-management"><span>◇</span>Risk Management</a>
+      <div class="side-caption">STRATEGY RESEARCH</div>
+      <a class="nav-link" href="#strategy-laboratory"><span>⌘</span>AI Strategy Laboratory</a>
       <div class="side-caption">WORKSPACE TOOLS</div>
       <a class="nav-link" href="#system-security"><span>⚙</span>System security</a>
       <div class="sidebar-bottom"><span class="live-dot"></span>Local workspace</div>
@@ -79,6 +82,18 @@
         <div class="p7-market-grid" id="p7MarketCards"><div class="p7-empty">Loading live provider quotes…</div></div>
         <p class="p7-note" id="p7MarketNote">Indicative quotes. Provider availability and timestamps are shown per market.</p>
       </section>
+      <section class="section-heading" id="data-reliability"><div><div class="overline">PHASE 10 · MARKET DATA TRUST</div><h2>Market Data Reliability</h2><p>Verify provider timestamps, quote freshness and candle integrity before paper entries.</p></div><span class="pill">DATA GUARDIAN</span></section>
+      <section class="panel phase10-panel">
+        <div class="phase07-toolbar"><div><strong>Provider health monitor</strong><p>Every supported market is checked independently. Missing source timestamps are treated as unsafe.</p></div><button class="primary-btn" id="p10ScanMarkets">Scan all markets</button></div>
+        <p id="p10Status" class="p7-note" role="status">Run a scan to inspect current provider health.</p>
+        <div class="p7-kpi-grid" id="p10Kpis"><article><span>Healthy</span><strong>—</strong></article><article><span>Degraded</span><strong>—</strong></article><article><span>Unsafe</span><strong>—</strong></article><article><span>Safe to paper-enter</span><strong>—</strong></article></div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Market</th><th>Provider</th><th>Health</th><th>Price</th><th>Age (sec)</th><th>Issues</th></tr></thead><tbody id="p10MarketRows"><tr><td colspan="6" class="empty-row">No reliability scan yet.</td></tr></tbody></table></div>
+        <div class="p10-detail">
+          <div class="p7-form-row"><label>Detailed market <select id="p10Symbol"><option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option><option>XAUUSD</option><option>EURUSD</option><option>GBPUSD</option><option>USDJPY</option></select></label><label>Timeframe <select id="p10Timeframe"><option>15m</option><option>5m</option><option>1h</option><option>4h</option></select></label><button class="secondary-btn" id="p10CheckCandles">Validate candles</button></div>
+          <div id="p10DetailResult" class="p10-detail-result"><p class="p7-note">Select a market to validate its latest candle series.</p></div>
+        </div>
+        <p class="p7-note">UNSAFE data blocks new QUANTNEX paper entries. DEGRADED data is shown with warnings; candle gaps can occur during legitimate market closures. Existing positions are not forcibly closed by this monitor.</p>
+      </section>
       <section class="section-heading" id="ai-signal-center"><div><div class="overline">PHASE 07 · MULTI-TIMEFRAME ANALYSIS</div><h2>AI Signal Center</h2><p>Transparent rule-based analysis. Signal scores are confluence counts, not win probabilities.</p></div><span class="pill">WAIT / BUY / SELL</span></section>
       <section class="panel phase07-panel">
         <div class="p7-form-row"><label>Market <select id="p7SignalSymbol"><option value="XAUUSD">XAUUSD</option><option value="BTCUSDT">BTCUSDT</option><option value="ETHUSDT">ETHUSDT</option><option value="SOLUSDT">SOLUSDT</option><option value="EURUSD">EURUSD</option><option value="GBPUSD">GBPUSD</option><option value="USDJPY">USDJPY</option></select></label><label>Minimum score <select id="p7SignalThreshold"><option value="6">6 / 10</option><option value="7">7 / 10</option><option value="8">8 / 10</option></select></label><button class="primary-btn" id="p7RunScan">Scan market</button></div>
@@ -117,6 +132,18 @@
       <section class="panel phase07-panel">
         <div class="p7-kpi-grid" id="p7PerformanceKpis"><article><span>Trades</span><strong>—</strong></article><article><span>Win rate</span><strong>—</strong></article><article><span>Profit factor</span><strong>—</strong></article><article><span>Net P&amp;L</span><strong>—</strong></article></div>
         <p class="p7-note" id="p7PerformanceNote">Statistics are calculated from closed QUANTNEX paper trades only. No win-rate guarantee.</p>
+        <div class="p11-toolbar"><div><strong>Advanced analytics</strong><p>Equity curve, expectancy, drawdown, streaks and symbol breakdown.</p></div><label>Period <select id="p11Period"><option value="0">All history</option><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option><option value="365">Last 365 days</option></select></label><button class="secondary-btn" id="p11Refresh">Refresh analytics</button></div>
+        <div class="p7-kpi-grid p11-extra-kpis" id="p11ExtraKpis"><article><span>Expectancy / trade</span><strong>—</strong></article><article><span>Average R (estimate)</span><strong>—</strong></article><article><span>Max drawdown</span><strong>—</strong></article><article><span>Average hold</span><strong>—</strong></article></div>
+        <div class="p11-chart-grid">
+          <div class="p11-chart-card"><div class="p11-chart-title">Cumulative realized P&amp;L</div><div id="p11EquityChart" class="p11-chart"><p class="p7-note">No closed paper trades in this period.</p></div></div>
+          <div class="p11-chart-card"><div class="p11-chart-title">Daily realized P&amp;L</div><div id="p11DailyChart" class="p11-chart"><p class="p7-note">No daily results yet.</p></div></div>
+        </div>
+        <div class="p11-table-grid">
+          <div><div class="p11-chart-title">Performance by market</div><div class="p7-table-wrap"><table><thead><tr><th>Market</th><th>Trades</th><th>Win rate</th><th>Net P&amp;L</th><th>Profit factor</th></tr></thead><tbody id="p11SymbolRows"><tr><td colspan="5" class="empty-row">No market data.</td></tr></tbody></table></div></div>
+          <div><div class="p11-chart-title">Trade quality &amp; consistency</div><div id="p11Consistency" class="p11-consistency"><p class="p7-note">Analytics will appear after closed paper trades.</p></div></div>
+        </div>
+        <p class="p7-note" id="p11Methodology">Analytics are estimates from the local closed-paper ledger. No broker-normalized R, strategy attribution or performance guarantee.</p>
+        <p class="p7-note" id="p11Status" role="status">Loading advanced analytics…</p>
       </section>
       <section class="section-heading" id="risk-management"><div><div class="overline">PHASE 07 · CAPITAL PROTECTION</div><h2>Risk Management</h2><p>Estimate risk amount and theoretical base-unit size before opening a paper trade.</p></div><span class="pill">MAX CALCULATOR RISK 5%</span></section>
       <section class="panel phase07-panel">
@@ -260,6 +287,67 @@
           <p class="update-manual-note">The Updates tab checks the latest GitHub main-branch commit on startup and when requested. It downloads a pinned source archive, backs up replaced Web files, and rolls back if installation fails. Your local database and settings are kept separately.</p>
         </div>
         <span class="pill">OFFICIAL</span>
+      </section>
+
+      <section class="section-heading" id="strategy-laboratory"><div><div class="overline">PHASE 08 · RESEARCH & VALIDATION</div><h2>AI Strategy Laboratory</h2><p>Build, backtest, replay, optimize and forward-observe strategies using historical and live provider data.</p></div><span class="pill">RESEARCH / PAPER ONLY</span></section>
+      <section class="panel phase08-panel">
+        <div class="p8-grid">
+          <label>Market<select id="p8Symbol"><option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option><option>XAUUSD</option><option>EURUSD</option><option>GBPUSD</option><option>USDJPY</option></select></label>
+          <label>Timeframe<select id="p8Timeframe"><option>15m</option><option>1h</option><option>4h</option><option>5m</option></select></label>
+          <label>Fast EMA<input id="p8Fast" type="number" min="2" max="50" value="9"></label>
+          <label>Slow EMA<input id="p8Slow" type="number" min="3" max="200" value="21"></label>
+          <label>Risk / Reward<input id="p8RR" type="number" min="0.5" max="8" step="0.5" value="2"></label>
+        </div>
+        <p class="p7-note">Strategy Builder currently supports a transparent EMA crossover template. More rule blocks can be added after this foundation is validated.</p>
+        <div class="p8-actions">
+          <button class="primary-btn" id="p8Backtest">Run backtest</button>
+          <button class="secondary-btn" id="p8Optimize">Optimize settings</button>
+          <button class="secondary-btn" id="p8Forward">Forward evaluate</button>
+          <button class="secondary-btn" id="p8ReplayLoad">Load market replay</button>
+        </div>
+        <p id="p8Status" class="p7-note" role="status">Historical testing and forward observations are kept separate from your Wallet and Journal.</p>
+        <div class="p7-kpi-grid" id="p8Kpis"><article><span>Backtest trades</span><strong>—</strong></article><article><span>Win rate</span><strong>—</strong></article><article><span>Profit factor</span><strong>—</strong></article><article><span>Net P&amp;L</span><strong>—</strong></article></div>
+        <div class="p8-result" id="p8Result"><div class="p7-empty">Configure a strategy and run a backtest to see its results.</div></div>
+      </section>
+      <section class="panel phase08-panel">
+        <div class="p7-subheading"><strong>Market Replay</strong><span>Step through historical candles from the selected provider.</span></div>
+        <div class="p8-replay-controls"><button class="secondary-btn" id="p8ReplayPrev" disabled>Previous candle</button><strong id="p8ReplayIndex">No replay loaded</strong><button class="secondary-btn" id="p8ReplayPlay" disabled>Play</button><button class="secondary-btn" id="p8ReplayNext" disabled>Next candle</button></div>
+        <div class="p8-replay-candle" id="p8ReplayCandle">Load a replay to begin.</div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Time</th><th>Open</th><th>High</th><th>Low</th><th>Close</th></tr></thead><tbody id="p8ReplayRows"><tr><td colspan="5" class="empty-row">No candles loaded.</td></tr></tbody></table></div>
+      </section>
+      <section class="panel phase08-panel">
+        <div class="p7-subheading"><strong>AI Learning &amp; Research</strong><span>Review stored backtests, optimizer runs and paper observations.</span></div>
+        <button class="secondary-btn" id="p8ResearchRefresh">Refresh research history</button>
+        <p class="p7-note" id="p8ResearchSummary">Research history will appear here after your first run.</p>
+        <div class="p7-table-wrap"><table><thead><tr><th>Run</th><th>Market</th><th>Timeframe</th><th>Created</th><th>Summary</th></tr></thead><tbody id="p8ResearchRows"><tr><td colspan="5" class="empty-row">No research runs yet.</td></tr></tbody></table></div>
+      </section>
+      <section class="section-heading" id="risk-portfolio"><div><div class="overline">PHASE 09 · CAPITAL PROTECTION</div><h2>Risk &amp; Portfolio Intelligence</h2><p>Exposure, explicit-contract sizing, drawdown guardian and paper-only stress scenarios.</p></div><span class="pill">RISK GUARD · PAPER ONLY</span></section>
+      <section class="panel phase09-panel">
+        <div class="p9-grid">
+          <label>Account equity<input id="p9Equity" type="number" min="0.01" step="0.01" value="10000"></label>
+          <label>Risk per trade %<input id="p9RiskPercent" type="number" min="0.01" max="5" step="0.05" value="0.5"></label>
+          <label>Market<select id="p9Symbol"><option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option><option>XAUUSD</option><option>EURUSD</option><option>GBPUSD</option><option>USDJPY</option></select></label>
+          <label>Side<select id="p9Side"><option>BUY</option><option>SELL</option></select></label>
+          <label>Entry price (sizing preview)<input id="p9Entry" type="number" min="0.00000001" step="any" placeholder="Enter entry price"></label>
+          <label>Stop loss price<input id="p9Stop" type="number" min="0.00000001" step="any" placeholder="Enter stop price"></label>
+          <label>Take profit price<input id="p9Target" type="number" min="0.00000001" step="any" placeholder="Enter target price"></label>
+          <label>Contract multiplier<input id="p9Multiplier" type="number" min="0.00000001" step="any" value="1"></label>
+          <label>Daily loss limit %<input id="p9DailyLimit" type="number" min="0.1" max="20" step="0.1" value="3"></label>
+          <label>Max drawdown %<input id="p9MaxDD" type="number" min="0.1" max="50" step="0.1" value="8"></label>
+          <label>Max loss streak<input id="p9LossStreak" type="number" min="1" max="20" step="1" value="4"></label>
+        </div>
+        <p class="p7-note">Contract multiplier is mandatory and never guessed. Enter the multiplier for the instrument/broker contract you intend to model. Estimated units are not universal forex lots.</p>
+        <div class="p8-actions">
+          <button class="secondary-btn" id="p9Refresh">Refresh portfolio</button>
+          <button class="secondary-btn" id="p9Guardian">Run risk guardian</button>
+          <button class="secondary-btn" id="p9Stress">Run stress test</button>
+          <button class="secondary-btn" id="p9Size">Calculate size</button>
+          <button class="primary-btn" id="p9SmartOpen">Risk-check &amp; open paper trade</button>
+        </div>
+        <p id="p9Status" class="p7-note" role="status">Risk calculations use your paper ledger and explicit assumptions.</p>
+        <div class="p7-kpi-grid" id="p9PortfolioKpis"><article><span>Open positions</span><strong>—</strong></article><article><span>Gross notional estimate</span><strong>—</strong></article><article><span>Planned stop risk</span><strong>—</strong></article><article><span>Symbols</span><strong>—</strong></article></div>
+        <div class="p9-result" id="p9Result"><p class="p7-note">Portfolio and risk reports will appear here.</p></div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Trade</th><th>Market</th><th>Side</th><th>Units</th><th>Notional estimate</th><th>Stop risk estimate</th></tr></thead><tbody id="p9Positions"><tr><td colspan="6" class="empty-row">No portfolio snapshot loaded.</td></tr></tbody></table></div>
       </section>
       <section class="section-heading" id="system-security"><div><div class="overline">LOCAL DEVICE · PROTECTION</div><h2>System security</h2><p>Database backups, integrity checks, activity history and computer health.</p></div><span class="pill">LOCAL ONLY</span></section>
       <section class="panel system-security-panel">

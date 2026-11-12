@@ -52,16 +52,18 @@ async def get_quote(symbol: str) -> dict:
             data=await _get_json(client,BINANCE+"/api/v3/ticker/24hr",{"symbol":info["symbol"]})
             price=float(data["lastPrice"]); change=float(data["priceChangePercent"])
             high=float(data["highPrice"]); low=float(data["lowPrice"]); volume=float(data["quoteVolume"])
+            source_timestamp=data.get("closeTime")
         else:
             if not TWELVE_DATA_API_KEY:
                 raise IntelligenceDataError("Add TWELVE_DATA_API_KEY to backend/.env to enable Gold and Forex quotes.")
             data=await _get_json(client,TWELVE+"/quote",{"symbol":info["twelve"],"apikey":TWELVE_DATA_API_KEY})
             price=float(data["close"]); change=float(data.get("percent_change") or 0)
             high=float(data.get("high") or price); low=float(data.get("low") or price); volume=None
+            source_timestamp=data.get("datetime") or data.get("timestamp")
     if not math.isfinite(price) or price<=0: raise IntelligenceDataError("Provider returned an invalid price.")
     return {"symbol":info["symbol"],"label":info["label"],"kind":info["kind"],"provider":info["provider"],
             "price":price,"change_percent":change,"high_24h":high,"low_24h":low,"quote_volume":volume,
-            "timestamp":datetime.now(timezone.utc).isoformat(),"indicative":True}
+            "source_timestamp":source_timestamp,"timestamp":datetime.now(timezone.utc).isoformat(),"indicative":True}
 
 async def get_market_board() -> dict:
     symbols=list(MARKETS)
@@ -72,9 +74,11 @@ async def get_market_board() -> dict:
             items.append({"symbol":symbol,"label":MARKETS[symbol]["label"],"kind":MARKETS[symbol]["kind"],
                           "status":"unavailable","reason":"Provider request failed; check the API key, provider quota or network connection."})
         else:
-            items.append({"status":"ok",**result})
+            from .phase10_engine import assess_quote
+            health=assess_quote(result)
+            items.append({"status":"ok",**result,"data_health":health})
     return {"items":items,"timestamp":datetime.now(timezone.utc).isoformat(),
-            "note":"Indicative provider quotes; execution prices and spreads may differ at your broker."}
+            "note":"Indicative provider quotes; execution prices and spreads may differ at your broker. Source timestamps are independently validated."}
 
 async def get_candles(symbol: str, timeframe: str="15m", limit: int=250) -> list[dict]:
     info=market_info(symbol)

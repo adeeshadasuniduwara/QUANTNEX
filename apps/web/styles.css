@@ -108,3 +108,62 @@
 .p7-action-btn:disabled{opacity:.5;cursor:not-allowed}
 @media(max-width:900px){.p7-market-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.p7-risk-form{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.p7-book-grid{grid-template-columns:1fr}.p7-paper-form{grid-template-columns:repeat(2,minmax(0,1fr))}.p7-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.p7-signal-levels{grid-template-columns:repeat(2,minmax(0,1fr))}.p7-form-row{align-items:stretch}.p7-form-row label{flex:1}.p7-market-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+/* Phase 08 — Strategy Laboratory */
+.phase08-panel{padding:18px;margin-bottom:24px}
+.p8-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.p8-grid label{display:flex;flex-direction:column;gap:6px;color:#aaa;font-size:10px}
+.p8-grid input,.p8-grid select{min-height:37px;padding:8px 10px;background:#090909;color:#eee;border:1px solid #353535;border-radius:6px;font:inherit;width:100%}
+.p8-actions{display:flex;gap:9px;flex-wrap:wrap;margin:14px 0}
+.p8-result{margin-top:14px;padding:13px;border:1px solid #2d2d2d;border-radius:8px;background:#0c0c0c;overflow:hidden}
+.p8-result-title{font-size:13px;color:#eee;font-weight:700}
+.p8-replay-controls{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.p8-replay-controls strong{font-size:12px;color:#ddd}
+.p8-replay-candle{margin:12px 0;padding:15px;background:#0b0b0b;border:1px solid #303030;border-radius:8px;color:#eee;font-size:12px}
+@media(max-width:900px){.p8-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:620px){.p8-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.p8-actions button{flex:1 1 42%}}
+
+/* Phase 09 risk and portfolio dashboard */
+.phase09-panel{margin-bottom:24px}
+.p9-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.p9-grid label{display:grid;gap:7px;color:#aaa;font-size:11px;font-weight:650}
+.p9-grid input,.p9-grid select{width:100%;min-width:0;border:1px solid #353535;border-radius:8px;background:#0b0b0b;padding:11px 12px;color:#f5f5f5;font:inherit}
+.p9-grid input:focus,.p9-grid select:focus{outline:none;border-color:#eee;box-shadow:0 0 0 3px #ffffff12}
+.p9-result{margin-top:14px;max-height:360px;overflow:auto}
+.p9-report{white-space:pre-wrap;overflow-wrap:anywhere;background:#0b0b0b;border:1px solid #292929;border-radius:9px;padding:14px;color:#d8d8d8;font:11px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace}
+@media(max-width:1100px){.p9-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:720px){.p9-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:420px){.p9-grid{grid-template-columns:1fr}}
+
+/* Phase 10 — Market Data Reliability */
+.phase10-panel{margin-bottom:24px}
+.p10-detail{margin-top:22px;padding-top:18px;border-top:1px solid #292929}
+.p10-detail-result{margin-top:14px;padding:14px;border:1px solid #292929;border-radius:9px;background:#0b0b0b}
+.p10-detail-heading{font-size:14px;font-weight:850;letter-spacing:.08em;margin-bottom:12px}
+.p10-detail-heading.safe,.p10-health-good{color:#9ddbb2}
+.p10-detail-heading.unsafe,.p10-health-bad{color:#ff9292}
+.p10-health-warn{color:#f0cb82}
+.p10-health-good,.p10-health-warn,.p10-health-bad{font-weight:800}
+@media(max-width:720px){.phase10-panel{padding:15px}.p10-detail .p7-form-row{align-items:stretch;flex-wrap:wrap}.p10-detail .p7-form-row label{min-width:130px;flex:1}}
+
+/* Phase 11 — Advanced Performance Analytics */
+.p11-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:22px 0 14px;padding-top:18px;border-top:1px solid var(--line)}
+.p11-toolbar>div{min-width:210px;flex:1}
+.p11-toolbar strong,.p11-chart-title{font-size:13px;font-weight:800}
+.p11-toolbar p{margin:3px 0 0;color:var(--muted);font-size:11px}
+.p11-toolbar label{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:11px}
+.p11-toolbar select{background:#101010;color:#eee;border:1px solid #3b3b3b;border-radius:7px;padding:9px}
+.p11-extra-kpis{margin:14px 0 18px}
+.p11-chart-grid,.p11-table-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px}
+.p11-chart-card,.p11-table-grid>div{min-width:0;background:#101010;border:1px solid var(--line);border-radius:10px;padding:14px}
+.p11-chart-title{margin-bottom:12px;color:#eee}
+.p11-chart{width:100%;min-height:190px;display:flex;flex-direction:column;justify-content:center;overflow:hidden}
+.p11-chart svg{width:100%;height:auto;max-height:230px;overflow:visible}
+.p11-chart-caption{margin-top:8px;color:var(--muted);font-size:10px}
+.p11-stat-row{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid #262626;font-size:11px}
+.p11-stat-row:last-child{border-bottom:0}
+.p11-stat-row span{color:var(--muted)}
+.p11-stat-row strong{text-align:right;color:#eee}
+@media(max-width:900px){.p11-chart-grid,.p11-table-grid{grid-template-columns:1fr}}
+@media(max-width:560px){.p11-toolbar{align-items:stretch}.p11-toolbar label{justify-content:space-between}.p11-toolbar select{flex:1}.p11-toolbar button{width:100%}}

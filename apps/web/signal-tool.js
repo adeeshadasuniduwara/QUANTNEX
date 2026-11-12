@@ -214,13 +214,16 @@
   // QUANTNEX VIEW is the first-party chart workspace.
   async function loadAutoSignalSettings(){
     try{
-      const [settings,bot]=await Promise.all([apiRequest("/api/v1/telegram/auto-signals"),apiRequest("/api/v1/telegram/status")]);
+      const [settings,bot,reports]=await Promise.all([apiRequest("/api/v1/telegram/auto-signals"),apiRequest("/api/v1/telegram/status"),apiRequest("/api/v1/telegram/reports")]);
       if(bot.connected){$("tgBotDisplayName").value=bot.display_name||"";$("telegramStatus").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username))+" · "+bot.chat_id;$("telegramMonitorTitle").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username));$("telegramMonitorDescription").textContent="Your personal Telegram bot is connected. Turn on Auto Signals in Signal Lab to receive fresh BTC, ETH, SOL and optional Gold setups.";$("telegramMonitorPill").textContent=settings.enabled?"AUTO ON":"CONNECTED";}
       else {$("telegramStatus").textContent="No Telegram bot connected yet. Create one with @BotFather and connect it here.";$("telegramMonitorTitle").textContent="Telegram bot not connected";$("telegramMonitorDescription").textContent="Open Signal Lab to connect your BotFather bot. Manual crypto signals and enabled Auto Signals are delivered while the local QUANTNEX API is active.";$("telegramMonitorPill").textContent="OFFLINE";}
       $("autoSignalsEnabled").checked=!!settings.enabled;
       $("autoSignalInterval").value=String(settings.interval_seconds||180);
       document.querySelectorAll("input[name=autoSignalSymbol]").forEach(el=>{el.checked=(settings.symbols||["BTCUSDT","ETHUSDT","SOLUSDT"]).includes(el.value);});
       $("autoSignalStatus").textContent=settings.enabled?"Auto Signals ON · selected markets scan while the QUANTNEX API is running.":"Auto Signals OFF.";
+      $("tgDailyReportEnabled").checked=!!reports.enabled;
+      $("tgDailyReportStatus").textContent=reports.enabled?"Daily PDF ON · 20:00 Asia/Colombo · Paper ledger only.":"Daily PDF OFF.";
+
     }catch(error){$("autoSignalStatus").textContent=error.message;}
   }
   $("saveAutoSignals")?.addEventListener("click",async()=>{
@@ -237,7 +240,16 @@
       $("autoSignalStatus").textContent=error.message;
     }finally{button.disabled=false;button.textContent="Save Auto Signal settings";}
   });
-  loadAutoSignalSettings();
+  $("saveTelegramReports")?.addEventListener("click",async()=>{
+    const enabled=$("tgDailyReportEnabled").checked;
+    const button=$("saveTelegramReports");button.disabled=true;button.textContent="Saving…";
+    try{
+      const result=await apiRequest("/api/v1/telegram/reports",{method:"PUT",body:JSON.stringify({enabled})});
+      $("tgDailyReportStatus").textContent=result.enabled?"Daily PDF ON · 20:00 Asia/Colombo · Paper ledger only.":"Daily PDF OFF. No scheduled report will be sent.";
+    }catch(error){$("tgDailyReportEnabled").checked=false;$("tgDailyReportStatus").textContent=error.message;}
+    finally{button.disabled=false;button.textContent="Save daily report setting";}
+  });
+    loadAutoSignalSettings();
 })();
  
 // QUANTNEX VIEW chart controller — first-party candles, live updates and local chart preferences.

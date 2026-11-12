@@ -1,11 +1,13 @@
 """Background Telegram command and TP1 notification worker."""
 from __future__ import annotations
 import asyncio, json, logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Any
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, func
 from .database import SessionLocal
-from .models import Preference
+from .models import GoalContribution, PaperTrade, PersonalGoal, Preference
 from .security import decrypt_secret
 from .config import TWELVE_DATA_API_KEY
 from .signal_engine import build_signal, MarketDataError
@@ -25,12 +27,111 @@ def _set(db, user_id: int, key: str, value: str) -> None:
 def _publish_signal_settings_changed() -> None:
     event_hub.publish("preferences.changed","preferences","updated",{"key":"signal_settings"})
 
-async def _send(client: httpx.AsyncClient, token: str, chat_id: str, text: str) -> None:
-    response=await client.post(f"https://api.telegram.org/bot{token}/sendMessage",
-        json={"chat_id":chat_id,"text":text[:4000],"disable_web_page_preview":True})
-    response.raise_for_status()
-    if not response.json().get("ok"):
-        raise httpx.HTTPStatusError("Telegram did not accept the message.",request=response.request,response=response)
+MENU = {"inline_keyboard": [
+    [{"text":"📊 Dashboard","callback_data":"qx:home"},{"text":"🤖 AI Paper Desk","callback_data":"qx:paper"}],
+    [{"text":"🔎 Market Scan","callback_data":"qx:market"},{"text":"📄 Today's PDF","callback_data":"qx:daily"}],
+    [{"text":"₿ BTC","callback_data":"qx:scan:BTCUSDT"},{"text":"Ξ ETH","callback_data":"qx:scan:ETHUSDT"},
+     {"text":"◎ SOL","callback_data":"qx:scan:SOLUSDT"},{"text":"🥇 Gold","callback_data":"qx:scan:XAUUSD"}],
+    [{"text":"🎯 My Goals","callback_data":"qx:goals"},{"text":"🛡 Risk Settings","callback_data":"qx:risk"}],
+    [{"text":"⏸ Pause Alerts","callback_data":"qx:pause"},{"text":"▶ Resume Alerts","callback_data":"qx:resume"}],
+    [{"text":"📋 Timeframes","callback_data":"qx:timeframes"},{"text":"🔌 Status","callback_data":"qx:status"}],
+    [{"text":"🕗 Daily PDF 8 PM ON/OFF","callback_data":"qx:daily_toggle"},{"text":"❔ Help","callback_data":"qx:help"}]
+]}
+
+async def _telegram_post(client, token: str, method: str, payload: dict):
+    url=f"https://api.telegram.org/bot{token}/{method}"
+    for attempt in range(3):
+        response=await client.post(url,json=payload)
+        try: data=response.json()
+        except ValueError: data={}
+        if response.status_code == 429 and attempt < 2:
+            await asyncio.sleep(max(1,min(10,int((data.get("parameters") or {}).get("retry_after",2)))))
+            continue
+        if response.status_code >= 500 and attempt < 2:
+            await asyncio.sleep(2 ** attempt)
+            continue
+        response.raise_for_status()
+        if not data.get("ok"):
+            raise httpx.HTTPStatusError("Telegram rejected the request.",request=response.request,response=response)
+        return data.get("result",{})
+    raise RuntimeError("Telegram retry limit reached.")
+
+async def _send(client, token: str, chat_id: str, text: str, reply_markup: dict | None = None):
+    payload={"chat_id":chat_id,"text":text[:4000],"disable_web_page_preview":True}
+    if reply_markup: payload["reply_markup"]=reply_markup
+    return await _telegram_post(client,token,"sendMessage",payload)
+
+async def _send_pdf(client, token: str, chat_id: str, pdf: bytes, filename: str, caption: str):
+    url=f"https://api.telegram.org/bot{token}/sendDocument"
+    for attempt in range(3):
+        response=await client.post(url,data={"chat_id":chat_id,"caption":caption[:1024]},
+            files={"document":(filename,pdf,"application/pdf")})
+        try: data=response.json()
+        except ValueError: data={}
+        if response.status_code == 429 and attempt < 2:
+            await asyncio.sleep(max(1,min(10,int((data.get("parameters") or {}).get("retry_after",2)))))
+            continue
+        if response.status_code >= 500 and attempt < 2:
+            await asyncio.sleep(2 ** attempt)
+            continue
+        response.raise_for_status()
+        if not data.get("ok"):
+            raise httpx.HTTPStatusError("Telegram rejected the PDF.",request=response.request,response=response)
+        return data.get("result",{})
+    raise RuntimeError("Telegram PDF retry limit reached.")
+
+async def _edit_message(client, token: str, chat_id: str, message_id: int, text: str):
+    return await _telegram_post(client,token,"editMessageText",{"chat_id":chat_id,"message_id":message_id,"text":text[:4000],"reply_markup":MENU})
+
+async def _deliver_daily_pdf(client, db, user_id: int, token: str, chat_id: str, report_day=None):
+    from .telegram_reporting import build_daily_paper_pdf
+    pdf, stats=build_daily_paper_pdf(db,user_id,report_day)
+    caption=("📊 QUANTNEX Daily Paper Report · "+stats["date"]+"\n"
+        +"Closed: "+str(stats["closed"])+" · Win rate: "+format(stats["win_rate"],".2f")+"%\n"
+        +"Gross profit: $"+format(stats["gross_profit"],".2f")+" · Losses: $"+format(stats["total_loss"],".2f")+"\n"
+        +"Recorded paper P&L: $"+format(stats["net"],".2f")+" · Open at cutoff: "+str(stats["open_at_cutoff"])+"\n"
+        +"Profit factor: "+(stats["profit_factor"] is not None and str(stats["profit_factor"]) or "—")+" · simulated ledger only; costs may be excluded.")
+    await _send_pdf(client,token,chat_id,pdf,"QUANTNEX-Paper-Report-"+stats["date"]+".pdf",caption)
+    return stats
+
+def _paper_dashboard(db, user_id: int) -> str:
+    rows=list(db.scalars(select(PaperTrade).where(PaperTrade.user_id==user_id)))
+    opened=[row for row in rows if str(row.status).upper()=="OPEN"]
+    closed=[row for row in rows if str(row.status).upper()!="OPEN" and row.realized_pnl is not None]
+    recorded=sum(float(row.realized_pnl or 0) for row in closed)
+    return ("📊 QUANTNEX Paper Ledger\n"
+        +"Open paper positions: "+str(len(opened))+"\n"
+        +"Closed paper trades: "+str(len(closed))+"\n"
+        +"Recorded realized P&L: "+format(recorded,".2f")+"\n"
+        +"This is persisted paper-ledger data; it is not a live unrealized P&L snapshot or real-account balance.")
+
+
+def _goal_dashboard(db, user_id: int) -> str:
+    goals=list(db.scalars(select(PersonalGoal).where(PersonalGoal.user_id==user_id).order_by(PersonalGoal.created_at.desc())))
+    if not goals:
+        return "🎯 No personal goals yet. Add goals in the QUANTNEX website."
+    lines=["🎯 QUANTNEX Personal Goals"]
+    for goal in goals[:6]:
+        contributions=float(db.scalar(select(func.coalesce(func.sum(GoalContribution.amount),0)).where(
+            GoalContribution.goal_id==goal.id,GoalContribution.user_id==user_id)) or 0)
+        saved=float(goal.initial_amount or 0)+contributions
+        pct=min(100,saved/goal.target_amount*100) if goal.target_amount else 0
+        lines.append(goal.title+" · "+format(pct,".1f")+"% · "+goal.currency+" "+format(saved,".2f")+"/"+format(goal.target_amount,".2f"))
+    lines.append("Only user-confirmed manual real-account savings/profit are counted.")
+    return "\n".join(lines)
+
+
+def _risk_dashboard(db, user_id: int) -> str:
+    try: settings=json.loads(_get(db,user_id,"signal_settings","{}"))
+    except ValueError: settings={}
+    try: auto=json.loads(_get(db,user_id,"auto_signal_settings","{}"))
+    except ValueError: auto={}
+    return ("🛡 Risk & Alert Settings\n"
+        +"Signal risk setting: "+str(settings.get("risk_percent","not set"))+"%\n"
+        +"Minimum confluence: "+str(settings.get("min_score","not set"))+"/10\n"
+        +"Telegram Auto Signals: "+("ON" if auto.get("enabled") else "OFF")+"\n"
+        +"These are alert settings, not guaranteed account-level risk controls.")
+
 
 async def _price(client: httpx.AsyncClient) -> float | None:
     if not TWELVE_DATA_API_KEY:return None
@@ -50,10 +151,7 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
     db.commit()
     names={"1":"M1","5":"M5","15":"M15","30":"M30","50":"M50","60":"H1","240":"H4"}
     if command in {"/start","/help"}:
-        return ("QUANTNEX Crypto + Gold Signal Bot\n"
-            "/timeframes — show settings\n/settf 1|5|15|30|50|60 — primary signal timeframe\n"
-            "/settrend 15|30|60|240 — trend filter\n/setanalysis 1,5,15,30,60 — analysis timeframes\n"
-            "/scan [BTCUSDT|ETHUSDT|SOLUSDT|XAUUSD] — run a fresh market scan (default BTCUSDT)\n/status — connection status")
+        return ("🤖 QUANTNEX Trading Assistant\nUse the buttons below for market scans, dashboard, status and reports.\nMarket scans are analysis alerts only; no broker orders are placed.")
     if command=="/timeframes":
         enabled=", ".join(names.get(str(x),str(x)) for x in settings.get("enabled",[]))
         return f"Primary: {names.get(str(settings.get('primary')))}\nTrend: {names.get(str(settings.get('trend')))}\nAnalysis: {enabled}"
@@ -97,6 +195,7 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
 async def telegram_worker() -> None:
     """Poll connected user bots, respond to commands and monitor active TP1 levels."""
     last_monitor={}
+    last_daily_attempt={}
     async with httpx.AsyncClient(timeout=12) as client:
         while True:
             try:
@@ -113,17 +212,60 @@ async def telegram_worker() -> None:
                         db.commit()
                         try:
                             resp=await client.get(f"https://api.telegram.org/bot{token}/getUpdates",
-                                params={"offset":offset,"timeout":0,"allowed_updates":'["message","channel_post"]'})
+                                params={"offset":offset,"timeout":0,"allowed_updates":'["message","channel_post","callback_query"]'})
                             data=resp.json()
                             if data.get("ok"):
                                 for update in data.get("result",[]):
                                     offset=max(offset,int(update.get("update_id",0))+1)
+                                    callback=update.get("callback_query")
+                                    if callback:
+                                        message=callback.get("message") or {}
+                                        chat=message.get("chat") or {}
+                                        if str(chat.get("id")) != str(chat_id): continue
+                                        try:
+                                            await _telegram_post(client,token,"answerCallbackQuery",{"callback_query_id":callback.get("id")})
+                                        except Exception:
+                                            pass
+                                        action=str(callback.get("data",""))
+                                        if action=="qx:daily_toggle":
+                                            enabled=_get(db,user_id,"telegram_daily_report_enabled","false")=="true"
+                                            _set(db,user_id,"telegram_daily_report_enabled","false" if enabled else "true")
+                                            db.commit()
+                                            answer="🕗 Daily PDF at 20:00 Asia/Colombo is now "+("OFF" if enabled else "ON")+"."
+                                        elif action=="qx:daily":
+                                            try:
+                                                stats=await _deliver_daily_pdf(client,db,user_id,token,chat_id)
+                                                answer="📄 Today report sent · Closed "+str(stats["closed"])+" · Win rate "+format(stats["win_rate"],".2f")+"% · Net $"+format(stats["net"],".2f")
+                                            except Exception as exc:
+                                                logger.warning("Daily PDF request failed for local user %s: %s",user_id,type(exc).__name__)
+                                                answer="Could not generate/send PDF. Check the PaperTrade ledger and Telegram connection."
+                                        elif action.startswith("qx:scan:"): answer=await _handle_command(client,db,user_id,token,chat_id,"/scan "+action.split(":")[-1])
+                                        elif action=="qx:status": answer=await _handle_command(client,db,user_id,token,chat_id,"/status")
+                                        elif action=="qx:timeframes": answer=await _handle_command(client,db,user_id,token,chat_id,"/timeframes")
+                                        elif action=="qx:home": answer=_paper_dashboard(db,user_id)
+                                        elif action=="qx:paper": answer="🤖 AI Paper Desk is not yet running autonomously in this build. This Telegram bot currently delivers market-analysis alerts and reports only. No broker orders are placed."
+                                        elif action=="qx:goals": answer=_goal_dashboard(db,user_id)
+                                        elif action=="qx:risk": answer=_risk_dashboard(db,user_id)
+                                        elif action=="qx:market": answer=await _handle_command(client,db,user_id,token,chat_id,"/scan BTCUSDT")
+                                        elif action=="qx:pause" or action=="qx:resume":
+                                            try: auto_settings=json.loads(_get(db,user_id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}'))
+                                            except ValueError: auto_settings={"enabled":False,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}
+                                            auto_settings["enabled"]=(action=="qx:resume")
+                                            _set(db,user_id,"auto_signal_settings",json.dumps(auto_settings));db.commit()
+                                            answer="Telegram Auto Signals "+("RESUMED" if auto_settings["enabled"] else "PAUSED")+". This controls alerts only, not trading execution."
+                                        elif action=="qx:help": answer="QUANTNEX menu · Buttons provide scans, ledger summary, goals, alert settings and daily PDF. Use /scan SYMBOL as a command fallback."
+                                        else: answer="📊 QUANTNEX local workspace · Signal alerts only. Paper simulation and broker execution are separate."
+                                        try: await _edit_message(client,token,chat_id,int(message.get("message_id")),answer)
+                                        except Exception: await _send(client,token,chat_id,answer,MENU)
+                                        continue
                                     message=update.get("message") or update.get("channel_post") or {}
                                     chat=message.get("chat") or {}
                                     if str(chat.get("id"))!=str(chat_id) and not (str(chat_id).startswith("@") and ("@"+str(chat.get("username","")).lower())==str(chat_id).lower()):continue
                                     command=message.get("text","")
                                     answer=await _handle_command(client,db,user_id,token,chat_id,command)
-                                    if answer:await _send(client,token,chat_id,answer)
+                                    if answer:
+                                        is_start=command.strip().split(" ")[0].split("@")[0].lower() in {"/start","/help"}
+                                        await _send(client,token,chat_id,answer,MENU if is_start else None)
                                 _set(db,user_id,"telegram_update_offset",str(offset));db.commit()
                         except (httpx.HTTPError,ValueError) as exc:
                             logger.warning("Telegram polling failed for local user %s: %s",user_id,type(exc).__name__)
@@ -203,6 +345,18 @@ async def telegram_worker() -> None:
                                     logger.warning("Auto-signal scan failed for local user %s market %s: %s",
                                                    user_id,market_symbol,type(exc).__name__)
                             last_monitor[auto_key]=now
+                        # Optional daily PDF delivery, once per Colombo calendar day at/after 20:00.
+                        if _get(db,user_id,"telegram_daily_report_enabled","false")=="true":
+                            local_now=datetime.now(ZoneInfo("Asia/Colombo"))
+                            sent_day=_get(db,user_id,"telegram_daily_report_sent_date","")
+                            if local_now.hour>=20 and sent_day!=local_now.date().isoformat() and now-last_daily_attempt.get(user_id,0)>=300:
+                                last_daily_attempt[user_id]=now
+                                try:
+                                    await _deliver_daily_pdf(client,db,user_id,token,chat_id,local_now.date())
+                                    _set(db,user_id,"telegram_daily_report_sent_date",local_now.date().isoformat())
+                                    db.commit()
+                                except Exception as exc:
+                                    logger.warning("Scheduled Telegram PDF failed for local user %s: %s",user_id,type(exc).__name__)
                         last_monitor[user_id]=now
             except asyncio.CancelledError:
                 raise

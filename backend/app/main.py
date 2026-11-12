@@ -6,7 +6,7 @@ import sqlite3
 import httpx
 from datetime import datetime, timezone
 from pathlib import Path
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, DATABASE_URL
 from .database import Base, engine, get_db, SessionLocal
-from .models import AuditEvent, PaperTrade, Preference, StrategyLabRun, Trade, User, WalletTransaction
+from .models import AuditEvent, GoalContribution, PaperTrade, PersonalGoal, Preference, StrategyLabRun, Trade, User, WalletTransaction
 from .schemas import AIChatRequest, AIChatResponse, PreferenceResponse, PreferenceWrite, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TradeCreate, TradeResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
 from .security import decrypt_secret, encrypt_secret
 from .maintenance import daily_backup_worker, record_audit_event
@@ -81,6 +81,10 @@ def local_workspace(db: Session = Depends(get_db)) -> User:
             paper_trade.user_id = owner.id
         for research_run in db.scalars(select(StrategyLabRun).where(StrategyLabRun.user_id == legacy.id)):
             research_run.user_id = owner.id
+        for personal_goal in db.scalars(select(PersonalGoal).where(PersonalGoal.user_id == legacy.id)):
+            personal_goal.user_id = owner.id
+        for goal_contribution in db.scalars(select(GoalContribution).where(GoalContribution.user_id == legacy.id)):
+            goal_contribution.user_id = owner.id
         # Flush reassigned child rows before deleting the legacy owner; ORM delete cascades
         # must not interpret the moved rows as orphans.
         db.flush()
@@ -437,7 +441,7 @@ def telegram_status(user: User = Depends(local_workspace), db: Session = Depends
 
 @app.delete("/api/v1/telegram/connect")
 def disconnect_telegram_bot(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
-    for key in ["telegram_bot_token_enc","telegram_chat_id","telegram_bot_username","telegram_bot_display_name","telegram_update_offset","active_signal","auto_signal_settings","auto_signal_last_fingerprint","auto_signal_last_fingerprint_btcusdt","auto_signal_last_fingerprint_ethusdt","auto_signal_last_fingerprint_solusdt","auto_signal_last_fingerprint_xauusd"]:
+    for key in ["telegram_bot_token_enc","telegram_chat_id","telegram_bot_username","telegram_bot_display_name","telegram_update_offset","active_signal","telegram_daily_report_enabled","telegram_daily_report_sent_date","auto_signal_settings","auto_signal_last_fingerprint","auto_signal_last_fingerprint_btcusdt","auto_signal_last_fingerprint_ethusdt","auto_signal_last_fingerprint_solusdt","auto_signal_last_fingerprint_xauusd"]:
         row=db.scalar(select(Preference).where(Preference.user_id==user.id,Preference.key==key))
         if row:db.delete(row)
     record_audit_event(db, "telegram.disconnected")
@@ -530,6 +534,25 @@ def set_auto_signal_settings(payload: AutoSignalSettingsRequest, user: User = De
     db.commit()
     event_hub.publish("preferences.changed", "signals", "auto_settings_updated", {"key": "auto_signal_settings", "enabled": settings["enabled"], "symbols": settings["symbols"]})
     return {**settings,"telegram_connected":connected,"note":"Automatic crypto signal alerts run while this computer's QUANTNEX API and Telegram worker are running."}
+
+@app.get("/api/v1/telegram/reports")
+def get_telegram_report_settings(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    connected=bool(_preference(db,user.id,"telegram_bot_token_enc") and _preference(db,user.id,"telegram_chat_id"))
+    enabled=_preference(db,user.id,"telegram_daily_report_enabled","false")=="true"
+    return {"enabled":enabled,"schedule":"20:00","timezone":"Asia/Colombo","telegram_connected":connected}
+
+@app.put("/api/v1/telegram/reports")
+def set_telegram_report_settings(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    enabled=payload.get("enabled")
+    if not isinstance(enabled,bool):
+        raise HTTPException(status_code=422,detail="enabled must be true or false.")
+    connected=bool(_preference(db,user.id,"telegram_bot_token_enc") and _preference(db,user.id,"telegram_chat_id"))
+    if enabled and not connected:
+        raise HTTPException(status_code=409,detail="Connect your Telegram bot before enabling daily PDF reports.")
+    _save_preference(db,user.id,"telegram_daily_report_enabled","true" if enabled else "false")
+    record_audit_event(db,"telegram.daily_report_settings_updated",{"enabled":enabled,"schedule":"20:00","timezone":"Asia/Colombo"})
+    db.commit()
+    return {"enabled":enabled,"schedule":"20:00","timezone":"Asia/Colombo","telegram_connected":connected}
 
 @app.post("/api/v1/telegram/notify")
 async def notify_connected_telegram(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
@@ -1006,3 +1029,176 @@ async def smart_open_paper_trade(payload: dict, user: User = Depends(local_works
         raise HTTPException(status_code=502,detail=str(exc))
     except httpx.HTTPError:
         raise HTTPException(status_code=502,detail="Market provider request failed. Check provider configuration and quota.")
+
+
+@app.get("/api/v1/goals")
+def list_personal_goals(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    goals=list(db.scalars(select(PersonalGoal).where(PersonalGoal.user_id==user.id).order_by(PersonalGoal.created_at.desc())))
+    output=[]
+    for goal in goals:
+        contributions=float(db.scalar(select(func.coalesce(func.sum(GoalContribution.amount),0)).where(
+            GoalContribution.goal_id==goal.id,GoalContribution.user_id==user.id)) or 0)
+        saved=float(goal.initial_amount or 0)+contributions
+        output.append({"id":goal.id,"title":goal.title,"description":goal.description,
+            "target_amount":goal.target_amount,"currency":goal.currency,"initial_amount":goal.initial_amount,
+            "saved_amount":round(saved,2),"remaining_amount":round(max(0,goal.target_amount-saved),2),
+            "progress_percent":round(min(100,saved/goal.target_amount*100),2) if goal.target_amount>0 else 0,
+            "image_url":goal.image_url,"target_date":goal.target_date.isoformat() if goal.target_date else None,
+            "created_at":goal.created_at.isoformat(),"achieved_at":goal.achieved_at.isoformat() if goal.achieved_at else None,
+            "achieved":bool(goal.achieved_at and saved>=goal.target_amount),
+            "certificate_available":bool(goal.certificate_id and goal.certificate_hash)})
+    return {"goals":output,"accounting_note":"Only user-confirmed manual real-account profit/savings contributions count. Bot paper trades, backtests and wallet estimates are excluded."}
+
+
+@app.post("/api/v1/goals")
+def create_personal_goal(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    title=str(payload.get("title","")).strip()
+    description=str(payload.get("description","")).strip()
+    currency=str(payload.get("currency","USD")).strip().upper()
+    try:
+        target=float(payload.get("target_amount"))
+        initial=float(payload.get("initial_amount",0) or 0)
+    except (TypeError,ValueError):
+        raise HTTPException(status_code=422,detail="Target and starting amount must be valid numbers.")
+    if not title or len(title)>120 or len(description)>2000:
+        raise HTTPException(status_code=422,detail="Enter a goal title (1–120 characters) and a description up to 2,000 characters.")
+    if currency not in {"USD","LKR","EUR","GBP","AUD","CAD"}:
+        raise HTTPException(status_code=422,detail="Unsupported goal currency.")
+    if not (0 < target <= 1000000000000) or not (0 <= initial <= target):
+        raise HTTPException(status_code=422,detail="Target must be positive and starting savings must be between zero and target.")
+    if initial>0 and payload.get("confirmed_available_real_funds") is not True:
+        raise HTTPException(status_code=422,detail="Confirm that the starting amount is genuinely available real money.")
+    image_url=str(payload.get("image_url","")).strip()
+    if image_url and (len(image_url)>2048 or not image_url.startswith("https://")):
+        raise HTTPException(status_code=422,detail="Goal image must be an HTTPS image URL.")
+    target_date=None
+    if payload.get("target_date"):
+        try: target_date=datetime.fromisoformat(str(payload["target_date"]).replace("Z","+00:00"))
+        except ValueError: raise HTTPException(status_code=422,detail="Target date must be a valid ISO date.")
+    goal=PersonalGoal(user_id=user.id,title=title,description=description,target_amount=target,
+        currency=currency,initial_amount=initial,image_url=image_url,target_date=target_date)
+    if initial>=target: goal.achieved_at=datetime.now(timezone.utc)
+    db.add(goal);db.commit();db.refresh(goal)
+    return {"id":goal.id,"title":goal.title,"target_amount":goal.target_amount,"currency":goal.currency,
+        "saved_amount":goal.initial_amount,"remaining_amount":max(0,target-initial),
+        "progress_percent":round(initial/target*100,2),"achieved":bool(goal.achieved_at)}
+
+
+@app.put("/api/v1/goals/{goal_id}")
+def update_personal_goal(goal_id: int, payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    goal=db.scalar(select(PersonalGoal).where(PersonalGoal.id==goal_id,PersonalGoal.user_id==user.id))
+    if goal is None: raise HTTPException(status_code=404,detail="Goal not found.")
+    if goal.achieved_at: raise HTTPException(status_code=409,detail="An achieved goal is locked to preserve its certificate record.")
+    if "title" in payload:
+        title=str(payload["title"]).strip()
+        if not title or len(title)>120: raise HTTPException(status_code=422,detail="Goal title must be 1–120 characters.")
+        goal.title=title
+    if "description" in payload:
+        description=str(payload["description"]).strip()
+        if len(description)>2000: raise HTTPException(status_code=422,detail="Description is too long.")
+        goal.description=description
+    if "target_amount" in payload:
+        try: target=float(payload["target_amount"])
+        except (TypeError,ValueError): raise HTTPException(status_code=422,detail="Target amount must be numeric.")
+        if target<=0 or target>1000000000000: raise HTTPException(status_code=422,detail="Target amount must be positive.")
+        goal.target_amount=target
+    if "target_date" in payload:
+        try: goal.target_date=datetime.fromisoformat(str(payload["target_date"]).replace("Z","+00:00")) if payload["target_date"] else None
+        except ValueError: raise HTTPException(status_code=422,detail="Target date must be a valid ISO date.")
+    if "image_url" in payload:
+        image_url=str(payload["image_url"] or "").strip()
+        if image_url and (len(image_url)>2048 or not image_url.startswith("https://")):
+            raise HTTPException(status_code=422,detail="Goal image must be an HTTPS image URL.")
+        goal.image_url=image_url
+    db.commit()
+    return {"updated":True,"id":goal.id}
+
+
+@app.post("/api/v1/goals/{goal_id}/contributions")
+def add_goal_contribution(goal_id: int, payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    goal=db.scalar(select(PersonalGoal).where(PersonalGoal.id==goal_id,PersonalGoal.user_id==user.id))
+    if goal is None: raise HTTPException(status_code=404,detail="Goal not found.")
+    if goal.achieved_at is not None:
+        raise HTTPException(status_code=409,detail="This goal is already achieved and its certificate record is locked.")
+    if payload.get("confirmed_available_real_funds") is not True:
+        raise HTTPException(status_code=422,detail="Confirm this is genuinely available real-account profit or savings, not simulated P&L.")
+    try: amount=float(payload.get("amount"))
+    except (TypeError,ValueError): raise HTTPException(status_code=422,detail="Contribution amount must be numeric.")
+    currency=str(payload.get("currency",goal.currency)).upper()
+    if not (0<amount<=1000000000) or currency!=goal.currency:
+        raise HTTPException(status_code=422,detail="Contribution must be positive and use the goal currency.")
+    note=str(payload.get("note","")).strip()
+    if len(note)>240: raise HTTPException(status_code=422,detail="Contribution note is too long.")
+    row=GoalContribution(goal_id=goal.id,user_id=user.id,amount=amount,currency=currency,
+        source="manual_real_account",note=note)
+    db.add(row);db.flush()
+    total_contributions=float(db.scalar(select(func.coalesce(func.sum(GoalContribution.amount),0)).where(
+        GoalContribution.goal_id==goal.id,GoalContribution.user_id==user.id)) or 0)
+    saved=float(goal.initial_amount or 0)+total_contributions
+    if saved>=goal.target_amount and goal.achieved_at is None:
+        goal.achieved_at=datetime.now(timezone.utc)
+    db.commit()
+    return {"contribution_id":row.id,"saved_amount":round(saved,2),
+        "remaining_amount":round(max(0,goal.target_amount-saved),2),
+        "progress_percent":round(min(100,saved/goal.target_amount*100),2),
+        "achieved":bool(goal.achieved_at),"source":"manual_real_account"}
+
+
+def _goal_certificate_signature(db: Session, user_id: int, goal: PersonalGoal, saved_amount: float) -> tuple[str,str]:
+    import hashlib, hmac, secrets
+    secret_enc=_preference(db,user_id,"goal_certificate_secret")
+    if not secret_enc:
+        secret=secrets.token_hex(32)
+        _save_preference(db,user_id,"goal_certificate_secret",encrypt_secret(secret))
+    else:
+        secret=decrypt_secret(secret_enc)
+    if not goal.certificate_id:
+        import uuid
+        goal.certificate_id="QX-"+uuid.uuid4().hex[:20].upper()
+    payload="|".join([str(goal.id),goal.title,str(goal.target_amount),str(round(saved_amount,2)),goal.currency,
+        goal.created_at.isoformat(),goal.achieved_at.isoformat(),goal.certificate_id])
+    digest=hmac.new(secret.encode("utf-8"),payload.encode("utf-8"),hashlib.sha256).hexdigest()
+    return goal.certificate_id,digest
+
+
+@app.post("/api/v1/goals/{goal_id}/certificate")
+def generate_goal_certificate(goal_id: int, payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    goal=db.scalar(select(PersonalGoal).where(PersonalGoal.id==goal_id,PersonalGoal.user_id==user.id))
+    if goal is None: raise HTTPException(status_code=404,detail="Goal not found.")
+    saved=float(goal.initial_amount or 0)+float(db.scalar(select(func.coalesce(func.sum(GoalContribution.amount),0)).where(
+        GoalContribution.goal_id==goal.id,GoalContribution.user_id==user.id)) or 0)
+    if saved<goal.target_amount or goal.achieved_at is None:
+        raise HTTPException(status_code=409,detail="This goal is not achieved yet. Certificate generation is locked.")
+    display_name=str(payload.get("display_name","")).strip()
+    if not display_name or len(display_name)>80:
+        raise HTTPException(status_code=422,detail="Enter the display name to print on the certificate (max 80 characters).")
+    certificate_id,digest=_goal_certificate_signature(db,user.id,goal,saved)
+    if goal.certificate_hash and not __import__("hmac").compare_digest(goal.certificate_hash,digest):
+        raise HTTPException(status_code=409,detail="Certificate integrity check failed. The stored goal record has changed.")
+    goal.certificate_hash=digest;db.commit()
+    from .goal_certificates import build_goal_certificate_pdf
+    achieved=goal.achieved_at
+    if achieved.tzinfo is None: achieved=achieved.replace(tzinfo=timezone.utc)
+    created=goal.created_at
+    if created.tzinfo is None: created=created.replace(tzinfo=timezone.utc)
+    elapsed=max(0,(achieved-created).days)
+    pdf=build_goal_certificate_pdf(display_name=display_name,goal_title=goal.title,
+        created_at=created,achieved_at=achieved,elapsed_days=elapsed,
+        certificate_id=certificate_id,integrity_fingerprint=digest,
+        target_amount=goal.target_amount,saved_amount=saved,currency=goal.currency)
+    safe_name="".join(ch for ch in display_name if ch.isalnum() or ch in "-_")[:32] or "Trader"
+    return Response(content=pdf,media_type="application/pdf",
+        headers={"Content-Disposition":f'attachment; filename="QUANTNEX-Achievement-{safe_name}.pdf"'})
+
+
+@app.get("/api/v1/goals/{goal_id}/certificate/verify")
+def verify_goal_certificate(goal_id: int, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    goal=db.scalar(select(PersonalGoal).where(PersonalGoal.id==goal_id,PersonalGoal.user_id==user.id))
+    if goal is None: raise HTTPException(status_code=404,detail="Goal not found.")
+    if not goal.certificate_hash or not goal.certificate_id:
+        return {"verified":False,"reason":"No certificate has been issued."}
+    saved=float(goal.initial_amount or 0)+float(db.scalar(select(func.coalesce(func.sum(GoalContribution.amount),0)).where(
+        GoalContribution.goal_id==goal.id,GoalContribution.user_id==user.id)) or 0)
+    certificate_id,digest=_goal_certificate_signature(db,user.id,goal,saved)
+    return {"verified":__import__("hmac").compare_digest(goal.certificate_hash,digest),
+        "certificate_id":certificate_id,"verification_scope":"local workspace integrity only"}

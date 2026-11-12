@@ -74,6 +74,13 @@ def local_workspace(db: Session = Depends(get_db)) -> User:
             trade.user_id = owner.id
         for transaction in db.scalars(select(WalletTransaction).where(WalletTransaction.user_id == legacy.id)):
             transaction.user_id = owner.id
+        # Phase 07/08 user-scoped ledgers must move with the original workspace too.
+        # Otherwise legacy-account consolidation can orphan or cascade-delete paper
+        # trades and strategy research created before local-only mode.
+        for paper_trade in db.scalars(select(PaperTrade).where(PaperTrade.user_id == legacy.id)):
+            paper_trade.user_id = owner.id
+        for research_run in db.scalars(select(StrategyLabRun).where(StrategyLabRun.user_id == legacy.id)):
+            research_run.user_id = owner.id
         # Flush reassigned child rows before deleting the legacy owner; ORM delete cascades
         # must not interpret the moved rows as orphans.
         db.flush()

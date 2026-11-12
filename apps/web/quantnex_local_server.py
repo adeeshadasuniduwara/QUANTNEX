@@ -62,6 +62,36 @@ def latest_commit() -> dict:
     }
 
 
+def update_summary(installed: str, latest: dict) -> dict:
+    """Return concise, safe release details from GitHub's compare endpoint."""
+    changes = []
+    files_changed = 0
+    commits_behind = 1
+    if re.fullmatch(r"[0-9a-f]{40}", installed):
+        try:
+            comparison = github_json(
+                f"https://api.github.com/repos/{REPO}/compare/{installed}...{latest['sha']}"
+            )
+            commits = comparison.get("commits", [])
+            commits_behind = int(comparison.get("ahead_by", len(commits)))
+            files_changed = len(comparison.get("files", []))
+            for item in commits[-8:]:
+                message = str(item.get("commit", {}).get("message", "")).strip()
+                headline = message.splitlines()[0][:140] if message else ""
+                if headline and headline not in changes:
+                    changes.append(headline)
+        except Exception:
+            # A compare failure must never prevent a valid update from being offered.
+            pass
+    if not changes and latest.get("message"):
+        changes.append(str(latest["message"])[:140])
+    return {
+        "changes": changes[:8],
+        "files_changed": files_changed,
+        "commits_behind": commits_behind,
+    }
+
+
 def install_commit(commit: dict) -> None:
     sha = str(commit.get("sha", ""))
     archive_url = str(commit.get("archive_url", ""))
@@ -189,13 +219,19 @@ class Handler(SimpleHTTPRequestHandler):
             try:
                 latest = latest_commit()
                 installed = installed_revision()
+                update_available = bool(latest["sha"]) and latest["sha"] != installed
+                details = update_summary(installed, latest) if update_available else {
+                    "changes": [], "files_changed": 0, "commits_behind": 0
+                }
                 self.send_json(200, {
                     "installed": "main@" + installed[:7] if installed else "Unknown source revision",
                     "latest": "main@" + latest["sha"][:7],
                     "latest_message": latest["message"],
-                    "update_available": bool(latest["sha"]) and latest["sha"] != installed,
+                    "update_available": update_available,
                     "release_notes": latest["html_url"],
                     "commit_sha": latest["sha"],
+                    "published_at": latest.get("published_at"),
+                    **details,
                 })
             except Exception as exc:
                 self.send_json(502, {"error": f"GitHub source check failed: {exc}"})

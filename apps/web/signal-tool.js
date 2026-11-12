@@ -177,7 +177,8 @@
   $("clearTelegram").title="Disconnect the saved Telegram bot";
   renderPosition();
 
-  // QUANTNEX VIEW is the first-party chart workspace.\n  async function loadAutoSignalSettings(){
+  // QUANTNEX VIEW is the first-party chart workspace.
+  async function loadAutoSignalSettings(){
     try{
       const [settings,bot]=await Promise.all([apiRequest("/api/v1/telegram/auto-signals"),apiRequest("/api/v1/telegram/status")]);
       if(bot.connected){$("tgBotDisplayName").value=bot.display_name||"";$("telegramStatus").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username))+" · "+bot.chat_id;$("telegramMonitorTitle").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username));$("telegramMonitorDescription").textContent="Your personal Telegram bot is connected. Turn on Auto Signals in Signal Lab to receive fresh BTC, ETH, SOL and optional Gold setups.";$("telegramMonitorPill").textContent=settings.enabled?"AUTO ON":"CONNECTED";}

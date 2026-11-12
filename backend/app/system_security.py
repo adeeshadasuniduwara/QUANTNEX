@@ -14,7 +14,9 @@ router = APIRouter(prefix="/api/v1/system", tags=["local-system"])
 @router.get("/health")
 def detailed_system_health():
     try:
-        with SessionLocal() as db:\n            db.execute(text("SELECT 1"))\n        disk = shutil.disk_usage(Path.cwd())
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
+        disk = shutil.disk_usage(Path.cwd())
         db_size = None
         if DATABASE_URL.startswith("sqlite:///"):
             from .maintenance import sqlite_database_path

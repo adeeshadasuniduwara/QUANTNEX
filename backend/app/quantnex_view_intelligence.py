@@ -103,6 +103,30 @@ def _family_votes(c: list[dict[str, Any]], f: dict[str, Any]) -> list[dict[str, 
         {"side": "SELL", "family": name, "weight": weight, "reason": reason} for name, weight, reason in bear]
 
 
+def _catalogue_evaluations(votes: list[dict[str, Any]], f: dict[str, Any]) -> list[dict[str, Any]]:
+    output = []
+    for item in STRATEGY_CATALOG:
+        vote = next((v for v in votes if v["family"] == item["family"]), None)
+        side = vote["side"] if vote else None
+        context = item["context_filter"]
+        st = f["structure"]
+        if context == "trend-aligned": passed = f["bullish_regime"] if side == "BUY" else f["bearish_regime"]
+        elif context == "counter-trend": passed = f["bearish_regime"] if side == "BUY" else f["bullish_regime"]
+        elif context == "ADX above 22": passed = f["adx"] >= 22
+        elif context == "ADX below 22": passed = f["adx"] < 22
+        elif context == "bullish EMA regime": passed = f["bullish_regime"]
+        elif context == "bearish EMA regime": passed = f["bearish_regime"]
+        elif context == "relative volume expansion": passed = f["relative_volume"] >= 1.2
+        elif context == "normalised volume": passed = f["relative_volume"] < 1.2
+        elif context == "discount-side location": passed = st["premium_discount"] == "DISCOUNT"
+        else: passed = st["premium_discount"] == "PREMIUM"
+        eligible = bool(vote and passed)
+        output.append({"id": item["id"], "name": item["name"], "family": item["family"],
+                       "side": side, "eligible": eligible,
+                       "reason": vote["reason"] if eligible else "Family trigger or context gate not met"})
+    return output
+
+
 def analyze_candles(candles: list[dict[str, Any]], symbol: str, interval: str,
                     min_score: int = 6, risk_multiple: float = 1.5) -> dict[str, Any]:
     if len(candles) < 210:
@@ -111,12 +135,13 @@ def analyze_candles(candles: list[dict[str, Any]], symbol: str, interval: str,
     votes = _family_votes(candles, f)
     buy = [x for x in votes if x["side"] == "BUY"]
     sell = [x for x in votes if x["side"] == "SELL"]
+    catalogue_results = _catalogue_evaluations(votes, f)
     bscore, sscore = sum(x["weight"] for x in buy), sum(x["weight"] for x in sell)
     side = "BUY" if bscore >= min_score and bscore > sscore else "SELL" if sscore >= min_score and sscore > bscore else None
     winning = buy if side == "BUY" else sell if side == "SELL" else (buy if bscore >= sscore else sell)
     # Confidence is a transparent confluence score, not a probability or claimed accuracy.
     confirmations = list(dict.fromkeys(x["family"] for x in winning))
-    score = max(bscore, sscore)
+    score = min(20, max(bscore, sscore))
     signal = None
     if side:
         swing = f["structure"]["swing_low"] if side == "BUY" else f["structure"]["swing_high"]
@@ -134,7 +159,7 @@ def analyze_candles(candles: list[dict[str, Any]], symbol: str, interval: str,
     return {"symbol": symbol, "interval": interval, "generated_at": datetime.now(timezone.utc).isoformat(),
             "status": "SIGNAL" if signal else "WAIT", "signal": signal, "confluence_score": score,
             "score_out_of": 20, "score_note": "Confluence ranking only; not a measured win probability.",
-            "strategies_evaluated": len(STRATEGY_CATALOG), "active_family_votes": len(votes),
+            "strategies_evaluated": len(catalogue_results), "eligible_setups": sum(x["eligible"] for x in catalogue_results), "active_family_votes": len(votes), "strategy_evaluations": catalogue_results,
             "features": {k: round(v, 6) if isinstance(v, float) else v for k, v in f.items()},
             "votes": votes, "strategy_catalog": STRATEGY_CATALOG}
 

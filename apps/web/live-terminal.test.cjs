@@ -43,7 +43,7 @@ assert.match(html, /id="signalMarketSymbol"/, "Manual signal market selector is 
 assert.doesNotMatch(html, /external-embedding\/embed-widget-advanced-chart|TradingView Advanced Chart/, "The embedded TradingView widget must be removed");
 assert.match(signal, /api\/v1\/charts\/candles/, "QUANTNEX VIEW must load real local OHLC candles");
 assert.match(signal, /CandlestickSeries/, "First-party candlestick rendering is missing");
-assert.match(signal, /function ha\(/, "Heikin Ashi candle calculation is missing");
+assert.match(signal, /const ha=/, "Heikin Ashi candle calculation is missing");
 assert.match(signal, /data-qx-draw/, "Chart drawing tools are missing");
 assert.match(signal, /apiRequest\("\/api\/v1\/signals\/scan\?symbol=/, "Manual signal scan must use the selected market");
 assert.match(signal, /symbols\}\)/, "Telegram auto-signal settings must save selected markets");

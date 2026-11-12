@@ -145,7 +145,8 @@ def inspect_tf(c: list[dict[str,Any]]) -> dict[str,Any]:
 async def build_signal(settings: dict[str,Any]) -> dict[str,Any]:
     enabled=[str(x) for x in settings.get("enabled",["60","30","15","5","1"])]
     if not enabled: enabled=["60","30","15","5","1"]
-    needed=set(enabled+["1","5","15","30","60",str(settings.get("primary","5")),str(settings.get("trend","60"))])
+    needed=set(enabled+[str(settings.get("primary","5")),str(settings.get("trend","60"))])
+    if "50" in needed: needed.add("1")
     tasks={}
     for tf in needed:
         if tf in INTERVALS: tasks[tf]=fetch_candles(INTERVALS[tf],3200 if tf=="1" and "50" in needed else 320)

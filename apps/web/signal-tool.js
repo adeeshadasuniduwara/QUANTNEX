@@ -1,7 +1,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const tfKey = "quantnex.signal.timeframes.v1";
-  const tfNames = {"1":"M1","5":"M5","15":"M15","30":"M30","50":"M50","60":"H1","240":"H4"};
+  const tfNames = {"1":"M1","5":"M5","15":"M15","30":"M30","50":"M50","60":"H1","240":"H4","D":"D1","W":"W1"};
   const money = v => "$" + Math.abs(v).toFixed(2);
   const num = id => Number($(id).value);
   let currentPlan = null;

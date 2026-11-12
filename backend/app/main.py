@@ -260,6 +260,8 @@ async def scan_xauusd_signal(user: User = Depends(current_user), db: Session = D
                         json={"chat_id":chat_id,"text":message,"disable_web_page_preview":True})
                 result["telegram_sent"]=True
             except Exception: result["telegram_sent"]=False
+    else:
+        _save_preference(db,user.id,"active_signal","")
     db.commit()
     return result
 

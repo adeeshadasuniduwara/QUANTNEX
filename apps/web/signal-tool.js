@@ -65,12 +65,9 @@
   function applyChartTimeframe() {
     const s=readSettings();
     if(s.chart==="50"){$("timeframeStatus").textContent="M50 is a custom aggregation and is not supported by the TradingView embed. Use M1/M5/M15/M30/H1 for the chart; M50 can be used by the analysis engine.";return;}
-    const host=$("xauTradingView");if(!host)return;
-    host.replaceChildren();const widget=document.createElement("div");widget.className="tradingview-widget-container__widget";host.append(widget);
-    const script=document.createElement("script");script.type="text/javascript";script.async=true;
-    script.src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
-    script.text=JSON.stringify({autosize:true,symbol:$("tradingViewSymbol")?.value||"OANDA:XAUUSD",interval:s.chart,timezone:"Etc/UTC",theme:"dark",style:"1",locale:"en",allow_symbol_change:true,calendar:false,support_host:"https://www.tradingview.com"});
-    host.append(script);$("timeframeStatus").textContent="TradingView XAUUSD chart changed to "+tfNames[s.chart]+".";
+    const selector=$("tradingViewInterval");if(selector)selector.value=s.chart;
+    if(typeof window.quantnexRenderChart==="function")window.quantnexRenderChart({symbol:$("tradingViewSymbol")?.value||"OANDA:XAUUSD",interval:s.chart});
+    $("timeframeStatus").textContent="TradingView chart changed to "+tfNames[s.chart]+".";
   }
   $("saveTimeframes").addEventListener("click",saveSettings);
   $("syncTimeframes").addEventListener("click",async()=>{
@@ -82,7 +79,7 @@
     }catch(e){$("timeframeStatus").textContent=e.message;}
   });
   $("applyChartTf").addEventListener("click",async()=>{await saveSettings();applyChartTimeframe();});
-  function loadLocalSettings(){try{const s=JSON.parse(localStorage.getItem(tfKey)||"null");if(s)applySettings(s);}catch{}}
+  function loadLocalSettings(){try{const s=JSON.parse(localStorage.getItem(tfKey)||"null");if(s){applySettings(s);const selector=$("tradingViewInterval");if(selector&&s.chart!=="50")selector.value=s.chart||"15";if(typeof window.quantnexRenderChart==="function"&&s.chart!=="50")window.quantnexRenderChart({interval:s.chart||"15"});}}catch{}}
   loadLocalSettings();
   if(typeof sessionToken==="function"&&sessionToken()){
     apiRequest("/api/v1/signals/settings").then(applySettings).catch(()=>{});

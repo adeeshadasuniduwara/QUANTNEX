@@ -44,12 +44,16 @@ if exist "dist\QUANTNEX.exe" (
 )
 goto end
 :web
+start "QUANTNEX Backend API" cmd /k call run_backend.bat
+start "QUANTNEX Web Server" cmd /k py apps\web\quantnex_local_server.py
+timeout /t 2 /nobreak >nul
 start "" http://127.0.0.1:5500
-py -m http.server 5500 --directory apps\web
 goto end
 :both
+start "QUANTNEX Backend API" cmd /k call run_backend.bat
+start "QUANTNEX Web Server" cmd /k py apps\web\quantnex_local_server.py
+timeout /t 2 /nobreak >nul
 start "" http://127.0.0.1:5500
-start "QUANTNEX Web Server" cmd /k py -m http.server 5500 --directory apps\web
 py apps\windows\quantnex_desktop.py
 goto end
 :backend

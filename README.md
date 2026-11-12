@@ -18,14 +18,14 @@ Download QUANTNEX.exe from the Artifacts section of the build page.
 
 Download app-debug.apk from the Artifacts section. This is an early Android starter build, not yet feature-complete.
 
-Build artifacts are temporary and retained for 30 days. A permanent public download link will be added to GitHub Releases after the first versioned release.
+Build artifacts are temporary and retained for 30 days. The Web Updates panel also links to the current source ZIP; published releases provide a versioned source ZIP through GitHub Releases.
 
 ## Applications
 
-- Web: responsive browser workspace with position sizing, local journal, Charts section and TradingView BTCUSDT / XAUUSD charts.
+- Web: responsive browser workspace with position sizing, local journal, TradingView XAUUSD chart, configurable multi-timeframe XAUUSD confluence scans, risk planner and Telegram bot controls.
 - Windows: desktop workspace with position sizing, local SQLite journal, Binance BTCUSDT candles, installation ID, and optional authenticated Account & Wallet connection to the shared API.
 - Android: native application starter.
-- Backend: shared FastAPI foundation for accounts, journal, preferences, wallet ledger and optional AI gateway.
+- Backend: shared FastAPI foundation for accounts, journal, preferences, wallet ledger, optional AI gateway, Twelve Data XAU/USD analysis and Telegram bot command / price-level alert worker.
 
 ## Run from source on Windows
 
@@ -33,16 +33,30 @@ From the repository root, run run_quantnex.bat. Option 1 starts the current Pyth
 
 ## Backend
 
-See backend/README.md and docs/ARCHITECTURE.md. The authenticated API now includes a wallet ledger for manual deposits and withdrawals, withdrawal balance checks, and automatic wallet P&L entries when an API journal trade is created. The Web Account & Wallet and Windows Account & Wallet clients connect to the shared authenticated API when a reachable API URL is configured. The Windows client syncs newly saved journal trades while signed in; older local-only records are not automatically migrated. The existing Web local journal remains browser-local until a dedicated journal-sync phase. Android is not yet connected.
+See backend/README.md and docs/ARCHITECTURE.md. The authenticated API includes a wallet ledger, XAU/USD multi-timeframe analysis endpoints, per-user signal preferences, encrypted Telegram bot credentials, command polling and TP/SL level notifications while the local API is running. The Web Account & Wallet and Windows Account & Wallet clients connect to the shared authenticated API when a reachable API URL is configured. The Windows client syncs newly saved journal trades while signed in; older local-only records are not automatically migrated. The existing Web local journal remains browser-local until a dedicated journal-sync phase. Android is not yet connected.
 
 ## Current capability and safety
 
-The calculator uses broker-specific pip values entered by the user. The web journal stores data in that browser; the Windows journal stores data locally. Bot monitoring is currently a status panel only. The Web chart view embeds TradingView charts. The Windows Charts tab reads public BTCUSDT candles from Binance; its Gold button opens TradingView XAUUSD in a browser. The Windows installation ID is a random local identifier, not a login credential. Broker connections, Telegram control and automated order execution are not enabled. Never commit API keys, passwords, signing keys or broker tokens. Public deployment requires HTTPS, managed secrets, backups, monitoring and security testing.
+The calculator uses broker-specific pip values entered by the user. The web journal stores data in that browser; the Windows journal stores data locally. The Web chart view embeds TradingView; signal calculations use a separate Twelve Data OHLC feed configured server-side in backend/.env. The rule-based 0–10 confluence score is not a win probability. EMA, MACD, RSI, ADX, ATR, swing structure, liquidity sweep and heuristic OB / Breaker / FVG / iFVG / premium-discount zones are included. The Reaper indicator is not active because its exact formula/source has not been confirmed. Telegram commands and approximate once-per-minute TP/SL price-level alerts require a connected bot, a configured market-data key and the local API to remain running. These alerts do not modify broker orders. The Windows Charts tab reads public BTCUSDT candles from Binance; its Gold button opens TradingView XAUUSD in a browser. The Windows installation ID is a random local identifier, not a login credential. Broker connections and automated order execution are not enabled. Never commit API keys, passwords, signing keys or broker tokens. Public deployment requires HTTPS, managed secrets, backups, monitoring and security testing.
 
 ## Versioned releases and updates
 
-The Windows update checker reads the latest published GitHub Release and verifies the EXE with SHA256 before installation. A successful source ZIP update and a published Windows EXE release are separate update paths. To publish the first Windows release, open Actions → QUANTNEX Publish Release → Run workflow and use version `v0.6.0`; later releases can also be triggered by pushing a `v*` tag. Until the first release is published, packaged EXEs correctly report that no published release is available.
+When the Web workspace is started from `run_quantnex.bat` → **Start Web Workspace**, it uses `apps/web/quantnex_local_server.py` rather than a plain static file server. The Updates panel checks the latest published GitHub Release. If a newer release exists, choose **Install update & restart workspace**: the local updater downloads the official release source ZIP, safely extracts it, replaces the Web workspace files, records the installed version, and the open browser detects completion, reloads with cache disabled, and shows an update notification. Browser journal/settings stored in local storage remain on that browser profile. Keep the QUANTNEX Web Server CMD window open during the update. This automatic installer updates the Web workspace only; it does not replace the Windows EXE or backend configuration. The manual current-source ZIP link remains available for fresh installs. A published release must exist before automatic release updates can be installed.
+
+The Web Updates panel checks the latest published GitHub Release and, when a newer version exists, installs the official release ZIP through the loopback Python server. It safely updates only files under `apps/web`, backs up replaced Web files under `data/updates/backups`, preserves user data and backend configuration, and lets the already-open browser poll for completion, reload with a cache-busting URL, and show a success notification. The panel also links to release notes and provides the official release ZIP and current `main` source ZIP for manual downloads or fresh installs. Keep the QUANTNEX Web Server CMD window open during installation. A newer published GitHub Release is required for an update to appear. The Windows update checker reads the latest published GitHub Release and verifies the EXE with SHA256 before installation. To publish a release, open Actions → QUANTNEX Publish Release → Run workflow and use version `v0.6.0`; later releases can also be triggered by pushing a `v*` tag. GitHub automatically provides ZIP and TAR.GZ source archives for published release tags, while the workflow attaches the Windows EXE and SHA256 checksum.
 
 ## Telegram release announcements
 
 QUANTNEX includes an optional GitHub Actions workflow that announces published releases in an official Telegram channel. Create a bot with @BotFather, add it to the channel as an administrator with Post Messages permission, then configure repository Actions secrets TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID. See docs/TELEGRAM-RELEASE-NOTIFICATIONS.md.
+
+## Live market overview, Signal Lab and Telegram Auto Signals
+
+- The Overview displays Binance BTC/USDT and Twelve Data XAU/USD spot prices, plus an indicative LKR/gram and LKR/8g conversion using the Twelve Data USD/LKR rate. The LKR conversion is a spot-price estimate, not a local jeweller's retail quote; purity, taxes and dealer premiums are excluded.
+- The two embedded TradingView charts are replaced by one dedicated TradingView workspace tab with XAUUSD/BTCUSDT symbol selection.
+- The Signal Lab retains XAUUSD multi-timeframe analysis and adds directional quality gates for primary/trend EMA bias, selected-timeframe consensus, MACD direction, ADX strength and RSI range. Scores remain rule-count confluence, not win probability.
+- Users create and name their own Telegram bot through @BotFather, then connect its token and destination chat to their QUANTNEX account. Tokens are encrypted server-side; the optional display label is stored per account.
+- Auto Signals are opt-in per user. When enabled, the local API scans XAUUSD at the selected interval (minimum 60 seconds), requires at least 8/10 confluence plus directional filters, and sends only a new primary-timeframe candle signal to that user's connected bot. It does not place trades.
+- Start Web Workspace using `run_quantnex.bat` option 2 to launch both the local API and Web updater. Keep both CMD windows open. Configure `TWELVE_DATA_API_KEY` in `backend/.env` for Gold, USD/LKR and signal analysis; BTC ticker uses Binance public market data.
+- The laptop must remain powered on, connected to the internet and running the QUANTNEX API for Auto Signals. A VPS can host the same API process for continuous operation. The browser itself does not need to stay open once Auto Signals are saved.
+- Reaper is not implemented because its exact formula/source has not been provided. There is no broker execution, automatic SL movement, or verified win-rate calculation.
+

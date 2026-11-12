@@ -99,3 +99,31 @@ class WalletSummaryResponse(BaseModel):
     deposits: float
     withdrawals: float
     trading_pnl: float
+
+class TelegramSendRequest(BaseModel):
+    bot_token: str = Field(min_length=20, max_length=200)
+    chat_id: str = Field(min_length=1, max_length=128)
+    message: str = Field(min_length=1, max_length=4096)
+
+class TelegramConnectRequest(BaseModel):
+    bot_token: str = Field(min_length=20, max_length=200)
+    chat_id: str = Field(min_length=1, max_length=128)
+    display_name: str = Field(default="", max_length=40)
+
+class AutoSignalSettingsRequest(BaseModel):
+    enabled: bool = False
+    interval_seconds: int = Field(default=180, ge=60, le=3600)
+
+class SignalSettingsRequest(BaseModel):
+    primary: str = Field(default="5", pattern="^(1|5|15|30|50|60)$")
+    trend: str = Field(default="60", pattern="^(15|30|60|240)$")
+    enabled: list[str] = Field(default_factory=lambda: ["60","30","15","5","1"], max_length=6)
+    risk_percent: float = Field(default=1.0, gt=0, le=5)
+    min_score: int = Field(default=7, ge=6, le=10)
+    @field_validator("enabled")
+    @classmethod
+    def valid_timeframes(cls, values):
+        allowed={"1","5","15","30","50","60"}
+        if not values or any(str(x) not in allowed for x in values):
+            raise ValueError("Choose one or more supported analysis timeframes.")
+        return list(dict.fromkeys(str(x) for x in values))

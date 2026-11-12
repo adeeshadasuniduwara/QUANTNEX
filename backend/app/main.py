@@ -1,3 +1,6 @@
+import asyncio
+import json
+import re
 import httpx
 import jwt
 from fastapi import Depends, FastAPI, HTTPException
@@ -10,8 +13,8 @@ from sqlalchemy.orm import Session
 from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, TOKEN_MINUTES
 from .database import Base, engine, get_db
 from .models import Preference, Trade, User, WalletTransaction
-from .schemas import AIChatRequest, AIChatResponse, LoginRequest, PreferenceResponse, PreferenceWrite, RegisterRequest, TokenResponse, TradeCreate, TradeResponse, UserResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
-from .security import create_access_token, decode_access_token, hash_password, verify_password
+from .schemas import AIChatRequest, AIChatResponse, LoginRequest, PreferenceResponse, PreferenceWrite, RegisterRequest, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TokenResponse, TradeCreate, TradeResponse, UserResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
+from .security import create_access_token, decode_access_token, decrypt_secret, encrypt_secret, hash_password, verify_password
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="QUANTNEX API", description="Shared backend for the QUANTNEX trading workspace.", version="0.5.0")
@@ -30,6 +33,15 @@ def current_user(credentials: HTTPAuthorizationCredentials | None = Depends(bear
     if user is None:
         raise HTTPException(status_code=401, detail="User account not found.")
     return user
+
+@app.get("/api/v1/market/overview")
+async def market_overview():
+    """Indicative BTC/USD, XAU/USD and converted Sri Lankan gold values."""
+    from .market_data import get_market_overview
+    try:
+        return await get_market_overview()
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="A market price provider is temporarily unavailable.")
 
 @app.get("/health")
 def health(db: Session = Depends(get_db)):
@@ -168,3 +180,200 @@ async def ai_chat(payload: AIChatRequest, user: User = Depends(current_user)):
         return AIChatResponse(reply=reply.strip(), model=AI_MODEL)
     except (httpx.HTTPError, KeyError, IndexError, ValueError):
         raise HTTPException(status_code=502, detail="AI provider request failed. Check server configuration.")
+
+
+@app.post("/api/v1/telegram/send")
+async def send_telegram_message(payload: TelegramSendRequest, user: User = Depends(current_user)):
+    """Send one user-triggered Telegram message; bot credentials are never stored."""
+    import re
+    if not re.fullmatch(r"[0-9]{5,12}:[A-Za-z0-9_-]{20,}", payload.bot_token):
+        raise HTTPException(status_code=422, detail="Telegram bot token format is invalid.")
+    if not re.fullmatch(r"(?:@[A-Za-z0-9_]{5,}|-?[0-9]{1,20})", payload.chat_id.strip()):
+        raise HTTPException(status_code=422, detail="Use a numeric chat ID or @channel username.")
+    url = "https://api.telegram.org/bot" + payload.bot_token + "/sendMessage"
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            response = await client.post(url, json={"chat_id": payload.chat_id.strip(),
+                                                    "text": payload.message,
+                                                    "disable_web_page_preview": True})
+        data = response.json()
+        if response.status_code >= 400 or not data.get("ok"):
+            raise HTTPException(status_code=502, detail="Telegram rejected the message. Check the bot token, chat ID and bot permissions.")
+        return {"ok": True, "message_id": data.get("result", {}).get("message_id")}
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Telegram request timed out.")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="Could not reach Telegram. Check the server internet connection.")
+
+
+def _preference(db: Session, user_id: int, key: str, default: str = "") -> str:
+    row = db.scalar(select(Preference).where(Preference.user_id == user_id, Preference.key == key))
+    return row.value if row else default
+
+def _save_preference(db: Session, user_id: int, key: str, value: str) -> None:
+    row = db.scalar(select(Preference).where(Preference.user_id == user_id, Preference.key == key))
+    if row is None:
+        db.add(Preference(user_id=user_id, key=key, value=value))
+    else:
+        row.value = value
+
+DEFAULT_SIGNAL_SETTINGS = {"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1.0,"min_score":7}
+
+@app.get("/api/v1/signals/status")
+def signal_engine_status(user: User = Depends(current_user)):
+    from .config import TWELVE_DATA_API_KEY
+    return {"configured": bool(TWELVE_DATA_API_KEY), "provider":"Twelve Data",
+            "symbol":"XAU/USD", "note":"Live analysis requires a valid server-side TWELVE_DATA_API_KEY. The TradingView embed does not expose its candles to this API."}
+
+@app.get("/api/v1/signals/settings")
+def get_signal_settings(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    try: settings=json.loads(_preference(db,user.id,"signal_settings",json.dumps(DEFAULT_SIGNAL_SETTINGS)))
+    except ValueError: settings=DEFAULT_SIGNAL_SETTINGS
+    return settings
+
+@app.put("/api/v1/signals/settings")
+def update_signal_settings(payload: SignalSettingsRequest, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    settings=payload.model_dump()
+    _save_preference(db,user.id,"signal_settings",json.dumps(settings))
+    db.commit()
+    return settings
+
+@app.post("/api/v1/signals/scan")
+async def scan_xauusd_signal(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from .signal_engine import build_signal, MarketDataError
+    from .config import TWELVE_DATA_API_KEY
+    if not TWELVE_DATA_API_KEY:
+        raise HTTPException(status_code=503,detail="Market feed not configured. Add TWELVE_DATA_API_KEY to backend/.env and restart the API.")
+    try: settings=json.loads(_preference(db,user.id,"signal_settings",json.dumps(DEFAULT_SIGNAL_SETTINGS)))
+    except ValueError: settings=DEFAULT_SIGNAL_SETTINGS
+    try:
+        result=await build_signal(settings)
+    except MarketDataError as exc:
+        raise HTTPException(status_code=502,detail=str(exc))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502,detail="Could not retrieve XAUUSD candles from the configured market-data provider.")
+    signal=result.get("signal")
+    if signal:
+        _save_preference(db,user.id,"active_signal",json.dumps({**signal,"tp1_notified":False,"tp2_notified":False,"tp3_notified":False,"sl_notified":False}))
+        token_enc=_preference(db,user.id,"telegram_bot_token_enc")
+        chat_id=_preference(db,user.id,"telegram_chat_id")
+        try: auto_settings=json.loads(_preference(db,user.id,"auto_signal_settings",'{"enabled":false}'))
+        except ValueError: auto_settings={"enabled":False}
+        if token_enc and chat_id and auto_settings.get("enabled"):
+            try:
+                token=decrypt_secret(token_enc)
+                message=("QUANTNEX · XAUUSD "+signal["side"]+"\\nEntry: "+str(signal["entry"])+"\\nSL: "+str(signal["stop_loss"])+
+                    "\\nTP1: "+str(signal["tp1"])+"\\nTP2: "+str(signal["tp2"])+"\\nTP3: "+str(signal["tp3"])+
+                    "\\nConfluence: "+str(signal["score"])+"/10 (not win probability)\\nConfirmations: "+", ".join(signal["confirmations"])+
+                    "\\nTP1/SL level alerts run while the local API is active. No broker order is placed.")
+                async with httpx.AsyncClient(timeout=12) as client:
+                    response=await client.post("https://api.telegram.org/bot"+token+"/sendMessage",
+                        json={"chat_id":chat_id,"text":message,"disable_web_page_preview":True})
+                    response.raise_for_status()
+                result["telegram_sent"]=True
+            except Exception: result["telegram_sent"]=False
+        else:
+            result["telegram_sent"]=False
+            result["telegram_note"]="Auto Signals is OFF; this manual scan did not send a Telegram alert."
+    else:
+        _save_preference(db,user.id,"active_signal","")
+    db.commit()
+    return result
+
+@app.post("/api/v1/telegram/connect")
+async def connect_telegram_bot(payload: TelegramConnectRequest, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if not re.fullmatch(r"[0-9]{5,12}:[A-Za-z0-9_-]{20,}",payload.bot_token):
+        raise HTTPException(status_code=422,detail="Telegram bot token format is invalid.")
+    if not re.fullmatch(r"(?:@[A-Za-z0-9_]{5,}|-?[0-9]{1,20})",payload.chat_id.strip()):
+        raise HTTPException(status_code=422,detail="Use a numeric chat ID or @channel username.")
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            response=await client.get("https://api.telegram.org/bot"+payload.bot_token+"/getMe")
+            data=response.json()
+        if response.status_code>=400 or not data.get("ok"):
+            raise HTTPException(status_code=422,detail="Telegram rejected this bot token. Check BotFather token.")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502,detail="Could not reach Telegram to verify the bot.")
+    bot=data.get("result",{})
+    _save_preference(db,user.id,"telegram_bot_token_enc",encrypt_secret(payload.bot_token))
+    _save_preference(db,user.id,"telegram_chat_id",payload.chat_id.strip())
+    _save_preference(db,user.id,"telegram_bot_username",bot.get("username",""))
+    _save_preference(db,user.id,"telegram_bot_display_name",payload.display_name.strip() or bot.get("first_name","QUANTNEX Bot"))
+    db.commit()
+    return {"connected":True,"bot_username":bot.get("username"),"chat_id":payload.chat_id.strip(),
+            "commands":["/help","/timeframes","/settf 5","/settrend 60","/setanalysis 1,5,15,30,60","/scan","/status"],
+            "note":"The local API must remain running for bot commands and TP1/SL level alerts."}
+
+@app.get("/api/v1/telegram/status")
+def telegram_status(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    connected=bool(_preference(db,user.id,"telegram_bot_token_enc") and _preference(db,user.id,"telegram_chat_id"))
+    return {"connected":connected,"bot_username":_preference(db,user.id,"telegram_bot_username") if connected else None,
+            "display_name":_preference(db,user.id,"telegram_bot_display_name") if connected else None,
+            "chat_id":_preference(db,user.id,"telegram_chat_id") if connected else None,
+            "worker":"active while this API process is running"}
+
+@app.delete("/api/v1/telegram/connect")
+def disconnect_telegram_bot(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    for key in ["telegram_bot_token_enc","telegram_chat_id","telegram_bot_username","telegram_bot_display_name","telegram_update_offset","active_signal","auto_signal_settings","auto_signal_last_fingerprint"]:
+        row=db.scalar(select(Preference).where(Preference.user_id==user.id,Preference.key==key))
+        if row:db.delete(row)
+    db.commit()
+    return {"connected":False}
+
+@app.on_event("startup")
+async def start_telegram_background_worker():
+    from .telegram_worker import telegram_worker
+    app.state.telegram_worker_task=asyncio.create_task(telegram_worker())
+
+@app.on_event("shutdown")
+async def stop_telegram_background_worker():
+    task=getattr(app.state,"telegram_worker_task",None)
+    if task:
+        task.cancel()
+        try:await task
+        except asyncio.CancelledError:pass
+
+@app.get("/api/v1/telegram/auto-signals")
+def get_auto_signal_settings(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    raw=_preference(db,user.id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180}')
+    try: settings=json.loads(raw)
+    except ValueError: settings={"enabled":False,"interval_seconds":180}
+    settings["telegram_connected"]=bool(_preference(db,user.id,"telegram_bot_token_enc") and _preference(db,user.id,"telegram_chat_id"))
+    from .config import TWELVE_DATA_API_KEY
+    settings["market_feed_configured"]=bool(TWELVE_DATA_API_KEY)
+    return settings
+
+@app.put("/api/v1/telegram/auto-signals")
+def set_auto_signal_settings(payload: AutoSignalSettingsRequest, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    connected=bool(_preference(db,user.id,"telegram_bot_token_enc") and _preference(db,user.id,"telegram_chat_id"))
+    if payload.enabled and not connected:
+        raise HTTPException(status_code=409,detail="Connect and test your personal Telegram bot before enabling Auto Signals.")
+    from .config import TWELVE_DATA_API_KEY
+    if payload.enabled and not TWELVE_DATA_API_KEY:
+        raise HTTPException(status_code=503,detail="Add TWELVE_DATA_API_KEY to backend/.env and restart the QUANTNEX API before enabling Auto Signals.")
+    settings=payload.model_dump()
+    _save_preference(db,user.id,"auto_signal_settings",json.dumps(settings))
+    db.commit()
+    return {**settings,"telegram_connected":connected,"note":"Automatic XAUUSD alerts run only while this computer's QUANTNEX API process is running."}
+
+@app.post("/api/v1/telegram/notify")
+async def notify_connected_telegram(payload: dict, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    message=payload.get("message")
+    if not isinstance(message,str) or not message.strip() or len(message)>4096:
+        raise HTTPException(status_code=422,detail="Message must contain 1–4096 characters.")
+    token_enc=_preference(db,user.id,"telegram_bot_token_enc")
+    chat_id=_preference(db,user.id,"telegram_chat_id")
+    if not token_enc or not chat_id:
+        raise HTTPException(status_code=409,detail="Connect your Telegram bot first.")
+    try: token=decrypt_secret(token_enc)
+    except ValueError as exc: raise HTTPException(status_code=409,detail=str(exc))
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            response=await client.post("https://api.telegram.org/bot"+token+"/sendMessage",
+                json={"chat_id":chat_id,"text":message,"disable_web_page_preview":True})
+            data=response.json()
+        if response.status_code>=400 or not data.get("ok"):
+            raise HTTPException(status_code=502,detail="Telegram rejected the message. Check bot permissions and chat ID.")
+        return {"ok":True,"message_id":data.get("result",{}).get("message_id")}
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502,detail="Could not reach Telegram.")

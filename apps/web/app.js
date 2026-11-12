@@ -46,24 +46,103 @@ $("exportJournal").addEventListener("click",()=>{
   const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),link=document.createElement("a");link.href=url;link.download="quantnex-trading-journal.csv";link.click();URL.revokeObjectURL(url);
 });
 renderJournal();
+// Local QUANTNEX updater: the CMD-launched Python server downloads, extracts and installs releases.
 const updateButton = $("webCheckUpdate");
-if (updateButton) updateButton.addEventListener("click", async () => {
-  const status = $("webUpdateStatus"), progress = $("webUpdateProgress");
-  updateButton.disabled = true; updateButton.textContent = "Checking…"; progress.hidden = false;
-  status.textContent = "Connecting to the official QUANTNEX release channel…";
-  try {
-    const response = await fetch("https://api.github.com/repos/adeeshadasuniduwara/QUANTNEX/releases/latest", {headers:{"Accept":"application/vnd.github+json"}});
-    if (response.status === 404) { status.textContent = "No published release is available yet. Check back when the next release is published."; return; }
-    if (!response.ok) throw new Error("Release service returned " + response.status);
-    const release = await response.json();
-    const tag = release.tag_name || "Latest";
-    status.textContent = "Latest published release: " + tag + ". Open release notes to review available downloads. Web updates are installed manually; Windows desktop updates use the built-in updater.";
-    const link = document.createElement("a"); link.href = release.html_url; link.target = "_blank"; link.rel = "noreferrer"; link.className = "secondary-btn link-btn"; link.textContent = "Open " + tag + " release";
-    const actions = document.querySelector(".update-actions"); const old = actions.querySelector(".release-link"); if(old) old.remove(); link.classList.add("release-link"); actions.append(link);
-  } catch (error) { status.textContent = "Could not check updates: " + error.message + ". You can open the official releases page instead."; }
-  finally { updateButton.disabled = false; updateButton.textContent = "Check for updates"; progress.hidden = true; }
-});
+const installButton = $("webInstallUpdate");
+const releaseVersionLabel = $("webReleaseVersion");
+const releaseNotesLink = $("webReleaseNotes");
+let checkedRelease = null;
+let updatePolling = false;
 
+function showUpdateToast(message){
+  let toast=$("quantnexUpdateToast");
+  if(!toast){
+    toast=document.createElement("div");toast.id="quantnexUpdateToast";
+    toast.setAttribute("role","status");toast.style.cssText="position:fixed;right:22px;bottom:22px;z-index:9999;max-width:360px;padding:15px 18px;border:1px solid #777;border-radius:12px;background:#f2f2f2;color:#090909;box-shadow:0 12px 45px #0009;font:600 13px/1.5 system-ui;animation:rise .3s ease both";
+    document.body.append(toast);
+  }
+  toast.textContent=message;
+  window.setTimeout(()=>toast.remove(),7000);
+}
+if(sessionStorage.getItem("quantnex.webUpdateComplete")==="1"){
+  sessionStorage.removeItem("quantnex.webUpdateComplete");
+  window.addEventListener("load",()=>showUpdateToast("✓ QUANTNEX Web has been updated. You are now using the latest workspace."));
+}
+
+async function checkLocalUpdate(){
+  const status=$("webUpdateStatus"),progress=$("webUpdateProgress");
+  updateButton.disabled=true;updateButton.textContent="Checking…";progress.hidden=false;
+  status.textContent="Checking the latest published QUANTNEX release…";
+  try{
+    const response=await fetch("/__quantnex/check",{cache:"no-store"});
+    if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||"Local updater is not running.");}
+    checkedRelease=await response.json();
+    $("webInstalledVersion").textContent=String(checkedRelease.installed).startsWith("v")?checkedRelease.installed:"v"+checkedRelease.installed;
+    releaseVersionLabel.textContent=checkedRelease.latest;
+    if(checkedRelease.release_notes)releaseNotesLink.href=checkedRelease.release_notes;
+    if(checkedRelease.update_available){
+      status.textContent="New version "+checkedRelease.latest+" is ready. Install it automatically; QUANTNEX will extract the release, refresh this browser and reopen the updated workspace.";
+      installButton.hidden=false;
+      installButton.disabled=false;
+    }else{
+      status.textContent="You already have the latest published release ("+checkedRelease.latest+").";
+      installButton.hidden=true;
+    }
+  }catch(error){
+    checkedRelease=null;installButton.hidden=true;
+    status.textContent="Automatic updates are available when QUANTNEX is launched using run_quantnex.bat → Start Web Workspace. "+error.message;
+  }finally{
+    updateButton.disabled=false;updateButton.textContent="Check for updates";progress.hidden=true;
+  }
+}
+if(updateButton)updateButton.addEventListener("click",checkLocalUpdate);
+
+async function watchUpdateInstall(){
+  if(updatePolling)return;
+  updatePolling=true;
+  const status=$("webUpdateStatus");
+  const progress=$("webUpdateProgress");
+  progress.hidden=false;
+  const started=Date.now();
+  try{
+    while(Date.now()-started<180000){
+      await new Promise(resolve=>window.setTimeout(resolve,1200));
+      const response=await fetch("/__quantnex/status",{cache:"no-store"});
+      const state=await response.json();
+      if(state.status==="complete"){
+        status.textContent=state.message||"Update installed. Refreshing workspace…";
+        sessionStorage.setItem("quantnex.webUpdateComplete","1");
+        window.setTimeout(()=>{window.location.replace(window.location.pathname+"?updated="+Date.now());},900);
+        return;
+      }
+      if(state.status==="error")throw new Error(state.message||"Update installation failed.");
+      if(state.status==="installing")status.textContent=state.message||"Downloading and extracting update…";
+    }
+    throw new Error("The update is taking longer than expected. Check the QUANTNEX Web Server CMD window.");
+  }catch(error){
+    status.textContent="Update did not finish: "+error.message;
+    installButton.disabled=false;installButton.textContent="Retry update";
+  }finally{
+    progress.hidden=true;updatePolling=false;
+  }
+}
+if(installButton)installButton.addEventListener("click",async()=>{
+  if(!checkedRelease||!checkedRelease.update_available){await checkLocalUpdate();return;}
+  installButton.disabled=true;installButton.textContent="Installing…";
+  $("webUpdateStatus").textContent="Starting automatic update…";
+  try{
+    const response=await fetch("/__quantnex/install",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||"Could not start update.");
+    await watchUpdateInstall();
+  }catch(error){
+    $("webUpdateStatus").textContent="Could not start update: "+error.message;
+    installButton.disabled=false;installButton.textContent="Install update & restart workspace";
+  }
+});
+if(updateButton&&location.hostname==="127.0.0.1"&&location.port==="5500"){
+  checkLocalUpdate();
+}
 
 // Authenticated shared API wallet. Access tokens stay in this browser tab's session storage.
 const API_BASE_KEY = "quantnex.apiBase.v1";
@@ -106,7 +185,7 @@ async function authenticate(mode){
   try{
     if(mode==="register") await apiRequest("/api/v1/auth/register",{method:"POST",body:JSON.stringify({email,password})});
     const result=await apiRequest("/api/v1/auth/login",{method:"POST",body:JSON.stringify({email,password})});
-    sessionStorage.setItem(TOKEN_KEY,result.access_token);$("accountPassword").value="";setSignedIn(true);await refreshWallet();setAccountMessage("Signed in. Wallet data loaded from the shared API.");
+    sessionStorage.setItem(TOKEN_KEY,result.access_token);window.dispatchEvent(new Event("quantnex:auth"));$("accountPassword").value="";setSignedIn(true);await refreshWallet();setAccountMessage("Signed in. Wallet data loaded from the shared API.");
   }catch(error){setAccountMessage(error.message,true);}
 }
 $("saveApiBase").addEventListener("click",()=>{try{const url=new URL(apiBase());if(!["http:","https:"].includes(url.protocol))throw new Error();localStorage.setItem(API_BASE_KEY,url.origin+url.pathname.replace(/\/+$/,""));setAccountMessage("API server URL saved for this browser.");}catch{setAccountMessage("Enter a valid HTTP or HTTPS API URL.",true);}});
@@ -124,3 +203,33 @@ $("walletWithdraw").addEventListener("click",()=>recordWalletTransaction("withdr
 if(sessionToken()){
   setSignedIn(true);refreshWallet().then(()=>setAccountMessage("Restored this tab's session. Wallet data loaded.")).catch(error=>{sessionStorage.removeItem(TOKEN_KEY);setSignedIn(false);setAccountMessage("Session expired or API unavailable: "+error.message,true);});
 }else setSignedIn(false);
+
+
+// Compact live market overview. This public endpoint returns indicative spot conversions.
+(function initMarketOverview(){
+  const $id=id=>document.getElementById(id);
+  const usd=value=>value==null?"Unavailable":"$"+Number(value).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+  const lkr=value=>value==null?"Unavailable":"LKR "+Number(value).toLocaleString("en-LK",{minimumFractionDigits:2,maximumFractionDigits:2});
+  async function refresh(){
+    try{
+      const base=($id("apiBase")?.value||"http://127.0.0.1:8000").trim().replace(/\/+$/,"");
+      const response=await fetch(base+"/api/v1/market/overview",{cache:"no-store"});
+      if(!response.ok)throw new Error("Market feed unavailable");
+      const data=await response.json();
+      $id("btcLivePrice").textContent=usd(data.btc_usd);
+      $id("goldLivePrice").textContent=usd(data.gold_usd_oz);
+      $id("goldLkrGram").textContent=lkr(data.gold_lkr_gram);
+      $id("goldLkrEight").textContent=lkr(data.gold_lkr_8g);
+      $id("usdLkrRate").textContent=data.usd_lkr==null?"Unavailable":"LKR "+Number(data.usd_lkr).toFixed(2);
+      const stamp=data.timestamp?new Date(data.timestamp).toLocaleTimeString():"";
+      $id("btcLiveUpdated").textContent="Updated "+stamp+" · Binance";
+      $id("goldLiveUpdated").textContent="Updated "+stamp+" · Twelve Data";
+      $id("goldLkrNote").textContent=data.note+" "+data.gold_calculation;
+    }catch(error){
+      ["btcLivePrice","goldLivePrice","goldLkrGram","goldLkrEight","usdLkrRate"].forEach(id=>{if($id(id))$id(id).textContent="Feed unavailable";});
+      if($id("btcLiveUpdated"))$id("btcLiveUpdated").textContent="Start the local QUANTNEX API and configure Twelve Data for Gold/LKR.";
+      if($id("goldLkrNote"))$id("goldLkrNote").textContent="BTC uses Binance public data; Gold and USD/LKR require the server-side Twelve Data API key.";
+    }
+  }
+  if($id("btcLivePrice")){refresh();window.setInterval(refresh,30000);}
+})();

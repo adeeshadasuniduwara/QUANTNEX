@@ -756,6 +756,7 @@ async def strategy_lab_backtest(payload: dict, user: User = Depends(local_worksp
     record_audit_event(db,"strategy_lab.backtest",{"symbol":info["symbol"],"timeframe":timeframe,
         "trades":result["trade_count"],"strategy":strategy})
     db.commit()
+    event_hub.publish("strategy.research.changed", "strategy", "backtest_saved", {"symbol": info["symbol"], "timeframe": timeframe})
     return {"symbol":info["symbol"],"timeframe":timeframe,**result}
 
 @app.post("/api/v1/strategy-lab/optimize")
@@ -776,6 +777,7 @@ async def strategy_lab_optimize(payload: dict, user: User = Depends(local_worksp
         strategy_json="{}",result_json=json.dumps(result)))
     record_audit_event(db,"strategy_lab.optimizer",{"symbol":info["symbol"],"timeframe":timeframe,"tested":result["tested"]})
     db.commit()
+    event_hub.publish("strategy.research.changed", "strategy", "optimizer_saved", {"symbol": info["symbol"], "timeframe": timeframe})
     return {"symbol":info["symbol"],"timeframe":timeframe,**result}
 
 @app.post("/api/v1/strategy-lab/forward/evaluate")
@@ -802,6 +804,7 @@ async def strategy_lab_forward_evaluate(payload: dict, user: User = Depends(loca
         strategy_json=json.dumps(strategy),result_json=json.dumps(observation)))
     record_audit_event(db,"strategy_lab.forward_observation",{"symbol":info["symbol"],"side":side,"timeframe":timeframe})
     db.commit()
+    event_hub.publish("strategy.research.changed", "strategy", "forward_observation_saved", {"symbol": info["symbol"], "timeframe": timeframe})
     return {"symbol":info["symbol"],"timeframe":timeframe,"strategy":strategy,**observation}
 
 @app.get("/api/v1/strategy-lab/research")

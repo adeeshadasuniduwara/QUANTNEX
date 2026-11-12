@@ -38,3 +38,39 @@
 @media(max-width:720px){.market-ticker-grid{grid-template-columns:1fr 1fr}.local-gold-panel{grid-template-columns:1fr}.local-gold-values{grid-template-columns:1fr 1fr}}@media(max-width:480px){.market-ticker-grid{grid-template-columns:1fr}.local-gold-values{grid-template-columns:1fr}}
 
 .market-attribution{display:block;margin-top:6px;font-size:10px;color:#777}.market-attribution a{color:#aaa;text-decoration:underline;text-underline-offset:2px}
+
+
+/* QUANTNEX TradingView Pro chart workspace */
+.chart-workspace{padding:0;overflow:hidden;border-color:#30343a;background:linear-gradient(145deg,#11151b,#0b0e13);box-shadow:0 18px 55px #0006}
+.chart-workspace-heading{padding:20px 22px 16px;gap:18px;align-items:center;border-bottom:1px solid #252b33;background:linear-gradient(110deg,#171d26,#10141a)}
+.chart-title-group{display:grid;gap:4px;min-width:180px}
+.chart-title-group>strong{font-size:16px;letter-spacing:-.025em;color:#f4f6f8}
+.chart-title-group>span:last-child{font-size:10px;color:#87919e}
+.chart-kicker{display:flex;align-items:center;gap:7px;font-size:9px;letter-spacing:.16em;font-weight:850;color:#9da9b8}
+.chart-kicker i,.chart-footer>span:first-child i{width:7px;height:7px;border-radius:50%;background:#42d69a;box-shadow:0 0 12px #42d69a99;display:inline-block}
+.chart-toolbar{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+.chart-toolbar .chart-select-label{display:grid;gap:5px;font-size:8px;letter-spacing:.13em;font-weight:800;color:#87919e}
+.chart-toolbar select{min-width:130px;background:#0b1017;color:#f0f3f7;border:1px solid #303a47;border-radius:8px;padding:10px 12px;font:650 11px/1.2 inherit;outline:none}
+.chart-toolbar select:focus{border-color:#7d94b1;box-shadow:0 0 0 3px #8da8ca1a}
+.chart-fullscreen-btn{display:flex;align-items:center;gap:7px;min-height:37px;padding:0 12px;border:1px solid #465364;border-radius:8px;background:linear-gradient(135deg,#293544,#17212d);color:#eaf0f7;font-size:10px;font-weight:800;letter-spacing:.06em;cursor:pointer;transition:all .2s}
+.chart-fullscreen-btn:hover{border-color:#91a8c5;background:#334459;transform:translateY(-1px)}
+.chart-fullscreen-btn span{font-size:9px}
+.chart-frame{padding:10px;background:#080b10}
+.tradingview-widget-container{position:relative;height:clamp(560px,72vh,900px);min-height:560px;width:100%;max-width:100%;overflow:hidden;border:1px solid #252d37;border-radius:9px;background:#0b0e13}
+.tradingview-widget-container iframe{display:block;width:100%!important;height:100%!important;border:0!important}
+.tradingview-widget-container__widget{width:100%;height:100%}
+.chart-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:9px;color:#e7edf5;background:radial-gradient(ellipse at 50% 35%,#182333,#0b0e13 70%);z-index:1}
+.chart-loading strong{font-size:13px}.chart-loading small{font-size:10px;color:#7f8b9a}
+.chart-loading-spinner{width:26px;height:26px;border:2px solid #526174;border-top-color:#dce8f8;border-radius:50%;animation:chartspin .8s linear infinite}
+@keyframes chartspin{to{transform:rotate(360deg)}}
+.chart-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 17px 13px;color:#77818d;font-size:9px}
+.chart-footer>span:first-child{display:flex;align-items:center;gap:7px;color:#aeb8c5;font-weight:750;letter-spacing:.05em}
+.chart-footer>span:first-child i{width:6px;height:6px}
+.chart-workspace:fullscreen{width:100vw;height:100vh;margin:0;border:0;border-radius:0;background:#080b10;display:flex;flex-direction:column}
+.chart-workspace:fullscreen .chart-workspace-heading{flex:0 0 auto}
+.chart-workspace:fullscreen .chart-frame{flex:1;min-height:0;display:flex;padding:8px}
+.chart-workspace:fullscreen .tradingview-widget-container{height:100%;min-height:0;flex:1}
+.chart-workspace:fullscreen .chart-footer{flex:0 0 auto}
+@media(max-width:850px){.chart-workspace-heading{align-items:flex-start;flex-direction:column}.chart-toolbar{width:100%;justify-content:flex-start}.tradingview-widget-container{height:68vh;min-height:480px}}
+@media(max-width:520px){.chart-workspace-heading{padding:15px}.chart-toolbar{display:grid;grid-template-columns:1fr 1fr}.chart-toolbar .chart-select-label select{min-width:0;width:100%}.chart-fullscreen-btn{grid-column:1/-1;justify-content:center}.chart-frame{padding:6px}.tradingview-widget-container{height:66vh;min-height:420px}.chart-footer{align-items:flex-start;flex-direction:column;gap:5px}}
+@media(prefers-reduced-motion:reduce){.chart-loading-spinner{animation:none}}

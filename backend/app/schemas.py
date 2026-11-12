@@ -134,3 +134,21 @@ class SignalSettingsRequest(BaseModel):
         if not values or any(str(x) not in allowed for x in values):
             raise ValueError("Choose one or more supported analysis timeframes.")
         return list(dict.fromkeys(str(x) for x in values))
+
+
+from typing import Any
+
+class PasskeyOptionsRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=254)
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value):
+        value = value.strip().lower()
+        if value.count("@") != 1 or "." not in value.rsplit("@", 1)[-1]:
+            raise ValueError("Enter a valid email address.")
+        return value
+
+
+class PasskeyVerifyRequest(BaseModel):
+    challenge_id: str = Field(min_length=36, max_length=36)
+    credential: dict[str, Any]

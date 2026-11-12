@@ -7,8 +7,8 @@ This phase improves the local QUANTNEX web workspace without changing the local-
 - Retain the TradingView chart selector for XAUUSD and BTCUSDT.
 - Publish incoming BTC Binance trade events and periodic XAUUSD provider quotes through the shared `quantnex:market-tick` browser event.
 - Add a gross unrealized P&L calculator for LONG/SHORT positions.
-- BTC quantity is denominated in BTC; XAUUSD quantity is denominated in troy ounces.
-- The estimate is price movement multiplied by quantity. It excludes spread, commissions, swaps, funding, slippage, leverage and broker-specific contract multipliers.
+- BTC quantity is denominated in BTC; XAUUSD quantity is denominated in broker lots multiplied by an editable ounces-per-lot contract size (default 100 oz; users must confirm their broker's contract specification).
+- The estimate is price movement multiplied by quantity. It excludes spread, commissions, swaps, funding and slippage.
 - The TradingView embedded chart is a display widget; its candle stream is not read by the calculator. The calculator uses the explicit market events above.
 
 ## Binance order-book heatmap

@@ -38,3 +38,37 @@ def decrypt_secret(value: str) -> str:
         return _secret_box().decrypt(value.encode("ascii")).decode("utf-8")
     except (InvalidToken, ValueError, UnicodeError) as exc:
         raise ValueError("Stored Telegram token cannot be decrypted. Reconnect the bot after checking QUANTNEX_SECRET_KEY.") from exc
+
+
+# Small per-process guard for public authentication endpoints.
+# Appropriate for the single-computer local API; public deployments should
+# additionally use a shared reverse-proxy/API-gateway rate limiter.
+from collections import defaultdict, deque
+from threading import Lock
+from time import monotonic
+from fastapi import HTTPException, Request
+
+_AUTH_ATTEMPTS = defaultdict(deque)
+_AUTH_ATTEMPTS_LOCK = Lock()
+_AUTH_WINDOW_SECONDS = 60
+_AUTH_MAX_ATTEMPTS = 5
+
+def enforce_auth_rate_limit(request: Request) -> None:
+    client = request.client.host if request.client else "unknown"
+    key = (client, request.url.path)
+    now = monotonic()
+    with _AUTH_ATTEMPTS_LOCK:
+        for old_key in list(_AUTH_ATTEMPTS):
+            bucket = _AUTH_ATTEMPTS[old_key]
+            while bucket and now - bucket[0] >= _AUTH_WINDOW_SECONDS:
+                bucket.popleft()
+            if not bucket:
+                _AUTH_ATTEMPTS.pop(old_key, None)
+        bucket = _AUTH_ATTEMPTS[key]
+        while bucket and now - bucket[0] >= _AUTH_WINDOW_SECONDS:
+            bucket.popleft()
+        if len(bucket) >= _AUTH_MAX_ATTEMPTS:
+            retry_after = max(1, int(_AUTH_WINDOW_SECONDS - (now - bucket[0])))
+            raise HTTPException(status_code=429, detail="Too many authentication attempts. Wait a minute and try again.",
+                                headers={"Retry-After": str(retry_after)})
+        bucket.append(now)

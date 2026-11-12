@@ -72,6 +72,7 @@
     });
     fillSelect("goalContributionSelect",goals);
     fillSelect("goalCertificateSelect",goals,true);
+    fillJournalGoalSelect();
   }
   async function load(){
     try{
@@ -120,6 +121,46 @@
     }catch(error){status("goalCertificateStatus",error.message,true);}
     finally{button.disabled=false;button.textContent="Generate A4 certificate";}
   });
+  function fillJournalGoalSelect(){
+    const select=$("goalJournalImportSelect");if(!select)return;
+    const previous=select.value;select.replaceChildren();
+    const first=document.createElement("option");first.value="";first.textContent="Choose a goal";select.append(first);
+    goals.filter(g=>!g.achieved).forEach(g=>{const option=document.createElement("option");option.value=String(g.id);option.textContent=g.title+" · "+g.currency;select.append(option);});
+    if([...select.options].some(x=>x.value===previous))select.value=previous;
+  }
+  async function previewJournal(){
+    const id=$("goalJournalImportSelect").value,host=$("goalJournalCandidates");
+    host.replaceChildren();$("goalJournalImport").disabled=true;$("goalJournalConfirm").checked=false;
+    if(!id){status("goalJournalStatus","Choose a goal first.",true);return;}
+    try{
+      const data=await api("/api/v1/goals/"+id+"/journal-preview");
+      if(data.goal_currency!=="USD"){status("goalJournalStatus","Journal records have no stored currency. Import is currently limited to USD goals; no FX conversion is inferred.",true);return;}
+      if(!data.candidates.length){status("goalJournalStatus","No positive journal records are available for preview.");return;}
+      data.candidates.forEach(item=>{
+        const label=document.createElement("label");label.className="goal-journal-option";
+        const check=document.createElement("input");check.type="checkbox";check.value=String(item.trade_id);check.disabled=!item.eligible;
+        const text=document.createElement("span");text.textContent="#"+item.trade_id+" · "+item.symbol+" "+item.direction+" · "+money(item.recorded_pnl,data.goal_currency)+" · "+new Date(item.created_at).toLocaleDateString()+(item.eligible?"":" · already imported");
+        label.append(check,text);host.append(label);
+      });
+      $("goalJournalImport").disabled=false;
+      status("Preview only · "+data.candidates.filter(x=>x.eligible).length+" eligible record(s). "+data.warning);
+    }catch(error){status("Journal preview failed: "+error.message,true);}
+  }
+  async function importJournal(){
+    const id=$("goalJournalImportSelect").value;
+    const trade_ids=[...$("goalJournalCandidates").querySelectorAll('input[type="checkbox"]:checked')].map(x=>Number(x.value));
+    if(!id||!trade_ids.length){status("Select at least one eligible journal record.",true);return;}
+    if(!$("goalJournalConfirm").checked){status("Confirm that these profits are genuinely received and available real funds.",true);return;}
+    const button=$("goalJournalImport");button.disabled=true;
+    try{
+      const result=await api("/api/v1/goals/"+id+"/journal-import",{method:"POST",body:JSON.stringify({trade_ids,confirmed_available_real_funds:true})});
+      status("Imported "+result.imported+" record(s) · "+money(result.amount,result.currency)+" · saved "+money(result.saved_amount,result.currency)+(result.achieved?" · goal achieved":""));
+      $("goalJournalCandidates").replaceChildren();$("goalJournalConfirm").checked=false;await load();
+    }catch(error){status("Journal import failed: "+error.message,true);}
+    finally{button.disabled=false;}
+  }
+  $("goalJournalPreview")?.addEventListener("click",previewJournal);
+  $("goalJournalImport")?.addEventListener("click",importJournal);
   $("goalImage")?.addEventListener("input",updateImagePreview);
   $("goalsRefresh")?.addEventListener("click",load);
   updateImagePreview();

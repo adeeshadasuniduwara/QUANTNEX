@@ -89,14 +89,14 @@ Status: implementation scope and safety contract. This phase is based on the ope
 - Button callbacks are polled and handled by the local Telegram worker; responses edit the existing menu message where Telegram permits, with a send-message fallback.
 - Telegram API calls use bounded retries for rate-limit responses and server errors. Retry-After is capped; permanent errors are not retried indefinitely.
 - Signal Lab exposes a daily-report preference. When enabled, the worker sends one A4 portrait PDF per Colombo calendar day at/after 20:00, recording the delivered local date to avoid repeated scheduled sends.
-- The PDF is generated from the separate persisted PaperTrade ledger only. It includes opened/closed counts, win/loss/breakeven, win rate, gross positive P&L, total negative P&L, net realized P&L, closed-trade entry/exit levels and timestamps, and open positions at cutoff.
+- The PDF is generated from the separate persisted PaperTrade ledger only. It includes opened/closed counts, win/loss/breakeven, win rate, gross positive P&L, total negative P&L, recorded realized P&L, closed-trade entry/exit levels and timestamps, and open positions at cutoff.
 - Report scope is limited by the current PaperTrade schema: it does not yet persist strategy/version, partial-fill events, fee breakdown, or a provider-marked unrealized P&L snapshot. Those fields must not be fabricated and remain future integration work.
 
 ### Goals and certificates now implemented
 - Local API and UI for multiple personal goals, image URL, currency, target amount/date, progress, manual contributions and achievement state.
-- Initial savings and later contributions require explicit confirmation that funds are genuinely available real-account savings/profit. Paper trades, backtests and wallet estimates are excluded.
+- Initial savings and later contributions require explicit confirmation that funds are genuinely available real-account savings/profit. Paper trades, backtests and wallet estimates are excluded. Contributions are currently entered manually in the Goals panel; they are not yet auto-imported from the browser's localStorage journal.
 - A goal becomes achieved when confirmed contributions plus confirmed initial savings reach the target.
-- A4 portrait monochrome certificate PDF includes the display name, goal, dates, elapsed days, QUANTNEX Support Team product branding, certificate ID and local integrity fingerprint.
+- A4 portrait monochrome certificate PDF includes a vector Q-mark, display name, goal and recorded goal value, dates, elapsed days, QUANTNEX Support Team product branding, certificate ID and local integrity fingerprint.
 - Certificate generation is locked until the target is achieved. HMAC integrity is stored with an encrypted local secret. Verification is local-workspace integrity only, not a remote public authority signature or a guarantee that a machine owner cannot modify local source/data.
 - Personal goals and contributions are migrated during local workspace owner consolidation to preserve existing data.
 
@@ -104,5 +104,5 @@ Status: implementation scope and safety contract. This phase is based on the ope
 - The full AI Paper Desk autonomous paper-position monitor and local strategy scheduler.
 - Full dynamic Binance Spot tradable-pair universe integration for the autonomous paper engine.
 - Telegram daily report extensions for strategy version, fee ledger, partial fills and timestamped live mark/unrealized P&L.
-- Branded PDF use of the exact repository logo asset, final browser visual review and Windows runtime verification.
-- Full integration testing of Telegram callback delivery with an actual user bot; no live Telegram message was sent during development.
+- Exact SVG asset embedding and final browser visual review. Current PDFs use a compact monochrome vector Q-mark approximation; Windows build has passed CI.
+- Full integration testing of Telegram callback delivery with an actual user bot; no live Telegram message was sent during development. Latest backend, web and Windows CI checks passed.

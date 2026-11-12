@@ -133,56 +133,51 @@ async def workspace_event_stream(websocket: WebSocket) -> None:
         return
 
     await websocket.accept()
-    await websocket.send_json({
-        "schema_version": 1,
-        "type": "stream.ready",
-        "event_id": event_hub.sequence,
-        "heartbeat_seconds": 20,
-        "replay": False,
-    })
-    outgoing = asyncio.create_task(queue.get())
-    incoming = asyncio.create_task(websocket.receive_text())
-    last_heartbeat = time.monotonic()
+    send_lock = asyncio.Lock()
+
+    async def send(payload: dict[str, Any]) -> None:
+        async with send_lock:
+            await websocket.send_json(payload)
+
+    async def send_events() -> None:
+        while True:
+            await send(await queue.get())
+
+    sender = asyncio.create_task(send_events())
     missed_heartbeats = 0
     try:
+        await send({
+            "schema_version": 1,
+            "type": "stream.ready",
+            "event_id": event_hub.sequence,
+            "heartbeat_seconds": 20,
+            "replay": False,
+        })
         while True:
-            timeout = max(0.1, 20 - (time.monotonic() - last_heartbeat))
-            done, _ = await asyncio.wait(
-                {outgoing, incoming}, timeout=timeout,
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-            if not done:
+            try:
+                message = await asyncio.wait_for(websocket.receive_text(), timeout=20)
+            except asyncio.TimeoutError:
                 missed_heartbeats += 1
                 if missed_heartbeats >= 3:
                     await websocket.close(code=1011, reason="Local event heartbeat timed out.")
                     break
-                await websocket.send_json({"type": "stream.ping", "sent_at": datetime.now(timezone.utc).isoformat()})
-                last_heartbeat = time.monotonic()
+                await send({"type": "stream.ping", "sent_at": datetime.now(timezone.utc).isoformat()})
+                continue
 
-            if outgoing in done:
-                await websocket.send_json(outgoing.result())
-                outgoing = asyncio.create_task(queue.get())
-
-            if incoming in done:
-                message = incoming.result()
-                try:
-                    parsed = json.loads(message)
-                except (TypeError, ValueError):
-                    await websocket.close(code=1008, reason="Only heartbeat acknowledgements are accepted.")
-                    break
-                if not isinstance(parsed, dict) or parsed.get("type") != "stream.pong":
-                    await websocket.close(code=1008, reason="Only heartbeat acknowledgements are accepted.")
-                    break
-                missed_heartbeats = 0
-                incoming = asyncio.create_task(websocket.receive_text())
+            try:
+                parsed = json.loads(message)
+            except (TypeError, ValueError):
+                await websocket.close(code=1008, reason="Only heartbeat acknowledgements are accepted.")
+                break
+            if not isinstance(parsed, dict) or parsed.get("type") != "stream.pong":
+                await websocket.close(code=1008, reason="Only heartbeat acknowledgements are accepted.")
+                break
+            missed_heartbeats = 0
     except WebSocketDisconnect:
         pass
     except RuntimeError:
         pass
     finally:
-        tasks = (outgoing, incoming)
-        for task in tasks:
-            if not task.done():
-                task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        sender.cancel()
+        await asyncio.gather(sender, return_exceptions=True)
         event_hub.disconnect(queue)

@@ -40,4 +40,36 @@
   $("clearTelegram").addEventListener("click",()=>{$("tgBotToken").value="";$("tgChatId").value="";$("telegramStatus").textContent="Bot token and chat ID cleared from this form; not saved by this page.";});
   $("openBotGuide").addEventListener("click",()=>{$("telegramGuide").hidden=!$("telegramGuide").hidden;});
   render();
+
+  const tfKey="quantnex.signal.timeframes.v1";
+  const tfNames={"1":"M1","5":"M5","15":"M15","30":"M30","60":"H1","50":"M50"};
+  function readTfSettings(){
+    let saved={};try{saved=JSON.parse(localStorage.getItem(tfKey)||"{}")||{};}catch{}
+    const primary=$("primarySignalTf"),trend=$("trendSignalTf"),chart=$("chartSignalTf");
+    if(saved.primary)primary.value=saved.primary;if(saved.trend)trend.value=saved.trend;if(saved.chart)chart.value=saved.chart;
+    document.querySelectorAll('input[name="analysisTf"]').forEach(el=>{el.checked=Array.isArray(saved.enabled)?saved.enabled.includes(el.value):true;});
+  }
+  function saveTfSettings(){
+    const enabled=[...document.querySelectorAll('input[name="analysisTf"]:checked')].map(el=>el.value);
+    const settings={primary:$("primarySignalTf").value,trend:$("trendSignalTf").value,chart:$("chartSignalTf").value,enabled};
+    if(!enabled.length){$("timeframeStatus").textContent="Select at least one analysis timeframe.";return null;}
+    localStorage.setItem(tfKey,JSON.stringify(settings));
+    $("timeframeStatus").textContent="Saved locally · Primary "+tfNames[settings.primary]+" · Trend "+tfNames[settings.trend]+" · Analysis "+enabled.map(v=>tfNames[v]).join(", ")+". This config does not activate signal generation until a market-data engine is connected.";
+    return settings;
+  }
+  function applyChartTimeframe(){
+    const settings=saveTfSettings();if(!settings)return;
+    if(settings.chart==="50"){$("timeframeStatus").textContent="M50 is a custom interval and is not reliably supported by the TradingView embed. Keep M50 for future aggregated analysis; choose M1, M5, M15, M30 or H1 for the chart.";return;}
+    const host=$("xauTradingView");if(!host)return;
+    host.replaceChildren();
+    const widget=document.createElement("div");widget.className="tradingview-widget-container__widget";host.append(widget);
+    const script=document.createElement("script");script.type="text/javascript";script.async=true;script.src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+    script.text=JSON.stringify({autosize:true,symbol:"OANDA:XAUUSD",interval:settings.chart,timezone:"Etc/UTC",theme:"dark",style:"1",locale:"en",allow_symbol_change:true,calendar:false,support_host:"https://www.tradingview.com"});
+    host.append(script);
+    $("timeframeStatus").textContent="XAUUSD TradingView chart set to "+tfNames[settings.chart]+". Analysis timeframe preferences saved locally.";
+  }
+  $("saveTimeframes").addEventListener("click",saveTfSettings);
+  $("applyChartTf").addEventListener("click",applyChartTimeframe);
+  readTfSettings();
+
 })();

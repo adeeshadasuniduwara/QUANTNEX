@@ -109,7 +109,7 @@
       const h=document.createElement("strong");h.textContent=tfNames[tf]||tf;card.append(h);
       [["Bias",v.bias],["EMA20 / 50 / 200",[v.ema20,v.ema50,v.ema200??"n/a"].join(" / ")],
        ["MACD histogram",v.macd_histogram],["RSI",v.rsi],["ADX",v.adx],["ATR",v.atr],
-       ["BOS / MSS",v.structure?.bos_mss],["Liquidity sweep",v.structure?.liquidity_sweep]].forEach(([a,b])=>{
+       ["BOS / MSS",v.structure?.bos_mss],["Liquidity sweep",v.structure?.liquidity_sweep],["FVG / iFVG",JSON.stringify(v.structure?.bullish_fvg||v.structure?.bearish_fvg||v.structure?.bullish_ifvg||v.structure?.bearish_ifvg||null)],["Order / breaker block",JSON.stringify(v.structure?.bullish_order_block||v.structure?.bearish_order_block||v.structure?.bullish_breaker_block||v.structure?.bearish_breaker_block||null)]].forEach(([a,b])=>{
         const line=document.createElement("div");line.textContent=a+": "+String(b??"—");card.append(line);
       });
       readout.append(card);

@@ -76,11 +76,11 @@ jobs:
           repo = os.environ["REPO"]
           release_url = os.environ["RELEASE_URL"]
           message = (
-              "🚀 <b>QUANTNEX — NEW UPDATE AVAILABLE!</b>\\n\\n"
-              + "Version: <code>" + tag + "</code>\\n\\n"
-              + "A new QUANTNEX release has been published.\\n\\n"
-              + '<a href="' + release_url + '">Open release &amp; downloads</a>\\n'
-              + '<a href="https://github.com/' + repo + '">QUANTNEX GitHub</a>\\n\\n'
+              "🚀 <b>QUANTNEX — NEW UPDATE AVAILABLE!</b>\n\n"
+              + "Version: <code>" + tag + "</code>\n\n"
+              + "A new QUANTNEX release has been published.\n\n"
+              + '<a href="' + release_url + '">Open release &amp; downloads</a>\n'
+              + '<a href="https://github.com/' + repo + '">QUANTNEX GitHub</a>\n\n'
               + "<i>Official automated update notification</i>"
           )
           payload = json.dumps({

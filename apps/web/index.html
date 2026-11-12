@@ -282,6 +282,11 @@
               <label>Scan interval<select id="autoSignalInterval"><option value="60">Every 1 minute</option><option value="180" selected>Every 3 minutes</option><option value="300">Every 5 minutes</option><option value="900">Every 15 minutes</option></select></label>
               <button class="primary-btn" id="saveAutoSignals">Save Auto Signal settings</button>
               <p class="telegram-status" id="autoSignalStatus">Auto signals are OFF until you explicitly enable them.</p>
+              <div class="telegram-report-controls">
+                <label class="auto-signal-toggle"><input type="checkbox" id="tgDailyReportEnabled"><span><strong>Daily Telegram PDF report</strong><small>Send an A4 portrait summary at 20:00 Sri Lanka time (Asia/Colombo). Uses the separate Paper Trading ledger only.</small></span></label>
+                <button class="secondary-btn" id="saveTelegramReports">Save daily report setting</button>
+                <p class="telegram-status" id="tgDailyReportStatus" aria-live="polite">Daily PDF report is OFF until enabled.</p>
+              </div>
             </div>
             <p class="telegram-status" id="telegramStatus" aria-live="polite">Credentials are used for this request only and are not saved by this page.</p>
           </div>

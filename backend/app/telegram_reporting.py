@@ -89,17 +89,19 @@ def build_daily_paper_pdf(db, user_id: int, report_day: date | None = None) -> t
         ("BACKGROUND",(0,3),(-1,3),colors.HexColor("#F0F0F0")),
     ]))
     story += [table, Paragraph("Closed paper trades", heading)]
-    data = [["Symbol","Side","Qty","Entry","SL","TP","Exit","Exit time","Net P&L"]]
+    data = [["Symbol","Side","Qty","Entry","SL","TP","Exit","Opened","Exited","Net P&L"]]
     for trade in closed_today:
         exit_time = _local(trade.closed_at)
+        open_time = _local(trade.created_at)
         data.append([trade.symbol, trade.side, f"{trade.quantity:g}", f"{trade.entry_price:g}",
                      f"{trade.stop_loss:g}", f"{trade.take_profit:g}",
                      f"{trade.exit_price:g}" if trade.exit_price is not None else "—",
+                     open_time.strftime("%H:%M:%S") if open_time else "—",
                      exit_time.strftime("%H:%M:%S") if exit_time else "—",
-                     f'${float(trade.realized_pnl or 0):.2f}'])
+                     "$"+format(float(trade.realized_pnl or 0),".2f")])
     if len(data) == 1:
-        data.append(["No closed paper trades today","","","","","","","",""])
-    trade_table = Table(data, repeatRows=1, colWidths=[19*mm,13*mm,13*mm,18*mm,18*mm,18*mm,18*mm,24*mm,22*mm])
+        data.append(["No closed paper trades today","","","","","","","","",""])
+    trade_table = Table(data, repeatRows=1, colWidths=[17*mm,11*mm,10*mm,16*mm,16*mm,16*mm,16*mm,21*mm,21*mm,20*mm])
     trade_table.setStyle(TableStyle([
         ("BACKGROUND",(0,0),(-1,0),colors.HexColor("#111111")),("TEXTCOLOR",(0,0),(-1,0),colors.white),
         ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),7),

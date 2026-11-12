@@ -296,6 +296,33 @@
         <p class="p7-note" id="p8ResearchSummary">Research history will appear here after your first run.</p>
         <div class="p7-table-wrap"><table><thead><tr><th>Run</th><th>Market</th><th>Timeframe</th><th>Created</th><th>Summary</th></tr></thead><tbody id="p8ResearchRows"><tr><td colspan="5" class="empty-row">No research runs yet.</td></tr></tbody></table></div>
       </section>
+      <section class="section-heading" id="risk-portfolio"><div><div class="overline">PHASE 09 · CAPITAL PROTECTION</div><h2>Risk &amp; Portfolio Intelligence</h2><p>Exposure, explicit-contract sizing, drawdown guardian and paper-only stress scenarios.</p></div><span class="pill">RISK GUARD · PAPER ONLY</span></section>
+      <section class="panel phase09-panel">
+        <div class="p9-grid">
+          <label>Account equity<input id="p9Equity" type="number" min="0.01" step="0.01" value="10000"></label>
+          <label>Risk per trade %<input id="p9RiskPercent" type="number" min="0.01" max="5" step="0.05" value="0.5"></label>
+          <label>Market<select id="p9Symbol"><option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option><option>XAUUSD</option><option>EURUSD</option><option>GBPUSD</option><option>USDJPY</option></select></label>
+          <label>Side<select id="p9Side"><option>BUY</option><option>SELL</option></select></label>
+          <label>Stop loss price<input id="p9Stop" type="number" min="0.00000001" step="any" placeholder="Enter stop price"></label>
+          <label>Take profit price<input id="p9Target" type="number" min="0.00000001" step="any" placeholder="Enter target price"></label>
+          <label>Contract multiplier<input id="p9Multiplier" type="number" min="0.00000001" step="any" value="1"></label>
+          <label>Daily loss limit %<input id="p9DailyLimit" type="number" min="0.1" max="20" step="0.1" value="3"></label>
+          <label>Max drawdown %<input id="p9MaxDD" type="number" min="0.1" max="50" step="0.1" value="8"></label>
+          <label>Max loss streak<input id="p9LossStreak" type="number" min="1" max="20" step="1" value="4"></label>
+        </div>
+        <p class="p7-note">Contract multiplier is mandatory and never guessed. Enter the multiplier for the instrument/broker contract you intend to model. Estimated units are not universal forex lots.</p>
+        <div class="p8-actions">
+          <button class="secondary-btn" id="p9Refresh">Refresh portfolio</button>
+          <button class="secondary-btn" id="p9Guardian">Run risk guardian</button>
+          <button class="secondary-btn" id="p9Stress">Run stress test</button>
+          <button class="secondary-btn" id="p9Size">Calculate size</button>
+          <button class="primary-btn" id="p9SmartOpen">Risk-check &amp; open paper trade</button>
+        </div>
+        <p id="p9Status" class="p7-note" role="status">Risk calculations use your paper ledger and explicit assumptions.</p>
+        <div class="p7-kpi-grid" id="p9PortfolioKpis"><article><span>Open positions</span><strong>—</strong></article><article><span>Gross notional estimate</span><strong>—</strong></article><article><span>Planned stop risk</span><strong>—</strong></article><article><span>Symbols</span><strong>—</strong></article></div>
+        <div class="p9-result" id="p9Result"><p class="p7-note">Portfolio and risk reports will appear here.</p></div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Trade</th><th>Market</th><th>Side</th><th>Units</th><th>Notional estimate</th><th>Stop risk estimate</th></tr></thead><tbody id="p9Positions"><tr><td colspan="6" class="empty-row">No portfolio snapshot loaded.</td></tr></tbody></table></div>
+      </section>
       <section class="section-heading" id="system-security"><div><div class="overline">LOCAL DEVICE · PROTECTION</div><h2>System security</h2><p>Database backups, integrity checks, activity history and computer health.</p></div><span class="pill">LOCAL ONLY</span></section>
       <section class="panel system-security-panel">
         <div class="system-security-toolbar"><div><strong>System health</strong><p id="systemHealthStatus" role="status">Checking local system…</p></div><button class="secondary-btn" id="refreshSystemHealth">Refresh health</button></div>

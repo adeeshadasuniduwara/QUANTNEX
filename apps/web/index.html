@@ -332,17 +332,19 @@
 
       <section class="section-heading" id="automation"><div><div class="overline">AUTOMATION</div><h2>Telegram signal delivery</h2><p>Personal bot connection and automatic signal delivery status.</p></div></section>
       <section class="panel bot-panel"><div class="bot-icon">◉</div><div><strong id="telegramMonitorTitle">Telegram bot not connected</strong><p id="telegramMonitorDescription">Open Signal Lab to connect your BotFather bot and explicitly enable Auto Signals. Alerts run while the QUANTNEX API is active.</p></div><span class="pill" id="telegramMonitorPill">OFFLINE</span></section>
-      <section class="section-heading" id="updates"><div><div class="overline">SOFTWARE</div><h2>Updates</h2><p>Check GitHub for the latest QUANTNEX main-branch update.</p></div></section>
+      <section class="section-heading" id="updates"><div><div class="overline">SOFTWARE</div><h2>Updates</h2><p>Get notified when a new QUANTNEX version is available. Review what changed before installing.</p></div></section>
       <section class="panel update-panel">
         <img class="update-orbit-img" src="quantnex-mark.svg" alt="">
         <div class="update-copy">
           <span class="overline">OFFICIAL GITHUB SOURCE UPDATES</span>
           <h3>Keep your workspace current.</h3>
-          <div class="release-version-row"><span>Installed Web version <strong id="webInstalledVersion">Unknown</strong></span><span>Latest GitHub commit <strong id="webReleaseVersion">Not checked</strong></span></div>
-          <p id="webUpdateStatus">Check GitHub to find the latest QUANTNEX source commit.</p>
+          <div class="release-version-row"><span>Installed version <strong id="webInstalledVersion">Unknown</strong></span><span>Latest version <strong id="webReleaseVersion">Not checked</strong></span></div>
+          <p id="webUpdateStatus">Check GitHub to find the latest QUANTNEX update.</p>
+          <div class="web-update-details" id="webUpdateDetails" hidden><div class="web-update-details-heading">WHAT’S NEW</div><p id="webUpdateSummary"></p><ul id="webUpdateChanges"></ul><small id="webUpdateMeta"></small></div>
           <div class="update-progress" id="webUpdateProgress" hidden><span></span></div>
           <div class="update-actions">
-            <button class="primary-btn" id="webCheckUpdate">Check &amp; install updates</button>
+            <button class="secondary-btn" id="webCheckUpdate">Check for updates</button>
+            <button class="primary-btn" id="webInstallUpdate" hidden>Download &amp; install now</button>
             <a class="secondary-btn link-btn" id="webDownloadReleaseZip" href="#" target="_blank" rel="noreferrer" hidden>Download latest release ZIP</a>
             <a class="secondary-btn link-btn" id="webReleaseNotes" href="https://github.com/adeeshadasuniduwara/QUANTNEX/commits/main" target="_blank" rel="noreferrer">View source commit</a>
             <a class="secondary-btn link-btn" href="https://github.com/adeeshadasuniduwara/QUANTNEX/archive/refs/heads/main.zip" target="_blank" rel="noreferrer">Download current source ZIP</a>
@@ -352,6 +354,24 @@
         </div>
         <span class="pill">OFFICIAL</span>
       </section>
+
+
+      <div class="web-update-modal" id="webUpdateModal" hidden>
+        <section class="web-update-dialog" role="dialog" aria-modal="true" aria-labelledby="webUpdateModalTitle" aria-describedby="webUpdateModalSummary">
+          <button class="web-update-close" id="webUpdateModalClose" type="button" aria-label="Close update notification">×</button>
+          <div class="web-update-modal-mark">Q<span>.</span></div>
+          <div class="web-update-eyebrow"><span class="web-update-pulse"></span> NEW UPDATE RELEASED</div>
+          <h2 id="webUpdateModalTitle">A new QUANTNEX update is ready</h2>
+          <div class="web-update-version" id="webUpdateModalVersion">main@-------</div>
+          <p class="web-update-modal-summary" id="webUpdateModalSummary">A new version is available for your workspace.</p>
+          <div class="web-update-modal-changes"><strong>What’s included</strong><ul id="webUpdateModalChanges"></ul><small id="webUpdateModalMeta"></small></div>
+          <div class="web-update-modal-actions">
+            <button class="primary-btn" id="webUpdateModalInstall" type="button">Download &amp; install now</button>
+            <button class="secondary-btn" id="webUpdateModalLater" type="button">Remind me later</button>
+          </div>
+          <p class="web-update-safe-note">Your local wallet, journal and workspace data are kept safe during the update.</p>
+        </section>
+      </div>
 
       <section class="section-heading" id="strategy-laboratory"><div><div class="overline">PHASE 08 · RESEARCH & VALIDATION</div><h2>AI Strategy Laboratory</h2><p>Build, backtest, replay, optimize and forward-observe strategies using historical and live provider data.</p></div><span class="pill">RESEARCH / PAPER ONLY</span></section>
       <section class="panel phase08-panel">

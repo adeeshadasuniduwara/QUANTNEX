@@ -20,7 +20,7 @@ LOCK = threading.Lock()
 
 def version_tuple(value):
     import re
-    found = re.match(r"^v?(\\d+)\\.(\\d+)\\.(\\d+)", str(value or ""))
+    found = re.match(r"^v?(\d+)\\.(\d+)\\.(\d+)", str(value or ""))
     return tuple(int(part) for part in found.groups()) if found else (0, 0, 0)
 
 

@@ -355,7 +355,7 @@ async def connect_telegram_bot(payload: TelegramConnectRequest, user: User = Dep
     db.commit()
     event_hub.publish("integration.changed", "telegram", "connected", {"bot_username": bot.get("username", "")})
     return {"connected":True,"bot_username":bot.get("username"),"chat_id":payload.chat_id.strip(),
-            "commands":["/help","/timeframes","/settf 5","/settrend 60","/setanalysis 1,5,15,30,60","/scan","/status"],
+            "commands":["/help","/timeframes","/settf 5","/settrend 60","/setanalysis 1,5,15,30,60","/scan BTCUSDT","/scan ETHUSDT","/scan SOLUSDT","/scan XAUUSD","/status"],
             "note":"The local API must remain running for bot commands and TP1/SL level alerts."}
 
 @app.get("/api/v1/telegram/status")

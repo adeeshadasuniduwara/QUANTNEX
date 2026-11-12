@@ -9,6 +9,7 @@
   <title>QUANTNEX — Trading Workspace</title>
   <link rel="stylesheet" href="styles.css?v=20261112-scrollfix2">
   <link rel="stylesheet" href="signal-tool.css">
+  <link rel="stylesheet" href="workspace-pages.css?v=20261112-pages10">
 </head>
 <body>
   <div class="layout">
@@ -31,6 +32,18 @@
       <a class="nav-link" href="#paper-trading"><span>▣</span>Paper Trading</a>
       <a class="nav-link" href="#performance-lab"><span>▥</span>Performance Lab</a>
       <a class="nav-link" href="#risk-management"><span>◇</span>Risk Management</a>
+      <div class="side-caption">MARKET DESKS</div>
+      <a class="nav-link" href="#watchlist-desk"><span>☷</span>Live Watchlist</a>
+      <a class="nav-link" href="#forex-desk"><span>¤</span>Forex Desk</a>
+      <a class="nav-link" href="#crypto-desk"><span>₿</span>Crypto Desk</a>
+      <a class="nav-link" href="#gold-desk"><span>Au</span>Gold Desk</a>
+      <a class="nav-link" href="#price-alerts"><span>◉</span>Price Alerts</a>
+      <div class="side-caption">RESEARCH &amp; RECORDS</div>
+      <a class="nav-link" href="#economic-calendar"><span>▦</span>Economic Calendar</a>
+      <a class="nav-link" href="#trade-history"><span>▤</span>Trade History</a>
+      <a class="nav-link" href="#strategy-library"><span>⌘</span>Strategy Library</a>
+      <a class="nav-link" href="#portfolio-monitor"><span>◇</span>Portfolio Monitor</a>
+      <a class="nav-link" href="#integrations-center"><span>⚙</span>Connections &amp; Integrations</a>
       <div class="side-caption">STRATEGY RESEARCH</div>
       <a class="nav-link" href="#strategy-laboratory"><span>⌘</span>AI Strategy Laboratory</a>
       <div class="side-caption">WORKSPACE TOOLS</div>
@@ -366,10 +379,87 @@
         <div class="table-wrap"><table><thead><tr><th>Time</th><th>Event</th><th>Level</th><th>Details</th></tr></thead><tbody id="systemAuditRows"><tr><td colspan="4" class="empty-row">Loading audit events…</td></tr></tbody></table></div>
         <p class="system-security-note">QUANTNEX is intentionally local-only with no login. These controls rely on the trusted Windows user account and loopback-only API. Never expose port 8000 to a network. SHA256 detects accidental corruption or a changed backup file; it is not a digital signature against an attacker who can replace both the backup and its manifest.</p>
       </section>
+      <!-- Additional dedicated workspaces (Phase 17). -->
+      <section class="section-heading" id="watchlist-desk"><div><div class="overline">MARKET DESK · LIVE EVENTS</div><h2>Live Watchlist</h2><p>One consolidated view of supported markets. Crypto rows update from incoming Binance trade events.</p></div><span class="pill live-pill">EVENT DRIVEN</span></section>
+      <section class="panel workspace-page-panel">
+        <div class="workspace-page-toolbar"><div><strong>All supported instruments</strong><p id="watchlistStatus" role="status">Loading provider quotes…</p></div><button class="secondary-btn" id="watchlistRefresh">Refresh watchlist</button></div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Symbol</th><th>Asset</th><th>Last price</th><th>24h change</th><th>Provider</th><th>Feed time</th></tr></thead><tbody id="watchlistRows"><tr><td colspan="6" class="empty-row">Waiting for market data.</td></tr></tbody></table></div>
+        <p class="p7-note">Prices are indicative provider quotes, not broker execution prices. Crypto updates are event-driven; Gold and Forex refresh according to provider access and market hours.</p>
+      </section>
+
+      <section class="section-heading" id="forex-desk"><div><div class="overline">MARKET DESK · FOREIGN EXCHANGE</div><h2>Forex Desk</h2><p>Major FX reference pairs with provider freshness and availability clearly shown.</p></div><span class="pill">PROVIDER DATA</span></section>
+      <section class="panel workspace-page-panel">
+        <div class="workspace-page-toolbar"><div><strong>Forex instruments</strong><p id="forexDeskStatus" role="status">Loading Forex quotes…</p></div><button class="secondary-btn" id="forexDeskRefresh">Refresh Forex</button></div>
+        <div class="workspace-page-cards" id="forexDeskCards"><article class="workspace-page-card">Waiting for provider data…</article></div>
+        <p class="p7-note">Forex quotes and candles require a valid local Twelve Data API key and a plan that permits the requested symbols. No tick data is fabricated when a provider is unavailable.</p>
+      </section>
+
+      <section class="section-heading" id="crypto-desk"><div><div class="overline">MARKET DESK · DIGITAL ASSETS</div><h2>Crypto Desk</h2><p>Binance Spot prices, 24-hour range and live trade-event timestamps.</p></div><span class="pill live-pill">BINANCE STREAM</span></section>
+      <section class="panel workspace-page-panel">
+        <div class="workspace-page-toolbar"><div><strong>Crypto watch</strong><p id="cryptoDeskStatus" role="status">Waiting for Binance stream…</p></div><button class="secondary-btn" id="cryptoDeskRefresh">Refresh snapshot</button></div>
+        <div class="workspace-page-cards" id="cryptoDeskCards"><article class="workspace-page-card">Waiting for Binance data…</article></div>
+        <p class="p7-note">The stream sends provider events when trades occur. Update speed depends on exchange activity, network and browser connectivity; it is not a guaranteed one-millisecond feed.</p>
+      </section>
+
+      <section class="section-heading" id="gold-desk"><div><div class="overline">MARKET DESK · PRECIOUS METALS</div><h2>Gold Desk</h2><p>XAU/USD indicative quote, source status and recent candle context.</p></div><span class="pill">XAUUSD</span></section>
+      <section class="panel workspace-page-panel">
+        <div class="workspace-page-toolbar"><div><strong>Gold market monitor</strong><p id="goldDeskStatus" role="status">Loading XAUUSD quote…</p></div><button class="secondary-btn" id="goldDeskRefresh">Refresh Gold</button></div>
+        <div class="workspace-page-cards" id="goldDeskCards"><article class="workspace-page-card">Waiting for XAUUSD provider…</article></div>
+        <div class="workspace-page-toolbar"><div><strong>Recent XAUUSD candles</strong><p>Latest completed/provider-returned candles from the configured source.</p></div><label>Timeframe <select id="goldDeskTimeframe"><option>15m</option><option>5m</option><option>1h</option><option>4h</option></select></label><button class="secondary-btn" id="goldDeskCandles">Load candles</button></div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Time</th><th>Open</th><th>High</th><th>Low</th><th>Close</th></tr></thead><tbody id="goldDeskCandleRows"><tr><td colspan="5" class="empty-row">Load candles to inspect the latest XAUUSD data.</td></tr></tbody></table></div>
+      </section>
+
+      <section class="section-heading" id="price-alerts"><div><div class="overline">WORKSPACE TOOL · LOCAL ALERTS</div><h2>Price Alerts</h2><p>Create local threshold alerts. Active alerts are stored in this browser and never sent to a cloud service.</p></div><span class="pill">LOCAL ONLY</span></section>
+      <section class="panel workspace-page-panel">
+        <div class="workspace-page-form">
+          <label>Market <select id="alertSymbol"><option value="BTCUSDT">BTCUSDT</option><option value="ETHUSDT">ETHUSDT</option><option value="SOLUSDT">SOLUSDT</option><option value="XAUUSD">XAUUSD</option><option value="EURUSD">EURUSD</option><option value="GBPUSD">GBPUSD</option><option value="USDJPY">USDJPY</option></select></label>
+          <label>Condition <select id="alertCondition"><option value="above">Price rises above</option><option value="below">Price falls below</option></select></label>
+          <label>Target price <input id="alertTarget" type="number" min="0.00000001" step="any" placeholder="Enter target"></label>
+          <button class="primary-btn" id="alertCreate">Create alert</button>
+        </div>
+        <p class="p7-note" id="alertStatus" role="status">Crypto alerts can trigger on live Binance trade events. Gold/Forex alerts are checked when you refresh provider quotes while this page is open.</p>
+        <div class="p7-table-wrap"><table><thead><tr><th>Market</th><th>Condition</th><th>Target</th><th>Status</th><th>Action</th></tr></thead><tbody id="alertRows"><tr><td colspan="5" class="empty-row">No local alerts created.</td></tr></tbody></table></div>
+      </section>
+
+      <section class="section-heading" id="economic-calendar"><div><div class="overline">MACRO DESK · ECONOMIC EVENTS</div><h2>Economic Calendar</h2><p>Upcoming events from the configured calendar provider. Empty results are not replaced with sample events.</p></div><span class="pill">FINNHUB OPTIONAL</span></section>
+      <section class="panel workspace-page-panel">
+        <div class="workspace-page-toolbar"><div><strong>Upcoming macro events</strong><p id="calendarStatus" role="status">Calendar not loaded.</p></div><div class="workspace-page-form compact"><label>Horizon <select id="calendarDays"><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option></select></label><button class="secondary-btn" id="calendarRefresh">Load events</button></div></div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Date / Time</th><th>Country</th><th>Event</th><th>Impact</th><th>Actual</th><th>Forecast</th><th>Previous</th></tr></thead><tbody id="calendarRows"><tr><td colspan="7" class="empty-row">Load the calendar to view provider events.</td></tr></tbody></table></div>
+      </section>
+
+      <section class="section-heading" id="trade-history"><div><div class="overline">RECORDS · PAPER &amp; JOURNAL</div><h2>Trade History</h2><p>Review completed journal entries separately from the QUANTNEX virtual paper ledger.</p></div><span class="pill">LOCAL RECORDS</span></section>
+      <section class="panel workspace-page-panel">
+        <div class="workspace-page-toolbar"><div><strong>Trade records</strong><p id="historyStatus" role="status">Loading local trade history…</p></div><button class="secondary-btn" id="historyRefresh">Refresh history</button></div>
+        <h3>Paper trades</h3><div class="p7-table-wrap"><table><thead><tr><th>Opened</th><th>Market</th><th>Side</th><th>Quantity</th><th>Entry</th><th>Exit</th><th>Result</th><th>Status</th></tr></thead><tbody id="historyPaperRows"><tr><td colspan="8" class="empty-row">Loading paper trades…</td></tr></tbody></table></div>
+        <h3>Journal entries</h3><div class="p7-table-wrap"><table><thead><tr><th>Date</th><th>Market</th><th>Direction</th><th>Outcome</th><th>P&amp;L</th><th>Notes</th></tr></thead><tbody id="historyJournalRows"><tr><td colspan="6" class="empty-row">Loading journal entries…</td></tr></tbody></table></div>
+      </section>
+
+      <section class="section-heading" id="strategy-library"><div><div class="overline">RESEARCH · SAVED EXPERIMENTS</div><h2>Strategy Library</h2><p>Saved backtests, optimizer runs and forward observations from your local strategy research.</p></div><span class="pill">RESEARCH LOG</span></section>
+      <section class="panel workspace-page-panel">
+        <div class="workspace-page-toolbar"><div><strong>Saved research runs</strong><p id="strategyLibraryStatus" role="status">Loading strategy research…</p></div><button class="secondary-btn" id="strategyLibraryRefresh">Refresh library</button></div>
+        <div class="workspace-page-cards" id="strategyLibrarySummary"></div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Run type</th><th>Market</th><th>Timeframe</th><th>Saved</th><th>Result summary</th></tr></thead><tbody id="strategyLibraryRows"><tr><td colspan="5" class="empty-row">Loading saved experiments…</td></tr></tbody></table></div>
+        <p class="p7-note">Historical backtest and forward-observation outputs are research records, not forecasts or a guarantee of future performance.</p>
+      </section>
+
+      <section class="section-heading" id="portfolio-monitor"><div><div class="overline">CAPITAL DESK · OPEN EXPOSURE</div><h2>Portfolio Monitor</h2><p>Live snapshot of open virtual positions, estimated notional and planned stop risk.</p></div><span class="pill">PAPER LEDGER</span></section>
+      <section class="panel workspace-page-panel">
+        <div class="workspace-page-toolbar"><div><strong>Portfolio exposure</strong><p id="portfolioMonitorStatus" role="status">Loading open positions…</p></div><button class="secondary-btn" id="portfolioMonitorRefresh">Refresh portfolio</button></div>
+        <div class="workspace-page-cards" id="portfolioMonitorCards"></div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Trade ID</th><th>Market</th><th>Side</th><th>Quantity</th><th>Notional</th><th>Planned stop risk</th></tr></thead><tbody id="portfolioMonitorRows"><tr><td colspan="6" class="empty-row">Loading portfolio…</td></tr></tbody></table></div>
+      </section>
+
+      <section class="section-heading" id="integrations-center"><div><div class="overline">WORKSPACE SETTINGS · CONNECTION HEALTH</div><h2>Connections &amp; Integrations</h2><p>Check which optional local providers and integrations are configured without exposing any API keys or bot tokens.</p></div><span class="pill">SECRET SAFE</span></section>
+      <section class="panel workspace-page-panel">
+        <div class="workspace-page-toolbar"><div><strong>Integration status</strong><p id="integrationStatus" role="status">Checking local integrations…</p></div><button class="secondary-btn" id="integrationRefresh">Refresh status</button></div>
+        <div class="workspace-page-cards" id="integrationCards"><article class="workspace-page-card">Checking provider configuration…</article></div>
+        <p class="p7-note">Credentials remain in the local backend configuration or encrypted local preferences. This page never requests or displays secret values. QUANTNEX remains login-free and loopback-only.</p>
+      </section>
       <footer><span>QUANTNEX</span><span>Build carefully. Trade responsibly.</span></footer>
     </main>
   </div>
   <script src="app.js"></script>
+  <script src="workspace-pages.js"></script>
   <script src="signal-tool.js"></script>
 </body>
 </html>

@@ -16,10 +16,18 @@ if is_sqlite:
         finally:
             cursor.close()
 
-    # Enable WAL once per database. It allows dashboard reads and local worker
-    # writes to coexist more reliably while market providers are being polled.
+def enable_sqlite_wal() -> None:
+    """Enable WAL after startup or after an atomic database restore."""
+    if not is_sqlite:
+        return
     with engine.connect() as connection:
         connection.exec_driver_sql("PRAGMA journal_mode=WAL")
+
+
+if is_sqlite:
+    # Allow dashboard reads and local worker writes to coexist more reliably
+    # while market providers are being polled.
+    enable_sqlite_wal()
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 

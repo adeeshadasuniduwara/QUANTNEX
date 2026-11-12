@@ -78,7 +78,7 @@
           <label>Minimum confirmations<select id="signalMinScore"><option value="6">6 / 10 · Aggressive</option><option value="7" selected>7 / 10 · Balanced</option><option value="8">8 / 10 · Selective</option><option value="9">9 / 10 · Very selective</option></select></label>
           <label>Risk per signal (%)<input id="signalRiskPct" type="number" min="0.1" max="5" step="0.1" value="1"></label>
         </div>
-        <div class="signal-actions"><button class="primary-btn" id="saveTimeframes">Save signal settings</button><button class="secondary-btn" id="applyChartTf">Apply to XAUUSD chart</button><button class="secondary-btn" id="runSignalScan">Run XAUUSD signal scan</button></div>
+        <div class="signal-actions"><button class="primary-btn" id="saveTimeframes">Save signal settings</button><button class="secondary-btn" id="syncTimeframes">Load settings from Telegram</button><button class="secondary-btn" id="applyChartTf">Apply to XAUUSD chart</button><button class="secondary-btn" id="runSignalScan">Run XAUUSD signal scan</button></div>
         <p class="telegram-status" id="timeframeStatus" aria-live="polite">Connect your QUANTNEX account to save shared settings and run live analysis. M50 is aggregated from 1-minute candles and has shorter indicator history.</p>
         <div class="signal-warning">Market data setup: create an API key at <a href="https://twelvedata.com/" target="_blank" rel="noreferrer">Twelve Data</a>, then add <code>TWELVE_DATA_API_KEY=your_key</code> to <code>backend/.env</code> on this computer and restart the QUANTNEX API. Keep the key server-side; do not paste it into this website or GitHub. Provider plan limits and data entitlements apply.</div>
       </section>
@@ -125,7 +125,7 @@
               <li>Open Telegram and search for <strong>@BotFather</strong>.</li>
               <li>Send <code>/newbot</code>, follow the prompts and choose a bot name and unique username.</li>
               <li>Copy the new bot token privately. Never post it in GitHub, screenshots or public chats.</li>
-              <li>Open your new bot and press <strong>Start</strong>.</li>
+              <li>Open your new bot and press <strong>Start</strong>. To find your numeric private chat ID, use a trusted chat-ID lookup tool; never give your bot token to another bot or person.</li>
               <li>For a private chat, send a message to your bot, then obtain your chat ID using a trusted Telegram bot/API tool. For a channel, add your bot as an administrator with permission to post and enter <code>@ChannelUsername</code>.</li>
               <li>Start the QUANTNEX local API, enter token and chat ID above, then press Test.</li>
             </ol>

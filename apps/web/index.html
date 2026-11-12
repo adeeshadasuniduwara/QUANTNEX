@@ -370,6 +370,13 @@
         <div class="p7-table-wrap"><table><thead><tr><th>Symbol</th><th>Base asset</th><th>Quote</th><th>Provider status</th></tr></thead><tbody id="paperUniverseRows"><tr><td colspan="4" class="empty-row">Press Discover eligible pairs.</td></tr></tbody></table></div>
         <div class="workspace-page-toolbar"><div><strong>Paper trade event ledger</strong><p>Open/close events and reasons, stored locally.</p></div><button class="secondary-btn" id="paperEngineEventsRefresh" type="button">Refresh events</button></div>
         <div class="p7-table-wrap"><table><thead><tr><th>Time</th><th>Trade</th><th>Event</th><th>Price</th><th>Quantity</th><th>P&amp;L</th></tr></thead><tbody id="paperEngineEvents"><tr><td colspan="6" class="empty-row">No paper events yet.</td></tr></tbody></table></div>
+        <div class="workspace-page-toolbar"><div><strong>Strategy holdout validation</strong><p>Runs the same fixed strategy on chronological training and unseen holdout candles.</p></div></div>
+        <div class="workspace-page-form compact">
+          <label>Symbol<select id="paperWalkForwardSymbol"><option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option><option>XAUUSD</option></select></label>
+          <label>Timeframe<select id="paperWalkForwardTimeframe"><option>5m</option><option selected>15m</option><option>1h</option><option>4h</option></select></label>
+          <button class="secondary-btn" id="paperWalkForwardRun" type="button">Run holdout validation</button>
+        </div>
+        <p class="p7-note" id="paperWalkForwardResult">No validation run yet. Results are historical simulations, not evidence of future profitability.</p>
         <p class="p7-note">Safety limits: paper-only, no broker API, no real-money orders. Automatic mode is disabled by default. FX/Gold auto-sizing is not enabled because contract multipliers and tick-value assumptions are not yet verified.</p>
       </section>
       <section class="section-heading" id="tools"><div><div class="overline">RISK MANAGEMENT</div><h2>Position size calculator</h2><p>Estimate position size using your broker's pip value.</p></div></section>
@@ -591,6 +598,15 @@
             <label class="goal-confirm"><input id="goalContributionConfirm" type="checkbox"> I confirm this is available real-account profit or savings, not paper-trading or backtest P&amp;L.</label>
             <button class="secondary-btn" id="goalAddContribution">Add contribution</button>
             <p class="p7-note" id="goalContributionStatus">Contributions are manual and require your confirmation.</p>
+          </div>
+          <div class="goal-contribution-panel">
+            <h3>Optional journal-to-goal import</h3>
+            <label>Goal<select id="goalJournalImportSelect"><option value="">Choose a goal</option></select></label>
+            <button class="secondary-btn" id="goalJournalPreview" type="button">Preview eligible journal profits</button>
+            <div id="goalJournalCandidates" class="goal-journal-candidates" aria-live="polite"></div>
+            <label class="goal-confirm"><input id="goalJournalConfirm" type="checkbox"> I confirm selected profits were actually received and are available real-account savings. Paper/backtest results are excluded.</label>
+            <button class="primary-btn" id="goalJournalImport" type="button" disabled>Import selected records</button>
+            <p class="p7-note" id="goalJournalStatus">Preview first. No journal records are imported automatically.</p>
           </div>
         </div>
         <div class="goal-cards" id="goalCards"><article class="workspace-page-card">Loading goals…</article></div>

@@ -112,7 +112,8 @@ class GoalContribution(Base):
     source: Mapped[str] = mapped_column(String(48), default="manual_real_account")
     note: Mapped[str] = mapped_column(String(240), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
-\nclass PaperTradeEvent(Base):
+
+class PaperTradeEvent(Base):
     __tablename__ = "paper_trade_events"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)

@@ -146,3 +146,24 @@
 .p10-health-warn{color:#f0cb82}
 .p10-health-good,.p10-health-warn,.p10-health-bad{font-weight:800}
 @media(max-width:720px){.phase10-panel{padding:15px}.p10-detail .p7-form-row{align-items:stretch;flex-wrap:wrap}.p10-detail .p7-form-row label{min-width:130px;flex:1}}
+
+/* Phase 11 — Advanced Performance Analytics */
+.p11-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:22px 0 14px;padding-top:18px;border-top:1px solid var(--line)}
+.p11-toolbar>div{min-width:210px;flex:1}
+.p11-toolbar strong,.p11-chart-title{font-size:13px;font-weight:800}
+.p11-toolbar p{margin:3px 0 0;color:var(--muted);font-size:11px}
+.p11-toolbar label{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:11px}
+.p11-toolbar select{background:#101010;color:#eee;border:1px solid #3b3b3b;border-radius:7px;padding:9px}
+.p11-extra-kpis{margin:14px 0 18px}
+.p11-chart-grid,.p11-table-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px}
+.p11-chart-card,.p11-table-grid>div{min-width:0;background:#101010;border:1px solid var(--line);border-radius:10px;padding:14px}
+.p11-chart-title{margin-bottom:12px;color:#eee}
+.p11-chart{width:100%;min-height:190px;display:flex;flex-direction:column;justify-content:center;overflow:hidden}
+.p11-chart svg{width:100%;height:auto;max-height:230px;overflow:visible}
+.p11-chart-caption{margin-top:8px;color:var(--muted);font-size:10px}
+.p11-stat-row{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid #262626;font-size:11px}
+.p11-stat-row:last-child{border-bottom:0}
+.p11-stat-row span{color:var(--muted)}
+.p11-stat-row strong{text-align:right;color:#eee}
+@media(max-width:900px){.p11-chart-grid,.p11-table-grid{grid-template-columns:1fr}}
+@media(max-width:560px){.p11-toolbar{align-items:stretch}.p11-toolbar label{justify-content:space-between}.p11-toolbar select{flex:1}.p11-toolbar button{width:100%}}

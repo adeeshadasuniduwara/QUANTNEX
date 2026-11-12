@@ -19,6 +19,7 @@ from .schemas import AIChatRequest, AIChatResponse, PreferenceResponse, Preferen
 from .security import decrypt_secret, encrypt_secret
 from .maintenance import daily_backup_worker, record_audit_event
 from .system_security import router as system_security_router
+from .events import event_hub, router as events_router
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="QUANTNEX Local API", description="Loopback-only local workspace API. No user login or remote account system.", version="0.8.0")
@@ -26,6 +27,7 @@ app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials
                    allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Content-Type"])
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
 app.include_router(system_security_router)
+app.include_router(events_router)
 
 
 def local_workspace(db: Session = Depends(get_db)) -> User:
@@ -103,6 +105,8 @@ def create_journal(payload: TradeCreate, user: User = Depends(local_workspace), 
     record_audit_event(db, "journal.created", {"trade_id": item.id, "symbol": item.symbol, "direction": item.direction, "pnl": item.pnl})
     db.commit()
     db.refresh(item)
+    event_hub.publish("journal.changed", "journal", "created", {"trade_id": item.id, "symbol": item.symbol})
+    event_hub.publish("wallet.changed", "wallet", "journal_pnl_recorded", {"trade_id": item.id})
     return item
 
 @app.delete("/api/v1/journal/{trade_id}", status_code=204)
@@ -117,6 +121,8 @@ def delete_journal(trade_id: int, user: User = Depends(local_workspace), db: Ses
     db.delete(item)
     record_audit_event(db, "journal.deleted", {"trade_id": trade_id})
     db.commit()
+    event_hub.publish("journal.changed", "journal", "deleted", {"trade_id": trade_id})
+    event_hub.publish("wallet.changed", "wallet", "journal_pnl_reversed", {"trade_id": trade_id})
 
 @app.get("/api/v1/wallet/summary", response_model=WalletSummaryResponse)
 def wallet_summary(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
@@ -149,6 +155,7 @@ def create_wallet_transaction(payload: WalletTransactionCreate, user: User = Dep
     record_audit_event(db, "wallet.transaction_created", {"transaction_type": item.transaction_type, "amount": item.amount})
     db.commit()
     db.refresh(item)
+    event_hub.publish("wallet.changed", "wallet", "transaction_created", {"transaction_id": item.id, "transaction_type": item.transaction_type, "amount": item.amount})
     return item
 
 @app.get("/api/v1/preferences", response_model=list[PreferenceResponse])
@@ -168,6 +175,7 @@ def set_preference(key: str, payload: PreferenceWrite, user: User = Depends(loca
     record_audit_event(db, "preference.updated", {"key": key})
     db.commit()
     db.refresh(item)
+    event_hub.publish("preferences.changed", "preferences", "updated", {"key": key})
     return item
 
 @app.get("/api/v1/ai/status")
@@ -254,6 +262,7 @@ def update_signal_settings(payload: SignalSettingsRequest, user: User = Depends(
     _save_preference(db,user.id,"signal_settings",json.dumps(settings))
     record_audit_event(db, "signals.settings_updated", {"primary": settings["primary"], "trend": settings["trend"]})
     db.commit()
+    event_hub.publish("preferences.changed", "signals", "settings_updated", {"key": "signal_settings"})
     return settings
 
 @app.post("/api/v1/signals/scan")
@@ -296,6 +305,7 @@ async def scan_xauusd_signal(user: User = Depends(local_workspace), db: Session 
     else:
         _save_preference(db,user.id,"active_signal","")
     db.commit()
+    event_hub.publish("signals.changed", "signals", "scan_completed", {"symbol": result.get("symbol")})
     return result
 
 @app.post("/api/v1/telegram/connect")
@@ -319,6 +329,7 @@ async def connect_telegram_bot(payload: TelegramConnectRequest, user: User = Dep
     _save_preference(db,user.id,"telegram_bot_display_name",payload.display_name.strip() or bot.get("first_name","QUANTNEX Bot"))
     record_audit_event(db, "telegram.connected", {"bot_username": bot.get("username", "")})
     db.commit()
+    event_hub.publish("integration.changed", "telegram", "connected", {"bot_username": bot.get("username", "")})
     return {"connected":True,"bot_username":bot.get("username"),"chat_id":payload.chat_id.strip(),
             "commands":["/help","/timeframes","/settf 5","/settrend 60","/setanalysis 1,5,15,30,60","/scan","/status"],
             "note":"The local API must remain running for bot commands and TP1/SL level alerts."}
@@ -338,6 +349,7 @@ def disconnect_telegram_bot(user: User = Depends(local_workspace), db: Session =
         if row:db.delete(row)
     record_audit_event(db, "telegram.disconnected")
     db.commit()
+    event_hub.publish("integration.changed", "telegram", "disconnected", {"connected": False})
     return {"connected":False}
 
 def backup_legacy_database(db: Session) -> None:
@@ -421,6 +433,7 @@ def set_auto_signal_settings(payload: AutoSignalSettingsRequest, user: User = De
     _save_preference(db,user.id,"auto_signal_settings",json.dumps(settings))
     record_audit_event(db, "signals.auto_settings_updated", {"enabled": settings["enabled"], "interval_seconds": settings["interval_seconds"]})
     db.commit()
+    event_hub.publish("preferences.changed", "signals", "auto_settings_updated", {"key": "auto_signal_settings", "enabled": settings["enabled"]})
     return {**settings,"telegram_connected":connected,"note":"Automatic XAUUSD alerts run only while this computer's QUANTNEX API process is running."}
 
 @app.post("/api/v1/telegram/notify")
@@ -614,6 +627,7 @@ async def open_paper_trade(payload: dict, user: User = Depends(local_workspace),
             "quantity":quantity,"entry":entry,"mode":"paper"})
         db.commit()
         db.refresh(item)
+        event_hub.publish("paper_trade.changed", "paper_trade", "opened", {"trade_id": item.id, "symbol": item.symbol, "side": item.side, "status": item.status})
         return {"id":item.id,"symbol":item.symbol,"side":item.side,"quantity":item.quantity,
                 "entry_price":item.entry_price,"stop_loss":item.stop_loss,"take_profit":item.take_profit,
                 "status":item.status,"mode":"PAPER"}
@@ -645,6 +659,7 @@ async def close_paper_trade(trade_id: int, user: User = Depends(local_workspace)
     record_audit_event(db,"paper_trade.closed",{"trade_id":item.id,"symbol":item.symbol,
         "exit":exit_price,"realized_pnl":item.realized_pnl,"mode":"paper"})
     db.commit()
+    event_hub.publish("paper_trade.changed", "paper_trade", "closed", {"trade_id": item.id, "symbol": item.symbol, "status": item.status, "realized_pnl": item.realized_pnl})
     return {"id":item.id,"status":item.status,"exit_price":exit_price,"realized_pnl":item.realized_pnl,"mode":"PAPER"}
 
 @app.get("/api/v1/paper-trading/summary")
@@ -746,6 +761,7 @@ async def strategy_lab_backtest(payload: dict, user: User = Depends(local_worksp
     record_audit_event(db,"strategy_lab.backtest",{"symbol":info["symbol"],"timeframe":timeframe,
         "trades":result["trade_count"],"strategy":strategy})
     db.commit()
+    event_hub.publish("strategy.research.changed", "strategy", "backtest_saved", {"symbol": info["symbol"], "timeframe": timeframe})
     return {"symbol":info["symbol"],"timeframe":timeframe,**result}
 
 @app.post("/api/v1/strategy-lab/optimize")
@@ -766,6 +782,7 @@ async def strategy_lab_optimize(payload: dict, user: User = Depends(local_worksp
         strategy_json="{}",result_json=json.dumps(result)))
     record_audit_event(db,"strategy_lab.optimizer",{"symbol":info["symbol"],"timeframe":timeframe,"tested":result["tested"]})
     db.commit()
+    event_hub.publish("strategy.research.changed", "strategy", "optimizer_saved", {"symbol": info["symbol"], "timeframe": timeframe})
     return {"symbol":info["symbol"],"timeframe":timeframe,**result}
 
 @app.post("/api/v1/strategy-lab/forward/evaluate")
@@ -792,6 +809,7 @@ async def strategy_lab_forward_evaluate(payload: dict, user: User = Depends(loca
         strategy_json=json.dumps(strategy),result_json=json.dumps(observation)))
     record_audit_event(db,"strategy_lab.forward_observation",{"symbol":info["symbol"],"side":side,"timeframe":timeframe})
     db.commit()
+    event_hub.publish("strategy.research.changed", "strategy", "forward_observation_saved", {"symbol": info["symbol"], "timeframe": timeframe})
     return {"symbol":info["symbol"],"timeframe":timeframe,"strategy":strategy,**observation}
 
 @app.get("/api/v1/strategy-lab/research")
@@ -882,6 +900,7 @@ async def smart_open_paper_trade(payload: dict, user: User = Depends(local_works
         record_audit_event(db,"phase09.smart_paper_trade.opened",{"trade_id":item.id,"symbol":item.symbol,
             "side":side,"quantity":quantity,"risk_amount":sizing["risk_amount"],"mode":"paper"})
         db.commit(); db.refresh(item)
+        event_hub.publish("paper_trade.changed", "paper_trade", "opened", {"trade_id": item.id, "symbol": item.symbol, "side": item.side, "status": item.status, "source": "risk_guardian"})
         return {"id":item.id,"symbol":item.symbol,"side":side,"quantity":quantity,"entry_price":entry,
             "stop_loss":stop,"take_profit":target,"risk":sizing,"guardian":guard,"status":"OPEN","mode":"PAPER"}
     except HTTPException:

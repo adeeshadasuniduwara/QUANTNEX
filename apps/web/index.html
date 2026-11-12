@@ -7,8 +7,9 @@
   <link rel="icon" type="image/svg+xml" href="quantnex-mark.svg">
   <meta name="description" content="QUANTNEX is a modern trading workspace for risk planning and trade review.">
   <title>QUANTNEX — Trading Workspace</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=20261112-scrollfix2">
   <link rel="stylesheet" href="signal-tool.css">
+  <link rel="stylesheet" href="workspace-pages.css?v=20261112-pages10">
 </head>
 <body>
   <div class="layout">
@@ -31,6 +32,18 @@
       <a class="nav-link" href="#paper-trading"><span>▣</span>Paper Trading</a>
       <a class="nav-link" href="#performance-lab"><span>▥</span>Performance Lab</a>
       <a class="nav-link" href="#risk-management"><span>◇</span>Risk Management</a>
+      <div class="side-caption">MARKET DESKS</div>
+      <a class="nav-link" href="#watchlist-desk"><span>☷</span>Live Watchlist</a>
+      <a class="nav-link" href="#forex-desk"><span>¤</span>Forex Desk</a>
+      <a class="nav-link" href="#crypto-desk"><span>₿</span>Crypto Desk</a>
+      <a class="nav-link" href="#gold-desk"><span>Au</span>Gold Desk</a>
+      <a class="nav-link" href="#price-alerts"><span>◉</span>Price Alerts</a>
+      <div class="side-caption">RESEARCH &amp; RECORDS</div>
+      <a class="nav-link" href="#economic-calendar"><span>▦</span>Economic Calendar</a>
+      <a class="nav-link" href="#trade-history"><span>▤</span>Trade History</a>
+      <a class="nav-link" href="#strategy-library"><span>⌘</span>Strategy Library</a>
+      <a class="nav-link" href="#portfolio-monitor"><span>◇</span>Portfolio Monitor</a>
+      <a class="nav-link" href="#integrations-center"><span>⚙</span>Connections &amp; Integrations</a>
       <div class="side-caption">STRATEGY RESEARCH</div>
       <a class="nav-link" href="#strategy-laboratory"><span>⌘</span>AI Strategy Laboratory</a>
       <div class="side-caption">WORKSPACE TOOLS</div>
@@ -61,7 +74,7 @@
 
       <section class="market-ticker-grid" aria-label="Live market overview">
         <article class="panel market-ticker"><div class="market-ticker-head"><span class="coin-mark btc-mark">₿</span><div><strong>Bitcoin</strong><small>BTC / USD · Live feed</small></div><span class="chart-live"><i></i> LIVE</span></div><strong class="ticker-price" id="btcLivePrice">Loading…</strong><small class="ticker-foot" id="btcLiveUpdated">Waiting for market feed</small></article>
-        <article class="panel market-ticker"><div class="market-ticker-head"><span class="coin-mark gold-mark">Au</span><div><strong>Gold</strong><small>XAU / USD · per troy ounce · Live feed</small></div><span class="chart-live"><i></i> LIVE</span></div><strong class="ticker-price" id="goldLivePrice">Loading…</strong><small class="ticker-foot" id="goldLiveUpdated">Waiting for market feed</small></article>
+        <article class="panel market-ticker"><div class="market-ticker-head"><span class="coin-mark gold-mark">Au</span><div><strong>Gold</strong><small>XAU / USD · per troy ounce · provider quote</small></div><span class="chart-live"><i></i> PROVIDER</span></div><strong class="ticker-price" id="goldLivePrice">Loading…</strong><small class="ticker-foot" id="goldLiveUpdated">Waiting for market feed</small></article>
       </section>
       <section class="panel local-gold-panel"><div><div class="overline">SRI LANKA · INDICATIVE SPOT CONVERSION</div><h3>Gold price in LKR</h3><p>Converted from XAU/USD and USD/LKR. Not a jeweller's retail quote.</p></div><div class="local-gold-values"><div><span>1 gram</span><strong id="goldLkrGram">—</strong></div><div><span>8 grams</span><strong id="goldLkrEight">—</strong></div><div><span>USD / LKR</span><strong id="usdLkrRate">—</strong></div></div><small id="goldLkrNote">Gold conversion uses indicative spot and daily reference exchange rates.</small><small class="market-attribution">FX reference: <a href="https://www.exchangerate-api.com" target="_blank" rel="noopener noreferrer">Rates By Exchange Rate API</a></small></section>
       <section class="section-heading" id="account"><div><div class="overline">ACCOUNT &amp; CAPITAL</div><h2>Account &amp; wallet</h2><p>Your private QUANTNEX workspace and wallet, stored on this computer.</p></div><span class="pill" id="accountState">LOCAL ONLY</span></section>
@@ -76,7 +89,7 @@
         </div>
       </section>
       <section class="section-heading" id="signal-lab"><div><div class="overline">QUANTNEX · MARKET INTELLIGENCE</div><h2>Signal Lab</h2><p>Multi-timeframe technical analysis and optional Telegram signal delivery.</p></div><span class="pill live-pill">PAPER / ALERTS ONLY</span></section>
-      <section class="section-heading" id="market-intelligence"><div><div class="overline">PHASE 07 · MULTI-ASSET MONITOR</div><h2>Market Intelligence</h2><p>Live provider quotes, daily range and market availability across Crypto, Gold and Forex.</p></div><span class="pill live-pill">LIVE DATA</span></section>
+      <section class="section-heading" id="market-intelligence"><div><div class="overline">PHASE 07 · MULTI-ASSET MONITOR</div><h2>Market Intelligence</h2><p>Live provider quotes, daily range and market availability across Crypto, Gold and Forex.</p></div><span class="pill">PROVIDER DATA</span></section>
       <section class="panel phase07-panel">
         <div class="phase07-toolbar"><div><strong>Market watch</strong><p>BTC, ETH, SOL, XAUUSD, EURUSD, GBPUSD and USDJPY.</p></div><button class="secondary-btn" id="p7RefreshMarkets">Refresh markets</button></div>
         <div class="p7-market-grid" id="p7MarketCards"><div class="p7-empty">Loading live provider quotes…</div></div>
@@ -101,9 +114,10 @@
         <div class="p7-table-wrap"><table><thead><tr><th>Timeframe</th><th>Bias</th><th>Price</th><th>RSI</th><th>ADX</th><th>ATR</th></tr></thead><tbody id="p7SignalFrames"><tr><td colspan="6" class="empty-row">No analysis yet.</td></tr></tbody></table></div>
         <div class="p7-signal-ticket" id="p7SignalTicket" hidden><strong>Send this setup to Paper Trading</strong><button class="secondary-btn" id="p7UseSignal">Use signal in paper ticket</button></div>
       </section>
-      <section class="section-heading" id="orderflow-liquidity"><div><div class="overline">PHASE 07 · EXCHANGE DEPTH</div><h2>Order Flow &amp; Liquidity</h2><p>Real Binance Spot depth snapshots for supported crypto pairs. Gold/Forex depth is not simulated.</p></div><span class="pill">ORDER BOOK</span></section>
+      <section class="section-heading" id="orderflow-liquidity"><div><div class="overline">PHASE 07 · EXCHANGE DEPTH</div><h2>Order Flow &amp; Liquidity</h2><p>Live Binance Spot order-book depth stream for supported crypto pairs. Gold/Forex depth is not simulated.</p></div><span class="pill">ORDER BOOK</span></section>
       <section class="panel phase07-panel">
         <div class="p7-form-row"><label>Crypto market <select id="p7BookSymbol"><option value="BTCUSDT">BTCUSDT</option><option value="ETHUSDT">ETHUSDT</option><option value="SOLUSDT">SOLUSDT</option></select></label><button class="secondary-btn" id="p7LoadBook">Load order book</button><span class="p7-book-imbalance" id="p7BookImbalance">—</span></div>
+        <div class="p7-bookmap-wrap"><div class="p7-bookmap-head"><strong>Live Binance order-book heatmap · 100ms updates</strong><span id="p7BookLiveStatus">Connecting to Binance stream…</span></div><div class="p7-bookmap" id="p7Bookmap"><canvas id="p7BookmapCanvas" role="img" aria-label="Rolling Bitcoin order-book liquidity heatmap showing bid and ask depth over time"></canvas></div><div class="p7-bookmap-legend"><span>BUY liquidity · Bids</span><span>SELL liquidity · Asks</span></div></div>
         <div class="p7-book-grid"><div><h3>Bids · Buy orders</h3><div class="p7-table-wrap"><table><thead><tr><th>Price</th><th>Quantity</th></tr></thead><tbody id="p7Bids"><tr><td colspan="2" class="empty-row">Load depth snapshot.</td></tr></tbody></table></div></div><div><h3>Asks · Sell orders</h3><div class="p7-table-wrap"><table><thead><tr><th>Price</th><th>Quantity</th></tr></thead><tbody id="p7Asks"><tr><td colspan="2" class="empty-row">Load depth snapshot.</td></tr></tbody></table></div></div></div>
         <p class="p7-note" id="p7BookNote">Order-book snapshots are not proof of executed volume or total market liquidity.</p>
       </section>
@@ -159,6 +173,21 @@
       </section>
       <section class="section-heading" id="tradingview"><div><div class="overline">CHARTING</div><h2>TradingView</h2><p>One dedicated chart workspace. Select a symbol and timeframe.</p></div><span class="pill live-pill">CHART TAB</span></section>
       <section class="panel chart-panel"><div class="chart-heading"><div><strong>TradingView Advanced Chart</strong><span>Choose XAUUSD or BTCUSDT</span></div><label class="chart-select-label">Symbol <select id="tradingViewSymbol"><option value="OANDA:XAUUSD">XAUUSD</option><option value="BINANCE:BTCUSDT">BTCUSDT</option></select></label></div><div id="xauTradingView" class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div><script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>{"autosize":true,"symbol":"OANDA:XAUUSD","interval":"15","timezone":"Etc/UTC","theme":"dark","style":"1","locale":"en","allow_symbol_change":true,"calendar":false,"support_host":"https://www.tradingview.com"}</script></div></section>
+      <section class="panel live-pnl-panel" aria-label="Live trade result calculator">
+        <div class="signal-intro"><div><strong>Live trade result calculator</strong><p>Estimate unrealized P&amp;L using the latest BTC or XAUUSD market quote. No broker order is placed.</p></div><span class="signal-pill">LIVE PRICE</span></div>
+        <div class="live-pnl-grid">
+          <label>Market<select id="livePnlSymbol"><option value="BTCUSDT">Bitcoin · BTCUSDT</option><option value="XAUUSD">Gold · XAUUSD</option></select></label>
+          <label>Direction<select id="livePnlSide"><option value="LONG">BUY / LONG</option><option value="SHORT">SELL / SHORT</option></select></label>
+          <label>Entry price<input id="livePnlEntry" type="number" min="0" step="any" placeholder="Enter your entry price"></label>
+          <label>Quantity <span id="livePnlUnit">BTC</span><input id="livePnlQuantity" type="number" min="0" step="any" placeholder="0.001"></label>
+          <label id="livePnlContractSizeWrap" hidden>Gold contract size (oz / lot)<input id="livePnlContractSize" type="number" min="0.01" step="any" value="100"></label>
+        </div>
+        <div class="live-pnl-result-grid">
+          <article><span>Latest market price</span><strong id="livePnlCurrent">Waiting for quote…</strong><small id="livePnlUpdated">Waiting for live market data</small></article>
+          <article><span>Estimated result</span><strong id="livePnlResult">—</strong><small id="livePnlMove">Enter entry and quantity</small></article>
+        </div>
+        <p class="p7-note">BTC quantity is measured in BTC. Gold quantity is measured in broker lots using the editable ounces-per-lot contract size (default 100 oz; confirm with your broker). This gross estimate excludes spread, commission, swap, funding and slippage.</p>
+      </section>
       <section class="panel timeframe-panel">
         <div class="signal-intro"><div><strong>Signal timeframe preferences</strong><p>Choose the timeframes and confluence threshold used by the live XAUUSD analysis engine.</p></div><span class="signal-pill">USER CONFIGURABLE</span></div>
         <div class="timeframe-grid">
@@ -173,7 +202,7 @@
         </div>
         <div class="signal-actions"><button class="primary-btn" id="saveTimeframes">Save signal settings</button><button class="secondary-btn" id="syncTimeframes">Load settings from Telegram</button><button class="secondary-btn" id="applyChartTf">Apply to XAUUSD chart</button><button class="secondary-btn" id="runSignalScan">Run XAUUSD signal scan</button></div>
         <p class="telegram-status" id="timeframeStatus" aria-live="polite">Connect your QUANTNEX account to save shared settings and run live analysis. M50 is aggregated from 1-minute candles and has shorter indicator history.</p>
-        <div class="signal-warning">Market data setup: create an API key at <a href="https://twelvedata.com/" target="_blank" rel="noreferrer">Twelve Data</a>, then add <code>TWELVE_DATA_API_KEY=your_key</code> to <code>backend/.env</code> on this computer and restart the QUANTNEX API. Keep the key server-side; do not paste it into this website or GitHub. Provider plan limits and data entitlements apply.</div>
+        <div class="signal-warning">Gold and Forex analysis require a supported market-data provider configured on this computer. Keep provider credentials private; QUANTNEX never displays secret values in the website. Provider plan limits and market-data entitlements apply.</div>
       </section>
       <section class="panel signal-panel signal-results-panel">
         <div class="signal-intro"><div><strong>Live signal analysis</strong><p>EMA 20/50/200 · MACD · RSI · ADX · ATR · Structure · Liquidity · OB / Breaker / FVG / iFVG</p></div><span class="signal-pill" id="signalEngineState">NOT SCANNED</span></div>
@@ -204,7 +233,7 @@
           <div class="signal-actions"><button class="primary-btn" id="sendPlanTelegram">Send trade plan to Telegram</button><button class="secondary-btn" id="tp1Breakeven">TP1 hit · Send breakeven warning</button></div>
           <div class="signal-warning">TP1 automation is not active: when you confirm TP1 manually, this button sends the warning to move SL to Entry. QUANTNEX does not monitor price touches or modify broker orders yet. Always move the stop manually in your broker platform.</div>
         </article>
-        <article class="panel signal-panel">
+        <article class="panel signal-panel" id="telegram-bot-connect">
           <div class="signal-intro"><div><strong>Telegram bot connection</strong><p>Use your own private bot and chat.</p></div><span class="signal-pill">LOCAL SETUP</span></div>
           <div class="telegram-bot-identity"><label>Your bot display name<input id="tgBotDisplayName" maxlength="40" placeholder="e.g. QUANTNEX Gold Scout"></label><small>Choose this label for your workspace. Set the actual Telegram bot name and username in @BotFather.</small></div>
           <div class="telegram-config">
@@ -223,10 +252,10 @@
           <div class="telegram-guide" id="telegramGuide" hidden>
             <ol>
               <li>Open Telegram and search for <strong>@BotFather</strong>.</li>
-              <li>Send <code>/newbot</code>, follow the prompts and choose a bot name and unique username.</li>
+              <li>Send the create-bot command, follow the prompts and choose a bot name and unique username.</li>
               <li>Copy the new bot token privately. Never post it in GitHub, screenshots or public chats.</li>
               <li>Open your new bot and press <strong>Start</strong>. To find your numeric private chat ID, use a trusted chat-ID lookup tool; never give your bot token to another bot or person.</li>
-              <li>For a private chat, send a message to your bot, then obtain your chat ID using a trusted Telegram bot/API tool. For a channel, add your bot as an administrator with permission to post and enter <code>@ChannelUsername</code>.</li>
+              <li>For a private chat, send a message to your bot, then obtain your chat ID using a trusted Telegram bot/API tool. For a channel, add your bot as an administrator with permission to post and enter the channel username.</li>
               <li>Start the QUANTNEX local API, enter token and chat ID above, then press Test.</li>
             </ol>
             <p>Keep the token private. If it is exposed, revoke it with BotFather and create a new one.</p>
@@ -351,11 +380,11 @@
       </section>
       <section class="section-heading" id="system-security"><div><div class="overline">LOCAL DEVICE · PROTECTION</div><h2>System security</h2><p>Database backups, integrity checks, activity history and computer health.</p></div><span class="pill">LOCAL ONLY</span></section>
       <section class="panel system-security-panel">
-        <div class="system-security-toolbar"><div><strong>System health</strong><p id="systemHealthStatus" role="status">Checking local system…</p></div><button class="secondary-btn" id="refreshSystemHealth">Refresh health</button></div>
+        <div class="system-security-toolbar"><div><strong>System health</strong><p id="systemHealthStatus" role="status">Checking local system…</p></div><span class="pill live-pill">AUTO · 1 SEC</span></div>
         <div class="system-health-grid">
           <article><span>Database</span><strong id="systemDbStatus">—</strong><small id="systemDbSize">Size unavailable</small></article>
-          <article><span>CPU usage</span><strong id="systemCpu">—</strong><small>Current snapshot</small></article>
-          <article><span>Memory usage</span><strong id="systemMemory">—</strong><small>System RAM</small></article>
+          <article><span>CPU usage</span><strong id="systemCpu">—</strong><div class="system-live-meter"><span id="systemCpuBar"></span></div><div class="system-live-meta"><small>Live · 1 sec</small><small id="systemCpuMeta">—</small></div></article>
+          <article><span>Memory usage</span><strong id="systemMemory">—</strong><div class="system-live-meter"><span id="systemMemoryBar"></span></div><div class="system-live-meta"><small>Live · 1 sec</small><small id="systemMemoryMeta">—</small></div></article>
           <article><span>Disk free</span><strong id="systemDisk">—</strong><small id="systemDiskTotal">— total</small></article>
         </div>
         <div class="system-security-toolbar system-backup-heading"><div><strong>Database backups</strong><p>Automatic daily backups · Keep the newest 14 verified snapshots.</p></div><div class="system-security-actions"><button class="secondary-btn" id="refreshSystemBackups">Refresh list</button><button class="primary-btn" id="createSystemBackup">Create backup now</button></div></div>
@@ -365,10 +394,88 @@
         <div class="table-wrap"><table><thead><tr><th>Time</th><th>Event</th><th>Level</th><th>Details</th></tr></thead><tbody id="systemAuditRows"><tr><td colspan="4" class="empty-row">Loading audit events…</td></tr></tbody></table></div>
         <p class="system-security-note">QUANTNEX is intentionally local-only with no login. These controls rely on the trusted Windows user account and loopback-only API. Never expose port 8000 to a network. SHA256 detects accidental corruption or a changed backup file; it is not a digital signature against an attacker who can replace both the backup and its manifest.</p>
       </section>
+      <!-- Additional dedicated workspaces (Phase 17). -->
+      <section class="section-heading" id="watchlist-desk"><div><div class="overline">MARKET DESK · LIVE EVENTS</div><h2>Live Watchlist</h2><p>One consolidated view of supported markets. Crypto rows update from incoming Binance trade events.</p></div><span class="pill live-pill">EVENT DRIVEN</span></section>
+      <section class="panel workspace-page-panel">
+        <div class="workspace-page-toolbar"><div><strong>All supported instruments</strong><p id="watchlistStatus" role="status">Loading provider quotes…</p></div><button class="secondary-btn" id="watchlistRefresh">Refresh watchlist</button></div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Symbol</th><th>Asset</th><th>Last price</th><th>24h change</th><th>Provider</th><th>Feed time</th></tr></thead><tbody id="watchlistRows"><tr><td colspan="6" class="empty-row">Waiting for market data.</td></tr></tbody></table></div>
+        <p class="p7-note">Prices are indicative provider quotes, not broker execution prices. Crypto updates are event-driven; Gold and Forex refresh according to provider access and market hours.</p>
+      </section>
+
+      <section class="section-heading" id="forex-desk"><div><div class="overline">MARKET DESK · FOREIGN EXCHANGE</div><h2>Forex Desk</h2><p>Major FX reference pairs with provider freshness and availability clearly shown.</p></div><span class="pill">PROVIDER DATA</span></section>
+      <section class="panel workspace-page-panel">
+        <div class="workspace-page-toolbar"><div><strong>Forex instruments</strong><p id="forexDeskStatus" role="status">Loading Forex quotes…</p></div><button class="secondary-btn" id="forexDeskRefresh">Refresh Forex</button></div>
+        <div class="workspace-page-cards" id="forexDeskCards"><article class="workspace-page-card">Waiting for provider data…</article></div>
+        <p class="p7-note">Forex quotes and candles require a valid local Twelve Data API key and a plan that permits the requested symbols. No tick data is fabricated when a provider is unavailable.</p>
+      </section>
+
+      <section class="section-heading" id="crypto-desk"><div><div class="overline">MARKET DESK · DIGITAL ASSETS</div><h2>Crypto Desk</h2><p>Binance Spot prices, 24-hour range and live trade-event timestamps.</p></div><span class="pill live-pill">BINANCE STREAM</span></section>
+      <section class="panel workspace-page-panel">
+        <div class="workspace-page-toolbar"><div><strong>Crypto watch</strong><p id="cryptoDeskStatus" role="status">Waiting for Binance stream…</p></div><button class="secondary-btn" id="cryptoDeskRefresh">Refresh snapshot</button></div>
+        <div class="workspace-page-cards" id="cryptoDeskCards"><article class="workspace-page-card">Waiting for Binance data…</article></div>
+        <p class="p7-note">The stream sends provider events when trades occur. Update speed depends on exchange activity, network and browser connectivity; it is not a guaranteed one-millisecond feed.</p>
+      </section>
+
+      <section class="section-heading" id="gold-desk"><div><div class="overline">MARKET DESK · PRECIOUS METALS</div><h2>Gold Desk</h2><p>XAU/USD indicative quote, source status and recent candle context.</p></div><span class="pill">XAUUSD</span></section>
+      <section class="panel workspace-page-panel">
+        <div class="workspace-page-toolbar"><div><strong>Gold market monitor</strong><p id="goldDeskStatus" role="status">Loading XAUUSD quote…</p></div><button class="secondary-btn" id="goldDeskRefresh">Refresh Gold</button></div>
+        <div class="workspace-page-cards" id="goldDeskCards"><article class="workspace-page-card">Waiting for XAUUSD provider…</article></div>
+        <div class="workspace-page-toolbar"><div><strong>Recent XAUUSD candles</strong><p>Latest completed/provider-returned candles from the configured source.</p></div><label>Timeframe <select id="goldDeskTimeframe"><option>15m</option><option>5m</option><option>1h</option><option>4h</option></select></label><button class="secondary-btn" id="goldDeskCandles">Load candles</button></div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Time</th><th>Open</th><th>High</th><th>Low</th><th>Close</th></tr></thead><tbody id="goldDeskCandleRows"><tr><td colspan="5" class="empty-row">Load candles to inspect the latest XAUUSD data.</td></tr></tbody></table></div>
+      </section>
+
+      <section class="section-heading" id="price-alerts"><div><div class="overline">WORKSPACE TOOL · LOCAL ALERTS</div><h2>Price Alerts</h2><p>Create local threshold alerts. Active alerts are stored in this browser and never sent to a cloud service.</p></div><span class="pill">LOCAL ONLY</span></section>
+      <section class="panel workspace-page-panel">
+        <div class="workspace-page-form">
+          <label>Market <select id="alertSymbol"><option value="BTCUSDT">BTCUSDT</option><option value="ETHUSDT">ETHUSDT</option><option value="SOLUSDT">SOLUSDT</option><option value="XAUUSD">XAUUSD</option><option value="EURUSD">EURUSD</option><option value="GBPUSD">GBPUSD</option><option value="USDJPY">USDJPY</option></select></label>
+          <label>Condition <select id="alertCondition"><option value="above">Price rises above</option><option value="below">Price falls below</option></select></label>
+          <label>Target price <input id="alertTarget" type="number" min="0.00000001" step="any" placeholder="Enter target"></label>
+          <button class="primary-btn" id="alertCreate">Create alert</button>
+        </div>
+        <p class="p7-note" id="alertStatus" role="status">Keep the QUANTNEX browser tab visible for alerts (market streams pause while the tab is hidden): crypto thresholds trigger on real Binance trade events; Gold/Forex thresholds are checked when you refresh provider quotes. No cloud or background alert service is used.</p>
+        <div class="p7-table-wrap"><table><thead><tr><th>Market</th><th>Condition</th><th>Target</th><th>Status</th><th>Action</th></tr></thead><tbody id="alertRows"><tr><td colspan="5" class="empty-row">No local alerts created.</td></tr></tbody></table></div>
+      </section>
+
+      <section class="section-heading" id="economic-calendar"><div><div class="overline">MACRO DESK · ECONOMIC EVENTS</div><h2>Economic Calendar</h2><p>Upcoming events from the configured calendar provider. Empty results are not replaced with sample events.</p></div><span class="pill">FINNHUB OPTIONAL</span></section>
+      <section class="panel workspace-page-panel">
+        <div class="workspace-page-toolbar"><div><strong>Upcoming macro events</strong><p id="calendarStatus" role="status">Calendar not loaded.</p></div><div class="workspace-page-form compact"><label>Horizon <select id="calendarDays"><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option></select></label><button class="secondary-btn" id="calendarRefresh">Load events</button></div></div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Date / Time</th><th>Country</th><th>Event</th><th>Impact</th><th>Actual</th><th>Forecast</th><th>Previous</th></tr></thead><tbody id="calendarRows"><tr><td colspan="7" class="empty-row">Load the calendar to view provider events.</td></tr></tbody></table></div>
+      </section>
+
+      <section class="section-heading" id="trade-history"><div><div class="overline">RECORDS · PAPER &amp; JOURNAL</div><h2>Trade History</h2><p>Review completed journal entries separately from the QUANTNEX virtual paper ledger.</p></div><span class="pill">LOCAL RECORDS</span></section>
+      <section class="panel workspace-page-panel">
+        <div class="workspace-page-toolbar"><div><strong>Trade records</strong><p id="historyStatus" role="status">Loading local trade history…</p></div><button class="secondary-btn" id="historyRefresh">Refresh history</button></div>
+        <h3>Paper trades</h3><div class="p7-table-wrap"><table><thead><tr><th>Opened</th><th>Market</th><th>Side</th><th>Quantity</th><th>Entry</th><th>Exit</th><th>Realized P&amp;L · raw units</th><th>Status</th></tr></thead><tbody id="historyPaperRows"><tr><td colspan="8" class="empty-row">Loading paper trades…</td></tr></tbody></table></div>
+        <h3>Journal entries</h3><div class="p7-table-wrap"><table><thead><tr><th>Date</th><th>Market</th><th>Direction</th><th>Outcome</th><th>P&amp;L</th><th>Notes</th></tr></thead><tbody id="historyJournalRows"><tr><td colspan="6" class="empty-row">Loading journal entries…</td></tr></tbody></table></div>
+      </section>
+
+      <section class="section-heading" id="strategy-library"><div><div class="overline">RESEARCH · SAVED EXPERIMENTS</div><h2>Strategy Library</h2><p>Saved backtests, optimizer runs and forward observations from your local strategy research.</p></div><span class="pill">RESEARCH LOG</span></section>
+      <section class="panel workspace-page-panel">
+        <div class="workspace-page-toolbar"><div><strong>Saved research runs</strong><p id="strategyLibraryStatus" role="status">Loading strategy research…</p></div><button class="secondary-btn" id="strategyLibraryRefresh">Refresh library</button></div>
+        <div class="workspace-page-cards" id="strategyLibrarySummary"></div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Run type</th><th>Market</th><th>Timeframe</th><th>Saved</th><th>Result summary</th></tr></thead><tbody id="strategyLibraryRows"><tr><td colspan="5" class="empty-row">Loading saved experiments…</td></tr></tbody></table></div>
+        <p class="p7-note">Net P&amp;L is an unconverted raw total across instrument quote currencies; it is not a normalized account-currency return. Historical backtest and forward-observation outputs are research records, not forecasts or a guarantee of future performance.</p>
+      </section>
+
+      <section class="section-heading" id="portfolio-monitor"><div><div class="overline">CAPITAL DESK · OPEN EXPOSURE</div><h2>Portfolio Monitor</h2><p>Live snapshot of open virtual positions, estimated notional and planned stop risk.</p></div><span class="pill">PAPER LEDGER</span></section>
+      <section class="panel workspace-page-panel">
+        <div class="workspace-page-toolbar"><div><strong>Portfolio exposure</strong><p id="portfolioMonitorStatus" role="status">Loading open positions…</p></div><button class="secondary-btn" id="portfolioMonitorRefresh">Refresh portfolio</button></div>
+        <div class="workspace-page-cards" id="portfolioMonitorCards"></div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Trade ID</th><th>Market</th><th>Side</th><th>Quantity</th><th>Notional</th><th>Planned stop risk</th></tr></thead><tbody id="portfolioMonitorRows"><tr><td colspan="6" class="empty-row">Loading portfolio…</td></tr></tbody></table></div>
+      </section>
+
+      <section class="section-heading" id="integrations-center"><div><div class="overline">WORKSPACE SETTINGS · CONNECTION HEALTH</div><h2>Connections &amp; Integrations</h2><p>Check which optional local providers and integrations are configured without exposing any API keys or bot tokens.</p></div><span class="pill">SECRET SAFE</span></section>
+      <section class="panel workspace-page-panel">
+        <div class="workspace-page-toolbar"><div><strong>Integration status</strong><p id="integrationStatus" role="status">Checking local integrations…</p></div><div class="system-security-actions"><button class="secondary-btn" id="integrationConnectBot">Connect Telegram bot</button><button class="secondary-btn" id="integrationRefresh">Refresh status</button></div></div>
+        <div class="workspace-page-cards" id="integrationCards"><article class="workspace-page-card">Checking provider configuration…</article></div>
+        <p class="p7-note">Credentials remain in the local backend configuration or encrypted local preferences. This page never requests or displays secret values. QUANTNEX remains login-free and loopback-only.</p>
+      </section>
       <footer><span>QUANTNEX</span><span>Build carefully. Trade responsibly.</span></footer>
     </main>
   </div>
   <script src="app.js"></script>
+  <script src="realtime-events.js"></script>
+  <script src="workspace-pages.js"></script>
   <script src="signal-tool.js"></script>
 </body>
 </html>

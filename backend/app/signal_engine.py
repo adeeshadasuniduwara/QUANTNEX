@@ -125,7 +125,7 @@ def structure(c: list[dict[str,Any]]) -> dict[str,Any]:
             "bullish_order_block":bull_ob,"bearish_order_block":bear_ob,"swing_high":swing_high,"swing_low":swing_low}
 
 def inspect_tf(c: list[dict[str,Any]]) -> dict[str,Any]:
-    close=[x["close"] for x in c]; e20=ema(close,20)[-1];e50=ema(close,50)[-1];e200=ema(close,200)[-1]
+    close=[x["close"] for x in c]; e20=ema(close,20)[-1];e50=ema(close,50)[-1];e200=ema(close,200)[-1] if len(close)>=200 else None
     m,ms,mh=macd(close); rv=rsi(close); av=atr(c); dx=adx(c); last=close[-1]
     bias="BULLISH" if last>e20 and e20>e50 else "BEARISH" if last<e20 and e20<e50 else "NEUTRAL"
     return {"bias":bias,"close":last,"ema20":e20,"ema50":e50,"ema200":e200,"macd":m,"macd_signal":ms,
@@ -148,7 +148,7 @@ async def build_signal(settings: dict[str,Any]) -> dict[str,Any]:
         elif tf=="50": candles[tf]=aggregate_minutes(result,50)
         else: candles[tf]=result
     if errors: raise MarketDataError("; ".join(errors))
-    analysis={tf:inspect_tf(candles[tf]) for tf in needed if tf in candles and len(candles[tf])>=210}
+    analysis={tf:inspect_tf(candles[tf]) for tf in needed if tf in candles and len(candles[tf])>=(50 if tf=="50" else 210)}
     primary=str(settings.get("primary","5")); trend=str(settings.get("trend","60"))
     if primary not in analysis or trend not in analysis: raise MarketDataError("Selected primary/trend timeframe does not have enough candles.")
     p=analysis[primary]; t=analysis[trend]; side=None
@@ -172,8 +172,8 @@ async def build_signal(settings: dict[str,Any]) -> dict[str,Any]:
     if t["bias"]=="BULLISH":buy.append("Trend timeframe aligned")
     elif t["bias"]=="BEARISH":sell.append("Trend timeframe aligned")
     bscore=min(10,len(buy));sscore=min(10,len(sell))
-    if bscore>=7 and bscore>sscore: side="BUY";checks=buy;score=bscore
-    elif sscore>=7 and sscore>bscore: side="SELL";checks=sell;score=sscore
+    threshold=int(settings.get("min_score",7))\n    if bscore>=threshold and bscore>sscore: side="BUY";checks=buy;score=bscore
+    elif sscore>=threshold and sscore>bscore: side="SELL";checks=sell;score=sscore
     else: checks=buy if bscore>=sscore else sell;score=max(bscore,sscore)
     signal=None
     if side:
@@ -188,7 +188,7 @@ async def build_signal(settings: dict[str,Any]) -> dict[str,Any]:
     return {"symbol":"XAU/USD","provider":"Twelve Data","generated_at":datetime.now(timezone.utc).isoformat(),
             "signal":signal,"confluence_score":score,"score_out_of":10,"score_note":"Rule-based confluence count, not a measured win probability.",
             "timeframes":{tf:{"bias":v["bias"],"close":round(v["close"],2),"ema20":round(v["ema20"],2),
-                "ema50":round(v["ema50"],2),"ema200":round(v["ema200"],2),"macd_histogram":round(v["macd_histogram"],4),
+                "ema50":round(v["ema50"],2),"ema200":round(v["ema200"],2) if v["ema200"] is not None else None,"macd_histogram":round(v["macd_histogram"],4),
                 "rsi":round(v["rsi"],1),"adx":round(v["adx"],1),"atr":round(v["atr"],3),
                 "structure":v["structure"]} for tf,v in analysis.items()},
             "status":"SIGNAL" if signal else "WAIT","message":"Confluence threshold met." if signal else "No high-confluence setup. Wait for more confirmations."}

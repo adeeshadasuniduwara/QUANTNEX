@@ -2,8 +2,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
+import sqlite3
+from pathlib import Path
+import app.main as main_module
 from app.database import Base
-from app.main import app, local_workspace
+from app.main import app, local_workspace, backup_legacy_database
 from app.models import Preference, Trade, User, WalletTransaction
 
 
@@ -141,3 +144,27 @@ def test_legacy_accounts_are_consolidated_without_losing_local_data():
         assert len(wallet) == 1 and wallet[0].user_id == owner_id
         assert preferences["signal_settings"] == "first-value"
         assert preferences["telegram_chat_id"] == "123456"
+
+
+
+def test_legacy_database_is_backed_up_before_password_hashes_are_cleared(tmp_path, monkeypatch):
+    database_path = tmp_path / "legacy.db"
+    test_engine = create_engine(
+        "sqlite:///" + database_path.as_posix(),
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(test_engine)
+    with Session(test_engine) as db:
+        db.add(User(email="old@example.com", password_hash="legacy-hash"))
+        db.commit()
+        monkeypatch.setattr(main_module, "DATABASE_URL", "sqlite:///" + database_path.as_posix())
+
+        backup_legacy_database(db)
+
+    backup_dir = Path(__file__).resolve().parents[2] / "data" / "backups"
+    backups = sorted(backup_dir.glob("quantnex-pre-local-only-*.db"))
+    assert backups
+    with sqlite3.connect(backups[-1]) as backup:
+        row = backup.execute("SELECT email, password_hash FROM users").fetchone()
+    assert row == ("old@example.com", "legacy-hash")

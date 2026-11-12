@@ -180,9 +180,8 @@ async def telegram_worker() -> None:
                                             if market_symbol=="XAUUSD":
                                                 _set(db,user_id,"active_signal",json.dumps({**candidate,"tp1_notified":False,"tp2_notified":False,"tp3_notified":False,"sl_notified":False}))
                                             db.commit()
-                                    else:
-                                        _set(db,user_id,fingerprint_key,"")
-                                        db.commit()
+                                    # Keep the last delivered fingerprint when no setup is present.
+                                    # This prevents duplicate alerts if the same candle briefly loses and regains confluence.
                                 except (MarketDataError,httpx.HTTPError,ValueError,KeyError) as exc:
                                     print(f"[QUANTNEX auto-signal] user {user_id} {market_symbol}: {exc}",flush=True)
                             last_monitor[auto_key]=now

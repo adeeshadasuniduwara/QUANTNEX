@@ -42,17 +42,17 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
     except ValueError: settings={"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":7}
     names={"1":"M1","5":"M5","15":"M15","30":"M30","50":"M50","60":"H1","240":"H4"}
     if command in {"/start","/help"}:
-        return ("QUANTNEX XAUUSD Signal Bot\\n"
-            "/help — show this command list\\n"
-            "/status — bot and market-feed status\\n"
-            "/settings — current signal and automation settings\\n"
-            "/timeframes — show analysis timeframes\\n"
-            "/settf 1|5|15|30|50|60 — primary signal timeframe\\n"
-            "/settrend 15|30|60|240 — trend filter\\n"
-            "/setanalysis 1,5,15,30,50,60 — analysis timeframes\\n"
-            "/scan — run a fresh confluence scan\\n"
-            "/pause — pause automatic signal scans\\n"
-            "/resume — resume automatic signal scans\\n\\n"
+        return ("QUANTNEX XAUUSD Signal Bot\n"
+            "/help — show this command list\n"
+            "/status — bot and market-feed status\n"
+            "/settings — current signal and automation settings\n"
+            "/timeframes — show analysis timeframes\n"
+            "/settf 1|5|15|30|50|60 — primary signal timeframe\n"
+            "/settrend 15|30|60|240 — trend filter\n"
+            "/setanalysis 1,5,15,30,50,60 — analysis timeframes\n"
+            "/scan — run a fresh confluence scan\n"
+            "/pause — pause automatic signal scans\n"
+            "/resume — resume automatic signal scans\n\n"
             "Commands are accepted only from the configured private Telegram chat. "
             "QUANTNEX sends alerts only; it never places or modifies broker orders.")
     if command=="/timeframes":
@@ -76,12 +76,12 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
         try: auto=json.loads(auto_raw)
         except ValueError: auto={"enabled":False,"interval_seconds":180}
         enabled=", ".join(names.get(str(x),str(x)) for x in settings.get("enabled",[]))
-        return ("Signal settings\\nPrimary: "+names.get(str(settings.get("primary")),"Unknown")+
-            "\\nTrend: "+names.get(str(settings.get("trend")),"Unknown")+
-            "\\nAnalysis: "+enabled+
-            "\\nMinimum score: "+str(settings.get("min_score",7))+"/10"+
-            "\\nAuto Signals: "+("ON" if auto.get("enabled") else "OFF")+
-            "\\nScan interval: "+str(auto.get("interval_seconds",180))+" seconds")
+        return ("Signal settings\nPrimary: "+names.get(str(settings.get("primary")),"Unknown")+
+            "\nTrend: "+names.get(str(settings.get("trend")),"Unknown")+
+            "\nAnalysis: "+enabled+
+            "\nMinimum score: "+str(settings.get("min_score",7))+"/10"+
+            "\nAuto Signals: "+("ON" if auto.get("enabled") else "OFF")+
+            "\nScan interval: "+str(auto.get("interval_seconds",180))+" seconds")
     if command=="/pause":
         auto_raw=_get(db,user_id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180}')
         try: auto=json.loads(auto_raw)

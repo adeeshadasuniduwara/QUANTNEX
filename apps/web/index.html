@@ -117,7 +117,7 @@
       <section class="section-heading" id="orderflow-liquidity"><div><div class="overline">PHASE 07 · EXCHANGE DEPTH</div><h2>Order Flow &amp; Liquidity</h2><p>Live Binance Spot order-book depth stream for supported crypto pairs. Gold/Forex depth is not simulated.</p></div><span class="pill">ORDER BOOK</span></section>
       <section class="panel phase07-panel">
         <div class="p7-form-row"><label>Crypto market <select id="p7BookSymbol"><option value="BTCUSDT">BTCUSDT</option><option value="ETHUSDT">ETHUSDT</option><option value="SOLUSDT">SOLUSDT</option></select></label><button class="secondary-btn" id="p7LoadBook">Load order book</button><span class="p7-book-imbalance" id="p7BookImbalance">—</span></div>
-        <div class="p7-bookmap-wrap"><div class="p7-bookmap-head"><strong>Live order-book depth · Bookmap view</strong><span id="p7BookLiveStatus">Connecting to Binance stream…</span></div><div class="p7-bookmap" id="p7Bookmap"><div class="p7-empty">Waiting for live depth updates…</div></div><div class="p7-bookmap-legend"><span>BUY liquidity · Bids</span><span>SELL liquidity · Asks</span></div></div>
+        <div class="p7-bookmap-wrap"><div class="p7-bookmap-head"><strong>Live order-book depth · Bookmap view</strong><span id="p7BookLiveStatus">Connecting to Binance stream…</span></div><div class="p7-bookmap" id="p7Bookmap"><canvas id="p7BookmapCanvas" role="img" aria-label="Rolling Bitcoin order-book liquidity heatmap showing bid and ask depth over time"></canvas></div><div class="p7-bookmap-legend"><span>BUY liquidity · Bids</span><span>SELL liquidity · Asks</span></div></div>
         <div class="p7-book-grid"><div><h3>Bids · Buy orders</h3><div class="p7-table-wrap"><table><thead><tr><th>Price</th><th>Quantity</th></tr></thead><tbody id="p7Bids"><tr><td colspan="2" class="empty-row">Load depth snapshot.</td></tr></tbody></table></div></div><div><h3>Asks · Sell orders</h3><div class="p7-table-wrap"><table><thead><tr><th>Price</th><th>Quantity</th></tr></thead><tbody id="p7Asks"><tr><td colspan="2" class="empty-row">Load depth snapshot.</td></tr></tbody></table></div></div></div>
         <p class="p7-note" id="p7BookNote">Order-book snapshots are not proof of executed volume or total market liquidity.</p>
       </section>
@@ -173,6 +173,20 @@
       </section>
       <section class="section-heading" id="tradingview"><div><div class="overline">CHARTING</div><h2>TradingView</h2><p>One dedicated chart workspace. Select a symbol and timeframe.</p></div><span class="pill live-pill">CHART TAB</span></section>
       <section class="panel chart-panel"><div class="chart-heading"><div><strong>TradingView Advanced Chart</strong><span>Choose XAUUSD or BTCUSDT</span></div><label class="chart-select-label">Symbol <select id="tradingViewSymbol"><option value="OANDA:XAUUSD">XAUUSD</option><option value="BINANCE:BTCUSDT">BTCUSDT</option></select></label></div><div id="xauTradingView" class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div><script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>{"autosize":true,"symbol":"OANDA:XAUUSD","interval":"15","timezone":"Etc/UTC","theme":"dark","style":"1","locale":"en","allow_symbol_change":true,"calendar":false,"support_host":"https://www.tradingview.com"}</script></div></section>
+      <section class="panel live-pnl-panel" aria-label="Live trade result calculator">
+        <div class="signal-intro"><div><strong>Live trade result calculator</strong><p>Estimate unrealized P&amp;L using the latest BTC or XAUUSD market quote. No broker order is placed.</p></div><span class="signal-pill">LIVE PRICE</span></div>
+        <div class="live-pnl-grid">
+          <label>Market<select id="livePnlSymbol"><option value="BTCUSDT">Bitcoin · BTCUSDT</option><option value="XAUUSD">Gold · XAUUSD</option></select></label>
+          <label>Direction<select id="livePnlSide"><option value="LONG">BUY / LONG</option><option value="SHORT">SELL / SHORT</option></select></label>
+          <label>Entry price<input id="livePnlEntry" type="number" min="0" step="any" placeholder="Enter your entry price"></label>
+          <label>Quantity <span id="livePnlUnit">BTC</span><input id="livePnlQuantity" type="number" min="0" step="any" placeholder="0.01"></label>
+        </div>
+        <div class="live-pnl-result-grid">
+          <article><span>Latest market price</span><strong id="livePnlCurrent">Waiting for quote…</strong><small id="livePnlUpdated">Waiting for live market data</small></article>
+          <article><span>Estimated result</span><strong id="livePnlResult">—</strong><small id="livePnlMove">Enter entry and quantity</small></article>
+        </div>
+        <p class="p7-note">BTC quantity is measured in BTC. Gold quantity is measured in troy ounces, not broker lots. This estimate excludes spread, commission, swap, funding and broker-specific contract rules.</p>
+      </section>
       <section class="panel timeframe-panel">
         <div class="signal-intro"><div><strong>Signal timeframe preferences</strong><p>Choose the timeframes and confluence threshold used by the live XAUUSD analysis engine.</p></div><span class="signal-pill">USER CONFIGURABLE</span></div>
         <div class="timeframe-grid">
@@ -187,7 +201,7 @@
         </div>
         <div class="signal-actions"><button class="primary-btn" id="saveTimeframes">Save signal settings</button><button class="secondary-btn" id="syncTimeframes">Load settings from Telegram</button><button class="secondary-btn" id="applyChartTf">Apply to XAUUSD chart</button><button class="secondary-btn" id="runSignalScan">Run XAUUSD signal scan</button></div>
         <p class="telegram-status" id="timeframeStatus" aria-live="polite">Connect your QUANTNEX account to save shared settings and run live analysis. M50 is aggregated from 1-minute candles and has shorter indicator history.</p>
-        <div class="signal-warning">Market data setup: create an API key at <a href="https://twelvedata.com/" target="_blank" rel="noreferrer">Twelve Data</a>, then add <code>TWELVE_DATA_API_KEY=your_key</code> to <code>backend/.env</code> on this computer and restart the QUANTNEX API. Keep the key server-side; do not paste it into this website or GitHub. Provider plan limits and data entitlements apply.</div>
+        <div class="signal-warning">Gold and Forex analysis require a supported market-data provider configured on this computer. Keep provider credentials private; QUANTNEX never displays secret values in the website. Provider plan limits and market-data entitlements apply.</div>
       </section>
       <section class="panel signal-panel signal-results-panel">
         <div class="signal-intro"><div><strong>Live signal analysis</strong><p>EMA 20/50/200 · MACD · RSI · ADX · ATR · Structure · Liquidity · OB / Breaker / FVG / iFVG</p></div><span class="signal-pill" id="signalEngineState">NOT SCANNED</span></div>
@@ -218,7 +232,7 @@
           <div class="signal-actions"><button class="primary-btn" id="sendPlanTelegram">Send trade plan to Telegram</button><button class="secondary-btn" id="tp1Breakeven">TP1 hit · Send breakeven warning</button></div>
           <div class="signal-warning">TP1 automation is not active: when you confirm TP1 manually, this button sends the warning to move SL to Entry. QUANTNEX does not monitor price touches or modify broker orders yet. Always move the stop manually in your broker platform.</div>
         </article>
-        <article class="panel signal-panel">
+        <article class="panel signal-panel" id="telegram-bot-connect">
           <div class="signal-intro"><div><strong>Telegram bot connection</strong><p>Use your own private bot and chat.</p></div><span class="signal-pill">LOCAL SETUP</span></div>
           <div class="telegram-bot-identity"><label>Your bot display name<input id="tgBotDisplayName" maxlength="40" placeholder="e.g. QUANTNEX Gold Scout"></label><small>Choose this label for your workspace. Set the actual Telegram bot name and username in @BotFather.</small></div>
           <div class="telegram-config">
@@ -237,10 +251,10 @@
           <div class="telegram-guide" id="telegramGuide" hidden>
             <ol>
               <li>Open Telegram and search for <strong>@BotFather</strong>.</li>
-              <li>Send <code>/newbot</code>, follow the prompts and choose a bot name and unique username.</li>
+              <li>Send the create-bot command, follow the prompts and choose a bot name and unique username.</li>
               <li>Copy the new bot token privately. Never post it in GitHub, screenshots or public chats.</li>
               <li>Open your new bot and press <strong>Start</strong>. To find your numeric private chat ID, use a trusted chat-ID lookup tool; never give your bot token to another bot or person.</li>
-              <li>For a private chat, send a message to your bot, then obtain your chat ID using a trusted Telegram bot/API tool. For a channel, add your bot as an administrator with permission to post and enter <code>@ChannelUsername</code>.</li>
+              <li>For a private chat, send a message to your bot, then obtain your chat ID using a trusted Telegram bot/API tool. For a channel, add your bot as an administrator with permission to post and enter the channel username.</li>
               <li>Start the QUANTNEX local API, enter token and chat ID above, then press Test.</li>
             </ol>
             <p>Keep the token private. If it is exposed, revoke it with BotFather and create a new one.</p>
@@ -365,7 +379,7 @@
       </section>
       <section class="section-heading" id="system-security"><div><div class="overline">LOCAL DEVICE · PROTECTION</div><h2>System security</h2><p>Database backups, integrity checks, activity history and computer health.</p></div><span class="pill">LOCAL ONLY</span></section>
       <section class="panel system-security-panel">
-        <div class="system-security-toolbar"><div><strong>System health</strong><p id="systemHealthStatus" role="status">Checking local system…</p></div><button class="secondary-btn" id="refreshSystemHealth">Refresh health</button></div>
+        <div class="system-security-toolbar"><div><strong>System health</strong><p id="systemHealthStatus" role="status">Checking local system…</p></div><span class="pill live-pill">AUTO · 1 SEC</span></div>
         <div class="system-health-grid">
           <article><span>Database</span><strong id="systemDbStatus">—</strong><small id="systemDbSize">Size unavailable</small></article>
           <article><span>CPU usage</span><strong id="systemCpu">—</strong><div class="system-live-meter"><span id="systemCpuBar"></span></div><div class="system-live-meta"><small>Live · 1 sec</small><small id="systemCpuMeta">—</small></div></article>
@@ -451,7 +465,7 @@
 
       <section class="section-heading" id="integrations-center"><div><div class="overline">WORKSPACE SETTINGS · CONNECTION HEALTH</div><h2>Connections &amp; Integrations</h2><p>Check which optional local providers and integrations are configured without exposing any API keys or bot tokens.</p></div><span class="pill">SECRET SAFE</span></section>
       <section class="panel workspace-page-panel">
-        <div class="workspace-page-toolbar"><div><strong>Integration status</strong><p id="integrationStatus" role="status">Checking local integrations…</p></div><button class="secondary-btn" id="integrationRefresh">Refresh status</button></div>
+        <div class="workspace-page-toolbar"><div><strong>Integration status</strong><p id="integrationStatus" role="status">Checking local integrations…</p></div><div class="system-security-actions"><button class="secondary-btn" id="integrationConnectBot">Connect Telegram bot</button><button class="secondary-btn" id="integrationRefresh">Refresh status</button></div></div>
         <div class="workspace-page-cards" id="integrationCards"><article class="workspace-page-card">Checking provider configuration…</article></div>
         <p class="p7-note">Credentials remain in the local backend configuration or encrypted local preferences. This page never requests or displays secret values. QUANTNEX remains login-free and loopback-only.</p>
       </section>

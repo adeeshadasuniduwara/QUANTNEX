@@ -72,7 +72,7 @@ const apiBaseInput = $("apiBase");
 const accountMessage = $("accountMessage");
 const walletArea = $("walletArea");
 apiBaseInput.value = localStorage.getItem(API_BASE_KEY) || "http://127.0.0.1:8000";
-function apiBase(){ return apiBaseInput.value.trim().replace(/\\/+$/, ""); }
+function apiBase(){ return apiBaseInput.value.trim().replace(/\/+$/, ""); }
 function sessionToken(){ return sessionStorage.getItem(TOKEN_KEY); }
 function setAccountMessage(message, error=false){ accountMessage.textContent=message; accountMessage.dataset.state=error?"error":"ok"; }
 async function apiRequest(path, options={}){
@@ -109,7 +109,7 @@ async function authenticate(mode){
     sessionStorage.setItem(TOKEN_KEY,result.access_token);$("accountPassword").value="";setSignedIn(true);await refreshWallet();setAccountMessage("Signed in. Wallet data loaded from the shared API.");
   }catch(error){setAccountMessage(error.message,true);}
 }
-$("saveApiBase").addEventListener("click",()=>{try{const url=new URL(apiBase());if(!["http:","https:"].includes(url.protocol))throw new Error();localStorage.setItem(API_BASE_KEY,url.origin+url.pathname.replace(/\\/+$/,""));setAccountMessage("API server URL saved for this browser.");}catch{setAccountMessage("Enter a valid HTTP or HTTPS API URL.",true);}});
+$("saveApiBase").addEventListener("click",()=>{try{const url=new URL(apiBase());if(!["http:","https:"].includes(url.protocol))throw new Error();localStorage.setItem(API_BASE_KEY,url.origin+url.pathname.replace(/\/+$/,""));setAccountMessage("API server URL saved for this browser.");}catch{setAccountMessage("Enter a valid HTTP or HTTPS API URL.",true);}});
 $("accountLogin").addEventListener("click",()=>authenticate("login"));
 $("accountRegister").addEventListener("click",()=>authenticate("register"));
 $("accountLogout").addEventListener("click",()=>{sessionStorage.removeItem(TOKEN_KEY);setSignedIn(false);setAccountMessage("Signed out. Your wallet records remain on the server.");});

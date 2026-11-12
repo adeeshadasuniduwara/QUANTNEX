@@ -14,6 +14,20 @@
     return type.includes("application/pdf")?response.blob():response.json();
   };
   const money=(value,currency)=>new Intl.NumberFormat(undefined,{style:"currency",currency,maximumFractionDigits:2}).format(Number(value||0));
+  const safeImageUrl=value=>{try{const url=new URL(String(value||"").trim());return url.protocol==="https:"?url.href:"";}catch{return "";}};
+  function updateImagePreview(){
+    const host=$("goalImagePreview");if(!host)return;
+    host.replaceChildren();
+    const raw=$("goalImage")?.value.trim()||"";
+    if(!raw){const hint=document.createElement("span");hint.textContent="Image preview will appear here.";host.append(hint);return;}
+    const url=safeImageUrl(raw);
+    if(!url){const hint=document.createElement("span");hint.textContent="Use a direct HTTPS image URL.";host.append(hint);return;}
+    const img=document.createElement("img");img.alt="Goal image preview";img.loading="lazy";
+    const hint=document.createElement("span");hint.textContent="Loading image preview…";host.append(img,hint);
+    img.onload=()=>{hint.textContent="Image preview";};
+    img.onerror=()=>{img.remove();hint.textContent="Preview unavailable. Use a direct image-file URL, not a Google Images results page.";};
+    img.src=url;
+  }
   let goals=[];
   const status=(id,message,bad=false)=>{const node=$(id);if(node){node.textContent=message;node.classList.toggle("goal-error",bad);}};
   function fillSelect(id,items,achievedOnly=false){
@@ -31,8 +45,13 @@
     goals.forEach(goal=>{
       const card=document.createElement("article");card.className="goal-card";
       if(goal.image_url){
-        const img=document.createElement("img");img.className="goal-image";img.src=goal.image_url;img.alt=goal.title;img.loading="lazy";
-        img.onerror=()=>img.remove();card.append(img);
+        const url=safeImageUrl(goal.image_url);
+        if(url){
+          const link=document.createElement("a");link.className="goal-image-link";link.href=url;link.target="_blank";link.rel="noopener noreferrer";link.setAttribute("aria-label","Open "+goal.title+" image");
+          const img=document.createElement("img");img.className="goal-image";img.src=url;img.alt=goal.title;img.loading="lazy";
+          img.onerror=()=>{img.remove();const fallback=document.createElement("span");fallback.className="goal-image-fallback";fallback.textContent="Image preview unavailable · open image link";link.append(fallback);};
+          link.append(img);card.append(link);
+        }
       }
       const top=document.createElement("div");top.className="goal-card-top";
       const title=document.createElement("h3");title.textContent=goal.title;
@@ -62,17 +81,15 @@
   }
   $("goalCreateForm")?.addEventListener("submit",async event=>{
     event.preventDefault();
-    const title=$("goalTitle").value.trim(),target_amount=Number($("goalTarget").value),initial_amount=Number($("goalInitial").value||0);
-    if(initial_amount>0&&!$("goalInitialConfirm").checked){status("goalsStatus","Confirm that starting savings are genuinely available real money.",true);return;}
+    const title=$("goalTitle").value.trim(),target_amount=Number($("goalTarget").value),image_url=$("goalImage").value.trim();
+    if(image_url&&!safeImageUrl(image_url)){status("goalsStatus","Please use a valid direct HTTPS image URL.",true);return;}
     const button=$("goalCreateButton");button.disabled=true;button.textContent="Creating…";
     try{
       await api("/api/v1/goals",{method:"POST",body:JSON.stringify({
-        title,description:$("goalDescription").value.trim(),target_amount,currency:$("goalCurrency").value,
-        initial_amount,confirmed_available_real_funds:$("goalInitialConfirm").checked,
-        target_date:$("goalTargetDate").value?$("goalTargetDate").value+"T12:00:00":null,
-        image_url:$("goalImage").value.trim()
+        title,target_amount,currency:$("goalCurrency").value,
+        initial_amount:0,confirmed_available_real_funds:false,image_url
       })});
-      event.target.reset();$("goalInitial").value="0";status("goalsStatus","Goal created. Add eligible real savings as you make progress.");await load();
+      event.target.reset();updateImagePreview();status("goalsStatus","Goal created. Add eligible real savings as you make progress.");await load();
     }catch(error){status("goalsStatus",error.message,true);}
     finally{button.disabled=false;button.textContent="Create personal goal";}
   });
@@ -84,9 +101,9 @@
     try{
       const result=await api("/api/v1/goals/"+id+"/contributions",{method:"POST",body:JSON.stringify({
         amount,currency:(goals.find(g=>String(g.id)===id)||{}).currency,
-        note:$("goalContributionNote").value.trim(),confirmed_available_real_funds:true
+        note:"",confirmed_available_real_funds:true
       })});
-      $("goalContributionAmount").value="";$("goalContributionNote").value="";$("goalContributionConfirm").checked=false;
+      $("goalContributionAmount").value="";$("goalContributionConfirm").checked=false;
       status("goalContributionStatus","Saved · "+money(result.saved_amount,(goals.find(g=>String(g.id)===id)||{}).currency)+" · "+result.progress_percent.toFixed(1)+"%"+(result.achieved?" · Goal achieved! Certificate unlocked.":""));
       await load();
     }catch(error){status("goalContributionStatus",error.message,true);}
@@ -103,6 +120,8 @@
     }catch(error){status("goalCertificateStatus",error.message,true);}
     finally{button.disabled=false;button.textContent="Generate A4 certificate";}
   });
+  $("goalImage")?.addEventListener("input",updateImagePreview);
   $("goalsRefresh")?.addEventListener("click",load);
+  updateImagePreview();
   load();
 })();

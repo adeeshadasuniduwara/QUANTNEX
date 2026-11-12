@@ -131,3 +131,14 @@ Phase 07 adds a multi-market intelligence layer while preserving the local-only,
 - Binance public Spot endpoints work without an API key.
 - Keep the API bound to localhost/127.0.0.1. This remains a local desktop workspace, not a public multi-user service.
 - Real-money execution is intentionally not implemented in Phase 07.
+
+
+## Phase 08 — Strategy Laboratory
+
+- Strategy Builder currently provides a deterministic EMA crossover template (fast/slow EMA and reward multiple).
+- Backtesting uses provider candles and reports trade outcomes, win rate, profit factor and maximum drawdown. It uses one abstract unit and does not model broker costs, spread, slippage or contract specifications.
+- Market Replay steps through historical provider candles.
+- Optimizer evaluates a bounded 27-combination EMA/reward grid and warns about in-sample overfitting.
+- Forward evaluation records a live candle observation only; it does not open paper or broker positions. The Research page aggregates these records and closed paper-trade statistics.
+- The new strategy_lab_runs table is additive. Existing Wallet, Journal, preferences, Telegram settings and paper-trade data are preserved.
+- No automatic machine-learning training, broker integration, login flow or real-money execution is added. See docs/PHASE_08_STRATEGY_LAB.md.

@@ -192,13 +192,13 @@ class App(tk.Tk):
         backup=target.with_name(target.stem+".previous.exe")
         helper=app_data()/"updates"/"apply_update.cmd"
         helper.write_text(
-            "@echo off\r\nsetlocal\r\n"
+            "@echo off\r\nsetlocal EnableDelayedExpansion\r\n"
             "set \"TARGET="+str(target)+"\"\r\n"
             "set \"STAGED="+str(staged)+"\"\r\n"
             "set \"BACKUP="+str(backup)+"\"\r\n"
             "timeout /t 2 /nobreak >nul\r\ncopy /y \"%TARGET%\" \"%BACKUP%\" >nul\r\n"
             "set TRY=0\r\n:retry\r\ncopy /y \"%STAGED%\" \"%TARGET%\" >nul\r\n"
-            "if errorlevel 1 (set /a TRY+=1 & if %TRY% LSS 20 (timeout /t 1 /nobreak >nul & goto retry) else (exit /b 1))\r\n"
+            "if errorlevel 1 (set /a TRY+=1 & if !TRY! LSS 20 (timeout /t 1 /nobreak >nul & goto retry) else (exit /b 1))\r\n"
             "start \"\" \"%TARGET%\"\r\ndel \"%STAGED%\"\r\nendlocal\r\n",
             encoding="utf-8")
         subprocess.Popen(["cmd.exe","/c",str(helper)],creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))

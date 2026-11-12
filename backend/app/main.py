@@ -3,18 +3,18 @@ import jwt
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, TOKEN_MINUTES
 from .database import Base, engine, get_db
-from .models import Preference, Trade, User
-from .schemas import AIChatRequest, AIChatResponse, LoginRequest, PreferenceResponse, PreferenceWrite, RegisterRequest, TokenResponse, TradeCreate, TradeResponse, UserResponse
+from .models import Preference, Trade, User, WalletTransaction
+from .schemas import AIChatRequest, AIChatResponse, LoginRequest, PreferenceResponse, PreferenceWrite, RegisterRequest, TokenResponse, TradeCreate, TradeResponse, UserResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
 from .security import create_access_token, decode_access_token, hash_password, verify_password
 
 Base.metadata.create_all(bind=engine)
-app = FastAPI(title="QUANTNEX API", description="Phase 04 shared backend foundation.", version="0.4.0")
+app = FastAPI(title="QUANTNEX API", description="Shared backend for the QUANTNEX trading workspace.", version="0.5.0")
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials=True,
                    allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Authorization", "Content-Type"])
 bearer = HTTPBearer(auto_error=False)
@@ -72,6 +72,9 @@ def create_journal(payload: TradeCreate, user: User = Depends(current_user), db:
     item = Trade(user_id=user.id, symbol=payload.symbol, direction=payload.direction,
                  outcome=payload.outcome, pnl=payload.pnl, notes=payload.notes)
     db.add(item)
+    db.flush()
+    db.add(WalletTransaction(user_id=user.id, transaction_type="trade_pnl", amount=payload.pnl,
+                             description=f"{payload.symbol} {payload.direction.upper()} journal P&L", trade_id=item.id))
     db.commit()
     db.refresh(item)
     return item
@@ -81,8 +84,44 @@ def delete_journal(trade_id: int, user: User = Depends(current_user), db: Sessio
     item = db.scalar(select(Trade).where(Trade.id == trade_id, Trade.user_id == user.id))
     if item is None:
         raise HTTPException(status_code=404, detail="Journal entry not found.")
+    linked = db.scalar(select(WalletTransaction).where(WalletTransaction.user_id == user.id,
+                                                        WalletTransaction.trade_id == trade_id))
+    if linked is not None:
+        db.delete(linked)
     db.delete(item)
     db.commit()
+
+@app.get("/api/v1/wallet/summary", response_model=WalletSummaryResponse)
+def wallet_summary(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    rows = list(db.scalars(select(WalletTransaction).where(WalletTransaction.user_id == user.id)))
+    deposits = sum(row.amount for row in rows if row.transaction_type == "deposit")
+    withdrawals = sum(abs(row.amount) for row in rows if row.transaction_type == "withdrawal")
+    trading_pnl = sum(row.amount for row in rows if row.transaction_type == "trade_pnl")
+    return WalletSummaryResponse(balance=round(sum(row.amount for row in rows), 2),
+                                 deposits=round(deposits, 2), withdrawals=round(withdrawals, 2),
+                                 trading_pnl=round(trading_pnl, 2))
+
+@app.get("/api/v1/wallet/transactions", response_model=list[WalletTransactionResponse])
+def wallet_transactions(limit: int = 100, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if not 1 <= limit <= 500:
+        raise HTTPException(status_code=422, detail="Limit must be between 1 and 500.")
+    return list(db.scalars(select(WalletTransaction).where(WalletTransaction.user_id == user.id)
+                           .order_by(WalletTransaction.id.desc()).limit(limit)))
+
+@app.post("/api/v1/wallet/transactions", response_model=WalletTransactionResponse, status_code=201)
+def create_wallet_transaction(payload: WalletTransactionCreate, user: User = Depends(current_user),
+                               db: Session = Depends(get_db)):
+    balance = db.scalar(select(func.coalesce(func.sum(WalletTransaction.amount), 0.0))
+                        .where(WalletTransaction.user_id == user.id)) or 0.0
+    signed_amount = payload.amount if payload.transaction_type == "deposit" else -payload.amount
+    if payload.transaction_type == "withdrawal" and payload.amount > balance:
+        raise HTTPException(status_code=409, detail="Insufficient wallet balance for this withdrawal.")
+    item = WalletTransaction(user_id=user.id, transaction_type=payload.transaction_type,
+                             amount=signed_amount, description=payload.description.strip())
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
 
 @app.get("/api/v1/preferences", response_model=list[PreferenceResponse])
 def get_preferences(user: User = Depends(current_user), db: Session = Depends(get_db)):

@@ -35,3 +35,13 @@ class Preference(Base):
     value: Mapped[str] = mapped_column(Text)
     user: Mapped[User] = relationship(back_populates="preferences")
     __table_args__ = (UniqueConstraint("user_id", "key", name="uq_user_preference"),)
+
+class WalletTransaction(Base):
+    __tablename__ = "wallet_transactions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+    transaction_type: Mapped[str] = mapped_column(String(20))
+    amount: Mapped[float] = mapped_column(Float)
+    description: Mapped[str] = mapped_column(String(240), default="")
+    trade_id: Mapped[int | None] = mapped_column(Integer, nullable=True, unique=True, index=True)

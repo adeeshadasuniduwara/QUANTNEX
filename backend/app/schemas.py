@@ -72,3 +72,30 @@ class AIChatRequest(BaseModel):
 class AIChatResponse(BaseModel):
     reply: str
     model: str
+
+class WalletTransactionCreate(BaseModel):
+    transaction_type: str
+    amount: float = Field(gt=0, le=1000000000)
+    description: str = Field(default="", max_length=240)
+    @field_validator("transaction_type")
+    @classmethod
+    def valid_transaction_type(cls, value):
+        value = value.strip().lower()
+        if value not in {"deposit", "withdrawal"}:
+            raise ValueError("Transaction type must be deposit or withdrawal.")
+        return value
+
+class WalletTransactionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    created_at: datetime
+    transaction_type: str
+    amount: float
+    description: str
+    trade_id: int | None
+
+class WalletSummaryResponse(BaseModel):
+    balance: float
+    deposits: float
+    withdrawals: float
+    trading_pnl: float

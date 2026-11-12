@@ -471,6 +471,44 @@ async def intelligence_markets(user: User = Depends(local_workspace)):
     from .phase07_engine import get_market_board
     return await get_market_board()
 
+# Phase 10 — source-time and candle-integrity validation.
+@app.get("/api/v1/data-reliability/markets")
+async def data_reliability_markets(user: User = Depends(local_workspace)):
+    from .phase07_engine import get_market_board
+    from .phase10_engine import assess_quote
+    board=await get_market_board()
+    items=[]
+    for item in board.get("items",[]):
+        if item.get("status")!="ok":
+            items.append({"symbol":item.get("symbol"),"provider":item.get("provider"),
+                          "status":"UNSAFE","trading_safe":False,"issues":["PROVIDER_UNAVAILABLE"]})
+        else:
+            health=item.get("data_health") or assess_quote(item)
+            items.append({"symbol":item.get("symbol"),"label":item.get("label"),"provider":item.get("provider"),
+                          "price":item.get("price"),"change_percent":item.get("change_percent"),
+                          "health":health,"status":health["status"],"trading_safe":health["trading_safe"]})
+    return {"items":items,"timestamp":board.get("timestamp"),
+            "trading_safe":all(x.get("trading_safe",False) for x in items),
+            "note":"A failed market is isolated; it does not imply every supported market is unavailable."}
+
+@app.get("/api/v1/data-reliability/market/{symbol}")
+async def data_reliability_market(symbol: str, timeframe: str = "15m",
+                                  user: User = Depends(local_workspace)):
+    from .phase07_engine import get_quote,get_candles,market_info,IntelligenceDataError
+    from .phase10_engine import assess_market_snapshot
+    try:
+        info=market_info(symbol)
+        quote=await get_quote(info["symbol"])
+        candles=await get_candles(info["symbol"],timeframe,250)
+        health=assess_market_snapshot(quote,candles,timeframe)
+        return {**health,"timeframe":timeframe,"price":quote["price"]}
+    except (ValueError,TypeError) as exc:
+        raise HTTPException(status_code=422,detail=str(exc))
+    except IntelligenceDataError as exc:
+        raise HTTPException(status_code=502,detail={"message":str(exc),"trading_safe":False})
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502,detail={"message":"Market provider request failed.","trading_safe":False})
+
 @app.get("/api/v1/intelligence/market/{symbol}/candles")
 async def intelligence_candles(symbol: str, timeframe: str = "15m",
                                 user: User = Depends(local_workspace)):
@@ -561,6 +599,10 @@ async def open_paper_trade(payload: dict, user: User = Depends(local_workspace),
         if side not in {"BUY","SELL"} or not all(math.isfinite(x) for x in (quantity,stop,target)) or not 0<quantity<=1000000 or stop<=0 or target<=0:
             raise ValueError("Side, quantity, stop loss and take profit are invalid.")
         quote=await get_quote(info["symbol"])
+        from .phase10_engine import execution_gate
+        data_gate=execution_gate(quote)
+        if not data_gate["allowed"]:
+            raise HTTPException(status_code=503,detail={"message":data_gate["reason"],"data_health":data_gate["health"]})
         entry=float(quote["price"])
         if (side=="BUY" and not stop<entry<target) or (side=="SELL" and not target<entry<stop):
             raise ValueError("For BUY, Stop Loss < live entry < Take Profit. For SELL, Take Profit < live entry < Stop Loss.")
@@ -810,6 +852,10 @@ async def smart_open_paper_trade(payload: dict, user: User = Depends(local_works
         if not guard["trading_allowed"]:
             raise HTTPException(status_code=409,detail={"message":"Risk Guardian blocked this paper entry.","guardian":guard})
         quote=await get_quote(info["symbol"])
+        from .phase10_engine import execution_gate
+        data_gate=execution_gate(quote)
+        if not data_gate["allowed"]:
+            raise HTTPException(status_code=503,detail={"message":data_gate["reason"],"data_health":data_gate["health"]})
         entry=float(quote["price"])
         stop=float(payload.get("stop_loss",0)); target=float(payload.get("take_profit",0))
         if (side=="BUY" and not stop<entry<target) or (side=="SELL" and not target<entry<stop):

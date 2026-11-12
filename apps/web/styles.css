@@ -196,3 +196,28 @@
 .p7-live-indicator:before{content:"";width:6px;height:6px;border-radius:50%;background:#ddd;box-shadow:0 0 9px #fff;animation:pulse 1.1s infinite}
 .p7-market-card strong{font-variant-numeric:tabular-nums}
 @media(max-width:760px){.sidebar{width:210px;padding:20px 12px}.main{margin-left:210px;padding:22px 18px}.p7-bookmap{gap:3px}.p7-bookmap-row{font-size:9px;padding:3px 5px}}
+
+/* QUANTNEX sidebar scroll hardening: explicit scroll container and mobile navigation */
+.sidebar{
+  height:100vh;
+  height:100dvh;
+  min-height:0;
+  overflow-x:hidden;
+  overflow-y:scroll;
+  overscroll-behavior-y:contain;
+  -webkit-overflow-scrolling:touch;
+  touch-action:pan-y;
+  scrollbar-gutter:stable;
+}
+.sidebar>*{flex-shrink:0;min-height:max-content}
+.sidebar .sidebar-bottom{margin-top:auto;flex-shrink:0}
+@media(max-width:720px){
+  .sidebar{width:68px;height:100vh;height:100dvh;overflow-y:scroll;overflow-x:hidden;padding:16px 7px}
+  .sidebar .nav-link{display:flex!important;justify-content:center;align-items:center;min-height:42px;padding:10px 0;font-size:0;white-space:nowrap}
+  .sidebar .nav-link span{display:inline-block!important;flex:0 0 18px;font-size:17px}
+  .sidebar .side-caption{display:none!important}
+  .sidebar .brand{justify-content:center}
+  .sidebar .brand>span:last-child{display:none}
+  .sidebar .sidebar-bottom{display:flex;justify-content:center;font-size:0;padding:8px 0}
+  .sidebar .live-dot{margin:0}
+}

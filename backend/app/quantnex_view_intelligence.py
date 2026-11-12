@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from .signal_engine import ema, rsi, atr, adx, macd, structure, fetch_candles, MarketDataError
 
@@ -93,12 +94,20 @@ def _family_votes(c: list[dict[str, Any]], f: dict[str, Any]) -> list[dict[str, 
     if price < f["vwap"] and f["macd_histogram"] < 0 and f["relative_volume"] >= 1.1: bear.append(("VWAP Reclaim / Reject", 2, "Below rolling VWAP with relative-volume expansion"))
     # Silver Bullet is represented as a time-window filter; only UTC windows are evaluated here.
     try:
-        hour = datetime.fromisoformat(str(f["time"]).replace("Z", "+00:00")).hour
-    except ValueError:
-        hour = -1
-    if hour in {10, 14, 15}:
-        if f["relative_volume"] >= 1.2 and st.get("bullish_fvg") and f["macd_histogram"] > 0: bull.append(("Silver Bullet Window", 2, "UTC time-window displacement with bullish FVG"))
-        if f["relative_volume"] >= 1.2 and st.get("bearish_fvg") and f["macd_histogram"] < 0: bear.append(("Silver Bullet Window", 2, "UTC time-window displacement with bearish FVG"))
+        stamp = datetime.fromisoformat(str(f["time"]).replace("Z", "+00:00"))
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        ny = stamp.astimezone(ZoneInfo("America/New_York"))
+        # Common ICT Silver Bullet windows in New York local time (DST-aware).
+        ny_time = (ny.hour, ny.minute)
+        silver_bullet_window = any(start <= ny_time < end for start, end in [
+            ((3, 0), (4, 0)), ((10, 0), (11, 0)), ((14, 0), (15, 0))
+        ])
+    except (ValueError, TypeError):
+        silver_bullet_window = False
+    if silver_bullet_window:
+        if f["relative_volume"] >= 1.2 and st.get("bullish_fvg") and f["macd_histogram"] > 0: bull.append(("Silver Bullet Window", 2, "New York Silver Bullet time-window displacement with bullish FVG"))
+        if f["relative_volume"] >= 1.2 and st.get("bearish_fvg") and f["macd_histogram"] < 0: bear.append(("Silver Bullet Window", 2, "New York Silver Bullet time-window displacement with bearish FVG"))
     return [{"side": "BUY", "family": name, "weight": weight, "reason": reason} for name, weight, reason in bull] + [
         {"side": "SELL", "family": name, "weight": weight, "reason": reason} for name, weight, reason in bear]
 

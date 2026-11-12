@@ -646,3 +646,64 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   $("p9SmartOpen").addEventListener("click",smartOpen);
   refresh();
 })();
+
+ 
+// Phase 10 — Market Data Reliability dashboard.
+(function initPhase10(){
+  if(!$("p10ScanMarkets"))return;
+  const fmt=(v,d=2)=>v==null||!Number.isFinite(Number(v))?"—":Number(v).toLocaleString(undefined,{maximumFractionDigits:d});
+  const el=(tag,value,cls)=>{const n=document.createElement(tag);if(value!==undefined)n.textContent=value;if(cls)n.className=cls;return n;};
+  const status=(message,bad=false)=>{const n=$("p10Status");n.textContent=message;n.className=bad?"p7-note p7-status-error":"p7-note p7-status-ok";};
+  function renderDetail(data){
+    const root=$("p10DetailResult");root.replaceChildren();
+    const header=el("div",data.symbol+" · "+data.status,"p10-detail-heading "+(data.trading_safe?"safe":"unsafe"));root.append(header);
+    const quote=data.quote||{},candles=data.candles||{};
+    const lines=[
+      "Quote age: "+fmt(quote.age_seconds)+" sec · limit "+fmt(quote.max_age_seconds)+" sec",
+      "Provider timestamp: "+(quote.provider_timestamp||"Unavailable"),
+      "Candles checked: "+fmt(candles.count,0)+" · gaps: "+fmt(candles.gap_count,0),
+      "Latest candle: "+(candles.latest_candle_timestamp||"Unavailable"),
+      "Issues: "+((data.issues||[]).join(", ")||"None"),
+      "Warnings: "+((data.warnings||[]).join(", ")||"None")
+    ];
+    lines.forEach(x=>root.append(el("p",x,"p7-note")));
+  }
+  async function scan(){
+    const button=$("p10ScanMarkets");button.disabled=true;
+    status("Checking source timestamps and market availability…");
+    try{
+      const data=await apiRequest("/api/v1/data-reliability/markets");
+      const rows=data.items||[],counts={HEALTHY:0,DEGRADED:0,UNSAFE:0};
+      const body=$("p10MarketRows");body.replaceChildren();
+      rows.forEach(item=>{
+        counts[item.status]=(counts[item.status]||0)+1;
+        const tr=document.createElement("tr"),health=item.health||{};
+        const age=health.age_seconds;
+        [item.symbol,item.provider||"—",item.status,fmt(item.price,5),fmt(age),[...(health.issues||item.issues||[]),...(health.warnings||[])].join(", ")||"None"].forEach((v,i)=>{
+          const td=el("td",String(v));if(i===2)td.className=item.status==="HEALTHY"?"p10-health-good":item.status==="DEGRADED"?"p10-health-warn":"p10-health-bad";tr.append(td);
+        });
+        body.append(tr);
+      });
+      const k=$("p10Kpis");k.replaceChildren();
+      [["Healthy",counts.HEALTHY],["Degraded",counts.DEGRADED],["Unsafe",counts.UNSAFE],["Safe to paper-enter",rows.every(x=>x.trading_safe)?"YES":"NO"]].forEach(([label,value])=>{
+        const card=el("article");card.append(el("span",label),el("strong",String(value)));k.append(card);
+      });
+      status("Scan complete · "+counts.HEALTHY+" healthy · "+counts.DEGRADED+" degraded · "+counts.UNSAFE+" unsafe. "+(data.trading_safe?"All returned feeds passed quote checks.":"At least one feed is unavailable or unsafe; affected symbols cannot open new paper positions."));
+    }catch(error){status("Reliability scan failed: "+error.message,true);}
+    finally{button.disabled=false;}
+  }
+  async function detail(){
+    const button=$("p10CheckCandles");button.disabled=true;
+    try{
+      const symbol=$("p10Symbol").value,tf=$("p10Timeframe").value;
+      const data=await apiRequest("/api/v1/data-reliability/market/"+encodeURIComponent(symbol)+"?timeframe="+encodeURIComponent(tf));
+      renderDetail(data);status(symbol+" candle integrity check: "+data.status,data.status==="UNSAFE");
+    }catch(error){
+      const root=$("p10DetailResult");root.replaceChildren(el("p","Validation unavailable: "+error.message,"p7-status-error"));
+      status("Detailed market check failed. Paper entry remains blocked when provider timestamps cannot be verified.",true);
+    }finally{button.disabled=false;}
+  }
+  $("p10ScanMarkets").addEventListener("click",scan);
+  $("p10CheckCandles").addEventListener("click",detail);
+  scan();
+})();

@@ -22,6 +22,7 @@
       <a class="nav-link" href="#account"><span>◈</span>Account &amp; wallet</a>
       <a class="nav-link" href="#signal-lab"><span>⌁</span>Signal Lab</a>
       <a class="nav-link" href="#updates"><span>↻</span>Updates</a>
+      <a class="nav-link" href="#system-security"><span>⚙</span>System security</a>
       <div class="sidebar-bottom"><span class="live-dot"></span>Local workspace</div>
     </aside>
 
@@ -193,6 +194,22 @@
           <p class="update-manual-note">The Updates tab checks the latest GitHub main-branch commit on startup and when requested. It downloads a pinned source archive, backs up replaced Web files, and rolls back if installation fails. Your local database and settings are kept separately.</p>
         </div>
         <span class="pill">OFFICIAL</span>
+      </section>
+      <section class="section-heading" id="system-security"><div><div class="overline">LOCAL DEVICE · PROTECTION</div><h2>System security</h2><p>Database backups, integrity checks, activity history and computer health.</p></div><span class="pill">LOCAL ONLY</span></section>
+      <section class="panel system-security-panel">
+        <div class="system-security-toolbar"><div><strong>System health</strong><p id="systemHealthStatus" role="status">Checking local system…</p></div><button class="secondary-btn" id="refreshSystemHealth">Refresh health</button></div>
+        <div class="system-health-grid">
+          <article><span>Database</span><strong id="systemDbStatus">—</strong><small id="systemDbSize">Size unavailable</small></article>
+          <article><span>CPU usage</span><strong id="systemCpu">—</strong><small>Current snapshot</small></article>
+          <article><span>Memory usage</span><strong id="systemMemory">—</strong><small>System RAM</small></article>
+          <article><span>Disk free</span><strong id="systemDisk">—</strong><small id="systemDiskTotal">— total</small></article>
+        </div>
+        <div class="system-security-toolbar system-backup-heading"><div><strong>Database backups</strong><p>Automatic daily backups · Keep the newest 14 verified snapshots.</p></div><div class="system-security-actions"><button class="secondary-btn" id="refreshSystemBackups">Refresh list</button><button class="primary-btn" id="createSystemBackup">Create backup now</button></div></div>
+        <p class="system-security-message" id="systemSecurityMessage" role="status">Backup actions are available while the local QUANTNEX API is running.</p>
+        <div class="table-wrap"><table><thead><tr><th>Backup file</th><th>Created</th><th>Size</th><th>Integrity</th><th>Actions</th></tr></thead><tbody id="systemBackupRows"><tr><td colspan="5" class="empty-row">Loading backups…</td></tr></tbody></table></div>
+        <div class="system-security-toolbar system-audit-heading"><div><strong>Security audit log</strong><p>Local workspace changes and maintenance events. Secrets and credentials are excluded.</p></div><button class="secondary-btn" id="refreshSystemAudit">Refresh log</button></div>
+        <div class="table-wrap"><table><thead><tr><th>Time</th><th>Event</th><th>Level</th><th>Details</th></tr></thead><tbody id="systemAuditRows"><tr><td colspan="4" class="empty-row">Loading audit events…</td></tr></tbody></table></div>
+        <p class="system-security-note">QUANTNEX is intentionally local-only with no login. These controls rely on the trusted Windows user account and loopback-only API. Never expose port 8000 to a network. SHA256 detects accidental corruption or a changed backup file; it is not a digital signature against an attacker who can replace both the backup and its manifest.</p>
       </section>
       <footer><span>QUANTNEX</span><span>Build carefully. Trade responsibly.</span></footer>
     </main>

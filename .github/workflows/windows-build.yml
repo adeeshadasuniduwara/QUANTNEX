@@ -6,6 +6,10 @@ on:
     tags: ["v*"]
     paths:
       - "apps/windows/**"
+      - "apps/android/**"
+      - "apps/web/**"
+      - "backend/**"
+      - "shared/**"
       - ".github/workflows/windows-build.yml"
       - "run_quantnex.bat"
   workflow_dispatch:

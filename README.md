@@ -42,3 +42,8 @@ See [backend setup](backend/README.md) and [architecture](docs/ARCHITECTURE.md).
 ## Current capability and safety
 
 The calculator uses broker-specific pip values entered by the user. The web journal stores data in that browser; the Windows journal stores data locally on that computer. Bot monitoring is currently a status panel only. The Web chart view embeds third-party TradingView charts. The Windows Charts tab reads public BTCUSDT candles from Binance; its Gold button opens the TradingView XAUUSD chart in your browser. The Windows installation ID is a random local identifier, not a login credential. Broker connections, Telegram control and automated order execution are not enabled. Never commit API keys, passwords, signing keys or broker tokens. Public deployment requires HTTPS, managed secrets, backups, monitoring and security testing.
+
+## Telegram release announcements
+
+QUANTNEX includes an optional GitHub Actions workflow that announces published releases in an official Telegram channel. To activate it, create a bot with `@BotFather`, add it to your channel as an administrator with **Post Messages** permission, then configure the repository Actions secrets `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`. The workflow also supports a manual test run. See [Telegram setup instructions](docs/TELEGRAM-RELEASE-NOTIFICATIONS.md).
+

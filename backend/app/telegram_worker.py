@@ -78,7 +78,7 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
 
 async def telegram_worker() -> None:
     """Poll connected user bots, respond to commands and monitor active TP1 levels."""
-    last_monitor=0.0
+    last_monitor={}
     async with httpx.AsyncClient(timeout=12) as client:
         while True:
             try:
@@ -107,7 +107,7 @@ async def telegram_worker() -> None:
                                 _set(db,user_id,"telegram_update_offset",str(offset));db.commit()
                         except (httpx.HTTPError,ValueError):pass
                         now=asyncio.get_running_loop().time()
-                        if now-last_monitor>=60:
+                        if now-last_monitor.get(user_id,0)>=60:
                             active_raw=_get(db,user_id,"active_signal")
                             if active_raw and TWELVE_DATA_API_KEY:
                                 try:
@@ -134,7 +134,7 @@ async def telegram_worker() -> None:
                                         else:_set(db,user_id,"active_signal","")
                                         db.commit()
                                 except (ValueError,KeyError,httpx.HTTPError):pass
-                        last_monitor=now
+                        last_monitor[user_id]=now
             except Exception:
                 pass
             await asyncio.sleep(8)

@@ -234,3 +234,48 @@ if(sessionToken()){
   }
   if($id("btcLivePrice")){refresh();window.setInterval(refresh,30000);}
 })();
+
+
+// Responsive TradingView workspace: one renderer for market, timeframe and fullscreen controls.
+(function initTradingViewWorkspace(){
+  const host=$("xauTradingView"),market=$("tradingViewSymbol"),timeframe=$("tradingViewInterval"),fullscreen=$("chartFullscreen");
+  if(!host||!market||!timeframe)return;
+  const chartPanel=host.closest(".chart-workspace");
+  const supportedIntervals=new Set(["1","5","15","30","60","240","D","W"]);
+  function renderChart(options={}){
+    const symbol=options.symbol||market.value||"OANDA:XAUUSD";
+    const interval=String(options.interval||timeframe.value||"15");
+    if(!supportedIntervals.has(interval))return false;
+    market.value=symbol;timeframe.value=interval;
+    host.replaceChildren();
+    const widget=document.createElement("div");
+    widget.className="tradingview-widget-container__widget";
+    const script=document.createElement("script");
+    script.type="text/javascript";script.async=true;
+    script.src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+    script.textContent=JSON.stringify({
+      autosize:true,symbol,interval,timezone:"Etc/UTC",theme:"dark",style:"1",locale:"en",
+      allow_symbol_change:true,calendar:false,details:false,hotlist:false,save_image:true,
+      hide_side_toolbar:false,withdateranges:true,studies:[],support_host:"https://www.tradingview.com"
+    });
+    host.append(widget,script);
+    return true;
+  }
+  market.addEventListener("change",()=>renderChart());
+  timeframe.addEventListener("change",()=>renderChart());
+  if(fullscreen&&chartPanel){
+    fullscreen.addEventListener("click",async()=>{
+      try{
+        if(document.fullscreenElement)await document.exitFullscreen();
+        else if(chartPanel.requestFullscreen)await chartPanel.requestFullscreen();
+      }catch(error){console.warn("Fullscreen is not available:",error);}
+    });
+    document.addEventListener("fullscreenchange",()=>{
+      const active=document.fullscreenElement===chartPanel;
+      fullscreen.innerHTML=active?'⛶ <span>EXIT FULL SCREEN</span>':'⛶ <span>FULL SCREEN</span>';
+      fullscreen.setAttribute("aria-label",active?"Exit fullscreen chart":"Enter fullscreen chart");
+    });
+  }
+  window.quantnexRenderChart=renderChart;
+  renderChart();
+})();

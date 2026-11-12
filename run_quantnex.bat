@@ -20,6 +20,10 @@ if errorlevel 3 goto both
 if errorlevel 2 goto web
 if errorlevel 1 goto desktop
 :desktop
+if exist "dist\QUANTNEX.exe" (
+  start "" "dist\QUANTNEX.exe"
+  goto end
+)
 where py >nul 2>nul
 if errorlevel 1 (echo Python launcher not found. Install Python 3.11+ and try again.&pause&exit /b 1)
 py apps\windows\quantnex_desktop.py

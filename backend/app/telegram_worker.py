@@ -40,13 +40,13 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
     names={"1":"M1","5":"M5","15":"M15","30":"M30","50":"M50","60":"H1","240":"H4"}
     if command in {"/start","/help"}:
         return ("QUANTNEX XAUUSD Signal Bot\\n"
-            "/timeframes — show settings\\n/settf 1|5|15|30|50 — primary signal timeframe\\n"
+            "/timeframes — show settings\\n/settf 1|5|15|30|50|60 — primary signal timeframe\\n"
             "/settrend 15|30|60|240 — trend filter\\n/setanalysis 1,5,15,30,60 — analysis timeframes\\n"
             "/scan — run a fresh confluence scan\\n/status — connection status")
     if command=="/timeframes":
         enabled=", ".join(names.get(str(x),str(x)) for x in settings.get("enabled",[]))
         return f"Primary: {names.get(str(settings.get('primary')))}\\nTrend: {names.get(str(settings.get('trend')))}\\nAnalysis: {enabled}"
-    if command=="/settf" and len(parts)>1 and parts[1] in {"1","5","15","30","50"}:
+    if command=="/settf" and len(parts)>1 and parts[1] in {"1","5","15","30","50","60"}:
         settings["primary"]=parts[1];_set(db,user_id,"signal_settings",json.dumps(settings));db.commit()
         return "Primary signal timeframe set to "+names[parts[1]]+"."
     if command=="/settrend" and len(parts)>1 and parts[1] in {"15","30","60","240"}:

@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json, os, shutil, sqlite3, subprocess, sys, threading, urllib.error, urllib.request, webbrowser
+import hashlib, json, os, shutil, sqlite3, subprocess, sys, threading, urllib.error, urllib.request, webbrowser
 from datetime import datetime
 from pathlib import Path
 import tkinter as tk
@@ -161,8 +161,9 @@ class App(tk.Tk):
                 self._set_update_status("You have the latest published version ("+latest+").")
                 return
             asset=next((a for a in release.get("assets",[]) if a.get("name","").lower()=="quantnex.exe"),None)
-            if not asset:
-                self._set_update_status("Version "+latest+" is available, but the Windows EXE is not attached yet.")
+            checksum_asset=next((a for a in release.get("assets",[]) if a.get("name","").lower()=="sha256sums.txt"),None)
+            if not asset or not checksum_asset:
+                self._set_update_status("Version "+latest+" is available, but its EXE or SHA256 checksum is missing.")
                 return
             staged=app_data()/"updates"/"QUANTNEX.exe"
             staged.parent.mkdir(parents=True,exist_ok=True)
@@ -172,6 +173,14 @@ class App(tk.Tk):
             if staged.stat().st_size < 100000:
                 staged.unlink(missing_ok=True)
                 raise ValueError("Downloaded file failed the basic size check.")
+            checksum_req=urllib.request.Request(checksum_asset["browser_download_url"],headers={"User-Agent":"QUANTNEX-Desktop"})
+            with urllib.request.urlopen(checksum_req,timeout=15) as response:
+                checksum_text=response.read().decode("utf-8")
+            expected=next((line.split()[0].lower() for line in checksum_text.splitlines() if "quantnex.exe" in line.lower()),"")
+            actual=hashlib.sha256(staged.read_bytes()).hexdigest().lower()
+            if not expected or actual != expected:
+                staged.unlink(missing_ok=True)
+                raise ValueError("Update SHA256 verification failed. The downloaded file was rejected.")
             self.staged_update=staged
             self.after(0,lambda:self.install_button.pack(anchor="w",pady=(10,0)))
             self._set_update_status("Version "+latest+" downloaded. Review release notes, then choose Install and restart.")

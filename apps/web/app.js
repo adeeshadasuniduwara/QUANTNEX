@@ -706,4 +706,6 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   $("p10ScanMarkets").addEventListener("click",scan);
   $("p10CheckCandles").addEventListener("click",detail);
   scan();
+  // Low-frequency background health refresh; skips hidden tabs and overlapping requests.
+  setInterval(()=>{if(!document.hidden&&!$("p10ScanMarkets").disabled)scan();},300000);
 })();

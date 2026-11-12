@@ -14,14 +14,14 @@ from sqlalchemy.orm import Session
 
 from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, DATABASE_URL
 from .database import Base, engine, get_db, SessionLocal
-from .models import AuditEvent, PaperTrade, Preference, Trade, User, WalletTransaction
+from .models import AuditEvent, PaperTrade, Preference, StrategyLabRun, Trade, User, WalletTransaction
 from .schemas import AIChatRequest, AIChatResponse, PreferenceResponse, PreferenceWrite, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TradeCreate, TradeResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
 from .security import decrypt_secret, encrypt_secret
 from .maintenance import daily_backup_worker, record_audit_event
 from .system_security import router as system_security_router
 
 Base.metadata.create_all(bind=engine)
-app = FastAPI(title="QUANTNEX Local API", description="Loopback-only local workspace API. No user login or remote account system.", version="0.7.0")
+app = FastAPI(title="QUANTNEX Local API", description="Loopback-only local workspace API. No user login or remote account system.", version="0.8.0")
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials=False,
                    allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Content-Type"])
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
@@ -652,3 +652,101 @@ async def stop_phase07_paper_monitor():
             await task
         except asyncio.CancelledError:
             pass
+
+
+# ---------------------------------------------------------------------------
+# Phase 08 — Strategy Laboratory (historical research + forward observation)
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/strategy-lab/replay")
+async def strategy_lab_replay(symbol: str = "BTCUSDT", timeframe: str = "15m",
+                              user: User = Depends(local_workspace)):
+    from .phase07_engine import market_info, get_candles
+    try:
+        info=market_info(symbol)
+        candles=await get_candles(info["symbol"],timeframe,250)
+        return {"symbol":info["symbol"],"timeframe":timeframe,"candles":candles,
+                "count":len(candles),"mode":"HISTORICAL_REPLAY"}
+    except (ValueError,TypeError) as exc:
+        raise HTTPException(status_code=422,detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502,detail="Historical market data unavailable. Check provider configuration and quota.") from exc
+
+@app.post("/api/v1/strategy-lab/backtest")
+async def strategy_lab_backtest(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .phase07_engine import market_info, get_candles
+    from .phase08_engine import run_backtest, validate_strategy
+    try:
+        info=market_info(payload.get("symbol","BTCUSDT"))
+        timeframe=payload.get("timeframe","15m")
+        strategy=validate_strategy(payload.get("strategy") or {})
+        candles=await get_candles(info["symbol"],timeframe,500)
+        result=run_backtest(candles,strategy)
+    except (ValueError,TypeError) as exc:
+        raise HTTPException(status_code=422,detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502,detail="Backtest data unavailable. Check market provider configuration and quota.") from exc
+    db.add(StrategyLabRun(user_id=user.id,run_type="BACKTEST",symbol=info["symbol"],timeframe=timeframe,
+        strategy_json=json.dumps(strategy),result_json=json.dumps(result)))
+    record_audit_event(db,"strategy_lab.backtest",{"symbol":info["symbol"],"timeframe":timeframe,
+        "trades":result["trade_count"],"strategy":strategy})
+    db.commit()
+    return {"symbol":info["symbol"],"timeframe":timeframe,**result}
+
+@app.post("/api/v1/strategy-lab/optimize")
+async def strategy_lab_optimize(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .phase07_engine import market_info, get_candles
+    from .phase08_engine import optimize
+    try:
+        info=market_info(payload.get("symbol","BTCUSDT"))
+        timeframe=payload.get("timeframe","15m")
+        candles=await get_candles(info["symbol"],timeframe,500)
+        result=optimize(candles)
+    except (ValueError,TypeError) as exc:
+        raise HTTPException(status_code=422,detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502,detail="Optimizer data unavailable. Check provider configuration and quota.") from exc
+    db.add(StrategyLabRun(user_id=user.id,run_type="OPTIMIZER",symbol=info["symbol"],timeframe=timeframe,
+        strategy_json="{}",result_json=json.dumps(result)))
+    record_audit_event(db,"strategy_lab.optimizer",{"symbol":info["symbol"],"timeframe":timeframe,"tested":result["tested"]})
+    db.commit()
+    return {"symbol":info["symbol"],"timeframe":timeframe,**result}
+
+@app.post("/api/v1/strategy-lab/forward/evaluate")
+async def strategy_lab_forward_evaluate(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .phase07_engine import market_info, get_candles
+    from .phase08_engine import ema, validate_strategy
+    try:
+        info=market_info(payload.get("symbol","BTCUSDT"))
+        timeframe=payload.get("timeframe","15m")
+        strategy=validate_strategy(payload.get("strategy") or {})
+        candles=await get_candles(info["symbol"],timeframe,250)
+    except (ValueError,TypeError) as exc:
+        raise HTTPException(status_code=422,detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502,detail="Forward observation data unavailable. Check provider configuration and quota.") from exc
+    closes=[float(x["close"]) for x in candles]
+    fast=ema(closes,strategy["fast_ema"]); slow=ema(closes,strategy["slow_ema"])
+    side="BUY" if fast[-1]>slow[-1] else "SELL" if fast[-1]<slow[-1] else "WAIT"
+    observation={"side":side,"price":closes[-1],"candle_time":candles[-1].get("time"),
+                 "fast_ema":round(fast[-1],8),"slow_ema":round(slow[-1],8),
+                 "note":"Observation only. This endpoint does not open paper or broker positions."}
+    db.add(StrategyLabRun(user_id=user.id,run_type="FORWARD_OBSERVATION",symbol=info["symbol"],timeframe=timeframe,
+        strategy_json=json.dumps(strategy),result_json=json.dumps(observation)))
+    record_audit_event(db,"strategy_lab.forward_observation",{"symbol":info["symbol"],"side":side,"timeframe":timeframe})
+    db.commit()
+    return {"symbol":info["symbol"],"timeframe":timeframe,"strategy":strategy,**observation}
+
+@app.get("/api/v1/strategy-lab/research")
+def strategy_lab_research(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    runs=list(db.scalars(select(StrategyLabRun).where(StrategyLabRun.user_id==user.id)
+                         .order_by(StrategyLabRun.created_at.desc()).limit(50)))
+    closed=list(db.scalars(select(PaperTrade).where(PaperTrade.user_id==user.id,PaperTrade.status=="CLOSED")))
+    wins=[x for x in closed if (x.realized_pnl or 0)>0]
+    losses=[x for x in closed if (x.realized_pnl or 0)<0]
+    return {"runs":[{"id":x.id,"type":x.run_type,"symbol":x.symbol,"timeframe":x.timeframe,
+                     "created_at":x.created_at.isoformat(),"strategy":json.loads(x.strategy_json),
+                     "result":json.loads(x.result_json)} for x in runs],
+            "paper_trades":{"closed":len(closed),"wins":len(wins),"losses":len(losses),
+                "win_rate":round(len(wins)/len(closed)*100,2) if closed else None,
+                "net_pnl":round(sum(x.realized_pnl or 0 for x in closed),2)},
+            "guidance":"Research summaries describe historical and paper observations only; they are not a prediction or guarantee."}

@@ -326,7 +326,7 @@ async def scan_market_signal(symbol: str = "BTCUSDT", user: User = Depends(local
         else:
             result["telegram_sent"]=False
             result["telegram_note"]="Connect your Telegram bot to send this signal."
-    else:
+    elif symbol=="XAUUSD":
         _save_preference(db,user.id,"active_signal","")
     db.commit()
     event_hub.publish("signals.changed", "signals", "scan_completed", {"symbol": result.get("symbol")})

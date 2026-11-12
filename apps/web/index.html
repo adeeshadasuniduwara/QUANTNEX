@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1020">
+  <meta name="description" content="QUANTNEX trading workspace prototype">
+  <title>QUANTNEX — Trading Workspace</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#"><span class="brand-mark">Q</span><span>QUANTNEX</span></a>
+      <p class="nav-label">WORKSPACE</p>
+      <a class="nav-item active" href="#overview">◫ <span>Overview</span></a>
+      <a class="nav-item" href="#tools">⌗ <span>Trading tools</span></a>
+      <a class="nav-item" href="#markets">↗ <span>Markets</span></a>
+      <a class="nav-item" href="#bots">◉ <span>Bot monitor</span></a>
+      <div class="sidebar-bottom"><span class="status-dot"></span> Prototype mode</div>
+    </aside>
+
+    <main class="main-content" id="overview">
+      <header class="topbar">
+        <div><p class="eyebrow">TRADING WORKSPACE</p><h1>Overview</h1></div>
+        <div class="profile"><span class="avatar">Q</span><span>Local workspace</span></div>
+      </header>
+
+      <section class="welcome">
+        <div><p class="eyebrow">WELCOME TO QUANTNEX</p><h2>Clarity for every trading decision.</h2><p class="muted">Your multi-platform trading workspace starts here.</p></div>
+        <span class="phase-pill">PHASE 01 · FOUNDATION</span>
+      </section>
+
+      <div class="notice"><strong>Demo environment</strong><span>All values below are illustrative placeholders. No live market feed or broker account is connected.</span></div>
+
+      <section class="stats-grid" aria-label="Demo metrics">
+        <article class="stat-card"><p>Account balance</p><strong>—</strong><small>Connect an account in a future phase</small></article>
+        <article class="stat-card"><p>Today's P&amp;L</p><strong>—</strong><small>No live trading data</small></article>
+        <article class="stat-card"><p>Active bots</p><strong>0</strong><small>Bot connection not enabled</small></article>
+        <article class="stat-card"><p>Risk status</p><strong class="safe">Protected</strong><small>Execution is disabled</small></article>
+      </section>
+
+      <section class="content-grid">
+        <article class="panel" id="markets">
+          <div class="panel-heading"><div><p class="eyebrow">WATCHLIST</p><h3>Market overview</h3></div><span class="tag">Sample symbols</span></div>
+          <div class="market-row"><span class="symbol-icon gold">Au</span><div class="market-name"><strong>XAUUSD</strong><small>Gold / US Dollar</small></div><span class="market-state">Not connected</span></div>
+          <div class="market-row"><span class="symbol-icon">€</span><div class="market-name"><strong>EURUSD</strong><small>Euro / US Dollar</small></div><span class="market-state">Not connected</span></div>
+          <div class="market-row"><span class="symbol-icon bitcoin">₿</span><div class="market-name"><strong>BTCUSDT</strong><small>Bitcoin / Tether</small></div><span class="market-state">Not connected</span></div>
+        </article>
+
+        <article class="panel" id="tools">
+          <div class="panel-heading"><div><p class="eyebrow">QUICK ACCESS</p><h3>Trading tools</h3></div></div>
+          <div class="tool-grid">
+            <a class="tool-tile" href="#" data-tool="lot"><span>⌗</span><strong>Lot size</strong><small>Coming in Phase 02</small></a>
+            <a class="tool-tile" href="#" data-tool="risk"><span>◈</span><strong>Risk calculator</strong><small>Coming in Phase 02</small></a>
+            <a class="tool-tile" href="#" data-tool="journal"><span>▤</span><strong>Trade journal</strong><small>Planned</small></a>
+            <a class="tool-tile" href="#" data-tool="calendar"><span>▦</span><strong>News calendar</strong><small>Planned</small></a>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel bot-panel" id="bots">
+        <div class="panel-heading"><div><p class="eyebrow">AUTOMATION</p><h3>Bot monitor</h3></div><span class="tag muted-tag">Not connected</span></div>
+        <div class="empty-state"><span class="empty-icon">◉</span><strong>No bots connected</strong><p>Bot monitoring will be added after the secure backend and connection layer are ready.</p></div>
+      </section>
+      <footer>QUANTNEX · Build carefully. Trade responsibly. <span>Version 0.1.0 · Phase 01</span></footer>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

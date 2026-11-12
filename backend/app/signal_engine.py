@@ -10,7 +10,7 @@ import httpx
 from .config import TWELVE_DATA_API_KEY
 
 BASE = "https://api.twelvedata.com/time_series"
-INTERVALS = {"1": "1min", "5": "5min", "15": "15min", "30": "30min", "60": "1h"}
+INTERVALS = {"1": "1min", "5": "5min", "15": "15min", "30": "30min", "60": "1h", "240": "4h"}
 
 class MarketDataError(RuntimeError):
     pass

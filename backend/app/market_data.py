@@ -86,7 +86,18 @@ async def _btc_price(client: httpx.AsyncClient) -> tuple[float | None, str]:
                 raise ValueError("Invalid Binance BTC price.")
             return _store("btc", value), "Binance BTCUSDT fallback"
         except (httpx.HTTPError, KeyError, TypeError, ValueError):
-            return None, "unavailable"
+            try:
+                payload = await _json(
+                    client,
+                    "https://api.coingecko.com/api/v3/simple/price",
+                    params={"ids": "bitcoin", "vs_currencies": "usd"},
+                )
+                value = float(payload["bitcoin"]["usd"])
+                if value <= 0:
+                    raise ValueError("Invalid CoinGecko BTC price.")
+                return _store("btc", value), "CoinGecko BTC/USD fallback"
+            except (httpx.HTTPError, KeyError, TypeError, ValueError):
+                return None, "unavailable"
 
 
 async def _gold_price(client: httpx.AsyncClient) -> tuple[float | None, str]:

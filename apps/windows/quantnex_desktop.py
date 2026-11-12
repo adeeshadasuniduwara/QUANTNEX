@@ -168,6 +168,28 @@ class App(tk.Tk):
 
     def _check_worker(self):
         try:
+            # When launched from the .bat/source checkout, update the clean Git working tree
+            # directly so the user does not need a packaged EXE for routine source updates.
+            if not getattr(sys, "frozen", False):
+                repo_root = Path(__file__).resolve().parents[2]
+                if (repo_root / ".git").exists():
+                    status = subprocess.run(["git", "-C", str(repo_root), "status", "--porcelain"],
+                        capture_output=True, text=True, timeout=15)
+                    if status.returncode != 0:
+                        raise RuntimeError("Git could not inspect this workspace: " + status.stderr.strip())
+                    if status.stdout.strip():
+                        self._set_update_status("Update paused: local files have uncommitted changes. Commit or back them up before updating.")
+                        return
+                    pull = subprocess.run(["git", "-C", str(repo_root), "pull", "--ff-only", "origin", "main"],
+                        capture_output=True, text=True, timeout=45)
+                    if pull.returncode != 0:
+                        raise RuntimeError("Source update failed: " + (pull.stderr.strip() or pull.stdout.strip()))
+                    if "Already up to date" in pull.stdout:
+                        self._set_update_status("You already have the latest QUANTNEX workspace from GitHub.")
+                        return
+                    self._set_update_status("Update downloaded successfully. Restarting QUANTNEX with the new workspace…")
+                    self.after(900, self._restart_source)
+                    return
             req=urllib.request.Request(LATEST_URL,headers={"User-Agent":"QUANTNEX-Desktop","Accept":"application/vnd.github+json"})
             with urllib.request.urlopen(req,timeout=12) as response:
                 release=json.loads(response.read().decode("utf-8"))
@@ -206,6 +228,12 @@ class App(tk.Tk):
             self._set_update_status("Version "+latest+" downloaded. Review release notes, then choose Install and restart.")
         except (urllib.error.URLError,TimeoutError,ValueError,json.JSONDecodeError,OSError,KeyError) as exc:
             self._set_update_status("Could not check or download an update: "+str(exc))
+
+    def _restart_source(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        script = Path(__file__).resolve()
+        subprocess.Popen([sys.executable, str(script)], cwd=str(repo_root))
+        self.destroy()
 
     def _install_update(self):
         if not getattr(self,"staged_update",None) or not self.staged_update.exists():

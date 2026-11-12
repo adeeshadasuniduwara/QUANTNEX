@@ -84,8 +84,6 @@ def delete_journal(trade_id: int, user: User = Depends(current_user), db: Sessio
     item = db.scalar(select(Trade).where(Trade.id == trade_id, Trade.user_id == user.id))
     if item is None:
         raise HTTPException(status_code=404, detail="Journal entry not found.")
-    db.execute(select(WalletTransaction).where(WalletTransaction.user_id == user.id,
-                                               WalletTransaction.trade_id == trade_id))
     linked = db.scalar(select(WalletTransaction).where(WalletTransaction.user_id == user.id,
                                                         WalletTransaction.trade_id == trade_id))
     if linked is not None:

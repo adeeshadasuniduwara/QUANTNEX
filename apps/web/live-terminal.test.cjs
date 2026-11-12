@@ -58,6 +58,7 @@ assert.match(html, /id="webUpdateModalChanges"/, "The update dialog must list wh
 assert.match(html, /id="webUpdateModalInstall"/, "The update dialog must offer Download & Install Now");
 assert.match(html, /id="webInstallUpdate" hidden/, "The Updates page install action must remain hidden until an update is found");
 assert.match(app, /New update released:/, "The updater must announce a newly available version");
+assert.match(app, /\["127\.0\.0\.1","localhost"\]\.includes\(location\.hostname\)/, "The updater must work on both supported loopback hostnames");
 assert.match(app, /openUpdateModal\(result\)/, "A detected update must open the notification dialog");
 assert.match(app, /modalInstallButton\?\.addEventListener\("click",\(\)=>installLatestCommit\(\)/, "The popup install action must start the update only after a click");
 assert.match(app, /rememberUpdateDismissed\(sha\)/, "The user must be able to dismiss the same notification until the next version");

@@ -28,6 +28,7 @@ function checkAlert(alert,price,source){
  alert.triggered=true;alert.triggeredAt=new Date().toISOString();alert.triggerPrice=Number(price);alert.triggerSource=source;
  setStatus("alertStatus","ALERT · "+alert.symbol+" reached "+fmt(price,digits(alert.symbol))+" ("+alert.condition+" "+fmt(alert.target,digits(alert.symbol))+").");
  window.dispatchEvent(new CustomEvent("quantnex:price-alert",{detail:{...alert}}));
+ if(typeof showUpdateToast==="function")showUpdateToast("Price alert · "+alert.symbol+" reached "+fmt(price,digits(alert.symbol))+".");
  return true;
 }
 function renderAlerts(){

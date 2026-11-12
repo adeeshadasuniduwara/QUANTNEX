@@ -189,6 +189,24 @@ async def build_signal(settings: dict[str,Any]) -> dict[str,Any]:
     if bscore>=threshold and bscore>sscore: side="BUY";checks=buy;score=bscore
     elif sscore>=threshold and sscore>bscore: side="SELL";checks=sell;score=sscore
     else: checks=buy if bscore>=sscore else sell;score=max(bscore,sscore)
+    # Directional quality gate: no signal against the selected primary/trend bias,
+    # with weak ADX or an overextended RSI. Enabled higher timeframes must broadly agree.
+    quality_filters={"primary_bias_aligned":False,"trend_bias_aligned":False,"adx_strength":False,
+                     "rsi_not_extreme":False,"macd_direction":False,"timeframe_consensus":False}
+    if side:
+        primary_aligned=p["bias"]==("BULLISH" if side=="BUY" else "BEARISH")
+        trend_aligned=t["bias"]==("BULLISH" if side=="BUY" else "BEARISH")
+        adx_ok=p["adx"]>=18
+        rsi_ok=(45<=p["rsi"]<=68) if side=="BUY" else (32<=p["rsi"]<=55)
+        macd_ok=(p["macd_histogram"]>0) if side=="BUY" else (p["macd_histogram"]<0)
+        directional=[analysis[x]["bias"] for x in enabled if x in analysis and x!=primary]
+        aligned=sum(x==("BULLISH" if side=="BUY" else "BEARISH") for x in directional)
+        consensus_ok=not directional or aligned/len(directional)>=0.60
+        quality_filters={"primary_bias_aligned":primary_aligned,"trend_bias_aligned":trend_aligned,
+                         "adx_strength":adx_ok,"rsi_not_extreme":rsi_ok,"macd_direction":macd_ok,
+                         "timeframe_consensus":consensus_ok}
+        if not all(quality_filters.values()):
+            side=None
     signal=None
     if side:
         risk=max(p["atr"]*1.5,abs(close-(st["swing_low"] if side=="BUY" else st["swing_high"])))
@@ -205,4 +223,4 @@ async def build_signal(settings: dict[str,Any]) -> dict[str,Any]:
                 "ema50":round(v["ema50"],2),"ema200":round(v["ema200"],2) if v["ema200"] is not None else None,"macd_histogram":round(v["macd_histogram"],4),
                 "rsi":round(v["rsi"],1),"adx":round(v["adx"],1),"atr":round(v["atr"],3),
                 "structure":v["structure"]} for tf,v in analysis.items()},
-            "status":"SIGNAL" if signal else "WAIT","message":"Confluence threshold met." if signal else "No high-confluence setup. Wait for more confirmations."}
+            "quality_filters":quality_filters,"status":"SIGNAL" if signal else "WAIT","message":"Confluence threshold and directional quality filters met." if signal else "WAIT — confluence threshold or directional quality filters not met."}

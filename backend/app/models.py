@@ -84,3 +84,31 @@ class StrategyLabRun(Base):
     strategy_json: Mapped[str] = mapped_column(Text, default="{}")
     result_json: Mapped[str] = mapped_column(Text, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+
+class PersonalGoal(Base):
+    __tablename__ = "personal_goals"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str] = mapped_column(Text, default="")
+    target_amount: Mapped[float] = mapped_column(Float)
+    currency: Mapped[str] = mapped_column(String(8), default="USD")
+    initial_amount: Mapped[float] = mapped_column(Float, default=0)
+    image_url: Mapped[str] = mapped_column(Text, default="")
+    target_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    achieved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    certificate_id: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    certificate_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+
+class GoalContribution(Base):
+    __tablename__ = "goal_contributions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    goal_id: Mapped[int] = mapped_column(ForeignKey("personal_goals.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    amount: Mapped[float] = mapped_column(Float)
+    currency: Mapped[str] = mapped_column(String(8), default="USD")
+    source: Mapped[str] = mapped_column(String(48), default="manual_real_account")
+    note: Mapped[str] = mapped_column(String(240), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)

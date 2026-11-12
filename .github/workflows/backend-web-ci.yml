@@ -55,3 +55,5 @@ jobs:
         run: |
           node --check apps/web/app.js
           node --check apps/web/signal-tool.js
+          node --check apps/web/workspace-pages.js
+          node apps/web/workspace-pages.test.cjs

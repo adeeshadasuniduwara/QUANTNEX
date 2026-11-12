@@ -10,13 +10,13 @@ Choose the installer for your device. Each download is provided separately.
 
 ### Windows
 
-**[Download QUANTNEX for Windows (.EXE)](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/43182961842)**
+**[Download QUANTNEX for Windows (.EXE)](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/43185371316)**
 
 The Windows desktop application is packaged as a standalone executable. Download the `QUANTNEX.exe` file from the **Artifacts** section on the linked build page, then double-click it to launch. No separate Python installation is required.
 
 ### Android
 
-**[Download QUANTNEX for Android (.APK)](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/43182983739)**
+**[Download QUANTNEX for Android (.APK)](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/43185377710)**
 
 The Android package is an installable debug APK. Download `app-debug.apk` from the **Artifacts** section on the linked build page, open it on your Android device, and allow installation from that source if Android asks. This is an early Android starter build, not yet feature-complete.
 

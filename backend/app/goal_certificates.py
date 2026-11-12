@@ -3,10 +3,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from io import BytesIO
-from pathlib import Path
-
-from reportlab.graphics import renderPDF
-from svglib.svglib import svg2rlg
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
@@ -27,12 +23,6 @@ def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
                             topMargin=36*mm, bottomMargin=32*mm,
                             title="QUANTNEX Achievement Certificate")
 
-    logo_path = Path(__file__).resolve().parents[2] / "apps" / "web" / "quantnex-mark.svg"
-    try:
-        logo = svg2rlg(str(logo_path))
-    except Exception:
-        logo = None
-
     def decorate(canvas, _doc):
         canvas.saveState()
         canvas.setStrokeColor(colors.HexColor("#111111"))
@@ -40,20 +30,7 @@ def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
         canvas.rect(10*mm, 10*mm, page_w-20*mm, page_h-20*mm)
         canvas.setLineWidth(0.45)
         canvas.rect(13*mm, 13*mm, page_w-26*mm, page_h-26*mm)
-        # Use the repository's actual vector mark; retain a vector fallback for packaged builds.
-        if logo and logo.width and logo.height:
-            scale=(15*mm)/max(logo.width,logo.height)
-            canvas.saveState()
-            canvas.translate(page_w/2-(logo.width*scale)/2,page_h-33*mm)
-            canvas.scale(scale,scale)
-            renderPDF.draw(logo,canvas,0,0)
-            canvas.restoreState()
-        else:
-            canvas.setFillColor(colors.HexColor("#111111"))
-            canvas.circle(page_w/2, page_h-25*mm, 7*mm, fill=1, stroke=0)
-            canvas.setFillColor(colors.white)
-            canvas.setFont("Times-BoldItalic", 13)
-            canvas.drawCentredString(page_w/2, page_h-27.2*mm, "Q")
+        draw_quantnex_mark(canvas,page_w/2-7.5*mm,page_h-33*mm,15*mm)
         canvas.setFillColor(colors.black)
         canvas.setFont("Helvetica-Bold", 9)
         canvas.drawCentredString(page_w/2, 20*mm, "QUANTNEX  ·  PERSONAL DISCIPLINE SERIES")
@@ -109,3 +86,24 @@ def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
     ]
     doc.build(story, onFirstPage=decorate, onLaterPages=decorate)
     return buffer.getvalue()
+
+
+def draw_quantnex_mark(canvas, x: float, y: float, size: float) -> None:
+    """Draw a compact monochrome vector approximation of the repository Q mark."""
+    canvas.saveState()
+    scale=size/64.0
+    canvas.translate(x,y)
+    canvas.scale(scale,scale)
+    canvas.setFillColor(colors.HexColor("#0B0B0B"))
+    canvas.roundRect(0,0,64,64,16,fill=1,stroke=0)
+    canvas.setStrokeColor(colors.HexColor("#F5F5F5"))
+    canvas.setLineWidth(5.5)
+    canvas.setLineCap(1)
+    canvas.arc(10,10,54,54,45,285)
+    path=canvas.beginPath()
+    path.moveTo(34,34)
+    path.lineTo(48,48)
+    canvas.drawPath(path,stroke=1,fill=0)
+    canvas.setFillColor(colors.HexColor("#F5F5F5"))
+    canvas.circle(50.5,13.5,5.5,fill=1,stroke=0)
+    canvas.restoreState()

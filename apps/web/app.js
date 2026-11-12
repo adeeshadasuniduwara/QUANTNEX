@@ -46,78 +46,103 @@ $("exportJournal").addEventListener("click",()=>{
   const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),link=document.createElement("a");link.href=url;link.download="quantnex-trading-journal.csv";link.click();URL.revokeObjectURL(url);
 });
 renderJournal();
-// Web release checker: checks published GitHub releases and offers a direct source ZIP download.
-const WEB_APP_VERSION = "0.6.0";
+// Local QUANTNEX updater: the CMD-launched Python server downloads, extracts and installs releases.
 const updateButton = $("webCheckUpdate");
+const installButton = $("webInstallUpdate");
 const releaseVersionLabel = $("webReleaseVersion");
-const releaseZipLink = $("webDownloadReleaseZip");
 const releaseNotesLink = $("webReleaseNotes");
-const releaseAssetsBox = $("webReleaseAssets");
-function versionParts(value){
-  const match=String(value||"").trim().replace(/^v/i,"").match(/^(\\d+)\\.(\\d+)\\.(\\d+)/);
-  return match?match.slice(1).map(Number):[0,0,0];
+let checkedRelease = null;
+let updatePolling = false;
+
+function showUpdateToast(message){
+  let toast=$("quantnexUpdateToast");
+  if(!toast){
+    toast=document.createElement("div");toast.id="quantnexUpdateToast";
+    toast.setAttribute("role","status");toast.style.cssText="position:fixed;right:22px;bottom:22px;z-index:9999;max-width:360px;padding:15px 18px;border:1px solid #777;border-radius:12px;background:#f2f2f2;color:#090909;box-shadow:0 12px 45px #0009;font:600 13px/1.5 system-ui;animation:rise .3s ease both";
+    document.body.append(toast);
+  }
+  toast.textContent=message;
+  window.setTimeout(()=>toast.remove(),7000);
 }
-function compareVersions(a,b){
-  const aa=versionParts(a),bb=versionParts(b);
-  for(let i=0;i<3;i++){if(aa[i]>bb[i])return 1;if(aa[i]<bb[i])return -1;}
-  return 0;
+if(sessionStorage.getItem("quantnex.webUpdateComplete")==="1"){
+  sessionStorage.removeItem("quantnex.webUpdateComplete");
+  window.addEventListener("load",()=>showUpdateToast("✓ QUANTNEX Web has been updated. You are now using the latest workspace."));
 }
-function renderReleaseAssets(assets){
-  releaseAssetsBox.replaceChildren();
-  const usable=(assets||[]).filter(asset=>asset&&asset.browser_download_url&&asset.name);
-  if(!usable.length){releaseAssetsBox.hidden=true;return;}
-  const heading=document.createElement("strong");heading.textContent="Release downloads";releaseAssetsBox.append(heading);
-  const list=document.createElement("div");list.className="release-asset-list";
-  usable.forEach(asset=>{
-    const link=document.createElement("a");link.href=asset.browser_download_url;link.target="_blank";link.rel="noreferrer";
-    link.className="release-asset-link";link.textContent=asset.name;
-    const size=document.createElement("small");size.textContent=asset.size?(" · "+(asset.size/1024/1024).toFixed(1)+" MB"):"";
-    link.append(size);list.append(link);
-  });
-  releaseAssetsBox.append(list);releaseAssetsBox.hidden=false;
-}
-if (updateButton) updateButton.addEventListener("click", async () => {
+
+async function checkLocalUpdate(){
   const status=$("webUpdateStatus"),progress=$("webUpdateProgress");
   updateButton.disabled=true;updateButton.textContent="Checking…";progress.hidden=false;
-  status.textContent="Connecting to the official QUANTNEX GitHub release channel…";
-  releaseVersionLabel.textContent="Checking…";
-  releaseZipLink.hidden=true;releaseAssetsBox.hidden=true;
+  status.textContent="Checking the latest published QUANTNEX release…";
   try{
-    const response=await fetch("https://api.github.com/repos/adeeshadasuniduwara/QUANTNEX/releases/latest",{
-      headers:{"Accept":"application/vnd.github+json"}
-    });
-    if(response.status===404){
-      releaseVersionLabel.textContent="No published release";
-      status.textContent="No stable published release is available yet. You can still download the current main-branch source ZIP, but it is a development snapshot.";
-      releaseNotesLink.href="https://github.com/adeeshadasuniduwara/QUANTNEX/releases";
-      return;
-    }
-    if(!response.ok)throw new Error("GitHub release service returned HTTP "+response.status);
-    const release=await response.json();
-    const tag=release.tag_name||release.name||"Latest";
-    releaseVersionLabel.textContent=tag;
-    if(release.zipball_url){
-      releaseZipLink.href=release.zipball_url;
-      releaseZipLink.hidden=false;
-      releaseZipLink.textContent="Download "+tag+" source ZIP";
-    }
-    if(release.html_url)releaseNotesLink.href=release.html_url;
-    renderReleaseAssets(release.assets);
-    const comparison=compareVersions(tag,WEB_APP_VERSION);
-    if(comparison>0){
-      status.textContent="Update available: "+tag+" (installed Web version v"+WEB_APP_VERSION+"). Download the release ZIP and install it manually.";
-    }else if(comparison===0){
-      status.textContent="You have the latest published Web version ("+tag+"). You can download its ZIP again or review the release notes.";
+    const response=await fetch("/__quantnex/check",{cache:"no-store"});
+    if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||"Local updater is not running.");}
+    checkedRelease=await response.json();
+    $("webInstalledVersion").textContent="v"+checkedRelease.installed;
+    releaseVersionLabel.textContent=checkedRelease.latest;
+    if(checkedRelease.release_notes)releaseNotesLink.href=checkedRelease.release_notes;
+    if(checkedRelease.update_available){
+      status.textContent="New version "+checkedRelease.latest+" is ready. Install it automatically; QUANTNEX will extract the release, refresh this browser and reopen the updated workspace.";
+      installButton.hidden=false;
+      installButton.disabled=false;
     }else{
-      status.textContent="Latest published release is "+tag+". This Web source build ("+WEB_APP_VERSION+") is newer than that release; check the release notes before replacing files.";
+      status.textContent="You already have the latest published release ("+checkedRelease.latest+").";
+      installButton.hidden=true;
     }
   }catch(error){
-    releaseVersionLabel.textContent="Check failed";
-    status.textContent="Could not check GitHub releases: "+error.message+". You can still download the current main-branch source ZIP.";
+    checkedRelease=null;installButton.hidden=true;
+    status.textContent="Automatic updates are available when QUANTNEX is launched using run_quantnex.bat → Start Web Workspace. "+error.message;
   }finally{
     updateButton.disabled=false;updateButton.textContent="Check for updates";progress.hidden=true;
   }
+}
+if(updateButton)updateButton.addEventListener("click",checkLocalUpdate);
+
+async function watchUpdateInstall(){
+  if(updatePolling)return;
+  updatePolling=true;
+  const status=$("webUpdateStatus");
+  const progress=$("webUpdateProgress");
+  progress.hidden=false;
+  const started=Date.now();
+  try{
+    while(Date.now()-started<180000){
+      await new Promise(resolve=>window.setTimeout(resolve,1200));
+      const response=await fetch("/__quantnex/status",{cache:"no-store"});
+      const state=await response.json();
+      if(state.status==="complete"){
+        status.textContent=state.message||"Update installed. Refreshing workspace…";
+        sessionStorage.setItem("quantnex.webUpdateComplete","1");
+        window.setTimeout(()=>{window.location.replace(window.location.pathname+"?updated="+Date.now());},900);
+        return;
+      }
+      if(state.status==="error")throw new Error(state.message||"Update installation failed.");
+      if(state.status==="installing")status.textContent=state.message||"Downloading and extracting update…";
+    }
+    throw new Error("The update is taking longer than expected. Check the QUANTNEX Web Server CMD window.");
+  }catch(error){
+    status.textContent="Update did not finish: "+error.message;
+    installButton.disabled=false;installButton.textContent="Retry update";
+  }finally{
+    progress.hidden=true;updatePolling=false;
+  }
+}
+if(installButton)installButton.addEventListener("click",async()=>{
+  if(!checkedRelease||!checkedRelease.update_available){await checkLocalUpdate();return;}
+  installButton.disabled=true;installButton.textContent="Installing…";
+  $("webUpdateStatus").textContent="Starting automatic update…";
+  try{
+    const response=await fetch("/__quantnex/install",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||"Could not start update.");
+    await watchUpdateInstall();
+  }catch(error){
+    $("webUpdateStatus").textContent="Could not start update: "+error.message;
+    installButton.disabled=false;installButton.textContent="Install update & restart workspace";
+  }
 });
+if(updateButton&&location.hostname==="127.0.0.1"&&location.port==="5500"){
+  checkLocalUpdate();
+}
 
 // Authenticated shared API wallet. Access tokens stay in this browser tab's session storage.
 const API_BASE_KEY = "quantnex.apiBase.v1";

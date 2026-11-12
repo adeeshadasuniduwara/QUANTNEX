@@ -30,7 +30,10 @@ def run_checked(command: list[str], cwd: Path, label: str) -> None:
 def prepare_backend() -> Path:
     if not VENV_PYTHON.exists():
         run_checked([sys.executable, "-m", "venv", str(BACKEND / ".venv")], BACKEND, "Create backend virtual environment")
-    run_checked([str(VENV_PYTHON), "-m", "pip", "install", "--upgrade", "pip"], BACKEND, "Update pip")
+    print("\\n[SETUP] Update pip (optional)", flush=True)
+    pip_update = subprocess.run([str(VENV_PYTHON), "-m", "pip", "install", "--upgrade", "pip"], cwd=BACKEND)
+    if pip_update.returncode:
+        print("[WARNING] pip could not update; continuing with the installed pip version.", flush=True)
     run_checked([str(VENV_PYTHON), "-m", "pip", "install", "-r", "requirements.txt"], BACKEND, "Install/check backend dependencies")
     run_checked([str(VENV_PYTHON), "bootstrap.py"], BACKEND, "Run automatic configuration and startup diagnostics")
     return VENV_PYTHON

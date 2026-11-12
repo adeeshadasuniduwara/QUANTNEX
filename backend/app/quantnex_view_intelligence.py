@@ -181,8 +181,9 @@ def backtest_candles(candles: list[dict[str, Any]], symbol: str, interval: str,
             hit_sl = row["low"] <= stop if side == "BUY" else row["high"] >= stop
             if hit_sl:
                 # Conservative ordering: if SL and TP are both inside one candle, SL wins.
-                pnl = active.get("realized", 0.0) + (0.0 if active["be"] else -active["risk_cash"])
-                balance += pnl
+                close_delta = 0.0 if active["be"] else -active["risk_cash"]
+                pnl = active.get("realized", 0.0) + close_delta
+                balance += close_delta
                 trades.append({**active, "exit": stop, "pnl": round(pnl, 2), "result": "LOSS" if pnl < 0 else "BREAKEVEN", "exit_time": row["time"]})
                 active = None
             else:
@@ -226,7 +227,7 @@ def backtest_candles(candles: list[dict[str, Any]], symbol: str, interval: str,
         remaining = sum(not active[f"tp{x}_hit"] for x in (1,2,3))/3
         remaining_pnl = max(-active["risk_cash"], min(active["risk_cash"]*3, (close-active["entry"])*sign/active["risk_distance"]*active["risk_cash"])) * remaining
         pnl = active.get("realized", 0.0) + (max(0.0, remaining_pnl) if active["be"] else remaining_pnl)
-        balance += pnl
+        balance += (max(0.0, remaining_pnl) if active["be"] else remaining_pnl)
         trades.append({**active, "exit": close, "pnl": round(pnl,2), "result": "WIN" if pnl>0 else "LOSS" if pnl<0 else "BREAKEVEN", "exit_time": candles[-1]["time"]})
     wins = sum(t["pnl"] > 0 for t in trades)
     losses = sum(t["pnl"] < 0 for t in trades)

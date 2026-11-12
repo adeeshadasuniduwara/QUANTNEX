@@ -30,6 +30,8 @@
       <a class="nav-link" href="#paper-trading"><span>▣</span>Paper Trading</a>
       <a class="nav-link" href="#performance-lab"><span>▥</span>Performance Lab</a>
       <a class="nav-link" href="#risk-management"><span>◇</span>Risk Management</a>
+      <div class="side-caption">STRATEGY RESEARCH</div>
+      <a class="nav-link" href="#strategy-laboratory"><span>⌘</span>AI Strategy Laboratory</a>
       <div class="side-caption">WORKSPACE TOOLS</div>
       <a class="nav-link" href="#system-security"><span>⚙</span>System security</a>
       <div class="sidebar-bottom"><span class="live-dot"></span>Local workspace</div>
@@ -260,6 +262,39 @@
           <p class="update-manual-note">The Updates tab checks the latest GitHub main-branch commit on startup and when requested. It downloads a pinned source archive, backs up replaced Web files, and rolls back if installation fails. Your local database and settings are kept separately.</p>
         </div>
         <span class="pill">OFFICIAL</span>
+      </section>
+
+      <section class="section-heading" id="strategy-laboratory"><div><div class="overline">PHASE 08 · RESEARCH & VALIDATION</div><h2>AI Strategy Laboratory</h2><p>Build, backtest, replay, optimize and forward-observe strategies using historical and live provider data.</p></div><span class="pill">RESEARCH / PAPER ONLY</span></section>
+      <section class="panel phase08-panel">
+        <div class="p8-grid">
+          <label>Market<select id="p8Symbol"><option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option><option>XAUUSD</option><option>EURUSD</option><option>GBPUSD</option><option>USDJPY</option></select></label>
+          <label>Timeframe<select id="p8Timeframe"><option>15m</option><option>1h</option><option>4h</option><option>5m</option></select></label>
+          <label>Fast EMA<input id="p8Fast" type="number" min="2" max="50" value="9"></label>
+          <label>Slow EMA<input id="p8Slow" type="number" min="3" max="200" value="21"></label>
+          <label>Risk / Reward<input id="p8RR" type="number" min="0.5" max="8" step="0.5" value="2"></label>
+        </div>
+        <p class="p7-note">Strategy Builder currently supports a transparent EMA crossover template. More rule blocks can be added after this foundation is validated.</p>
+        <div class="p8-actions">
+          <button class="primary-btn" id="p8Backtest">Run backtest</button>
+          <button class="secondary-btn" id="p8Optimize">Optimize settings</button>
+          <button class="secondary-btn" id="p8Forward">Forward evaluate</button>
+          <button class="secondary-btn" id="p8ReplayLoad">Load market replay</button>
+        </div>
+        <p id="p8Status" class="p7-note" role="status">Historical testing and forward observations are kept separate from your Wallet and Journal.</p>
+        <div class="p7-kpi-grid" id="p8Kpis"><article><span>Backtest trades</span><strong>—</strong></article><article><span>Win rate</span><strong>—</strong></article><article><span>Profit factor</span><strong>—</strong></article><article><span>Net P&amp;L</span><strong>—</strong></article></div>
+        <div class="p8-result" id="p8Result"><div class="p7-empty">Configure a strategy and run a backtest to see its results.</div></div>
+      </section>
+      <section class="panel phase08-panel">
+        <div class="p7-subheading"><strong>Market Replay</strong><span>Step through historical candles from the selected provider.</span></div>
+        <div class="p8-replay-controls"><button class="secondary-btn" id="p8ReplayPrev" disabled>Previous candle</button><strong id="p8ReplayIndex">No replay loaded</strong><button class="secondary-btn" id="p8ReplayNext" disabled>Next candle</button></div>
+        <div class="p8-replay-candle" id="p8ReplayCandle">Load a replay to begin.</div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Time</th><th>Open</th><th>High</th><th>Low</th><th>Close</th></tr></thead><tbody id="p8ReplayRows"><tr><td colspan="5" class="empty-row">No candles loaded.</td></tr></tbody></table></div>
+      </section>
+      <section class="panel phase08-panel">
+        <div class="p7-subheading"><strong>AI Learning &amp; Research</strong><span>Review stored backtests, optimizer runs and paper observations.</span></div>
+        <button class="secondary-btn" id="p8ResearchRefresh">Refresh research history</button>
+        <p class="p7-note" id="p8ResearchSummary">Research history will appear here after your first run.</p>
+        <div class="p7-table-wrap"><table><thead><tr><th>Run</th><th>Market</th><th>Timeframe</th><th>Created</th><th>Summary</th></tr></thead><tbody id="p8ResearchRows"><tr><td colspan="5" class="empty-row">No research runs yet.</td></tr></tbody></table></div>
       </section>
       <section class="section-heading" id="system-security"><div><div class="overline">LOCAL DEVICE · PROTECTION</div><h2>System security</h2><p>Database backups, integrity checks, activity history and computer health.</p></div><span class="pill">LOCAL ONLY</span></section>
       <section class="panel system-security-panel">

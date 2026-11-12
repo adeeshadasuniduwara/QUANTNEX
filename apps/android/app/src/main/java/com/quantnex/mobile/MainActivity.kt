@@ -25,11 +25,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val Background = Color(0xFF090E1B)
-private val Panel = Color(0xFF111A2B)
-private val Muted = Color(0xFF91A0B8)
-private val Accent = Color(0xFF73A7FF)
-private val Green = Color(0xFF55D6A0)
+private val Background = Color(0xFFFFFFFF)
+private val Panel = Color(0xFFF4F4F2)
+private val Muted = Color(0xFF777777)
+private val Accent = Color(0xFF111111)
+private val Green = Color(0xFF111111)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -61,11 +61,11 @@ private fun QuantnexApp() {
                 }
 
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF172B49)),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF111111)),
                     shape = RoundedCornerShape(18.dp)
                 ) {
                     Column(Modifier.padding(18.dp)) {
-                        Text("PHASE 01 · FOUNDATION", color = Accent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Text("QUANTNEX WORKSPACE", color = Accent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         Spacer(Modifier.height(8.dp))
                         Text("Clarity for every trading decision.", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(6.dp))
@@ -73,11 +73,11 @@ private fun QuantnexApp() {
                     }
                 }
 
-                Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF282416))) {
+                Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFF4F4F2))) {
                     Column(Modifier.padding(14.dp)) {
-                        Text("DEMO ENVIRONMENT", color = Color(0xFFE5C77F), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        Text("DEMO ENVIRONMENT", color = Color(0xFF111111), fontWeight = FontWeight.Bold, fontSize = 11.sp)
                         Spacer(Modifier.height(4.dp))
-                        Text("No broker is connected. No live prices or trading orders are used.", color = Color(0xFFC5B58E), fontSize = 12.sp)
+                        Text("No broker is connected. No live prices or trading orders are used.", color = Color(0xFF777777), fontSize = 12.sp)
                     }
                 }
 

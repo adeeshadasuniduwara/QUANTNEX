@@ -195,7 +195,9 @@ async def telegram_worker() -> None:
                                     # Keep the last delivered fingerprint when no setup is present.
                                     # This prevents duplicate alerts if the same candle briefly loses and regains confluence.
                                 except (MarketDataError,httpx.HTTPError,ValueError,KeyError) as exc:
-                                    print(f"[QUANTNEX auto-signal] user {user_id} {market_symbol}: {exc}",flush=True)
+                                    # Provider exceptions can contain request URLs; never log query strings or API keys.
+                                    logger.warning("Auto-signal scan failed for local user %s market %s: %s",
+                                                   user_id,market_symbol,type(exc).__name__)
                             last_monitor[auto_key]=now
                         last_monitor[user_id]=now
             except asyncio.CancelledError:

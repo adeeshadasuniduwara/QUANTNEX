@@ -52,6 +52,8 @@ class App(tk.Tk):
         super().__init__()
         self.title("QUANTNEX — Trading Workspace")
         self.geometry("1000x680"); self.minsize(850, 560); self.configure(bg="#080808")
+        self._app_icon = tk.PhotoImage(data=base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAABUUlEQVR42u2bvQ4DIQyDb+f9H5W53aobigiQOD/YElsP8He0AuI+D0VRFEVR1KZaax/PdqXpd+u9/1po4++JjppWnyHMSwyfAJk96wZAw/gMhOQZuHkL4yMQ0s/DACDMvyGEAaD1fV79oYQCQP6qS/pfBW8CwNL4bKzVF6AOAGn+35jSuajtFFeWJmLXJ5mP6lY5inm3s0Jm8wSgBSCreVMAGcyrAMj89s0AZDF/BQDzfQABJFj+plthxEHnegAWR+d0AE76LgNgt/+0ALQgpAagASE9gFMIJQCcQIACiAah5FZ4ZcyyZwHpuC4AokCQzC39jdBqkbTkneBJDbLMrfBuLbLUtbgrgOgQzAsjUWqDcADSVYA+LEGWf4QS+UkCxTQi45UQGaVFzFOkUTJC0v6gOUF0SswtQxwlJ+geoPZOiqZIjqOM8w8LFEVRFEXt6gvb1Kw0LPnuxQAAAABJRU5ErkJggg=="))
+        self.iconphoto(True, self._app_icon)
         self.journal = TradeJournal()
         self.update_check_running = False
         self.staged_update = None

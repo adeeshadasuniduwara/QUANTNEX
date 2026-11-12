@@ -2,11 +2,12 @@ from __future__ import annotations
 import base64, hashlib, json, os, shutil, sqlite3, subprocess, sys, threading, urllib.error, urllib.request, webbrowser
 from datetime import datetime
 import uuid
+from urllib.parse import urlparse
 from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.6.0"
 REPO = "adeeshadasuniduwara/QUANTNEX"
 LATEST_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 
@@ -55,6 +56,10 @@ class App(tk.Tk):
         self._app_icon = tk.PhotoImage(data=base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAABUUlEQVR42u2bvQ4DIQyDb+f9H5W53aobigiQOD/YElsP8He0AuI+D0VRFEVR1KZaax/PdqXpd+u9/1po4++JjppWnyHMSwyfAJk96wZAw/gMhOQZuHkL4yMQ0s/DACDMvyGEAaD1fV79oYQCQP6qS/pfBW8CwNL4bKzVF6AOAGn+35jSuajtFFeWJmLXJ5mP6lY5inm3s0Jm8wSgBSCreVMAGcyrAMj89s0AZDF/BQDzfQABJFj+plthxEHnegAWR+d0AE76LgNgt/+0ALQgpAagASE9gFMIJQCcQIACiAah5FZ4ZcyyZwHpuC4AokCQzC39jdBqkbTkneBJDbLMrfBuLbLUtbgrgOgQzAsjUWqDcADSVYA+LEGWf4QS+UkCxTQi45UQGaVFzFOkUTJC0v6gOUF0SswtQxwlJ+geoPZOiqZIjqOM8w8LFEVRFEXt6gvb1Kw0LPnuxQAAAABJRU5ErkJggg=="))
         self.iconphoto(True, self._app_icon)
         self.journal = TradeJournal()
+        self.api_token = None
+        self.api_base_var = tk.StringVar(value="http://127.0.0.1:8000")
+        self.account_email_var = tk.StringVar()
+        self.account_password_var = tk.StringVar()
         self.update_check_running = False
         self.staged_update = None
         self.style = ttk.Style(self)
@@ -101,13 +106,14 @@ class App(tk.Tk):
         ttk.Label(root, text=f"WINDOWS DESKTOP  /  VERSION {APP_VERSION}  /  LOCAL MODE", style="Muted.TLabel").pack(anchor="w", pady=(0, 16))
         tabs = ttk.Notebook(root); tabs.pack(fill="both", expand=True)
         self.home = ttk.Frame(tabs, padding=18); self.calc = ttk.Frame(tabs, padding=18)
-        self.journal_tab = ttk.Frame(tabs, padding=18); self.updates = ttk.Frame(tabs, padding=18)
-        self.charts = ttk.Frame(tabs, padding=18); self.device_tab = ttk.Frame(tabs, padding=18)
+        self.journal_tab = ttk.Frame(tabs, padding=18); self.account_tab = ttk.Frame(tabs, padding=18)
+        self.updates = ttk.Frame(tabs, padding=18); self.charts = ttk.Frame(tabs, padding=18)
+        self.device_tab = ttk.Frame(tabs, padding=18)
         tabs.add(self.home, text="Overview"); tabs.add(self.charts, text="Charts")
         tabs.add(self.calc, text="Position Calculator")
-        tabs.add(self.journal_tab, text="Trade Journal"); tabs.add(self.device_tab, text="Device")
-        tabs.add(self.updates, text="Updates")
-        self._home(); self._charts(); self._calculator(); self._journal(); self._device(); self._updates()
+        tabs.add(self.journal_tab, text="Trade Journal"); tabs.add(self.account_tab, text="Account & Wallet")
+        tabs.add(self.device_tab, text="Device"); tabs.add(self.updates, text="Updates")
+        self._home(); self._charts(); self._calculator(); self._journal(); self._account(); self._device(); self._updates()
         ttk.Label(root, text="Local demo workspace • No broker connection • No orders placed", style="Muted.TLabel").pack(anchor="w", pady=(12,0))
 
     def _home(self):
@@ -155,6 +161,8 @@ class App(tk.Tk):
         ttk.Label(self.journal_tab,text="Notes").pack(anchor="w")
         self.notes=tk.Text(self.journal_tab,height=3,wrap="word",font=("Segoe UI",10)); self.notes.pack(fill="x",pady=5)
         ttk.Button(self.journal_tab,text="Save trade",style="Accent.TButton",command=self._save).pack(anchor="w",pady=8)
+        self.journal_sync_status=ttk.Label(self.journal_tab,text="Local journal. Sign in under Account & Wallet to sync newly saved trades.",style="Muted.TLabel")
+        self.journal_sync_status.pack(anchor="w",pady=(0,6))
         cols=("date","symbol","side","outcome","pnl"); self.table=ttk.Treeview(self.journal_tab,columns=cols,show="headings",height=9)
         for c,label,w in zip(cols,["Date","Symbol","Side","Outcome","P&L ($)"],[190,110,90,110,100]):
             self.table.heading(c,text=label); self.table.column(c,width=w,anchor="w")
@@ -165,8 +173,12 @@ class App(tk.Tk):
             symbol=self.trade["Symbol"].get().strip()
             if not symbol or len(symbol)>20: raise ValueError("Enter a symbol up to 20 characters.")
             pnl=float(self.trade["P&L ($)"].get())
-            self.journal.add(symbol,self.trade["Direction"].get(),self.trade["Outcome"].get(),pnl,self.notes.get("1.0","end").strip()[:500])
+            direction=self.trade["Direction"].get(); outcome=self.trade["Outcome"].get()
+            notes=self.notes.get("1.0","end").strip()[:500]
+            self.journal.add(symbol,direction,outcome,pnl,notes)
             self.notes.delete("1.0","end"); self._refresh()
+            if self.api_token:
+                self._sync_journal_trade(symbol,direction,outcome,pnl,notes)
         except ValueError as e: messagebox.showerror("Invalid trade",str(e))
 
     def _refresh(self):
@@ -248,6 +260,189 @@ class App(tk.Tk):
             if y2-y1<1: y2=y1+1
             canvas.create_rectangle(x-body_w/2,y1,x+body_w/2,y2,fill=color,outline=color)
         canvas.create_text(left,bottom+12,anchor="w",fill="#777777",font=("Segoe UI",8),text="60 × 15-minute candles · Latest at right")
+
+
+    def _account(self):
+        ttk.Label(self.account_tab,text="QUANTNEX Account & Shared Wallet",font=("Segoe UI",17,"bold")).pack(anchor="w")
+        ttk.Label(self.account_tab,text="Connect this desktop to the shared QUANTNEX API. Use localhost for a local backend, or an HTTPS URL for a remote server.",style="Muted.TLabel",wraplength=850).pack(anchor="w",pady=(4,10))
+        api_row=ttk.Frame(self.account_tab); api_row.pack(fill="x",pady=4)
+        ttk.Label(api_row,text="API URL").pack(side="left")
+        ttk.Entry(api_row,textvariable=self.api_base_var,width=52).pack(side="left",padx=8)
+        auth=ttk.Frame(self.account_tab); auth.pack(fill="x",pady=7)
+        ttk.Label(auth,text="Email").grid(row=0,column=0,sticky="w")
+        ttk.Entry(auth,textvariable=self.account_email_var,width=30).grid(row=0,column=1,padx=(6,16),sticky="w")
+        ttk.Label(auth,text="Password").grid(row=0,column=2,sticky="w")
+        ttk.Entry(auth,textvariable=self.account_password_var,width=24,show="*").grid(row=0,column=3,padx=6,sticky="w")
+        actions=ttk.Frame(self.account_tab); actions.pack(fill="x",pady=5)
+        ttk.Button(actions,text="Register",command=lambda:self._account_auth("register")).pack(side="left")
+        ttk.Button(actions,text="Sign in",style="Accent.TButton",command=lambda:self._account_auth("login")).pack(side="left",padx=7)
+        ttk.Button(actions,text="Refresh wallet",command=self._account_refresh).pack(side="left")
+        ttk.Button(actions,text="Sign out",command=self._account_logout).pack(side="left",padx=7)
+        self.account_status=ttk.Label(self.account_tab,text="Not connected. Passwords are sent only to the configured API and are not saved by this app.",style="Muted.TLabel",wraplength=850)
+        self.account_status.pack(anchor="w",pady=(5,9))
+        summary=ttk.Frame(self.account_tab,padding=10,relief="solid"); summary.pack(fill="x",pady=4)
+        self.wallet_balance_label=ttk.Label(summary,text="Balance: $0.00",font=("Segoe UI",13,"bold")); self.wallet_balance_label.pack(side="left",padx=8)
+        self.wallet_deposits_label=ttk.Label(summary,text="Deposits: $0.00",style="Muted.TLabel"); self.wallet_deposits_label.pack(side="left",padx=8)
+        self.wallet_withdrawals_label=ttk.Label(summary,text="Withdrawals: $0.00",style="Muted.TLabel"); self.wallet_withdrawals_label.pack(side="left",padx=8)
+        self.wallet_pnl_label=ttk.Label(summary,text="Trading P&L: $0.00",style="Muted.TLabel"); self.wallet_pnl_label.pack(side="left",padx=8)
+        form=ttk.Frame(self.account_tab); form.pack(fill="x",pady=7)
+        self.wallet_amount_var=tk.StringVar(value="10")
+        self.wallet_description_var=tk.StringVar(value="Manual record")
+        ttk.Label(form,text="Amount ($)").pack(side="left")
+        ttk.Entry(form,textvariable=self.wallet_amount_var,width=12).pack(side="left",padx=6)
+        ttk.Label(form,text="Description").pack(side="left",padx=(10,0))
+        ttk.Entry(form,textvariable=self.wallet_description_var,width=28).pack(side="left",padx=6)
+        ttk.Button(form,text="Add deposit record",command=lambda:self._wallet_submit("deposit")).pack(side="left",padx=5)
+        ttk.Button(form,text="Add withdrawal record",command=lambda:self._wallet_submit("withdrawal")).pack(side="left")
+        ttk.Label(self.account_tab,text="Important: these are manual bookkeeping entries, not real bank deposits or payments. Remote API connections must use HTTPS. Newly saved desktop journal trades sync when signed in; older local-only records are not uploaded automatically.",style="Muted.TLabel",wraplength=850).pack(anchor="w",pady=(2,7))
+        cols=("date","type","amount","description")
+        self.wallet_table=ttk.Treeview(self.account_tab,columns=cols,show="headings",height=6)
+        for col,label,width in zip(cols,("Date","Type","Amount ($)","Description"),(170,110,110,430)):
+            self.wallet_table.heading(col,text=label); self.wallet_table.column(col,width=width,anchor="w")
+        self.wallet_table.pack(fill="both",expand=True)
+
+    def _api_base(self):
+        base=self.api_base_var.get().strip().rstrip("/")
+        parsed=urlparse(base)
+        if parsed.scheme not in ("http","https") or not parsed.netloc:
+            raise ValueError("Enter a valid API URL beginning with http:// or https://.")
+        if parsed.scheme=="http" and parsed.hostname not in ("127.0.0.1","localhost"):
+            raise ValueError("Remote API servers must use HTTPS. HTTP is allowed only for localhost.")
+        return base
+
+    def _api_request(self,method,path,payload=None,token=None,base=None):
+        base=base or self._api_base()
+        data=json.dumps(payload).encode("utf-8") if payload is not None else None
+        headers={"User-Agent":"QUANTNEX-Desktop/0.6.0","Accept":"application/json"}
+        if data is not None: headers["Content-Type"]="application/json"
+        if token: headers["Authorization"]="Bearer "+token
+        request=urllib.request.Request(base+path,data=data,headers=headers,method=method)
+        try:
+            with urllib.request.urlopen(request,timeout=18) as response:
+                raw=response.read()
+                return json.loads(raw.decode("utf-8")) if raw else None
+        except urllib.error.HTTPError as exc:
+            try: detail=json.loads(exc.read().decode("utf-8")).get("detail",str(exc))
+            except Exception: detail=str(exc)
+            raise RuntimeError(f"API error {exc.code}: {detail}")
+        except urllib.error.URLError as exc:
+            raise RuntimeError("Cannot reach the API server. Check that the backend is running and the URL is correct.") from exc
+
+    def _account_auth(self,mode):
+        email=self.account_email_var.get().strip().lower()
+        password=self.account_password_var.get()
+        if not email or not password:
+            self.account_status.configure(text="Enter your email and password.")
+            return
+        try: base=self._api_base()
+        except ValueError as exc:
+            self.account_status.configure(text=str(exc)); return
+        self.account_status.configure(text="Connecting to the QUANTNEX API…")
+        def worker():
+            try:
+                if mode=="register":
+                    self._api_request("POST","/api/v1/auth/register",{"email":email,"password":password},base=base)
+                result=self._api_request("POST","/api/v1/auth/login",{"email":email,"password":password},base=base)
+                token=result["access_token"]
+                user=self._api_request("GET","/api/v1/auth/me",token=token,base=base)
+                summary,rows=self._fetch_wallet(token,base)
+                self.after(0,lambda:self._account_authenticated(token,user,summary,rows))
+            except Exception as exc:
+                message=str(exc)
+                self.after(0,lambda:self.account_status.configure(text=message))
+        threading.Thread(target=worker,daemon=True).start()
+
+    def _fetch_wallet(self,token,base):
+        summary=self._api_request("GET","/api/v1/wallet/summary",token=token,base=base)
+        rows=self._api_request("GET","/api/v1/wallet/transactions?limit=100",token=token,base=base)
+        return summary,rows
+
+    def _account_authenticated(self,token,user,summary,rows):
+        self.api_token=token
+        self.account_password_var.set("")
+        self.account_status.configure(text="Connected as "+user.get("email","QUANTNEX user")+". Session token is kept in memory only.")
+        self._show_wallet(summary,rows)
+
+    def _show_wallet(self,summary,rows):
+        self.wallet_balance_label.configure(text="Balance: $" + format(summary.get("balance",0),",.2f"))
+        self.wallet_deposits_label.configure(text="Deposits: $" + format(summary.get("deposits",0),",.2f"))
+        self.wallet_withdrawals_label.configure(text="Withdrawals: $" + format(summary.get("withdrawals",0),",.2f"))
+        self.wallet_pnl_label.configure(text="Trading P&L: $" + format(summary.get("trading_pnl",0),",.2f"))
+        for item in self.wallet_table.get_children(): self.wallet_table.delete(item)
+        for row in rows:
+            amount=float(row.get("amount",0))
+            self.wallet_table.insert("","end",values=(row.get("created_at","").replace("T"," ")[:19],
+                row.get("transaction_type",""),format(amount,",.2f"),row.get("description","")))
+
+    def _account_refresh(self):
+        if not self.api_token:
+            self.account_status.configure(text="Sign in first to load the shared wallet.")
+            return
+        try: base=self._api_base()
+        except ValueError as exc:
+            self.account_status.configure(text=str(exc)); return
+        token=self.api_token
+        self.account_status.configure(text="Refreshing shared wallet…")
+        def worker():
+            try:
+                summary,rows=self._fetch_wallet(token,base)
+                self.after(0,lambda:self._show_wallet(summary,rows))
+                self.after(0,lambda:self.account_status.configure(text="Wallet refreshed from the shared API."))
+            except Exception as exc:
+                message=str(exc)
+                self.after(0,lambda:self.account_status.configure(text=message))
+        threading.Thread(target=worker,daemon=True).start()
+
+    def _wallet_submit(self,transaction_type):
+        if not self.api_token:
+            self.account_status.configure(text="Sign in before adding a wallet record.")
+            return
+        try:
+            amount=float(self.wallet_amount_var.get())
+            if amount<=0: raise ValueError("Amount must be greater than zero.")
+            base=self._api_base()
+        except ValueError as exc:
+            self.account_status.configure(text=str(exc)); return
+        token=self.api_token
+        payload={"transaction_type":transaction_type,"amount":amount,
+                 "description":self.wallet_description_var.get().strip()[:240]}
+        self.account_status.configure(text="Saving wallet record…")
+        def worker():
+            try:
+                self._api_request("POST","/api/v1/wallet/transactions",payload,token=token,base=base)
+                summary,rows=self._fetch_wallet(token,base)
+                self.after(0,lambda:self._show_wallet(summary,rows))
+                self.after(0,lambda:self.account_status.configure(text="Manual wallet record saved successfully."))
+            except Exception as exc:
+                message=str(exc)
+                self.after(0,lambda:self.account_status.configure(text=message))
+        threading.Thread(target=worker,daemon=True).start()
+
+    def _account_logout(self):
+        self.api_token=None
+        self.account_password_var.set("")
+        self.account_status.configure(text="Signed out. The session token was cleared from memory.")
+        self.wallet_balance_label.configure(text="Balance: $0.00")
+        self.wallet_deposits_label.configure(text="Deposits: $0.00")
+        self.wallet_withdrawals_label.configure(text="Withdrawals: $0.00")
+        self.wallet_pnl_label.configure(text="Trading P&L: $0.00")
+        for item in self.wallet_table.get_children(): self.wallet_table.delete(item)
+
+    def _sync_journal_trade(self,symbol,direction,outcome,pnl,notes):
+        try: base=self._api_base()
+        except ValueError as exc:
+            self.journal_sync_status.configure(text=str(exc)); return
+        token=self.api_token
+        payload={"symbol":symbol,"direction":direction.lower(),"outcome":outcome.lower(),"pnl":pnl,"notes":notes}
+        self.journal_sync_status.configure(text="Trade saved locally. Syncing this new trade to your shared account…")
+        def worker():
+            try:
+                self._api_request("POST","/api/v1/journal",payload,token=token,base=base)
+                self.after(0,lambda:self.journal_sync_status.configure(text="Trade saved locally and synced to your shared account; wallet P&L updated."))
+            except Exception as exc:
+                message="Trade saved locally; shared sync failed: "+str(exc)
+                self.after(0,lambda:self.journal_sync_status.configure(text=message))
+        threading.Thread(target=worker,daemon=True).start()
 
     def _device(self):
         ttk.Label(self.device_tab, text="Device & Security", font=("Segoe UI", 18, "bold")).pack(anchor="w")

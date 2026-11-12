@@ -1,5 +1,6 @@
 from pathlib import Path
 import sqlite3
+from contextlib import closing
 import pytest
 from sqlalchemy import create_engine
 from app.maintenance import create_backup, restore_backup, verify_backup
@@ -38,7 +39,7 @@ def test_restore_creates_safety_backup_and_restores_verified_snapshot(tmp_path):
         conn.execute("UPDATE sample SET value='after'")
         conn.commit()
     result = restore_backup(backup["filename"], "sqlite:///" + database.as_posix(), engine, backup_dir)
-    with sqlite3.connect(database) as conn:
+    with closing(sqlite3.connect(database)) as conn:
         value = conn.execute("SELECT value FROM sample").fetchone()[0]
     assert result["restored"] == backup["filename"]
     assert result["pre_restore_backup"]

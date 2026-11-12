@@ -60,14 +60,14 @@
     return s;
   }
   function applyChartTimeframe() {
-    const s=readSettings();
-    if(s.chart==="50"){$("timeframeStatus").textContent="M50 is a custom aggregation and is not supported by the TradingView embed. Use M1/M5/M15/M30/H1 for the chart; M50 can be used by the analysis engine.";return;}
-    const host=$("xauTradingView");if(!host)return;
-    host.replaceChildren();const widget=document.createElement("div");widget.className="tradingview-widget-container__widget";host.append(widget);
-    const script=document.createElement("script");script.type="text/javascript";script.async=true;
-    script.src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
-    script.text=JSON.stringify({autosize:true,symbol:$("tradingViewSymbol")?.value||"OANDA:XAUUSD",interval:s.chart,timezone:"Etc/UTC",theme:"dark",style:"1",locale:"en",allow_symbol_change:true,calendar:false,support_host:"https://www.tradingview.com"});
-    host.append(script);$("timeframeStatus").textContent="TradingView XAUUSD chart changed to "+tfNames[s.chart]+".";
+    const settings=readSettings(),market=$("signalMarketSymbol")?.value||"BTCUSDT";
+    const symbol=$("qxSymbol"),timeframe=$("qxInterval");
+    if(symbol){symbol.value=market;symbol.dispatchEvent(new Event("change"));}
+    if(timeframe){
+      timeframe.value=settings.chart==="50"?"15m":({"1":"1m","5":"5m","15":"15m","30":"30m","60":"1h"}[settings.chart]||"15m");
+      timeframe.dispatchEvent(new Event("change"));
+    }
+    $("timeframeStatus").textContent="QUANTNEX VIEW updated · "+market+" · "+(tfNames[settings.chart]||settings.chart)+(settings.chart==="50"?" (chart uses M15; M50 remains available for analysis)":"")+".";
   }
   $("saveTimeframes").addEventListener("click",saveSettings);
   $("syncTimeframes").addEventListener("click",async()=>{
@@ -101,7 +101,7 @@
     const score=document.createElement("div");score.className="signal-score";
     score.textContent="Confluence "+data.confluence_score+"/"+data.score_out_of+" · "+(data.score_note||"Rule-based score, not win probability");result.append(score);
     if(data.signal){
-      const s=data.signal;const head=document.createElement("h3");head.textContent=s.side+" XAUUSD · "+(tfNames[s.timeframe]||s.timeframe);result.append(head);
+      const s=data.signal;const head=document.createElement("h3");head.textContent=s.side+" "+(data.symbol||"MARKET")+" · "+(tfNames[s.timeframe]||s.timeframe);result.append(head);
       const grid=document.createElement("div");grid.className="position-summary signal-levels";
       [["Entry",s.entry],["Stop Loss",s.stop_loss],["TP1",s.tp1],["TP2",s.tp2],["TP3",s.tp3]].forEach(([a,b])=>addStat(grid,a,String(b)));
       result.append(grid);
@@ -130,11 +130,11 @@
     $("signalEngineState").textContent="FETCHING MARKET DATA";
     try{
       const s=await saveSettings();if(!s)throw new Error("Check timeframe settings.");
-      const data=await apiRequest("/api/v1/signals/scan",{method:"POST"});
+      const symbol=$("signalMarketSymbol")?.value||"BTCUSDT";\n      const data=await apiRequest("/api/v1/signals/scan?symbol="+encodeURIComponent(symbol),{method:"POST"});
       renderScan(data);
       $("timeframeStatus").textContent="Analysis updated at "+new Date(data.generated_at).toLocaleString()+". Source: "+data.provider+".";
     }catch(e){$("signalEngineState").textContent="FEED / API ERROR";$("signalResult").textContent=e.message;}
-    finally{button.disabled=false;button.textContent="Run XAUUSD signal scan";}
+    finally{button.disabled=false;button.textContent="Run market signal scan";}
   });
 
   async function storedTelegramMessage(message){
@@ -176,18 +176,14 @@
   $("clearTelegram").title="Disconnect the saved Telegram bot";
   renderPosition();
 
-  // TradingView is a single dedicated chart tab with a selectable instrument.
-  $("tradingViewSymbol")?.addEventListener("change",applyChartTimeframe);
-  if($("tradingViewSymbol"))applyChartTimeframe();
-
-  async function loadAutoSignalSettings(){
+  // QUANTNEX VIEW is the first-party chart workspace.\n  async function loadAutoSignalSettings(){
     try{
       const [settings,bot]=await Promise.all([apiRequest("/api/v1/telegram/auto-signals"),apiRequest("/api/v1/telegram/status")]);
-      if(bot.connected){$("tgBotDisplayName").value=bot.display_name||"";$("telegramStatus").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username))+" · "+bot.chat_id;$("telegramMonitorTitle").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username));$("telegramMonitorDescription").textContent="Your personal Telegram bot is connected. Turn on Auto Signals in Signal Lab to receive new high-confluence XAUUSD setups.";$("telegramMonitorPill").textContent=settings.enabled?"AUTO ON":"CONNECTED";}
-      else {$("telegramStatus").textContent="No Telegram bot connected yet. Create one with @BotFather and connect it here.";$("telegramMonitorTitle").textContent="Telegram bot not connected";$("telegramMonitorDescription").textContent="Open Signal Lab to connect your BotFather bot and explicitly enable Auto Signals. Alerts run while the QUANTNEX API is active.";$("telegramMonitorPill").textContent="OFFLINE";}
+      if(bot.connected){$("tgBotDisplayName").value=bot.display_name||"";$("telegramStatus").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username))+" · "+bot.chat_id;$("telegramMonitorTitle").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username));$("telegramMonitorDescription").textContent="Your personal Telegram bot is connected. Turn on Auto Signals in Signal Lab to receive fresh BTC, ETH, SOL and optional Gold setups.";$("telegramMonitorPill").textContent=settings.enabled?"AUTO ON":"CONNECTED";}
+      else {$("telegramStatus").textContent="No Telegram bot connected yet. Create one with @BotFather and connect it here.";$("telegramMonitorTitle").textContent="Telegram bot not connected";$("telegramMonitorDescription").textContent="Open Signal Lab to connect your BotFather bot. Manual crypto signals and enabled Auto Signals are delivered while the local QUANTNEX API is active.";$("telegramMonitorPill").textContent="OFFLINE";}
       $("autoSignalsEnabled").checked=!!settings.enabled;
       $("autoSignalInterval").value=String(settings.interval_seconds||180);
-      $("autoSignalStatus").textContent=settings.enabled?"Auto Signals ON · scans while the QUANTNEX API is running.":"Auto Signals OFF.";
+      document.querySelectorAll("input[name=autoSignalSymbol]").forEach(el=>{el.checked=(settings.symbols||["BTCUSDT","ETHUSDT","SOLUSDT"]).includes(el.value);});\n      $("autoSignalStatus").textContent=settings.enabled?"Auto Signals ON · selected markets scan while the QUANTNEX API is running.":"Auto Signals OFF.";
     }catch(error){$("autoSignalStatus").textContent=error.message;}
   }
   $("saveAutoSignals")?.addEventListener("click",async()=>{
@@ -195,8 +191,8 @@
     const interval_seconds=Number($("autoSignalInterval").value||180);
     const button=$("saveAutoSignals");button.disabled=true;button.textContent="Saving…";
     try{
-      const result=await apiRequest("/api/v1/telegram/auto-signals",{method:"PUT",body:JSON.stringify({enabled,interval_seconds})});
-      $("autoSignalStatus").textContent=result.enabled?"Auto Signals ON · strict 8/10 minimum · every "+(interval_seconds/60)+" minute(s). Keep this computer/VPS and QUANTNEX API running.":"Auto Signals OFF. No automatic Telegram signals will be sent.";$("telegramMonitorPill").textContent=result.enabled?"AUTO ON":"CONNECTED";
+      const result=await apiRequest("/api/v1/telegram/auto-signals",{method:"PUT",body:JSON.stringify({enabled,interval_seconds,symbols})});
+      $("autoSignalStatus").textContent=result.enabled?"Auto Signals ON · "+symbols.join(", ")+" · strict 8/10 minimum · every "+(interval_seconds/60)+" minute(s). Keep this computer and QUANTNEX API running.":"Auto Signals OFF. No automatic Telegram signals will be sent.";$("telegramMonitorPill").textContent=result.enabled?"AUTO ON":"CONNECTED";
     }catch(error){
       $("autoSignalsEnabled").checked=false;
       $("autoSignalStatus").textContent=error.message;

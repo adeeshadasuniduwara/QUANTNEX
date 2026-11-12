@@ -38,7 +38,7 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 def _integrity_check(path: Path) -> None:
-    with sqlite3.connect(str(path), timeout=15) as conn:
+    with closing(sqlite3.connect(str(path), timeout=15)) as conn:
         result = conn.execute("PRAGMA integrity_check").fetchone()
     if not result or result[0] != "ok":
         raise ValueError("SQLite integrity_check failed for this backup.")
@@ -70,7 +70,7 @@ def _prune_backups(backup_dir: Path, keep: int = BACKUP_RETENTION) -> int:
         removed += 1
     return removed
 
-def create_backup(database_url: str, backup_dir: Path = BACKUP_DIR) -> dict:
+def create_backup(database_url: str, backup_dir: Path = BACKUP_DIR, prune: bool = True) -> dict:
     source_path = sqlite_database_path(database_url)
     if not source_path.is_file():
         raise FileNotFoundError("The configured SQLite database file does not exist yet.")
@@ -109,10 +109,10 @@ def restore_backup(filename: str, database_url: str, engine, backup_dir: Path = 
     verified = verify_backup(filename, backup_dir)
     database_path = sqlite_database_path(database_url)
     database_path.parent.mkdir(parents=True, exist_ok=True)
-    safety = create_backup(database_url, backup_dir)["filename"] if database_path.is_file() else None
+    safety = create_backup(database_url, backup_dir, prune=False)["filename"] if database_path.is_file() else None
     engine.dispose()
     if database_path.is_file():
-        with sqlite3.connect(str(database_path), timeout=20) as current:
+        with closing(sqlite3.connect(str(database_path), timeout=20)) as current:
             current.execute("PRAGMA busy_timeout=20000")
             current.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             current.execute("PRAGMA journal_mode=DELETE")
@@ -130,7 +130,7 @@ def restore_backup(filename: str, database_url: str, engine, backup_dir: Path = 
         os.replace(temporary_path, database_path)
     finally:
         temporary_path.unlink(missing_ok=True)
-    return {"restored": filename, "verified": verified["verified"], "pre_restore_backup": safety}
+    _prune_backups(backup_dir, protect={filename})\n    return {"restored": filename, "verified": verified["verified"], "pre_restore_backup": safety}
 
 def record_audit_event(db: Session, event_type: str, details: dict | None = None, severity: str = "info") -> None:
     payload = json.dumps(details or {}, ensure_ascii=True, separators=(",", ":"))[:2000]

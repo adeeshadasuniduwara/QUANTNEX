@@ -9,6 +9,7 @@ from .models import Preference
 from .security import decrypt_secret
 from .config import TWELVE_DATA_API_KEY
 from .signal_engine import build_signal, MarketDataError
+from .events import event_hub
 
 logger = logging.getLogger("quantnex.telegram")
 
@@ -20,6 +21,9 @@ def _set(db, user_id: int, key: str, value: str) -> None:
     row=db.scalar(select(Preference).where(Preference.user_id==user_id,Preference.key==key))
     if row is None: db.add(Preference(user_id=user_id,key=key,value=value))
     else: row.value=value
+
+def _publish_signal_settings_changed() -> None:
+    event_hub.publish("preferences.changed","preferences","updated",{"key":"signal_settings"})
 
 async def _send(client: httpx.AsyncClient, token: str, chat_id: str, text: str) -> None:
     response=await client.post(f"https://api.telegram.org/bot{token}/sendMessage",
@@ -54,15 +58,15 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
         enabled=", ".join(names.get(str(x),str(x)) for x in settings.get("enabled",[]))
         return f"Primary: {names.get(str(settings.get('primary')))}\nTrend: {names.get(str(settings.get('trend')))}\nAnalysis: {enabled}"
     if command=="/settf" and len(parts)>1 and parts[1] in {"1","5","15","30","50","60"}:
-        settings["primary"]=parts[1];_set(db,user_id,"signal_settings",json.dumps(settings));db.commit()
+        settings["primary"]=parts[1];_set(db,user_id,"signal_settings",json.dumps(settings));db.commit();_publish_signal_settings_changed()
         return "Primary signal timeframe set to "+names[parts[1]]+"."
     if command=="/settrend" and len(parts)>1 and parts[1] in {"15","30","60","240"}:
-        settings["trend"]=parts[1];_set(db,user_id,"signal_settings",json.dumps(settings));db.commit()
+        settings["trend"]=parts[1];_set(db,user_id,"signal_settings",json.dumps(settings));db.commit();_publish_signal_settings_changed()
         return "Trend filter set to "+names[parts[1]]+"."
     if command=="/setanalysis" and len(parts)>1:
         selected=list(dict.fromkeys(x for x in parts[1].split(",") if x in {"1","5","15","30","50","60"}))
         if not selected:return "Use /setanalysis 1,5,15,30,60"
-        settings["enabled"]=selected;_set(db,user_id,"signal_settings",json.dumps(settings));db.commit()
+        settings["enabled"]=selected;_set(db,user_id,"signal_settings",json.dumps(settings));db.commit();_publish_signal_settings_changed()
         return "Analysis timeframes saved: "+", ".join(names[x] for x in selected)
     if command=="/status":
         return "QUANTNEX bot connected. Crypto feed: Binance Spot public data ready. Gold feed: "+("configured" if TWELVE_DATA_API_KEY else "not configured")+". Broker execution: disabled."

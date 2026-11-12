@@ -1,4 +1,8 @@
 import os
+from dotenv import load_dotenv
+
+# Load a local backend/.env when running from the backend directory.
+load_dotenv()
 
 ENVIRONMENT = os.getenv("QUANTNEX_ENV", "development").lower()
 SECRET_KEY = os.getenv("QUANTNEX_SECRET_KEY", "local-development-only-change-me")

@@ -33,7 +33,7 @@ From the repository root, run run_quantnex.bat. Option 1 starts the current Pyth
 
 ## Backend
 
-See backend/README.md and docs/ARCHITECTURE.md. The local API has no login, registration, password, JWT or remote account routes. It creates one local workspace identity internally so journal, wallet, signal settings and encrypted Telegram configuration can be stored consistently. On first startup, legacy account records are consolidated into that workspace and old password hashes are cleared. The API listens on 127.0.0.1 only and accepts the local Web origin; do not expose it to a network. Web browser journal entries remain in that browser profile; Windows journal entries remain in the local Windows data folder. Android is not connected to this local-only backend.
+See backend/README.md and docs/ARCHITECTURE.md. The local API has no login, registration, password, JWT or remote account routes. It creates one local workspace identity internally so journal, wallet, signal settings and encrypted Telegram configuration can be stored consistently. On first startup, a SQLite backup is saved under data/backups before legacy account records are consolidated into that workspace and old password hashes are cleared. The API listens on 127.0.0.1 only and accepts the local Web origin; do not expose it to a network. Web browser journal entries remain in that browser profile; Windows journal entries remain in the local Windows data folder. Android is not connected to this local-only backend.
 
 ## Current capability and safety
 

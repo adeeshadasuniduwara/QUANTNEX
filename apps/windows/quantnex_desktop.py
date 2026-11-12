@@ -41,6 +41,8 @@ class App(tk.Tk):
         self.title("QUANTNEX — Trading Workspace")
         self.geometry("1000x680"); self.minsize(850, 560); self.configure(bg="#080808")
         self.journal = TradeJournal()
+        self.update_check_running = False
+        self.staged_update = None
         self.style = ttk.Style(self)
         try: self.style.theme_use("clam")
         except tk.TclError: pass
@@ -154,23 +156,32 @@ class App(tk.Tk):
     def _updates(self):
         ttk.Label(self.updates,text="Software Updates",font=("Segoe UI",17,"bold")).pack(anchor="w")
         ttk.Label(self.updates,text=f"Installed version: {APP_VERSION}",style="Muted.TLabel").pack(anchor="w",pady=(5,15))
-        ttk.Button(self.updates,text="Check for updates",style="Accent.TButton",command=self._check_background).pack(anchor="w")
-        self.update_status=ttk.Label(self.updates,text="QUANTNEX checks for published updates automatically at startup.",style="Muted.TLabel",wraplength=780)
+        actions=ttk.Frame(self.updates); actions.pack(anchor="w",fill="x")
+        self.check_button=ttk.Button(actions,text="Check for updates",style="Accent.TButton",command=self._check_background)
+        self.check_button.pack(side="left")
+        ttk.Button(actions,text="Open GitHub repository",command=lambda:webbrowser.open(f"https://github.com/{REPO}")).pack(side="left",padx=8)
+        ttk.Button(actions,text="Open releases page",command=lambda:webbrowser.open(f"https://github.com/{REPO}/releases")).pack(side="left")
+        self.update_status=ttk.Label(self.updates,text="Ready. Select Check for updates to inspect the official update channel.",style="Muted.TLabel",wraplength=780)
         self.update_status.pack(anchor="w",pady=14)
         self.update_progress=ttk.Progressbar(self.updates,mode="indeterminate",length=420,style="Horizontal.TProgressbar")
-        ttk.Label(self.updates,text="OFFICIAL RELEASE CHANNEL  •  SHA256 VERIFIED DOWNLOADS",style="Muted.TLabel").pack(anchor="w",pady=(8,4))
-        self.install_button=ttk.Button(self.updates,text="Install downloaded update and restart",command=self._install_update)
-        ttk.Button(self.updates,text="Open releases page",command=lambda:webbrowser.open(f"https://github.com/{REPO}/releases")).pack(anchor="w")
+        ttk.Label(self.updates,text="SOURCE MODE: GIT SYNC  •  EXE MODE: RELEASE DOWNLOAD + SHA256 VERIFICATION",style="Muted.TLabel").pack(anchor="w",pady=(8,4))
+        self.install_button=ttk.Button(self.updates,text="Install verified update and restart",command=self._install_update)
 
     def _set_update_status(self, message):
         def finish():
             self.update_status.configure(text=message)
             self.update_progress.stop()
             self.update_progress.pack_forget()
+            self.update_check_running = False
+            self.check_button.configure(state="normal")
         self.after(0, finish)
 
     def _check_background(self):
-        self.update_status.configure(text="Checking GitHub Releases…")
+        if self.update_check_running:
+            return
+        self.update_check_running = True
+        self.check_button.configure(state="disabled")
+        self.update_status.configure(text="Connecting securely to GitHub and checking the QUANTNEX update channel…")
         self.update_progress.pack(anchor="w",pady=(0,12))
         self.update_progress.start(12)
         threading.Thread(target=self._check_worker, daemon=True).start()
@@ -181,6 +192,9 @@ class App(tk.Tk):
             # directly so the user does not need a packaged EXE for routine source updates.
             if not getattr(sys, "frozen", False):
                 repo_root = Path(__file__).resolve().parents[2]
+                if not (repo_root / ".git").exists():
+                    self._set_update_status("Source mode detected. This folder is not a Git checkout, so it cannot self-update safely. Open the GitHub repository and download the latest source ZIP, or use a Git clone.")
+                    return
                 if (repo_root / ".git").exists():
                     status = subprocess.run(["git", "-C", str(repo_root), "status", "--porcelain"],
                         capture_output=True, text=True, timeout=15)
@@ -235,8 +249,13 @@ class App(tk.Tk):
             self.staged_update=staged
             self.after(0,lambda:self.install_button.pack(anchor="w",pady=(10,0)))
             self._set_update_status("Version "+latest+" downloaded. Review release notes, then choose Install and restart.")
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                self._set_update_status("No official QUANTNEX release has been published yet. Your app is not broken. Source mode can update through Git; packaged EXE updates will become available after the first GitHub Release is published.")
+            else:
+                self._set_update_status(f"GitHub returned HTTP {exc.code}. Check your internet connection and try again.")
         except (urllib.error.URLError,TimeoutError,ValueError,json.JSONDecodeError,OSError,KeyError,RuntimeError,subprocess.SubprocessError) as exc:
-            self._set_update_status("Could not check or download an update: "+str(exc))
+            self._set_update_status("Update check failed safely: "+str(exc))
 
     def _restart_source(self):
         repo_root = Path(__file__).resolve().parents[2]

@@ -104,6 +104,7 @@
       <section class="section-heading" id="orderflow-liquidity"><div><div class="overline">PHASE 07 · EXCHANGE DEPTH</div><h2>Order Flow &amp; Liquidity</h2><p>Real Binance Spot depth snapshots for supported crypto pairs. Gold/Forex depth is not simulated.</p></div><span class="pill">ORDER BOOK</span></section>
       <section class="panel phase07-panel">
         <div class="p7-form-row"><label>Crypto market <select id="p7BookSymbol"><option value="BTCUSDT">BTCUSDT</option><option value="ETHUSDT">ETHUSDT</option><option value="SOLUSDT">SOLUSDT</option></select></label><button class="secondary-btn" id="p7LoadBook">Load order book</button><span class="p7-book-imbalance" id="p7BookImbalance">—</span></div>
+        <div class="p7-bookmap-wrap"><div class="p7-bookmap-head"><strong>Live order-book depth · Bookmap view</strong><span id="p7BookLiveStatus">Connecting to Binance stream…</span></div><div class="p7-bookmap" id="p7Bookmap"><div class="p7-empty">Waiting for live depth updates…</div></div><div class="p7-bookmap-legend"><span>BUY liquidity · Bids</span><span>SELL liquidity · Asks</span></div></div>
         <div class="p7-book-grid"><div><h3>Bids · Buy orders</h3><div class="p7-table-wrap"><table><thead><tr><th>Price</th><th>Quantity</th></tr></thead><tbody id="p7Bids"><tr><td colspan="2" class="empty-row">Load depth snapshot.</td></tr></tbody></table></div></div><div><h3>Asks · Sell orders</h3><div class="p7-table-wrap"><table><thead><tr><th>Price</th><th>Quantity</th></tr></thead><tbody id="p7Asks"><tr><td colspan="2" class="empty-row">Load depth snapshot.</td></tr></tbody></table></div></div></div>
         <p class="p7-note" id="p7BookNote">Order-book snapshots are not proof of executed volume or total market liquidity.</p>
       </section>
@@ -354,8 +355,8 @@
         <div class="system-security-toolbar"><div><strong>System health</strong><p id="systemHealthStatus" role="status">Checking local system…</p></div><button class="secondary-btn" id="refreshSystemHealth">Refresh health</button></div>
         <div class="system-health-grid">
           <article><span>Database</span><strong id="systemDbStatus">—</strong><small id="systemDbSize">Size unavailable</small></article>
-          <article><span>CPU usage</span><strong id="systemCpu">—</strong><small>Current snapshot</small></article>
-          <article><span>Memory usage</span><strong id="systemMemory">—</strong><small>System RAM</small></article>
+          <article><span>CPU usage</span><strong id="systemCpu">—</strong><div class="system-live-meter"><span id="systemCpuBar"></span></div><div class="system-live-meta"><small>Live · 1 sec</small><small id="systemCpuMeta">—</small></div></article>
+          <article><span>Memory usage</span><strong id="systemMemory">—</strong><div class="system-live-meter"><span id="systemMemoryBar"></span></div><div class="system-live-meta"><small>Live · 1 sec</small><small id="systemMemoryMeta">—</small></div></article>
           <article><span>Disk free</span><strong id="systemDisk">—</strong><small id="systemDiskTotal">— total</small></article>
         </div>
         <div class="system-security-toolbar system-backup-heading"><div><strong>Database backups</strong><p>Automatic daily backups · Keep the newest 14 verified snapshots.</p></div><div class="system-security-actions"><button class="secondary-btn" id="refreshSystemBackups">Refresh list</button><button class="primary-btn" id="createSystemBackup">Create backup now</button></div></div>

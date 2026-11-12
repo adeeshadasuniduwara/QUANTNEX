@@ -18,6 +18,7 @@
       <a class="nav-link" href="#charts"><span>▥</span>Live charts</a>
       <a class="nav-link" href="#tools"><span>⌗</span>Position calculator</a>
       <a class="nav-link" href="#journal"><span>▤</span>Trade journal</a>
+      <a class="nav-link" href="#account"><span>◈</span>Account &amp; wallet</a>
       <a class="nav-link" href="#automation"><span>◉</span>Bot monitor</a>
       <a class="nav-link" href="#updates"><span>↻</span>Updates</a>
       <div class="sidebar-bottom"><span class="live-dot"></span>Local workspace</div>
@@ -43,6 +44,22 @@
         <article class="metric"><span>Trading execution</span><strong class="status-text">Disabled</strong><small>Risk-first by design</small></article>
       </section>
 
+
+      <section class="section-heading" id="account"><div><div class="overline">ACCOUNT &amp; CAPITAL</div><h2>Account &amp; wallet</h2><p>Connect to your QUANTNEX API to manage your authenticated wallet ledger.</p></div><span class="pill" id="accountState">NOT CONNECTED</span></section>
+      <section class="panel account-panel">
+        <div class="api-config"><label>API server URL<input id="apiBase" type="url" value="http://127.0.0.1:8000" placeholder="https://your-api.example.com"></label><button class="secondary-btn" id="saveApiBase">Save API URL</button></div>
+        <div class="account-auth-grid">
+          <label>Email address<input id="accountEmail" type="email" autocomplete="username" placeholder="you@example.com"></label>
+          <label>Password<input id="accountPassword" type="password" autocomplete="current-password" minlength="12" placeholder="At least 12 characters"></label>
+        </div>
+        <div class="account-actions"><button class="primary-btn" id="accountLogin">Log in</button><button class="secondary-btn" id="accountRegister">Create account</button><button class="secondary-btn" id="accountLogout" hidden>Log out</button><span class="helper" id="accountMessage" role="status">Your password is sent only to the API server over the configured connection. Use HTTPS for remote servers.</span></div>
+        <div id="walletArea" hidden>
+          <div class="wallet-metrics"><article class="wallet-metric"><span>Available balance</span><strong id="walletBalance">$0.00</strong></article><article class="wallet-metric"><span>Total deposits</span><strong id="walletDeposits">$0.00</strong></article><article class="wallet-metric"><span>Total withdrawals</span><strong id="walletWithdrawals">$0.00</strong></article><article class="wallet-metric"><span>Recorded trading P&amp;L</span><strong id="walletPnl">$0.00</strong></article></div>
+          <div class="wallet-forms"><div><h3>Add deposit record</h3><label>Amount ($)<input id="depositAmount" type="number" min="0.01" step="0.01" placeholder="100.00"></label><label>Description<input id="depositDescription" maxlength="240" placeholder="Initial balance"></label><button class="primary-btn" id="walletDeposit">Record deposit</button></div><div><h3>Record withdrawal</h3><label>Amount ($)<input id="withdrawAmount" type="number" min="0.01" step="0.01" placeholder="25.00"></label><label>Description<input id="withdrawDescription" maxlength="240" placeholder="Cash withdrawal"></label><button class="secondary-btn" id="walletWithdraw">Record withdrawal</button></div></div>
+          <div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Amount</th></tr></thead><tbody id="walletRows"><tr><td colspan="4" class="empty-row">No wallet transactions yet.</td></tr></tbody></table></div>
+          <p class="helper">These are manual records only, not verified bank transfers. Journal P&amp;L is added automatically when a trade is created through the authenticated API. Your existing browser-local journal is not synced to this account yet.</p>
+        </div>
+      </section>
       <section class="section-heading" id="charts"><div><div class="overline">LIVE MARKET</div><h2>Market charts</h2><p>Streaming market charts from TradingView. Prices are indicative and may differ by broker.</p></div><span class="pill live-pill">LIVE FEED</span></section>
       <section class="charts-grid">
         <article class="panel chart-panel"><div class="chart-heading"><div><strong>Bitcoin / USDT</strong><span>BINANCE · BTCUSDT</span></div><span class="chart-live"><i></i> LIVE</span></div><div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div><script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>{"autosize":true,"symbol":"BINANCE:BTCUSDT","interval":"15","timezone":"Etc/UTC","theme":"dark","style":"1","locale":"en","allow_symbol_change":true,"calendar":false,"support_host":"https://www.tradingview.com"}</script></div></article>

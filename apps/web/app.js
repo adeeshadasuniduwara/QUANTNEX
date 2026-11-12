@@ -185,7 +185,7 @@ async function authenticate(mode){
   try{
     if(mode==="register") await apiRequest("/api/v1/auth/register",{method:"POST",body:JSON.stringify({email,password})});
     const result=await apiRequest("/api/v1/auth/login",{method:"POST",body:JSON.stringify({email,password})});
-    sessionStorage.setItem(TOKEN_KEY,result.access_token);$("accountPassword").value="";setSignedIn(true);await refreshWallet();setAccountMessage("Signed in. Wallet data loaded from the shared API.");
+    sessionStorage.setItem(TOKEN_KEY,result.access_token);window.dispatchEvent(new Event("quantnex:auth"));$("accountPassword").value="";setSignedIn(true);await refreshWallet();setAccountMessage("Signed in. Wallet data loaded from the shared API.");
   }catch(error){setAccountMessage(error.message,true);}
 }
 $("saveApiBase").addEventListener("click",()=>{try{const url=new URL(apiBase());if(!["http:","https:"].includes(url.protocol))throw new Error();localStorage.setItem(API_BASE_KEY,url.origin+url.pathname.replace(/\/+$/,""));setAccountMessage("API server URL saved for this browser.");}catch{setAccountMessage("Enter a valid HTTP or HTTPS API URL.",true);}});

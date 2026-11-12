@@ -32,6 +32,7 @@
         <a class="nav-link" href="#orderflow-liquidity"><span>≋</span>Order Flow &amp; Liquidity</a>
         <a class="nav-link" href="#news-intelligence"><span>▤</span>News Intelligence</a>
         <a class="nav-link" href="#paper-trading"><span>▣</span>Paper Trading</a>
+        <a class="nav-link" href="#paper-autopilot"><span>⏵</span>Paper Autopilot</a>
         <a class="nav-link" href="#performance-lab"><span>▥</span>Performance Lab</a>
         <a class="nav-link" href="#risk-management"><span>◇</span>Risk Management</a>
         <div class="side-caption">MARKET DESKS</div>
@@ -345,6 +346,32 @@
         <div class="qx-strategy-details"><details><summary>View setup catalogue and active confluence</summary><div id="qxStrategyList">Loading strategy catalogue…</div></details></div>
         <p class="qx-intel-disclaimer">Confluence score is not a win probability. No 70% accuracy is promised. Backtest outcomes are historical simulations, not live results or financial advice. This engine does not place broker orders.</p>
       </section>
+      <section class="section-heading" id="paper-autopilot"><div><div class="overline">PHASES 12–20 · LOCAL AUTOMATION</div><h2>Autonomous Paper Desk</h2><p>Opt-in simulated trading, risk guard, market universe and performance. No broker execution.</p></div><span class="pill" id="paperEngineState">DISABLED</span></section>
+      <section class="panel workspace-page-panel paper-engine-panel">
+        <div class="workspace-page-toolbar"><div><strong>Paper engine controls</strong><p>The worker runs only while this local API is open. Automatic mode starts OFF.</p></div><div class="paper-engine-actions"><button class="secondary-btn" id="paperEngineSave" type="button">Save settings</button><button class="primary-btn" id="paperEngineToggle" type="button">Start paper mode</button></div></div>
+        <div class="paper-engine-settings">
+          <label>Paper equity (USD)<input id="paperEngineEquity" type="number" min="100" max="10000000" step="100" value="10000"></label>
+          <label>Risk per trade (%)<input id="paperEngineRisk" type="number" min="0.05" max="1" step="0.05" value="0.25"></label>
+          <label>Daily loss stop (%)<input id="paperEngineDailyLoss" type="number" min="0.25" max="10" step="0.25" value="2"></label>
+          <label>Max drawdown stop (%)<input id="paperEngineDrawdown" type="number" min="0.5" max="25" step="0.5" value="5"></label>
+          <label>Maximum open positions<input id="paperEngineMaxOpen" type="number" min="1" max="10" step="1" value="3"></label>
+          <label>Scan interval (seconds)<input id="paperEngineInterval" type="number" min="60" max="3600" step="30" value="180"></label>
+          <label>Minimum signal score<select id="paperEngineScore"><option value="8">8 / 10</option><option value="9">9 / 10</option><option value="10">10 / 10</option></select></label>
+          <label>Auto-scan symbols<input id="paperEngineSymbols" value="BTCUSDT, ETHUSDT, SOLUSDT" readonly></label>
+        </div>
+        <p class="p7-note" id="paperEngineStatus" aria-live="polite">Automatic paper mode is disabled. Enable it only after reviewing risk settings.</p>
+        <div class="workspace-page-cards" id="paperEngineRiskCards"></div>
+        <div class="workspace-page-toolbar"><div><strong>Paper performance</strong><p>Recorded simulated results only; historical paper ledger may not include fees or slippage.</p></div><button class="secondary-btn" id="paperEngineRefresh" type="button">Refresh metrics</button></div>
+        <div class="workspace-page-cards" id="paperEnginePerformance"></div>
+        <div class="workspace-page-toolbar"><div><strong>Live paper-position marks</strong><p>Indicative provider quotes with freshness status, not broker-executable prices.</p></div><button class="secondary-btn" id="paperEngineMonitor" type="button">Refresh positions</button></div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Symbol</th><th>Side</th><th>Entry</th><th>Mark</th><th>Unrealized P&amp;L</th><th>Feed health</th></tr></thead><tbody id="paperEnginePositions"><tr><td colspan="6" class="empty-row">No monitored positions.</td></tr></tbody></table></div>
+        <div class="workspace-page-toolbar"><div><strong>Binance Spot market universe</strong><p>Exchange metadata discovery only. The autonomous engine currently trades only validated BTC, ETH and SOL USDT pairs.</p></div><button class="secondary-btn" id="paperUniverseRefresh" type="button">Discover eligible pairs</button></div>
+        <p class="p7-note" id="paperUniverseStatus">Not scanned yet.</p>
+        <div class="p7-table-wrap"><table><thead><tr><th>Symbol</th><th>Base asset</th><th>Quote</th><th>Provider status</th></tr></thead><tbody id="paperUniverseRows"><tr><td colspan="4" class="empty-row">Press Discover eligible pairs.</td></tr></tbody></table></div>
+        <div class="workspace-page-toolbar"><div><strong>Paper trade event ledger</strong><p>Open/close events and reasons, stored locally.</p></div><button class="secondary-btn" id="paperEngineEventsRefresh" type="button">Refresh events</button></div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Time</th><th>Trade</th><th>Event</th><th>Price</th><th>Quantity</th><th>P&amp;L</th></tr></thead><tbody id="paperEngineEvents"><tr><td colspan="6" class="empty-row">No paper events yet.</td></tr></tbody></table></div>
+        <p class="p7-note">Safety limits: paper-only, no broker API, no real-money orders. Automatic mode is disabled by default. FX/Gold auto-sizing is not enabled because contract multipliers and tick-value assumptions are not yet verified.</p>
+      </section>
       <section class="section-heading" id="tools"><div><div class="overline">RISK MANAGEMENT</div><h2>Position size calculator</h2><p>Estimate position size using your broker's pip value.</p></div></section>
       <section class="panel calculator-panel">
         <div class="field-grid">
@@ -603,6 +630,7 @@
   <script src="app.js"></script>
   <script src="realtime-events.js"></script>
   <script src="workspace-pages.js"></script>
+  <script src="phase12-20.js"></script>
   <script src="goals.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.0.8/dist/lightweight-charts.standalone.production.js" onerror="this.onerror=null;this.src='https://unpkg.com/lightweight-charts@5.0.8/dist/lightweight-charts.standalone.production.js';"></script>
   <script src="signal-tool.js"></script>

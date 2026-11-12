@@ -287,6 +287,17 @@ async def telegram_worker() -> None:
                                     logger.warning("Auto-signal scan failed for local user %s market %s: %s",
                                                    user_id,market_symbol,type(exc).__name__)
                             last_monitor[auto_key]=now
+                        # Optional daily PDF delivery, once per Colombo calendar day at/after 20:00.
+                        if _get(db,user_id,"telegram_daily_report_enabled","false")=="true":
+                            local_now=datetime.now(ZoneInfo("Asia/Colombo"))
+                            sent_day=_get(db,user_id,"telegram_daily_report_sent_date","")
+                            if local_now.hour>=20 and sent_day!=local_now.date().isoformat():
+                                try:
+                                    await _deliver_daily_pdf(client,db,user_id,token,chat_id,local_now.date())
+                                    _set(db,user_id,"telegram_daily_report_sent_date",local_now.date().isoformat())
+                                    db.commit()
+                                except Exception as exc:
+                                    logger.warning("Scheduled Telegram PDF failed for local user %s: %s",user_id,type(exc).__name__)
                         last_monitor[user_id]=now
             except asyncio.CancelledError:
                 raise

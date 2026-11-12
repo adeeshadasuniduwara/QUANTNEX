@@ -46,6 +46,8 @@
         <a class="nav-link" href="#portfolio-monitor"><span>◇</span>Portfolio Monitor</a>
         <a class="nav-link" href="#integrations-center"><span>⚙</span>Connections &amp; Integrations</a>
         <div class="side-caption">STRATEGY RESEARCH</div>
+        <div class="side-caption">PERSONAL MILESTONES</div>
+        <a class="nav-link" href="#personal-goals"><span>✧</span>My Goals &amp; Certificates</a>
         <a class="nav-link" href="#strategy-laboratory"><span>⌘</span>AI Strategy Laboratory</a>
         <div class="side-caption">WORKSPACE TOOLS</div>
         <a class="nav-link" href="#system-security"><span>⚙</span>System security</a>
@@ -538,6 +540,42 @@
         <div class="workspace-page-toolbar"><div><strong>Trade records</strong><p id="historyStatus" role="status">Loading local trade history…</p></div><button class="secondary-btn" id="historyRefresh">Refresh history</button></div>
         <h3>Paper trades</h3><div class="p7-table-wrap"><table><thead><tr><th>Opened</th><th>Market</th><th>Side</th><th>Quantity</th><th>Entry</th><th>Exit</th><th>Realized P&amp;L · raw units</th><th>Status</th></tr></thead><tbody id="historyPaperRows"><tr><td colspan="8" class="empty-row">Loading paper trades…</td></tr></tbody></table></div>
         <h3>Journal entries</h3><div class="p7-table-wrap"><table><thead><tr><th>Date</th><th>Market</th><th>Direction</th><th>Outcome</th><th>P&amp;L</th><th>Notes</th></tr></thead><tbody id="historyJournalRows"><tr><td colspan="6" class="empty-row">Loading journal entries…</td></tr></tbody></table></div>
+      </section>
+
+
+      <section class="section-heading" id="personal-goals"><div><div class="overline">PERSONAL MILESTONES · SELF DISCIPLINE</div><h2>Goals &amp; Achievements</h2><p>Track the real savings you deliberately set aside for personal goals. Paper trades and backtests never count here.</p></div><span class="pill">PERSONAL TRACKER</span></section>
+      <section class="panel workspace-page-panel goals-workspace">
+        <div class="workspace-page-toolbar"><div><strong>Your personal goals</strong><p id="goalsStatus" role="status">Loading personal goals…</p></div><button class="secondary-btn" id="goalsRefresh">Refresh goals</button></div>
+        <div class="goal-create-grid">
+          <form id="goalCreateForm" class="workspace-page-form goal-form">
+            <label>Goal name<input id="goalTitle" maxlength="120" required placeholder="e.g. Nissan GT-R"></label>
+            <label>Target amount<input id="goalTarget" type="number" min="0.01" step="0.01" required placeholder="Target amount"></label>
+            <label>Currency<select id="goalCurrency"><option>USD</option><option>LKR</option><option>EUR</option><option>GBP</option><option>AUD</option><option>CAD</option></select></label>
+            <label>Target date<input id="goalTargetDate" type="date"></label>
+            <label>Goal image URL (optional)<input id="goalImage" type="url" placeholder="https://…"></label>
+            <label class="goal-wide">Description<textarea id="goalDescription" maxlength="2000" rows="2" placeholder="Why this goal matters to you…"></textarea></label>
+            <label>Starting savings<input id="goalInitial" type="number" min="0" step="0.01" value="0"></label>
+            <label class="goal-confirm"><input id="goalInitialConfirm" type="checkbox"> I confirm this starting amount is genuinely available real money.</label>
+            <button class="primary-btn" type="submit" id="goalCreateButton">Create personal goal</button>
+          </form>
+          <div class="goal-contribution-panel">
+            <h3>Add real savings / realized profit</h3>
+            <label>Goal<select id="goalContributionSelect"><option value="">Choose a goal</option></select></label>
+            <label>Amount<input id="goalContributionAmount" type="number" min="0.01" step="0.01" placeholder="Amount"></label>
+            <label>Note<input id="goalContributionNote" maxlength="240" placeholder="Optional note"></label>
+            <label class="goal-confirm"><input id="goalContributionConfirm" type="checkbox"> I confirm this is available real-account profit or savings, not paper-trading or backtest P&amp;L.</label>
+            <button class="secondary-btn" id="goalAddContribution">Add contribution</button>
+            <p class="p7-note" id="goalContributionStatus">Contributions are manual and require your confirmation.</p>
+          </div>
+        </div>
+        <div class="goal-cards" id="goalCards"><article class="workspace-page-card">Loading goals…</article></div>
+        <div class="goal-certificate-panel">
+          <h3>Achievement certificate</h3>
+          <label>Achieved goal<select id="goalCertificateSelect"><option value="">Choose an achieved goal</option></select></label>
+          <label>Display name<input id="goalCertificateName" maxlength="80" placeholder="Name to print on certificate"></label>
+          <button class="primary-btn" id="goalGenerateCertificate">Generate A4 certificate</button>
+          <p class="p7-note" id="goalCertificateStatus">Certificates unlock only after validated personal-goal progress reaches 100%. Local integrity verification is not a remote authority signature.</p>
+        </div>
       </section>
 
       <section class="section-heading" id="strategy-library"><div><div class="overline">RESEARCH · SAVED EXPERIMENTS</div><h2>Strategy Library</h2><p>Saved backtests, optimizer runs and forward observations from your local strategy research.</p></div><span class="pill">RESEARCH LOG</span></section>

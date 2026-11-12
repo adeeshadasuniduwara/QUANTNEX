@@ -3,8 +3,11 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from io import BytesIO
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from reportlab.graphics import renderPDF
+from svglib.svglib import svg2rlg
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
@@ -60,7 +63,21 @@ def build_daily_paper_pdf(db, user_id: int, report_day: date | None = None) -> t
 
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=14*mm, leftMargin=14*mm,
-                            topMargin=14*mm, bottomMargin=14*mm, title=f"QUANTNEX Paper Report {day}")
+                            topMargin=23*mm, bottomMargin=14*mm, title=f"QUANTNEX Paper Report {day}")
+    logo_path = Path(__file__).resolve().parents[2] / "apps" / "web" / "quantnex-mark.svg"
+    try:
+        logo = svg2rlg(str(logo_path))
+    except Exception:
+        logo = None
+
+    def decorate(canvas, _doc):
+        if logo and logo.width and logo.height:
+            canvas.saveState()
+            scale=(9*mm)/max(logo.width,logo.height)
+            canvas.translate(14*mm, A4[1]-18*mm)
+            canvas.scale(scale,scale)
+            renderPDF.draw(logo,canvas,0,0)
+            canvas.restoreState()
     styles = getSampleStyleSheet()
     title = ParagraphStyle("QXTitle", parent=styles["Title"], fontName="Helvetica-Bold",
                            fontSize=21, leading=25, alignment=TA_CENTER, textColor=colors.black)
@@ -127,5 +144,5 @@ def build_daily_paper_pdf(db, user_id: int, report_day: date | None = None) -> t
     story += [open_table, Spacer(1,5*mm),
               Paragraph("Source: QUANTNEX local PaperTrade ledger. Simulated results only; not broker execution or real-account profit.",
                         ParagraphStyle("foot", parent=styles["Normal"], fontSize=7, textColor=colors.HexColor("#555555")))]
-    doc.build(story)
+    doc.build(story, onFirstPage=decorate, onLaterPages=decorate)
     return buffer.getvalue(), stats

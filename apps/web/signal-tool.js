@@ -200,3 +200,68 @@
   });
   loadAutoSignalSettings();
 })();
+ 
+// QUANTNEX VIEW chart controller — first-party candles, live updates and local chart preferences.
+(()=> {
+ "use strict";
+ const $=id=>document.getElementById(id),host=$("qxChartHost");if(!host)return;
+ const API="http://127.0.0.1:8000",KEY="quantnex.view.settings.v1";
+ const defaults={symbol:"BTCUSDT",interval:"15m",type:"candles",theme:"dark",volume:true,ema20:false,ema50:false,sma200:false,log:false,grid:true,up:"#20c997",down:"#f05d68"};
+ let cfg={...defaults};try{cfg={...cfg,...JSON.parse(localStorage.getItem(KEY)||"{}")};}catch{}
+ let chart=null,priceSeries=null,volumeSeries=null,indicators=[],bars=[],drawings=[],mode="cursor",firstPoint=null,observer=null;
+ const secs={"1m":60,"5m":300,"15m":900,"30m":1800,"1h":3600,"4h":14400};
+ const status=(m,bad=false)=>{const e=$("qxChartStatus");if(e){e.textContent=m;e.dataset.state=bad?"error":"ok";}};
+ const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(cfg));}catch{}};
+ const timeOf=v=>{if(typeof v==="number")return Math.floor(v);let t=String(v||"");if(/^\\d{4}-\\d{2}-\\d{2} \\d/.test(t))t=t.replace(" ","T")+"Z";const n=Date.parse(t);return Number.isFinite(n)?Math.floor(n/1000):NaN;};
+ const clean=r=>({time:timeOf(r.time),open:+r.open,high:+r.high,low:+r.low,close:+r.close,volume:+(r.volume||0)});
+ const ha=data=>{let prev=null;return data.map(c=>{const close=(c.open+c.high+c.low+c.close)/4,open=prev?(prev.open+prev.close)/2:(c.open+c.close)/2,x={time:c.time,open,high:Math.max(c.high,open,close),low:Math.min(c.low,open,close),close};prev=x;return x;});};
+ const avg=(data,n,kind)=>{let sum=0,value=data[0]?.close||0,out=[],k=2/(n+1);data.forEach((c,i)=>{if(kind==="sma"){sum+=c.close;if(i>=n)sum-=data[i-n].close;if(i>=n-1)out.push({time:c.time,value:sum/n});}else{value=i===0?c.close:c.close*k+value*(1-k);if(i>=n-1)out.push({time:c.time,value});}});return out;};
+ function removeDrawings(){drawings.forEach(d=>{try{if(d.kind==="price")priceSeries?.removePriceLine(d.line);else chart?.removeSeries(d.series);}catch{}});drawings=[];firstPoint=null;}
+ function clearSeries(){if(!chart)return;removeDrawings();if(priceSeries){chart.removeSeries(priceSeries);priceSeries=null;}if(volumeSeries){chart.removeSeries(volumeSeries);volumeSeries=null;}indicators.forEach(x=>chart.removeSeries(x.series));indicators=[];}
+ function updateHeader(price){if(!Number.isFinite(price))return;$("qxChartLastPrice").textContent="$"+price.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});const prev=bars.length>1?bars[bars.length-2].close:price,delta=prev?(price-prev)/prev*100:0;$("qxChartChange").textContent=(delta>=0?"+":"")+delta.toFixed(2)+"% vs previous candle";$("qxChartChange").className=delta>=0?"positive":"negative";}
+ function render(){
+  if(!chart||!bars.length)return;clearSeries();const L=window.LightweightCharts,data=cfg.type==="heikin"?ha(bars):bars,up=cfg.up,down=cfg.down;
+  if(cfg.type==="line"){priceSeries=chart.addSeries(L.LineSeries,{color:"#5da9ff",lineWidth:2});priceSeries.setData(data.map(c=>({time:c.time,value:c.close})));}
+  else if(cfg.type==="area"){priceSeries=chart.addSeries(L.AreaSeries,{lineColor:"#5da9ff",topColor:"rgba(93,169,255,.28)",bottomColor:"rgba(93,169,255,.015)",lineWidth:2});priceSeries.setData(data.map(c=>({time:c.time,value:c.close})));}
+  else if(cfg.type==="bar"){priceSeries=chart.addSeries(L.BarSeries,{upColor:up,downColor:down,openVisible:true});priceSeries.setData(data);}
+  else{priceSeries=chart.addSeries(L.CandlestickSeries,{upColor:up,downColor:down,borderVisible:false,wickUpColor:up,wickDownColor:down});priceSeries.setData(data);}
+  if(cfg.volume){volumeSeries=chart.addSeries(L.HistogramSeries,{priceScaleId:"",priceFormat:{type:"volume"},lastValueVisible:false,priceLineVisible:false,base:0});volumeSeries.setData(bars.map(c=>({time:c.time,value:c.volume,color:c.close>=c.open?"rgba(32,201,151,.38)":"rgba(240,93,104,.38)"})));chart.priceScale("").applyOptions({scaleMargins:{top:.8,bottom:0}});}
+  [["ema20",20,"#e8b44f","ema"],["ema50",50,"#a78bfa","ema"],["sma200",200,"#f08b5d","sma"]].forEach(([key,n,color,kind])=>{if(!cfg[key])return;const series=chart.addSeries(L.LineSeries,{color,lineWidth:1,priceLineVisible:false,lastValueVisible:false});series.setData(avg(data,n,kind));indicators.push({series,n,kind});});
+  chart.applyOptions({rightPriceScale:{mode:cfg.log?L.PriceScaleMode.Logarithmic:L.PriceScaleMode.Normal,scaleMargins:{top:.08,bottom:cfg.volume?.22:.08}}});updateHeader(bars[bars.length-1].close);
+ }
+ function draw(param){
+  if(mode==="cursor"||!priceSeries||!param.point||!param.time)return;
+  const price=priceSeries.coordinateToPrice(param.point.y);if(!Number.isFinite(price))return;
+  if(mode==="horizontal"){const line=priceSeries.createPriceLine({price,color:"#e8bd55",lineWidth:1,lineStyle:2,axisLabelVisible:true,title:"Level"});drawings.push({kind:"price",line});status("Horizontal level added.");return;}
+  if(mode==="trend"){if(!firstPoint){firstPoint={time:param.time,price};status("Trend line: click its second point.");return;}if(firstPoint.time===param.time){status("Choose a different candle for the second point.",true);return;}const pts=[firstPoint,{time:param.time,price}].sort((a,b)=>a.time-b.time),series=chart.addSeries(window.LightweightCharts.LineSeries,{color:"#e8bd55",lineWidth:2,priceLineVisible:false,lastValueVisible:false});series.setData(pts.map(p=>({time:p.time,value:p.price})));drawings.push({kind:"trend",series});firstPoint=null;status("Trend line added.");}
+ }
+ async function load(){
+  status("Loading "+cfg.symbol+" "+cfg.interval+" candles…");host.innerHTML='<div class="qx-chart-loading">Loading real market candles…</div>';
+  try{
+   const res=await fetch(API+"/api/v1/charts/candles?symbol="+encodeURIComponent(cfg.symbol)+"&interval="+encodeURIComponent(cfg.interval)+"&limit=500",{cache:"no-store",headers:{Accept:"application/json"}}),body=await res.json().catch(()=>null);if(!res.ok)throw new Error(body?.detail||"Market data request failed ("+res.status+").");
+   bars=(body.candles||[]).map(clean).filter(c=>Number.isFinite(c.time)&&[c.open,c.high,c.low,c.close].every(Number.isFinite));if(!bars.length)throw new Error("The market provider returned no valid candles.");
+   if(!chart){host.replaceChildren();const dark=cfg.theme==="dark";chart=window.LightweightCharts.createChart(host,{width:Math.max(320,host.clientWidth),height:Math.max(320,host.clientHeight||460),layout:{background:{type:"solid",color:dark?"#080d13":"#f7f9fc"},textColor:dark?"#cbd5e1":"#334155",fontFamily:"Inter,Arial,sans-serif",fontSize:11},grid:{vertLines:{color:cfg.grid?(dark?"rgba(148,163,184,.09)":"rgba(100,116,139,.13)"):"transparent"},horzLines:{color:cfg.grid?(dark?"rgba(148,163,184,.09)":"rgba(100,116,139,.13)"):"transparent"}},crosshair:{mode:window.LightweightCharts.CrosshairMode.Normal,vertLine:{color:"#8295ad",width:1,style:2},horzLine:{color:"#8295ad",width:1,style:2}},rightPriceScale:{borderColor:dark?"#263241":"#d8dee8"},timeScale:{borderColor:dark?"#263241":"#d8dee8",timeVisible:true,secondsVisible:false,rightOffset:8,barSpacing:7},handleScroll:{mouseWheel:true,pressedMouseMove:true,horzTouchDrag:true,vertTouchDrag:false},handleScale:{axisPressedMouseMove:true,mouseWheel:true,pinch:true}});chart.subscribeClick(draw);observer=new ResizeObserver(entries=>{const b=entries[0]?.contentRect;if(b&&chart)chart.applyOptions({width:Math.max(320,Math.floor(b.width)),height:Math.max(320,Math.floor(b.height))});});observer.observe(host);}
+   const dark=cfg.theme==="dark";chart.applyOptions({layout:{background:{type:"solid",color:dark?"#080d13":"#f7f9fc"},textColor:dark?"#cbd5e1":"#334155"},grid:{vertLines:{color:cfg.grid?(dark?"rgba(148,163,184,.09)":"rgba(100,116,139,.13)"):"transparent"},horzLines:{color:cfg.grid?(dark?"rgba(148,163,184,.09)":"rgba(100,116,139,.13)"):"transparent"}}});
+   render();chart.timeScale().fitContent();$("qxChartProvider").textContent=body.provider+" · "+bars.length+" candles · "+cfg.symbol;status("LIVE READY · "+cfg.symbol+" · "+cfg.interval);
+  }catch(e){host.innerHTML='<div class="qx-chart-loading qx-chart-error"></div>';$("qxChartHost").firstElementChild.textContent=e.message;status("Market feed unavailable",true);$("qxChartProvider").textContent="Check local API and market-data provider";}
+ }
+ function tick(event){
+  const d=event.detail||{};if(String(d.symbol||"").toUpperCase()!==cfg.symbol||!bars.length)return;const price=Number(d.price),ms=Number(d.eventTime)||Date.now();if(!Number.isFinite(price)||price<=0)return;
+  const seconds=secs[cfg.interval]||900,time=Math.floor(ms/1000/seconds)*seconds;let last=bars[bars.length-1];if(time<last.time)return;
+  if(time>last.time){last={time,open:price,high:price,low:price,close:price,volume:0};bars.push(last);if(bars.length>1000)bars.shift();}else{last.high=Math.max(last.high,price);last.low=Math.min(last.low,price);last.close=price;}
+  if(d.kind==="trade"&&Number.isFinite(Number(d.volume)))last.volume+=Number(d.volume);
+  const display=cfg.type==="heikin"?ha(bars):bars,point=display[display.length-1];if(cfg.type==="line"||cfg.type==="area")priceSeries.update({time:point.time,value:point.close});else priceSeries.update(point);
+  if(volumeSeries)volumeSeries.update({time:last.time,value:last.volume||0,color:last.close>=last.open?"rgba(32,201,151,.38)":"rgba(240,93,104,.38)"});
+  indicators.forEach(x=>{const vals=avg(display,x.n,x.kind),lastValue=vals[vals.length-1];if(lastValue)x.series.update(lastValue);});
+  updateHeader(price);$("qxChartProvider").textContent=(d.source||"Market provider")+" · live tick · "+new Date(ms).toLocaleTimeString();
+ }
+ function setMode(value){mode=value;firstPoint=null;document.querySelectorAll("[data-qx-draw]").forEach(b=>b.classList.toggle("active",b.dataset.qxDraw===value));status(value==="cursor"?"Cursor mode":value==="horizontal"?"Click chart to add a horizontal level":"Click two candles to draw a trend line");}
+ const controls={qxSymbol:"symbol",qxInterval:"interval",qxChartType:"type",qxChartTheme:"theme",qxVolume:"volume",qxEma20:"ema20",qxEma50:"ema50",qxSma200:"sma200",qxLogScale:"log",qxGrid:"grid",qxUpColor:"up",qxDownColor:"down"};
+ Object.entries(controls).forEach(([id,key])=>{const el=$(id);if(!el)return;if(el.type==="checkbox")el.checked=!!cfg[key];else el.value=cfg[key];el.addEventListener("change",()=>{cfg[key]=el.type==="checkbox"?el.checked:el.value;save();if(key==="symbol"||key==="interval")load();else if(key==="theme"){chart?.remove();chart=null;observer?.disconnect();observer=null;load();}else if(key==="type"||key==="volume"||key==="ema20"||key==="ema50"||key==="sma200"||key==="up"||key==="down")render();else if(chart){const dark=cfg.theme==="dark";chart.applyOptions({rightPriceScale:{mode:cfg.log?window.LightweightCharts.PriceScaleMode.Logarithmic:window.LightweightCharts.PriceScaleMode.Normal},grid:{vertLines:{color:cfg.grid?(dark?"rgba(148,163,184,.09)":"rgba(100,116,139,.13)"):"transparent"},horzLines:{color:cfg.grid?(dark?"rgba(148,163,184,.09)":"rgba(100,116,139,.13)"):"transparent"}}});}});});
+ $("qxFitChart").addEventListener("click",()=>chart?.timeScale().fitContent());
+ $("qxScreenshot").addEventListener("click",()=>{if(!chart)return;const canvas=chart.takeScreenshot(),a=document.createElement("a");a.href=canvas.toDataURL("image/png");a.download="quantnex-view-"+cfg.symbol+".png";a.click();});
+ $("qxClearDrawings").addEventListener("click",()=>{removeDrawings();status("Chart drawings cleared.");});
+ document.querySelectorAll("[data-qx-draw]").forEach(b=>b.addEventListener("click",()=>setMode(b.dataset.qxDraw)));
+ window.addEventListener("quantnex:market-tick",tick);document.addEventListener("visibilitychange",()=>{if(!document.hidden&&!bars.length)load();});
+ load();
+})();

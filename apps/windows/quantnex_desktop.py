@@ -6,7 +6,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.5.0"
 REPO = "adeeshadasuniduwara/QUANTNEX"
 LATEST_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 

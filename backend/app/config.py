@@ -18,3 +18,11 @@ if not 5 <= TOKEN_MINUTES <= 1440:
     raise ValueError("ACCESS_TOKEN_MINUTES must be between 5 and 1440.")
 if ENVIRONMENT == "production" and SECRET_KEY == "local-development-only-change-me":
     raise ValueError("Set a strong QUANTNEX_SECRET_KEY in production.")
+
+WEBAUTHN_RP_ID = os.getenv("WEBAUTHN_RP_ID", "localhost").strip().lower()
+WEBAUTHN_RP_NAME = os.getenv("WEBAUTHN_RP_NAME", "QUANTNEX")
+WEBAUTHN_ALLOWED_ORIGINS = [
+    x.strip().rstrip("/") for x in os.getenv(
+        "WEBAUTHN_ALLOWED_ORIGINS", "http://localhost:5500"
+    ).split(",") if x.strip()
+]

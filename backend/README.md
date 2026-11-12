@@ -88,3 +88,46 @@ When a signal is active, the worker checks price levels approximately once per m
 - Audit records contain allow-listed metadata only; API keys, Telegram bot tokens, passwords, request bodies and secret values are not recorded.
 - Automated file backup/restore currently supports persistent SQLite databases. PostgreSQL backup/restore is intentionally reported as unsupported until a separately tested pg_dump / pg_restore workflow is implemented.
 - All system endpoints rely on the existing loopback-only API boundary. Do not bind to 0.0.0.0, port-forward the API, or expose it to a LAN/public network. This local-only mode trusts the Windows desktop user.
+
+
+## Phase 07 — Advanced Trading Intelligence
+
+Phase 07 adds a multi-market intelligence layer while preserving the local-only, no-login workspace and all existing Wallet, Journal, Preferences, Telegram settings and database records.
+
+### Supported market feeds
+- Crypto: BTCUSDT, ETHUSDT and SOLUSDT through public Binance Spot ticker, kline and order-book endpoints.
+- Gold and Forex: XAUUSD, EURUSD, GBPUSD and USDJPY through the configured Twelve Data API key.
+- Economic calendar: optional Finnhub calendar feed using `FINNHUB_API_KEY`. Without the key, the page clearly reports that the provider is not configured; no calendar events are fabricated.
+- Order book: real Binance Spot depth snapshots for supported crypto pairs only. Gold/Forex depth is reported unsupported rather than simulated.
+
+### Signal analysis
+- Multi-timeframe technical analysis uses 15m, 1h and 4h candles, EMA structure, MACD, RSI, ADX, BOS/MSS and liquidity-sweep context.
+- Signal scores are transparent rule-based confluence counts, not probabilities or promised win rates.
+- Every scan returns BUY/SELL only if directional quality filters pass; otherwise it returns WAIT.
+- Indicative market-provider prices can differ from broker execution quotes and spreads.
+
+### Paper trading
+- New `paper_trades` table is additive; the existing Wallet, Journal and user preferences are not rewritten.
+- Paper entries use a fresh provider quote, require a valid stop/target relationship, and store virtual quantity only.
+- Closing a paper trade uses a fresh quote and calculates simulated P&L. No broker API or live-order route exists.
+- Paper trading is a separate virtual ledger; it does not change the existing wallet balance or journal.
+
+### API routes
+- `GET /api/v1/intelligence/markets`
+- `GET /api/v1/intelligence/market/{symbol}/candles?timeframe=15m`
+- `GET /api/v1/intelligence/market/{symbol}/orderbook`
+- `POST /api/v1/intelligence/signals/scan` with `{"symbol":"BTCUSDT","min_score":6}`
+- `GET /api/v1/intelligence/news?days=7`
+- `POST /api/v1/intelligence/risk/calculate`
+- `GET /api/v1/intelligence/performance`
+- `GET /api/v1/paper-trading/summary`
+- `GET /api/v1/paper-trading/trades`
+- `POST /api/v1/paper-trading/trades`
+- `POST /api/v1/paper-trading/trades/{id}/close`
+
+### Local setup
+- Add `TWELVE_DATA_API_KEY` for Gold/Forex data.
+- Add `FINNHUB_API_KEY` only if you want the economic calendar.
+- Binance public Spot endpoints work without an API key.
+- Keep the API bound to localhost/127.0.0.1. This remains a local desktop workspace, not a public multi-user service.
+- Real-money execution is intentionally not implemented in Phase 07.

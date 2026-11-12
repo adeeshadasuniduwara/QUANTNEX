@@ -333,6 +333,8 @@ def get_auto_signal_settings(user: User = Depends(current_user), db: Session = D
     try: settings=json.loads(raw)
     except ValueError: settings={"enabled":False,"interval_seconds":180}
     settings["telegram_connected"]=bool(_preference(db,user.id,"telegram_bot_token_enc") and _preference(db,user.id,"telegram_chat_id"))
+    from .config import TWELVE_DATA_API_KEY
+    settings["market_feed_configured"]=bool(TWELVE_DATA_API_KEY)
     return settings
 
 @app.put("/api/v1/telegram/auto-signals")
@@ -340,6 +342,9 @@ def set_auto_signal_settings(payload: AutoSignalSettingsRequest, user: User = De
     connected=bool(_preference(db,user.id,"telegram_bot_token_enc") and _preference(db,user.id,"telegram_chat_id"))
     if payload.enabled and not connected:
         raise HTTPException(status_code=409,detail="Connect and test your personal Telegram bot before enabling Auto Signals.")
+    from .config import TWELVE_DATA_API_KEY
+    if payload.enabled and not TWELVE_DATA_API_KEY:
+        raise HTTPException(status_code=503,detail="Add TWELVE_DATA_API_KEY to backend/.env and restart the QUANTNEX API before enabling Auto Signals.")
     settings=payload.model_dump()
     _save_preference(db,user.id,"auto_signal_settings",json.dumps(settings))
     db.commit()

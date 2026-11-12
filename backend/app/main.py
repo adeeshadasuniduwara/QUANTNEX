@@ -9,7 +9,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS
-from .database import Base, engine, get_db
+from .database import Base, engine, get_db, SessionLocal
 from .models import Preference, Trade, User, WalletTransaction
 from .schemas import AIChatRequest, AIChatResponse, PreferenceResponse, PreferenceWrite, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TradeCreate, TradeResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
 from .security import decrypt_secret, encrypt_secret
@@ -322,6 +322,16 @@ def disconnect_telegram_bot(user: User = Depends(local_workspace), db: Session =
         if row:db.delete(row)
     db.commit()
     return {"connected":False}
+
+@app.on_event("startup")
+async def prepare_local_workspace():
+    """Migrate legacy accounts before the Telegram worker starts."""
+    db = SessionLocal()
+    try:
+        local_workspace(db)
+    finally:
+        db.close()
+
 
 @app.on_event("startup")
 async def start_telegram_background_worker():

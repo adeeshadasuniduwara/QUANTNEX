@@ -1,5 +1,5 @@
 from __future__ import annotations
-import hashlib, json, os, shutil, sqlite3, subprocess, sys, threading, urllib.error, urllib.request, webbrowser
+import base64, hashlib, json, os, shutil, sqlite3, subprocess, sys, threading, urllib.error, urllib.request, webbrowser
 from datetime import datetime
 import uuid
 from pathlib import Path
@@ -92,7 +92,9 @@ class App(tk.Tk):
 
     def _build(self):
         root = ttk.Frame(self, padding=22); root.pack(fill="both", expand=True)
-        ttk.Label(root, text="Q U A N T N E X", foreground="#ffffff", font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        brand = ttk.Frame(root); brand.pack(anchor="w", fill="x")
+        ttk.Label(brand, image=self._app_icon).pack(side="left", padx=(0,10))
+        ttk.Label(brand, text="Q U A N T N E X", foreground="#ffffff", font=("Segoe UI", 12, "bold")).pack(side="left")
         ttk.Label(root, text="Trading Workspace", style="Title.TLabel").pack(anchor="w", pady=(4, 2))
         ttk.Label(root, text=f"WINDOWS DESKTOP  /  VERSION {APP_VERSION}  /  LOCAL MODE", style="Muted.TLabel").pack(anchor="w", pady=(0, 16))
         tabs = ttk.Notebook(root); tabs.pack(fill="both", expand=True)

@@ -189,7 +189,7 @@ def test_mutating_api_requests_reject_untrusted_browser_origins():
 def test_mutating_api_requests_allow_the_local_quantnex_web_origin():
     client = TestClient(app)
     response = client.put(
-        "/api/v1/preferences/origin-policy-test",
+        "/api/v1/preferences/origin_policy_test",
         json={"value": "local-web-origin-accepted"},
         headers={"Origin": "http://127.0.0.1:5500"},
     )

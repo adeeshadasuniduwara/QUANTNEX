@@ -33,3 +33,30 @@
 @media(max-width:420px){.workspace-page-cards{grid-template-columns:1fr}}
 
 .telegram-report-controls{display:grid;gap:10px;margin-top:14px;padding:14px;border:1px solid #292929;border-radius:12px;background:#101010}.telegram-report-controls .auto-signal-toggle{align-items:flex-start}.telegram-report-controls .secondary-btn{justify-self:start}.telegram-report-controls .telegram-status{margin:0;color:#aaa;font-size:12px}
+
+.goals-workspace{gap:20px}
+.goal-create-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(260px,.8fr);gap:16px}
+.goal-form,.goal-contribution-panel,.goal-certificate-panel{padding:16px;border:1px solid #2b2b2b;border-radius:12px;background:#101010}
+.goal-form .goal-wide{grid-column:1/-1}
+.goal-form textarea{width:100%;min-height:64px;padding:10px;border:1px solid #343434;border-radius:8px;background:#111;color:#eee;font:inherit}
+.goal-confirm{display:flex!important;align-items:flex-start;gap:9px!important;line-height:1.5}
+.goal-confirm input{width:17px!important;min-height:17px!important;flex:0 0 auto;margin-top:2px;accent-color:#ddd}
+.goal-contribution-panel,.goal-certificate-panel{display:grid;gap:11px;align-content:start}
+.goal-contribution-panel h3,.goal-certificate-panel h3{margin:0 0 3px;color:#f1f1f1;font-size:14px}
+.goal-contribution-panel label,.goal-certificate-panel label{display:grid;gap:6px;color:#aaa;font-size:12px}
+.goal-contribution-panel input,.goal-contribution-panel select,.goal-certificate-panel input,.goal-certificate-panel select{width:100%;min-height:39px;padding:9px;border:1px solid #343434;border-radius:8px;background:#111;color:#eee}
+.goal-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+.goal-card{position:relative;overflow:hidden;min-height:190px;padding:16px;border:1px solid #303030;border-radius:14px;background:linear-gradient(145deg,#191919,#0c0c0c);display:grid;gap:10px}
+.goal-image{width:100%;height:135px;object-fit:cover;border-radius:9px;filter:saturate(.72)}
+.goal-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.goal-card-top h3{margin:0;color:#f5f5f5;font-size:16px;overflow-wrap:anywhere}
+.goal-achieved,.goal-active{font-size:9px;letter-spacing:.1em;padding:5px 7px;border:1px solid #555;border-radius:20px;color:#ddd;white-space:nowrap}
+.goal-amounts{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.goal-amounts strong{font-size:22px;color:#f4f4f4}.goal-amounts span,.goal-detail,.goal-card small{font-size:11px;color:#aaa}
+.goal-progress{height:8px;overflow:hidden;border-radius:20px;background:#333}
+.goal-progress span{display:block;height:100%;border-radius:20px;background:linear-gradient(90deg,#777,#eee);transition:width .9s cubic-bezier(.2,.8,.2,1)}
+.goal-bubbles{position:absolute;right:14px;bottom:12px;display:flex;gap:5px;opacity:.45;pointer-events:none}
+.goal-bubbles i{width:5px;height:5px;border-radius:50%;background:#ddd;animation:goalBubble 3.8s ease-in-out infinite;animation-delay:var(--bubble-delay)}
+.goal-error{color:#ff9292!important}
+@keyframes goalBubble{0%,100%{transform:translateY(5px) scale(.7);opacity:.25}50%{transform:translateY(-9px) scale(1.25);opacity:.9}}
+@media(max-width:760px){.goal-create-grid{grid-template-columns:1fr}.goal-form .goal-wide{grid-column:auto}}

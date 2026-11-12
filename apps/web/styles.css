@@ -11,10 +11,10 @@
 .chart-heading div>span{font-size:9px;color:#888;letter-spacing:.1em;margin-top:3px}
 .chart-live{font-size:9px;letter-spacing:.1em;color:#cfcfcf}
 .chart-live i{display:inline-block;width:6px;height:6px;border-radius:50%;background:#ddd;margin-right:6px;box-shadow:0 0 10px #fff8}
-.tradingview-widget-container{height:430px;width:100%;overflow:hidden}
-.tradingview-widget-container__widget{height:calc(100% - 32px);width:100%}
+.tradingview-widget-container{height:540px;min-height:480px;width:100%;max-width:100%;overflow:hidden;border-radius:9px}.tradingview-widget-container iframe{width:100%!important;height:100%!important}
+.tradingview-widget-container__widget{height:100%;width:100%}
 .live-pill{margin:0}
-@media(max-width:900px){.charts-grid{grid-template-columns:1fr}.tradingview-widget-container{height:390px}}
+@media(max-width:900px){.charts-grid{grid-template-columns:1fr}.tradingview-widget-container{height:440px;min-height:400px}}
 @media(max-width:420px){.update-orbit-img{width:50px;height:50px;flex-basis:50px}}
 
 /* Account and wallet workspace */

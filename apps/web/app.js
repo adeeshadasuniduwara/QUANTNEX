@@ -69,7 +69,7 @@ if(sessionStorage.getItem("quantnex.webUpdateComplete")==="1"){
   window.addEventListener("load",()=>showUpdateToast("✓ QUANTNEX Web has been updated. You are now using the latest workspace."));
 }
 
-async async function checkLocalUpdate(){
+async function checkLocalUpdate(){
   const status=$("webUpdateStatus"),progress=$("webUpdateProgress");
   updateButton.disabled=true;updateButton.textContent="Checking…";progress.hidden=false;
   status.textContent="Checking the latest published QUANTNEX release…";

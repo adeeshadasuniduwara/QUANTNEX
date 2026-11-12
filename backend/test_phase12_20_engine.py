@@ -65,3 +65,25 @@ def test_risk_guard_includes_floating_loss_and_blocks_when_open_feed_is_unpriced
     assert result["entry_allowed"] is False
     assert "DAILY_LOSS_LIMIT" in result["blocks"]
     assert "UNPRICED_OPEN_POSITION_DATA" in result["blocks"]
+
+
+def test_daily_pdf_includes_paper_event_ledger_section():
+    from datetime import date
+    from app.telegram_reporting import build_daily_paper_pdf
+
+    class EmptyDb:
+        def scalars(self, _statement):
+            return []
+
+    pdf, stats = build_daily_paper_pdf(EmptyDb(), 1, date(2026, 11, 13))
+    assert pdf.startswith(b"%PDF")
+    assert stats["event_count"] == 0
+    assert stats["automatic_entries"] == 0
+
+
+def test_telegram_menu_has_explicit_paper_engine_start_and_pause_controls():
+    from app.telegram_worker import MENU
+
+    callbacks = [button["callback_data"] for row in MENU["inline_keyboard"] for button in row]
+    assert "qx:paper_start" in callbacks
+    assert "qx:paper_pause" in callbacks

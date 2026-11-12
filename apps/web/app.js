@@ -308,28 +308,93 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   const setMessage=(id,message,error=false)=>{const el=$(id);if(!el)return;el.textContent=message;el.className=error?"p7-note p7-status-error":"p7-note p7-status-ok";};
   const addCell=(row,text)=>row.append(node("td",text));
   let lastSignal=null;
+  const marketCards=new Map();
   async function loadMarkets(){
-    const root=$("p7MarketCards");root.replaceChildren(node("div","Fetching live provider quotes…","p7-empty"));
+    const root=$("p7MarketCards");
     try{
-      const data=await apiRequest("/api/v1/intelligence/markets");root.replaceChildren();
+      const data=await apiRequest("/api/v1/intelligence/markets");
+      root.replaceChildren();marketCards.clear();
       data.items.forEach(item=>{
         const card=node("article",undefined,"p7-market-card");
         const top=node("div",undefined,"p7-symbol");top.append(node("span",item.symbol),node("span",item.kind.toUpperCase()));card.append(top);
         card.append(node("small",item.label));
-        if(item.status==="ok"){
-          card.append(node("strong",fmt(item.price,priceDigits(item.symbol))));
-          const change=Number(item.change_percent||0);
-          card.append(node("small",(change>=0?"+":"")+fmt(change,2)+"% · 24h change",change>=0?"positive":"negative"));
-          card.append(node("small","High "+fmt(item.high_24h,priceDigits(item.symbol))+" · Low "+fmt(item.low_24h,priceDigits(item.symbol))));
-          card.append(node("small",item.provider+" · "+new Date(item.timestamp).toLocaleTimeString()));
-        }else{
-          card.append(node("strong","Unavailable","unavailable"));
-          card.append(node("small",item.reason||"Provider not available.","unavailable"));
-        }
-        root.append(card);
+        const price=node("strong",item.status==="ok"?fmt(item.price,priceDigits(item.symbol)):"Unavailable");
+        const change=Number(item.change_percent||0);
+        const changeNode=node("small",item.status==="ok"?(change>=0?"+":"")+fmt(change,2)+"% · 24h change":item.reason,item.status==="ok"?(change>=0?"positive":"negative"):"unavailable");
+        const range=node("small",item.status==="ok"?"High "+fmt(item.high_24h,priceDigits(item.symbol))+" · Low "+fmt(item.low_24h,priceDigits(item.symbol)):"");
+        const source=node("small",item.status==="ok"?item.provider+" · "+new Date(item.timestamp).toLocaleTimeString():"");
+        card.append(price,changeNode,range,source);root.append(card);
+        marketCards.set(item.symbol,{price,change:changeNode,range,source,item});
       });
-      $("p7MarketNote").textContent=data.note;
-    }catch(error){root.replaceChildren(node("div","Market feed unavailable: "+error.message,"p7-empty"));}
+      $("p7MarketNote").textContent=data.note+" Crypto prices update from Binance WebSocket; Gold/Forex refresh according to provider availability.";
+    }catch(error){if(!root.children.length)root.replaceChildren(node("div","Market feed unavailable: "+error.message,"p7-empty"));}
+  }
+  let tickerSocket=null,tickerRetry=null,bookSocket=null,bookRetry=null,bookGeneration=0;
+  function connectCryptoTicker(){
+    if(document.hidden||tickerSocket||!window.WebSocket)return;
+    try{
+      tickerSocket=new WebSocket("wss://stream.binance.com:9443/stream?streams=btcusdt@ticker/ethusdt@ticker/solusdt@ticker");
+      tickerSocket.onmessage=event=>{
+        try{
+          const packet=JSON.parse(event.data),data=packet.data||packet;
+          const symbol=String(data.s||"").toUpperCase(),refs=marketCards.get(symbol);
+          if(!refs)return;
+          const price=Number(data.c),change=Number(data.P),high=Number(data.h),low=Number(data.l);
+          if(Number.isFinite(price))refs.price.textContent=fmt(price,priceDigits(symbol));
+          refs.change.textContent=(change>=0?"+":"")+fmt(change,2)+"% · 24h change";
+          refs.change.className=change>=0?"positive":"negative";
+          refs.range.textContent="High "+fmt(high,priceDigits(symbol))+" · Low "+fmt(low,priceDigits(symbol));
+          refs.source.textContent="Binance WebSocket · "+new Date(Number(data.E)||Date.now()).toLocaleTimeString();
+        }catch{}
+      };
+      tickerSocket.onclose=()=>{tickerSocket=null;if(!document.hidden){clearTimeout(tickerRetry);tickerRetry=setTimeout(connectCryptoTicker,2500);}};
+      tickerSocket.onerror=()=>{try{tickerSocket.close();}catch{}};
+    }catch{tickerSocket=null;}
+  }
+  function stopCryptoTicker(){clearTimeout(tickerRetry);tickerRetry=null;if(tickerSocket){tickerSocket.onclose=null;tickerSocket.close();tickerSocket=null;}}
+  function renderBookmap(symbol,bids,asks){
+    const root=$("p7Bookmap");if(!root)return;root.replaceChildren();
+    const max=Math.max(1,...bids.map(x=>Number(x[1])),...asks.map(x=>Number(x[1])));
+    const side=(rows,kind)=>{
+      const column=node("div",undefined,"p7-bookmap-side");
+      rows.slice(0,15).forEach(([price,qty])=>{
+        const row=node("div",undefined,"p7-bookmap-row "+kind);
+        const bar=node("span",undefined,"depth-bar");bar.style.width=Math.max(1,Number(qty)/max*100)+"%";
+        row.append(bar,node("span",fmt(Number(price),priceDigits(symbol)),"depth-price"),node("span",fmt(Number(qty),6),"depth-size"));
+        column.append(row);
+      });
+      return column;
+    };
+    root.append(side(bids,"bid"),side(asks,"ask"));
+    const totalBid=bids.reduce((sum,x)=>sum+Number(x[1]),0),totalAsk=asks.reduce((sum,x)=>sum+Number(x[1]),0);
+    const sum=totalBid+totalAsk,imbalance=sum?(totalBid-totalAsk)/sum*100:0;
+    $("p7BookImbalance").textContent="Live depth imbalance "+imbalance.toFixed(1)+"%";
+    $("p7BookLiveStatus").textContent="LIVE · Binance depth stream · "+new Date().toLocaleTimeString();
+    $("p7BookLiveStatus").className="p7-live-indicator";
+    [["p7Bids",bids],["p7Asks",asks]].forEach(([id,rows])=>{
+      const body=$(id);body.replaceChildren();
+      rows.slice(0,12).forEach(([price,qty])=>{const tr=node("tr");addCell(tr,fmt(Number(price),priceDigits(symbol)));addCell(tr,fmt(Number(qty),6));body.append(tr);});
+    });
+    $("p7BookNote").textContent="Live partial-depth updates from Binance Spot. Visible levels are resting orders, not executed trades or guaranteed liquidity.";
+  }
+  function loadBook(){
+    const symbol=$("p7BookSymbol").value.toLowerCase();
+    const generation=++bookGeneration;
+    clearTimeout(bookRetry);bookRetry=null;
+    if(bookSocket){bookSocket.onclose=null;bookSocket.close();bookSocket=null;}
+    $("p7BookLiveStatus").textContent="Connecting to "+symbol.toUpperCase()+" depth stream…";
+    $("p7Bookmap").replaceChildren(node("div","Waiting for live depth updates…","p7-empty"));
+    if(!window.WebSocket||document.hidden)return;
+    try{
+      bookSocket=new WebSocket("wss://stream.binance.com:9443/ws/"+symbol+"@depth20@100ms");
+      bookSocket.onopen=()=>{if(generation==bookGeneration){$("p7BookLiveStatus").textContent="Connected · waiting for depth";}};
+      bookSocket.onmessage=event=>{
+        if(generation!==bookGeneration)return;
+        try{const data=JSON.parse(event.data);renderBookmap(symbol.toUpperCase(),data.bids||[],data.asks||[]);}catch{}
+      };
+      bookSocket.onerror=()=>{try{bookSocket.close();}catch{}};
+      bookSocket.onclose=()=>{if(generation===bookGeneration&&!document.hidden){$("p7BookLiveStatus").textContent="Stream disconnected · reconnecting…";bookRetry=setTimeout(loadBook,2500);}};
+    }catch(error){$("p7BookLiveStatus").textContent="Live depth unavailable: "+error.message;}
   }
   function renderSignal(data){
     const root=$("p7SignalResult");root.replaceChildren();
@@ -485,7 +550,17 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     location.hash="#paper-trading";
     $("p7PaperQty").focus();
   });
-  loadMarkets();loadBook();refreshAnalytics();
+  $("p7BookSymbol").addEventListener("change",loadBook);
+  document.addEventListener("visibilitychange",()=>{
+    if(document.hidden){stopCryptoTicker();if(bookSocket){bookSocket.onclose=null;bookSocket.close();bookSocket=null;}}
+    else{connectCryptoTicker();loadBook();loadMarkets();}
+  });
+  loadMarkets();connectCryptoTicker();loadBook();refreshAnalytics();
+  // Provider-aware background refresh: FX/Gold REST is kept conservative; crypto is streamed.
+  setInterval(()=>{if(!document.hidden)loadMarkets();},60000);
+  setInterval(()=>{if(!document.hidden)loadPaper();},10000);
+  setInterval(()=>{if(!document.hidden)loadPerformance();},30000);
+  setInterval(()=>{if(!document.hidden)loadNews();},900000);
 })();
 
 
@@ -768,4 +843,27 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   $("p11Refresh").addEventListener("click",refresh);
   $("p11Period").addEventListener("change",refresh);
   refresh();
+})();
+
+
+// One-second local CPU/RAM telemetry; samples the actual host via the loopback API.
+(function initLiveSystemMeters(){
+  if(!$("systemCpu"))return;
+  let busy=false;
+  const update=async()=>{
+    if(busy||document.hidden)return;busy=true;
+    try{
+      const data=await apiRequest("/api/v1/system/metrics");
+      const cpu=Math.max(0,Math.min(100,Number(data.cpu_percent)||0));
+      const mem=Math.max(0,Math.min(100,Number(data.memory_percent)||0));
+      $("systemCpu").textContent=cpu.toFixed(0)+"%";
+      $("systemMemory").textContent=mem.toFixed(0)+"%";
+      if($("systemCpuBar"))$("systemCpuBar").style.width=cpu+"%";
+      if($("systemMemoryBar"))$("systemMemoryBar").style.width=mem+"%";
+      if($("systemCpuMeta"))$("systemCpuMeta").textContent=cpu.toFixed(1)+"%";
+      if($("systemMemoryMeta"))$("systemMemoryMeta").textContent=(data.memory_used_bytes/1073741824).toFixed(1)+" / "+(data.memory_total_bytes/1073741824).toFixed(1)+" GB";
+    }catch(error){if($("systemHealthStatus"))$("systemHealthStatus").textContent="Live telemetry unavailable: "+error.message;}
+    finally{busy=false;}
+  };
+  update();setInterval(update,1000);
 })();

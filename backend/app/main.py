@@ -163,8 +163,8 @@ def passkey_registration_verify(payload: PasskeyVerifyRequest, request: Request,
         verification = verify_registration_response(
             credential=payload.credential,
             expected_challenge=base64url_to_bytes(ceremony["challenge"]),
-            expected_origin=ceremony.expected_origin,
-            expected_rp_id=ceremony.expected_rp_id,
+            expected_origin=ceremony["expected_origin"],
+            expected_rp_id=ceremony["expected_rp_id"],
             require_user_verification=True,
         )
     except Exception:
@@ -213,7 +213,7 @@ def passkey_login_verify(payload: PasskeyVerifyRequest, request: Request,
                          db: Session = Depends(get_db)):
     origin, rp_id = _webauthn_origin(request)
     ceremony = _consume_webauthn_challenge(db, payload.challenge_id, "login")
-    if ceremony.expected_origin != origin or ceremony.expected_rp_id != rp_id:
+    if ceremony["expected_origin"] != origin or ceremony["expected_rp_id"] != rp_id:
         raise HTTPException(status_code=400, detail="Passkey origin changed during login. Start again.")
     credential_value = payload.credential.get("id")
     stored = db.scalar(select(PasskeyCredential).where(
@@ -225,9 +225,9 @@ def passkey_login_verify(payload: PasskeyVerifyRequest, request: Request,
     try:
         verification = verify_authentication_response(
             credential=payload.credential,
-            expected_challenge=base64url_to_bytes(ceremony.challenge),
-            expected_origin=ceremony.expected_origin,
-            expected_rp_id=ceremony.expected_rp_id,
+            expected_challenge=base64url_to_bytes(ceremony["challenge"]),
+            expected_origin=ceremony["expected_origin"],
+            expected_rp_id=ceremony["expected_rp_id"],
             credential_public_key=base64url_to_bytes(stored.public_key),
             credential_current_sign_count=stored.sign_count,
             require_user_verification=True,

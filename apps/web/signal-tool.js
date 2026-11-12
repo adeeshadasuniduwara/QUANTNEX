@@ -189,6 +189,8 @@
   $("saveAutoSignals")?.addEventListener("click",async()=>{
     const enabled=$("autoSignalsEnabled").checked;
     const interval_seconds=Number($("autoSignalInterval").value||180);
+    const symbols=[...document.querySelectorAll('input[name="autoSignalSymbol"]:checked')].map(el=>el.value);
+    if(!symbols.length){$("autoSignalStatus").textContent="Select at least one market.";return;}
     const button=$("saveAutoSignals");button.disabled=true;button.textContent="Saving…";
     try{
       const result=await apiRequest("/api/v1/telegram/auto-signals",{method:"PUT",body:JSON.stringify({enabled,interval_seconds,symbols})});

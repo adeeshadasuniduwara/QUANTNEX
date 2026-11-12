@@ -29,6 +29,7 @@ jobs:
           node --check apps/web/app.js
           node --check apps/web/realtime-events.js
           node --check apps/web/signal-tool.js
+          node --check apps/web/goals.js
           node --check apps/web/quantnex-view-intelligence.js
           node --check apps/web/workspace-pages.js
           node apps/web/workspace-pages.test.cjs

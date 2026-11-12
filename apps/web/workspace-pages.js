@@ -130,11 +130,11 @@ async function loadTradeHistory(){
   const pb=$("historyPaperRows");pb.replaceChildren();
   if(!paper.length)empty(pb,8,"No paper trades recorded.");
   else paper.forEach(x=>{
-   const tr=el("tr");[x.created_at?new Date(x.created_at).toLocaleString():"—",x.symbol,x.side,fmt(x.quantity,6),fmt(x.entry_price,digits(x.symbol)),fmt(x.exit_price,digits(x.symbol)),x.realized_pnl==null?"—":money(x.realized_pnl),x.status].forEach(v=>cell(tr,v));pb.append(tr);
+   const tr=el("tr");[x.created_at?new Date(x.created_at).toLocaleString():"—",x.symbol,x.side,fmt(x.quantity,6),fmt(x.entry_price,digits(x.symbol)),fmt(x.exit_price,digits(x.symbol)),x.realized_pnl==null?"—":fmt(x.realized_pnl,4),x.status].forEach(v=>cell(tr,v));pb.append(tr);
   });
   const jb=$("historyJournalRows");jb.replaceChildren();
   if(!journal.length)empty(jb,6,"No journal entries recorded.");
-  else journal.forEach(x=>{const tr=el("tr");[x.created_at?new Date(x.created_at).toLocaleDateString():"—",x.symbol,x.direction,x.outcome,money(x.pnl),x.notes||"—"].forEach(v=>cell(tr,v));jb.append(tr);});
+  else journal.forEach(x=>{const tr=el("tr");[x.created_at?new Date(x.created_at).toLocaleDateString():"—",x.symbol,x.direction,x.outcome,fmt(x.pnl,2),x.notes||"—"].forEach(v=>cell(tr,v));jb.append(tr);});
   setStatus("historyStatus","Loaded "+paper.length+" paper trade(s) and "+journal.length+" journal record(s). Paper ledger and manual journal remain separate.");
  }catch(e){setStatus("historyStatus","Trade history unavailable: "+e.message,true);}
 }
@@ -142,7 +142,7 @@ async function loadStrategyLibrary(){
  try{
   const data=await api("/api/v1/strategy-lab/research"),summary=$("strategyLibrarySummary");summary.replaceChildren();
   const p=data.paper_trades||{};
-  [["Saved research runs",(data.runs||[]).length],["Closed paper trades",p.closed||0],["Paper win rate",p.win_rate==null?"—":fmt(p.win_rate,1)+"%"],["Paper net P&L",money(p.net_pnl)]].forEach(([label,value])=>{
+  [["Saved research runs",(data.runs||[]).length],["Closed paper trades",p.closed||0],["Paper win rate",p.win_rate==null?"—":fmt(p.win_rate,1)+"%"],["Net P&L · raw quote units",fmt(p.net_pnl,4)]].forEach(([label,value])=>{
    const card=el("article",undefined,"workspace-page-card");card.append(el("span",label),el("strong",value));summary.append(card);
   });
   const body=$("strategyLibraryRows");body.replaceChildren();
@@ -158,13 +158,13 @@ async function loadStrategyLibrary(){
 async function loadPortfolioMonitor(){
  try{
   const data=await api("/api/v1/risk/portfolio"),cards=$("portfolioMonitorCards");cards.replaceChildren();
-  [["Open positions",data.open_positions],["Gross notional estimate",money(data.gross_notional_estimate)],["Planned stop risk",money(data.planned_stop_risk_estimate)],["Markets represented",Object.keys(data.by_symbol_notional||{}).length]].forEach(([label,value])=>{
+  [["Open positions",data.open_positions],["Gross notional · quote units",fmt(data.gross_notional_estimate,4)],["Planned stop risk · quote units",fmt(data.planned_stop_risk_estimate,4)],["Markets represented",Object.keys(data.by_symbol_notional||{}).length]].forEach(([label,value])=>{
    const card=el("article",undefined,"workspace-page-card");card.append(el("span",label),el("strong",value??"—"));cards.append(card);
   });
   const body=$("portfolioMonitorRows");body.replaceChildren();
   if(!(data.positions||[]).length)empty(body,6,"No open paper positions.");
-  else data.positions.forEach(p=>{const tr=el("tr");[p.id,p.symbol,p.side,fmt(p.quantity,6),money(p.notional_estimate),money(p.planned_stop_risk_estimate)].forEach(v=>cell(tr,v));body.append(tr);});
-  setStatus("portfolioMonitorStatus","Portfolio snapshot refreshed from the local paper ledger. No broker positions are connected.");
+  else data.positions.forEach(p=>{const tr=el("tr");[p.id,p.symbol,p.side,fmt(p.quantity,6),fmt(p.notional_estimate,4),fmt(p.planned_stop_risk_estimate,4)].forEach(v=>cell(tr,v));body.append(tr);});
+  setStatus("portfolioMonitorStatus","Portfolio snapshot refreshed. Amounts are raw price × quantity estimates in each instrument’s quote units; no FX conversion, contract multiplier or broker margin is inferred.");
  }catch(e){setStatus("portfolioMonitorStatus","Portfolio monitor unavailable: "+e.message,true);}
 }
 async function loadIntegrations(){

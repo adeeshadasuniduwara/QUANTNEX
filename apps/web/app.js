@@ -714,7 +714,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   if(!$("p11Refresh"))return;
   const fmt=(v,d=2)=>v==null||!Number.isFinite(Number(v))?"—":Number(v).toLocaleString(undefined,{maximumFractionDigits:d});
   const node=(tag,value,cls)=>{const n=document.createElement(tag);if(value!==undefined)n.textContent=String(value);if(cls)n.className=cls;return n;};
-  const status=(message,bad=false)=>{const n=$("p11Methodology");n.textContent=message;n.className=bad?"p7-note p7-status-error":"p7-note";};
+  const status=(message,bad=false)=>{const n=$("p11Status");n.textContent=message;n.className=bad?"p7-note p7-status-error":"p7-note";};
   const svgNS="http://www.w3.org/2000/svg";
   function svg(tag,attrs={}){const n=document.createElementNS(svgNS,tag);Object.entries(attrs).forEach(([k,v])=>n.setAttribute(k,String(v)));return n;}
   function empty(root,message){root.replaceChildren(node("p",message,"p7-note"));}

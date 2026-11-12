@@ -305,7 +305,8 @@ async def scan_market_signal(symbol: str = "BTCUSDT", user: User = Depends(local
         raise HTTPException(status_code=502,detail="Could not retrieve "+symbol+" candles from the configured market-data provider.")
     signal=result.get("signal")
     if signal:
-        _save_preference(db,user.id,"active_signal",json.dumps({**signal,"tp1_notified":False,"tp2_notified":False,"tp3_notified":False,"sl_notified":False}))
+        if symbol=="XAUUSD":
+            _save_preference(db,user.id,"active_signal",json.dumps({**signal,"tp1_notified":False,"tp2_notified":False,"tp3_notified":False,"sl_notified":False}))
         token_enc=_preference(db,user.id,"telegram_bot_token_enc")
         chat_id=_preference(db,user.id,"telegram_chat_id")
         if token_enc and chat_id:

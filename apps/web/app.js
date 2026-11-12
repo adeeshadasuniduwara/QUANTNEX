@@ -236,20 +236,42 @@ if(sessionToken()){
 })();
 
 
-// Responsive TradingView workspace: one renderer for market, timeframe and fullscreen controls.
+// Single-owner TradingView workspace. Defer the first render until the following
+// signal-tool.js has restored local settings, and never create duplicate widgets.
 (function initTradingViewWorkspace(){
   const host=$("xauTradingView"),market=$("tradingViewSymbol"),timeframe=$("tradingViewInterval"),fullscreen=$("chartFullscreen");
   if(!host||!market||!timeframe)return;
   const chartPanel=host.closest(".chart-workspace");
   const supportedIntervals=new Set(["1","5","15","30","60","240","D","W"]);
+  let lastSignature="",renderVersion=0,resizeObserver=null;
+  const fallback=(message,version)=>{
+    if(version!==renderVersion)return;
+    host.classList.add("chart-error");
+    const note=document.createElement("div");
+    note.className="chart-error-message";
+    const strong=document.createElement("strong");strong.textContent="Chart could not be loaded";
+    const detail=document.createElement("span");detail.textContent=message;
+    const link=document.createElement("a");link.href="https://www.tradingview.com/chart/";link.target="_blank";link.rel="noopener noreferrer";link.textContent="Open TradingView in a new tab";
+    const retry=document.createElement("button");retry.type="button";retry.textContent="Retry chart";retry.addEventListener("click",()=>{lastSignature="";renderChart();});
+    note.append(strong,detail,link,retry);host.replaceChildren(note);
+  };
   function renderChart(options={}){
     const symbol=options.symbol||market.value||"OANDA:XAUUSD";
     const interval=String(options.interval||timeframe.value||"15");
     if(!supportedIntervals.has(interval))return false;
     market.value=symbol;timeframe.value=interval;
+    const signature=symbol+"|"+interval;
+    if(signature===lastSignature&&host.querySelector("iframe"))return true;
+    lastSignature=signature;
+    const version=++renderVersion;
+    host.classList.remove("chart-error");
     host.replaceChildren();
     const widget=document.createElement("div");
     widget.className="tradingview-widget-container__widget";
+    const loading=document.createElement("div");
+    loading.className="chart-loading";
+    loading.innerHTML='<span class="chart-loading-spinner" aria-hidden="true"></span><strong>Preparing live chart…</strong><small>Connecting to TradingView</small>';
+    host.append(widget,loading);
     const script=document.createElement("script");
     script.type="text/javascript";script.async=true;
     script.src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
@@ -258,7 +280,23 @@ if(sessionToken()){
       allow_symbol_change:true,calendar:false,details:false,hotlist:false,save_image:true,
       hide_side_toolbar:false,withdateranges:true,studies:[],support_host:"https://www.tradingview.com"
     });
-    host.append(widget,script);
+    script.onerror=()=>fallback("The TradingView embed script could not be reached. Check your internet connection or content blockers.",version);
+    host.append(script);
+    const observer=new MutationObserver(()=>{
+      const frame=host.querySelector("iframe");
+      if(!frame||version!==renderVersion)return;
+      frame.title=symbol+" TradingView chart";
+      frame.addEventListener("load",()=>{if(version===renderVersion)loading.remove();},{once:true});
+      observer.disconnect();
+    });
+    observer.observe(widget,{childList:true,subtree:true});
+    window.setTimeout(()=>{
+      if(version!==renderVersion)return;
+      const frame=host.querySelector("iframe");
+      if(frame){loading.remove();return;}
+      observer.disconnect();
+      fallback("TradingView did not create a chart. The service may be blocked or temporarily unavailable.",version);
+    },20000);
     return true;
   }
   market.addEventListener("change",()=>renderChart());
@@ -274,8 +312,13 @@ if(sessionToken()){
       const active=document.fullscreenElement===chartPanel;
       fullscreen.innerHTML=active?'⛶ <span>EXIT FULL SCREEN</span>':'⛶ <span>FULL SCREEN</span>';
       fullscreen.setAttribute("aria-label",active?"Exit fullscreen chart":"Enter fullscreen chart");
+      if(active){window.setTimeout(()=>{const frame=host.querySelector("iframe");if(frame)frame.style.height="100%";},150);}
     });
   }
+  if("ResizeObserver" in window&&chartPanel){
+    resizeObserver=new ResizeObserver(()=>{const frame=host.querySelector("iframe");if(frame&&host.clientWidth>0)frame.style.width="100%";});
+    resizeObserver.observe(chartPanel);
+  }
   window.quantnexRenderChart=renderChart;
-  renderChart();
+  window.requestAnimationFrame(()=>renderChart());
 })();

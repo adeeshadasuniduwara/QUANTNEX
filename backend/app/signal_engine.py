@@ -121,8 +121,15 @@ def structure(c: list[dict[str,Any]]) -> dict[str,Any]:
     if bos=="BEARISH":
         for row in reversed(recent[-12:-1]):
             if row["close"]>row["open"]:bear_ob={"low":row["low"],"high":row["high"]};break
+    bull_ifvg={"low":bull_fvg["low"],"high":bull_fvg["high"]} if bull_fvg and last["close"]<bull_fvg["low"] else None
+    bear_ifvg={"low":bear_fvg["low"],"high":bear_fvg["high"]} if bear_fvg and last["close"]>bear_fvg["high"] else None
+    bear_breaker={"low":bull_ob["low"],"high":bull_ob["high"]} if bull_ob and last["close"]<bull_ob["low"] else None
+    bull_breaker={"low":bear_ob["low"],"high":bear_ob["high"]} if bear_ob and last["close"]>bear_ob["high"] else None
     return {"bos_mss":bos,"liquidity_sweep":sweep,"bullish_fvg":bull_fvg,"bearish_fvg":bear_fvg,
-            "bullish_order_block":bull_ob,"bearish_order_block":bear_ob,"swing_high":swing_high,"swing_low":swing_low}
+            "bullish_ifvg":bull_ifvg,"bearish_ifvg":bear_ifvg,
+            "bullish_order_block":bull_ob,"bearish_order_block":bear_ob,
+            "bullish_breaker_block":bull_breaker,"bearish_breaker_block":bear_breaker,
+            "swing_high":swing_high,"swing_low":swing_low}
 
 def inspect_tf(c: list[dict[str,Any]]) -> dict[str,Any]:
     close=[x["close"] for x in c]; e20=ema(close,20)[-1];e50=ema(close,50)[-1];e200=ema(close,200)[-1] if len(close)>=200 else None
@@ -165,7 +172,7 @@ async def build_signal(settings: dict[str,Any]) -> dict[str,Any]:
     elif st["bos_mss"]=="BEARISH":sell.append("Bearish BOS / MSS")
     if st["liquidity_sweep"]=="BULLISH":buy.append("Sell-side liquidity sweep")
     elif st["liquidity_sweep"]=="BEARISH":sell.append("Buy-side liquidity sweep")
-    zone=st["bullish_fvg"] or st["bullish_order_block"] if p["macd_histogram"]>0 else st["bearish_fvg"] or st["bearish_order_block"]
+    zone=(st["bullish_fvg"] or st["bullish_order_block"] or st["bullish_breaker_block"] or st["bullish_ifvg"]) if p["macd_histogram"]>0 else (st["bearish_fvg"] or st["bearish_order_block"] or st["bearish_breaker_block"] or st["bearish_ifvg"])
     if zone and zone["low"]<=close<=zone["high"]:
         (buy if p["macd_histogram"]>0 else sell).append("Price inside OB / FVG zone")
     # Count directional timeframe alignment as the tenth confluence.

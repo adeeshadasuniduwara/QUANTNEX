@@ -176,8 +176,11 @@ async def build_signal(settings: dict[str,Any]) -> dict[str,Any]:
     if st["liquidity_sweep"]=="BULLISH":buy.append("Sell-side liquidity sweep")
     elif st["liquidity_sweep"]=="BEARISH":sell.append("Buy-side liquidity sweep")
     zone=(st["bullish_fvg"] or st["bullish_order_block"] or st["bullish_breaker_block"] or st["bullish_ifvg"]) if p["macd_histogram"]>0 else (st["bearish_fvg"] or st["bearish_order_block"] or st["bearish_breaker_block"] or st["bearish_ifvg"])
-    if zone and zone["low"]<=close<=zone["high"]:
-        (buy if p["macd_histogram"]>0 else sell).append("Price inside OB / FVG zone")
+    in_zone=bool(zone and zone["low"]<=close<=zone["high"])
+    discount_buy=st.get("premium_discount")=="DISCOUNT" and p["macd_histogram"]>0
+    premium_sell=st.get("premium_discount")=="PREMIUM" and p["macd_histogram"]<0
+    if in_zone or discount_buy or premium_sell:
+        (buy if p["macd_histogram"]>0 else sell).append("OB / FVG / breaker or premium-discount zone")
     # Count directional timeframe alignment as the tenth confluence.
     if t["bias"]=="BULLISH":buy.append("Trend timeframe aligned")
     elif t["bias"]=="BEARISH":sell.append("Trend timeframe aligned")

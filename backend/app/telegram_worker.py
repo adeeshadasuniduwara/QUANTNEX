@@ -62,6 +62,34 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
         return "Analysis timeframes saved: "+", ".join(names[x] for x in selected)
     if command=="/status":
         return "QUANTNEX bot connected. Market feed: "+("configured" if TWELVE_DATA_API_KEY else "not configured")+". Broker execution: disabled."
+    if command=="/settings":
+        auto_raw=_get(db,user_id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180}')
+        try: auto=json.loads(auto_raw)
+        except ValueError: auto={"enabled":False,"interval_seconds":180}
+        enabled=", ".join(names.get(str(x),str(x)) for x in settings.get("enabled",[]))
+        return ("Signal settings\\nPrimary: "+names.get(str(settings.get("primary")),"Unknown")+
+            "\\nTrend: "+names.get(str(settings.get("trend")),"Unknown")+
+            "\\nAnalysis: "+enabled+
+            "\\nMinimum score: "+str(settings.get("min_score",7))+"/10"+
+            "\\nAuto Signals: "+("ON" if auto.get("enabled") else "OFF")+
+            "\\nScan interval: "+str(auto.get("interval_seconds",180))+" seconds")
+    if command=="/pause":
+        auto_raw=_get(db,user_id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180}')
+        try: auto=json.loads(auto_raw)
+        except ValueError: auto={"enabled":False,"interval_seconds":180}
+        auto["enabled"]=False
+        _set(db,user_id,"auto_signal_settings",json.dumps(auto));db.commit()
+        return "Automatic signal scans are PAUSED. Manual /scan is still available."
+    if command=="/resume":
+        if not TWELVE_DATA_API_KEY:
+            return "Cannot resume: market feed is not configured. Add TWELVE_DATA_API_KEY to backend/.env and restart QUANTNEX."
+        auto_raw=_get(db,user_id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180}')
+        try: auto=json.loads(auto_raw)
+        except ValueError: auto={"enabled":False,"interval_seconds":180}
+        auto["enabled"]=True
+        auto["interval_seconds"]=max(60,min(3600,int(auto.get("interval_seconds",180) or 180)))
+        _set(db,user_id,"auto_signal_settings",json.dumps(auto));db.commit()
+        return "Automatic signal scans are RESUMED. Alerts require the local QUANTNEX API to stay running."
     if command=="/scan":
         try:
             result=await build_signal(settings)
@@ -77,7 +105,9 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
                 "\nTP1 hit alert monitoring is active while the local API is running. No broker order is placed.")
         except MarketDataError as exc:return "Signal scan unavailable: "+str(exc)
         except Exception:return "Signal scan failed. Check the local API logs and market-data provider configuration."
-    return "Unknown command. Send /help."
+    if command.startswith("/"):
+        return "Unknown command. Send /help."
+    return None
 
 async def telegram_worker() -> None:
     """Poll connected user bots, respond to commands and monitor active TP1 levels."""
@@ -101,9 +131,15 @@ async def telegram_worker() -> None:
                             if data.get("ok"):
                                 for update in data.get("result",[]):
                                     offset=max(offset,int(update.get("update_id",0))+1)
-                                    message=update.get("message") or update.get("channel_post") or {}
+                                    # Interactive control is restricted to the configured owner's
+                                    # private chat. Group/channel posts can receive alerts but cannot
+                                    # issue commands or change account settings.
+                                    message=update.get("message") or {}
                                     chat=message.get("chat") or {}
-                                    if str(chat.get("id"))!=str(chat_id) and not (str(chat_id).startswith("@") and ("@"+str(chat.get("username","")).lower())==str(chat_id).lower()):continue
+                                    sender=message.get("from") or {}
+                                    if str(chat.get("type"))!="private":continue
+                                    if str(chat.get("id"))!=str(chat_id):continue
+                                    if str(sender.get("id"))!=str(chat.get("id")):continue
                                     command=message.get("text","")
                                     answer=await _handle_command(client,db,user_id,token,chat_id,command)
                                     if answer:await _send(client,token,chat_id,answer)

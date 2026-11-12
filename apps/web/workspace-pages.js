@@ -16,6 +16,7 @@ const cell=(row,value)=>row.append(el("td",value==null?"—":value));
 const empty=(body,cols,message)=>{body.replaceChildren();const tr=el("tr"),td=el("td",message,"empty-row");td.colSpan=cols;tr.append(td);body.append(tr);};
 const digits=s=>s==="XAUUSD"?2:["EURUSD","GBPUSD"].includes(s)?5:s==="USDJPY"?3:2;
 let latestMarkets=new Map();
+let marketBoardCache=null,marketBoardFetchedAt=0,marketBoardPromise=null;
 let alerts=[];
 const ALERT_KEY="quantnex.price-alerts.v1";
 function loadAlerts(){try{const v=JSON.parse(localStorage.getItem(ALERT_KEY)||"[]");return Array.isArray(v)?v.filter(x=>x&&typeof x.id==="string"&&typeof x.symbol==="string"&&Number.isFinite(Number(x.target))):[];}catch{return[];}}
@@ -40,8 +41,13 @@ function renderAlerts(){
   action.append(button);tr.append(action);body.append(tr);
  }); 
 }
-async function loadMarketBoard(){
+async function loadMarketBoard(force=false){
+ const now=Date.now();
+ if(!force&&marketBoardCache&&now-marketBoardFetchedAt<5000)return marketBoardCache;
+ if(!force&&marketBoardPromise)return marketBoardPromise;
+ marketBoardPromise=(async()=>{
  const data=await api("/api/v1/intelligence/markets");
+ marketBoardCache=data;marketBoardFetchedAt=Date.now();
  latestMarkets=new Map((data.items||[]).map(item=>[item.symbol,item]));
  let triggered=false;
  (data.items||[]).filter(item=>item.status==="ok").forEach(item=>{
@@ -51,6 +57,8 @@ async function loadMarketBoard(){
  });
  if(triggered){saveAlerts();renderAlerts();}
  return data;
+ })();
+ try{return await marketBoardPromise;}finally{marketBoardPromise=null;}
 }
 function renderMarketRows(body,items,cols=6){
  body.replaceChildren();
@@ -63,13 +71,13 @@ function renderMarketRows(body,items,cols=6){
   body.append(tr);
  });
 }
-async function refreshWatchlist(){
- try{const data=await loadMarketBoard();renderMarketRows($("watchlistRows"),data.items||[]);setStatus("watchlistStatus","Updated "+new Date(data.timestamp||Date.now()).toLocaleTimeString()+" · "+(data.items||[]).filter(x=>x.status==="ok").length+"/"+(data.items||[]).length+" providers available.");}
+async function refreshWatchlist(force=false){
+ try{const data=await loadMarketBoard(force);renderMarketRows($("watchlistRows"),data.items||[]);setStatus("watchlistStatus","Updated "+new Date(data.timestamp||Date.now()).toLocaleTimeString()+" · "+(data.items||[]).filter(x=>x.status==="ok").length+"/"+(data.items||[]).length+" providers available.");}
  catch(e){setStatus("watchlistStatus","Watchlist unavailable: "+e.message,true);}
 }
-async function renderDeskCards(containerId,statusId,kind){
+async function renderDeskCards(containerId,statusId,kind,force=false){
  try{
-  const data=await loadMarketBoard(),items=(data.items||[]).filter(x=>x.kind===kind),root=$(containerId);root.replaceChildren();
+  const data=await loadMarketBoard(force),items=(data.items||[]).filter(x=>x.kind===kind),root=$(containerId);root.replaceChildren();
   if(!items.length)root.append(el("p","No "+kind+" instruments are configured.","workspace-page-empty"));
   items.forEach(item=>{
    const card=el("article",undefined,"workspace-page-card");
@@ -179,10 +187,10 @@ async function loadIntegrations(){
 }
 function init(){
  alerts=loadAlerts();renderAlerts();
- if($("watchlistRefresh")){$("watchlistRefresh").addEventListener("click",refreshWatchlist);refreshWatchlist();}
- if($("forexDeskRefresh")){$("forexDeskRefresh").addEventListener("click",()=>renderDeskCards("forexDeskCards","forexDeskStatus","forex"));renderDeskCards("forexDeskCards","forexDeskStatus","forex");}
- if($("cryptoDeskRefresh")){$("cryptoDeskRefresh").addEventListener("click",()=>renderDeskCards("cryptoDeskCards","cryptoDeskStatus","crypto"));renderDeskCards("cryptoDeskCards","cryptoDeskStatus","crypto");}
- if($("goldDeskRefresh")){$("goldDeskRefresh").addEventListener("click",()=>renderDeskCards("goldDeskCards","goldDeskStatus","gold"));renderDeskCards("goldDeskCards","goldDeskStatus","gold");}
+ if($("watchlistRefresh")){$("watchlistRefresh").addEventListener("click",()=>refreshWatchlist(true));refreshWatchlist();}
+ if($("forexDeskRefresh")){$("forexDeskRefresh").addEventListener("click",()=>renderDeskCards("forexDeskCards","forexDeskStatus","forex",true));renderDeskCards("forexDeskCards","forexDeskStatus","forex");}
+ if($("cryptoDeskRefresh")){$("cryptoDeskRefresh").addEventListener("click",()=>renderDeskCards("cryptoDeskCards","cryptoDeskStatus","crypto",true));renderDeskCards("cryptoDeskCards","cryptoDeskStatus","crypto");}
+ if($("goldDeskRefresh")){$("goldDeskRefresh").addEventListener("click",()=>renderDeskCards("goldDeskCards","goldDeskStatus","gold",true));renderDeskCards("goldDeskCards","goldDeskStatus","gold");}
  if($("goldDeskCandles"))$("goldDeskCandles").addEventListener("click",loadGoldCandles);
  if($("calendarRefresh")){$("calendarRefresh").addEventListener("click",loadCalendar);loadCalendar();}
  if($("historyRefresh")){$("historyRefresh").addEventListener("click",loadTradeHistory);loadTradeHistory();}
@@ -203,8 +211,9 @@ function init(){
    const root=$("cryptoDeskCards");
    if(root){const card=[...root.children].find(x=>x.querySelector("span")?.textContent.startsWith(symbol));if(card){const strong=card.querySelector("strong");if(strong)strong.textContent=fmt(price,digits(symbol));const small=card.querySelectorAll("small");if(small.length>1)small[1].textContent="Binance trade event · "+new Date(Number(detail.eventTime)||Date.now()).toLocaleTimeString();}}
    const body=$("watchlistRows");if(body){const row=[...body.rows].find(x=>x.cells[0]?.textContent===symbol);if(row){row.cells[2].textContent=fmt(price,digits(symbol));row.cells[5].textContent=new Date(Number(detail.eventTime)||Date.now()).toLocaleTimeString();}}
-   alerts.filter(x=>x.symbol===symbol).forEach(x=>checkAlert(x,price,"Binance WebSocket trade"));
-   saveAlerts();renderAlerts();
+   let triggered=false;
+   alerts.filter(x=>x.symbol===symbol&&!x.triggered).forEach(x=>{if(checkAlert(x,price,"Binance WebSocket trade"))triggered=true;});
+   if(triggered){saveAlerts();renderAlerts();}
    setStatus("cryptoDeskStatus",symbol+" live trade · "+fmt(price,digits(symbol))+" · "+new Date(Number(detail.eventTime)||Date.now()).toLocaleTimeString());
   }
  });

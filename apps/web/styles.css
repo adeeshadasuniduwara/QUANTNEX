@@ -335,3 +335,35 @@
  .qx-chart-status{width:100%;margin-left:0}
  .qx-chart-market{justify-content:space-between}
 }
+
+
+/* Versioned GitHub update notification */
+.web-update-details{margin:14px 0 16px;padding:15px 16px;border:1px solid #30343c;border-radius:14px;background:linear-gradient(145deg,#171b22,#101216)}
+.web-update-details[hidden]{display:none}
+.web-update-details-heading,.web-update-eyebrow{font-size:10px;font-weight:850;letter-spacing:.16em;color:#b7c4d6}
+.web-update-details p{margin:8px 0;color:#d9e0eb;font-size:13px;line-height:1.55}
+.web-update-details ul,.web-update-modal-changes ul{margin:8px 0 10px;padding-left:19px;color:#aeb8c7;font-size:12px;line-height:1.65}
+.web-update-details small,.web-update-modal-changes small{color:#788494;font-size:10px}
+#webInstallUpdate[hidden]{display:none}
+.web-update-modal[hidden]{display:none}
+.web-update-modal{position:fixed;inset:0;z-index:10050;display:grid;place-items:center;padding:20px;background:rgba(3,6,11,.78);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);animation:qxUpdateFade .2s ease both}
+.web-update-dialog{position:relative;width:min(100%,520px);max-height:min(88vh,760px);overflow:auto;padding:32px;border:1px solid #3a4657;border-radius:24px;background:radial-gradient(ellipse at 50% -20%,#26354b 0%,#171d28 42%,#101319 78%);color:#f4f7fb;box-shadow:0 28px 100px #000b,0 0 55px #6ca6ff13;animation:qxUpdateRise .28s cubic-bezier(.2,.8,.2,1) both}
+.web-update-close{position:absolute;top:14px;right:16px;width:34px;height:34px;border:1px solid #465365;border-radius:50%;background:#ffffff0a;color:#dbe5f2;font-size:22px;cursor:pointer}
+.web-update-modal-mark{width:48px;height:48px;display:grid;place-items:center;margin-bottom:20px;border:1px solid #61748d;border-radius:15px;background:linear-gradient(145deg,#344b68,#172235);font-size:26px;font-weight:950;box-shadow:0 8px 30px #0005}
+.web-update-modal-mark span{color:#9dc4ff}
+.web-update-eyebrow{display:flex;align-items:center;gap:9px;color:#9fc7ff}
+.web-update-pulse{width:7px;height:7px;border-radius:50%;background:#7db4ff;box-shadow:0 0 0 5px #7db4ff1c;animation:pulse 1.8s ease-in-out infinite}
+.web-update-dialog h2{margin:12px 0 10px;font-size:26px;line-height:1.16;letter-spacing:-.035em}
+.web-update-version{display:inline-flex;margin:3px 0 12px;padding:6px 10px;border:1px solid #435a77;border-radius:8px;background:#8bbcff12;color:#b9d8ff;font:750 12px/1.2 ui-monospace,monospace}
+.web-update-modal-summary{margin:0 0 18px;color:#b8c3d2;font-size:13px;line-height:1.6}
+.web-update-modal-changes{padding:16px 17px;border:1px solid #354151;border-radius:14px;background:#080c1290}
+.web-update-modal-changes>strong{font-size:12px;color:#e8eef7}
+.web-update-modal-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}
+.web-update-modal-actions button{min-height:44px}
+.web-update-modal-actions .primary-btn{flex:1 1 220px;background:linear-gradient(110deg,#dceaff,#8dbaff);border-color:#a9ceff;color:#0a1422;box-shadow:0 8px 24px #609de833}
+.web-update-modal-actions .secondary-btn{flex:0 0 auto;background:#ffffff09;border-color:#475365;color:#d7e0ec}
+.web-update-safe-note{margin:15px 0 0!important;color:#7f8b9b!important;font-size:10px!important;line-height:1.5}
+@keyframes qxUpdateFade{from{opacity:0}to{opacity:1}}
+@keyframes qxUpdateRise{from{opacity:0;transform:translateY(15px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(max-width:560px){.web-update-modal{padding:12px}.web-update-dialog{padding:25px 20px;border-radius:19px}.web-update-dialog h2{font-size:23px}.web-update-modal-actions{flex-direction:column}.web-update-modal-actions button{width:100%}}
+@media(prefers-reduced-motion:reduce){.web-update-modal,.web-update-dialog,.web-update-pulse{animation:none!important}}

@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from app.events import EventHub, event_hub
+from app.events import EventHub, _is_loopback_host, event_hub
 from app.main import app
 
 
@@ -14,6 +14,21 @@ def test_event_hub_sequence_and_bounded_queue_resync():
     assert second["event_id"] == 2
     assert first["schema_version"] == 1
     assert second["payload"]["transaction_id"] == 2
+
+    queue = hub.connect()
+    hub._broadcast(first)
+    hub._broadcast(second)
+    overflow = queue.get_nowait()
+    assert overflow["type"] == "stream.resync_required"
+    assert overflow["payload"]["reason"] == "client_queue_overflow"
+    hub.disconnect(queue)
+
+
+def test_event_stream_host_validation_is_loopback_only():
+    assert _is_loopback_host("127.0.0.1")
+    assert _is_loopback_host("::1")
+    assert _is_loopback_host("localhost")
+    assert not _is_loopback_host("192.0.2.10")
 
 
 def test_local_event_stream_delivers_workspace_events():

@@ -68,7 +68,22 @@
       </section>
       <section class="section-heading" id="signal-lab"><div><div class="overline">QUANTNEX · MARKET INTELLIGENCE</div><h2>Signal Lab</h2><p>Multi-timeframe technical analysis and optional Telegram signal delivery.</p></div><span class="pill live-pill">PAPER / ALERTS ONLY</span></section>
       <section class="section-heading" id="tradingview"><div><div class="overline">CHARTING</div><h2>TradingView</h2><p>One dedicated chart workspace. Select a symbol and timeframe.</p></div><span class="pill live-pill">CHART TAB</span></section>
-      <section class="panel chart-panel"><div class="chart-heading"><div><strong>TradingView Advanced Chart</strong><span>Choose XAUUSD or BTCUSDT</span></div><label class="chart-select-label">Symbol <select id="tradingViewSymbol"><option value="OANDA:XAUUSD">XAUUSD</option><option value="BINANCE:BTCUSDT">BTCUSDT</option></select></label></div><div id="xauTradingView" class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div><script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>{"autosize":true,"symbol":"OANDA:XAUUSD","interval":"15","timezone":"Etc/UTC","theme":"dark","style":"1","locale":"en","allow_symbol_change":true,"calendar":false,"support_host":"https://www.tradingview.com"}</script></div></section>
+      <section class="panel chart-panel chart-workspace">
+        <div class="chart-heading chart-workspace-heading">
+          <div class="chart-title-group"><span class="chart-kicker"><i></i> LIVE CHART WORKSPACE</span><strong>TradingView Advanced Chart</strong><span>Professional chart view · XAUUSD / BTCUSDT</span></div>
+          <div class="chart-toolbar">
+            <label class="chart-select-label">MARKET <select id="tradingViewSymbol" aria-label="Chart market"><option value="OANDA:XAUUSD">XAUUSD · Gold</option><option value="BINANCE:BTCUSDT">BTCUSDT · Bitcoin</option></select></label>
+            <label class="chart-select-label">TIMEFRAME <select id="tradingViewInterval" aria-label="Chart timeframe"><option value="1">1m</option><option value="5">5m</option><option value="15" selected>15m</option><option value="30">30m</option><option value="60">1H</option><option value="240">4H</option><option value="D">1D</option><option value="W">1W</option></select></label>
+            <button class="chart-fullscreen-btn" id="chartFullscreen" type="button" aria-label="Enter fullscreen chart">⛶ <span>FULL SCREEN</span></button>
+          </div>
+        </div>
+        <div class="chart-frame">
+          <div id="xauTradingView" class="tradingview-widget-container" aria-label="Live TradingView market chart">
+            <div class="chart-loading"><span class="chart-loading-spinner"></span><strong>Preparing live chart…</strong><small>Connecting to TradingView</small></div>
+          </div>
+        </div>
+        <div class="chart-footer"><span><i></i> TradingView market data</span><span>Chart prices and availability depend on the selected exchange / data plan.</span></div>
+      </section>
       <section class="panel timeframe-panel">
         <div class="signal-intro"><div><strong>Signal timeframe preferences</strong><p>Choose the timeframes and confluence threshold used by the live XAUUSD analysis engine.</p></div><span class="signal-pill">USER CONFIGURABLE</span></div>
         <div class="timeframe-grid">

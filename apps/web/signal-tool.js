@@ -53,12 +53,9 @@
     if(!Number.isFinite(s.risk_percent)||s.risk_percent<=0||s.risk_percent>5){$("timeframeStatus").textContent="Risk per signal must be above 0 and no more than 5%.";return null;}
     localStorage.setItem(tfKey,JSON.stringify(s));
     try {
-      if(typeof sessionToken==="function"&&sessionToken()){
-        await apiRequest("/api/v1/signals/settings",{method:"PUT",body:JSON.stringify(s)});
-        $("timeframeStatus").textContent="Saved to your QUANTNEX account · Primary "+tfNames[s.primary]+" · Trend "+tfNames[s.trend]+" · Analysis "+s.enabled.map(x=>tfNames[x]).join(", ")+".";
-      } else {
-        $("timeframeStatus").textContent="Saved on this device. Sign in to QUANTNEX to sync settings and run server-side analysis.";
-      }
+      await apiRequest("/api/v1/signals/settings",{method:"PUT",body:JSON.stringify(s)});
+      $("timeframeStatus").textContent="Saved to this local QUANTNEX workspace · Primary "+tfNames[s.primary]+" · Trend "+tfNames[s.trend]+" · Analysis "+s.enabled.map(x=>tfNames[x]).join(", ")+".";
+
     } catch(e){$("timeframeStatus").textContent="Local settings saved; API sync failed: "+e.message;}
     return s;
   }
@@ -75,7 +72,6 @@
   $("saveTimeframes").addEventListener("click",saveSettings);
   $("syncTimeframes").addEventListener("click",async()=>{
     try{
-      if(typeof sessionToken!=="function"||!sessionToken())throw new Error("Sign in to QUANTNEX first.");
       const remote=await apiRequest("/api/v1/signals/settings");applySettings(remote);
       localStorage.setItem(tfKey,JSON.stringify({...remote,chart:$("chartSignalTf").value}));
       $("timeframeStatus").textContent="Loaded the latest settings from your QUANTNEX account / Telegram bot.";
@@ -84,12 +80,10 @@
   $("applyChartTf").addEventListener("click",async()=>{await saveSettings();applyChartTimeframe();});
   function loadLocalSettings(){try{const s=JSON.parse(localStorage.getItem(tfKey)||"null");if(s)applySettings(s);}catch{}}
   loadLocalSettings();
-  if(typeof sessionToken==="function"&&sessionToken()){
-    apiRequest("/api/v1/signals/settings").then(applySettings).catch(()=>{});
-    apiRequest("/api/v1/signals/status").then(status=>{
-      $("signalEngineState").textContent=status.configured?"MARKET FEED READY":"ADD MARKET DATA KEY";
-    }).catch(()=>{});
-  }
+  apiRequest("/api/v1/signals/settings").then(applySettings).catch(()=>{});
+  apiRequest("/api/v1/signals/status").then(status=>{
+    $("signalEngineState").textContent=status.configured?"MARKET FEED READY":"ADD MARKET DATA KEY";
+  }).catch(()=>{});
 
   function addStat(parent,label,value) {
     const d=document.createElement("div"),s=document.createElement("span"),v=document.createElement("strong");
@@ -136,7 +130,6 @@
     $("signalEngineState").textContent="FETCHING MARKET DATA";
     try{
       const s=await saveSettings();if(!s)throw new Error("Check timeframe settings.");
-      if(typeof sessionToken!=="function"||!sessionToken())throw new Error("Sign in to your QUANTNEX account before running a live scan.");
       const data=await apiRequest("/api/v1/signals/scan",{method:"POST"});
       renderScan(data);
       $("timeframeStatus").textContent="Analysis updated at "+new Date(data.generated_at).toLocaleString()+". Source: "+data.provider+".";
@@ -145,7 +138,6 @@
   });
 
   async function storedTelegramMessage(message){
-    if(typeof sessionToken!=="function"||!sessionToken())throw new Error("Sign in to QUANTNEX first.");
     return apiRequest("/api/v1/telegram/notify",{method:"POST",body:JSON.stringify({message})});
   }
   $("connectTelegram").addEventListener("click",async()=>{
@@ -176,7 +168,7 @@
     catch(e){$("telegramStatus").textContent=e.message;}
   });
   $("clearTelegram").addEventListener("click",async()=>{
-    try{if(typeof sessionToken==="function"&&sessionToken())await apiRequest("/api/v1/telegram/connect",{method:"DELETE"});}
+    try{await apiRequest("/api/v1/telegram/connect",{method:"DELETE"});}
     catch(e){$("telegramStatus").textContent=e.message;return;}
     $("tgBotToken").value="";$("tgChatId").value="";$("autoSignalsEnabled").checked=false;$("autoSignalStatus").textContent="Auto Signals OFF. Reconnect a bot before enabling it again.";$("telegramMonitorTitle").textContent="Telegram bot not connected";$("telegramMonitorDescription").textContent="Connect a bot in Signal Lab to enable delivery.";$("telegramMonitorPill").textContent="OFFLINE";$("telegramStatus").textContent="Telegram bot disconnected and stored token removed.";
   });
@@ -189,7 +181,6 @@
   if($("tradingViewSymbol"))applyChartTimeframe();
 
   async function loadAutoSignalSettings(){
-    if(typeof sessionToken!=="function"||!sessionToken())return;
     try{
       const [settings,bot]=await Promise.all([apiRequest("/api/v1/telegram/auto-signals"),apiRequest("/api/v1/telegram/status")]);
       if(bot.connected){$("tgBotDisplayName").value=bot.display_name||"";$("telegramStatus").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username))+" · "+bot.chat_id;$("telegramMonitorTitle").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username));$("telegramMonitorDescription").textContent="Your personal Telegram bot is connected. Turn on Auto Signals in Signal Lab to receive new high-confluence XAUUSD setups.";$("telegramMonitorPill").textContent=settings.enabled?"AUTO ON":"CONNECTED";}
@@ -204,7 +195,6 @@
     const interval_seconds=Number($("autoSignalInterval").value||180);
     const button=$("saveAutoSignals");button.disabled=true;button.textContent="Saving…";
     try{
-      if(typeof sessionToken!=="function"||!sessionToken())throw new Error("Sign in to QUANTNEX first.");
       const result=await apiRequest("/api/v1/telegram/auto-signals",{method:"PUT",body:JSON.stringify({enabled,interval_seconds})});
       $("autoSignalStatus").textContent=result.enabled?"Auto Signals ON · strict 8/10 minimum · every "+(interval_seconds/60)+" minute(s). Keep this computer/VPS and QUANTNEX API running.":"Auto Signals OFF. No automatic Telegram signals will be sent.";$("telegramMonitorPill").textContent=result.enabled?"AUTO ON":"CONNECTED";
     }catch(error){
@@ -212,6 +202,5 @@
       $("autoSignalStatus").textContent=error.message;
     }finally{button.disabled=false;button.textContent="Save Auto Signal settings";}
   });
-  if(typeof sessionToken==="function"&&sessionToken())loadAutoSignalSettings();
-  window.addEventListener("quantnex:auth",loadAutoSignalSettings);
+  loadAutoSignalSettings();
 })();

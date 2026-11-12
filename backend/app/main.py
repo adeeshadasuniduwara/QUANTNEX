@@ -1,38 +1,72 @@
 import asyncio
 import json
 import re
+import sqlite3
 import httpx
-import jwt
+from datetime import datetime
+from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import func, select, text
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, TOKEN_MINUTES
-from .database import Base, engine, get_db
+from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, DATABASE_URL
+from .database import Base, engine, get_db, SessionLocal
 from .models import Preference, Trade, User, WalletTransaction
-from .schemas import AIChatRequest, AIChatResponse, LoginRequest, PreferenceResponse, PreferenceWrite, RegisterRequest, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TokenResponse, TradeCreate, TradeResponse, UserResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
-from .security import create_access_token, decode_access_token, decrypt_secret, encrypt_secret, hash_password, verify_password
+from .schemas import AIChatRequest, AIChatResponse, PreferenceResponse, PreferenceWrite, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TradeCreate, TradeResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
+from .security import decrypt_secret, encrypt_secret
 
 Base.metadata.create_all(bind=engine)
-app = FastAPI(title="QUANTNEX API", description="Shared backend for the QUANTNEX trading workspace.", version="0.5.0")
-app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials=True,
-                   allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Authorization", "Content-Type"])
-bearer = HTTPBearer(auto_error=False)
+app = FastAPI(title="QUANTNEX Local API", description="Loopback-only local workspace API. No user login or remote account system.", version="0.7.0")
+app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials=False,
+                   allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Content-Type"])
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
 
-def current_user(credentials: HTTPAuthorizationCredentials | None = Depends(bearer), db: Session = Depends(get_db)) -> User:
-    if credentials is None or credentials.scheme.lower() != "bearer":
-        raise HTTPException(status_code=401, detail="Authentication required.")
-    try:
-        user_id = decode_access_token(credentials.credentials)
-    except (jwt.PyJWTError, ValueError):
-        raise HTTPException(status_code=401, detail="Invalid or expired access token.")
-    user = db.get(User, user_id)
-    if user is None:
-        raise HTTPException(status_code=401, detail="User account not found.")
-    return user
+
+def local_workspace(db: Session = Depends(get_db)) -> User:
+    """Return the one local workspace owner and safely consolidate legacy accounts."""
+    users = list(db.scalars(select(User).order_by(User.id)))
+    if not users:
+        owner = User(email="local@quantnex.invalid", password_hash="")
+        db.add(owner)
+        db.commit()
+        db.refresh(owner)
+        return owner
+
+    owner = users[0]
+    changed = False
+    for legacy in users[1:]:
+        for preference in list(db.scalars(select(Preference).where(Preference.user_id == legacy.id))):
+            existing = db.scalar(select(Preference).where(
+                Preference.user_id == owner.id, Preference.key == preference.key
+            ))
+            if existing is None:
+                preference.user_id = owner.id
+            else:
+                db.delete(preference)
+        for trade in db.scalars(select(Trade).where(Trade.user_id == legacy.id)):
+            trade.user_id = owner.id
+        for transaction in db.scalars(select(WalletTransaction).where(WalletTransaction.user_id == legacy.id)):
+            transaction.user_id = owner.id
+        # Flush reassigned child rows before deleting the legacy owner; ORM delete cascades
+        # must not interpret the moved rows as orphans.
+        db.flush()
+        db.delete(legacy)
+        changed = True
+
+    if changed:
+        db.flush()
+    if owner.email != "local@quantnex.invalid":
+        owner.email = "local@quantnex.invalid"
+        changed = True
+    if owner.password_hash:
+        owner.password_hash = ""
+        changed = True
+    if changed:
+        db.commit()
+        db.refresh(owner)
+    return owner
 
 @app.get("/api/v1/market/overview")
 async def market_overview():
@@ -48,39 +82,14 @@ def health(db: Session = Depends(get_db)):
     db.execute(text("SELECT 1"))
     return {"status": "ok", "service": "quantnex-api", "version": app.version, "database": "connected"}
 
-@app.post("/api/v1/auth/register", response_model=UserResponse, status_code=201)
-def register(payload: RegisterRequest, db: Session = Depends(get_db)):
-    if db.scalar(select(User).where(User.email == payload.email)):
-        raise HTTPException(status_code=409, detail="An account with this email already exists.")
-    user = User(email=payload.email, password_hash=hash_password(payload.password))
-    db.add(user)
-    try:
-        db.commit()
-        db.refresh(user)
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(status_code=409, detail="An account with this email already exists.")
-    return user
-
-@app.post("/api/v1/auth/login", response_model=TokenResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)):
-    user = db.scalar(select(User).where(User.email == payload.email.strip().lower()))
-    if user is None or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Email or password is incorrect.")
-    return TokenResponse(access_token=create_access_token(user.id), expires_in=TOKEN_MINUTES * 60)
-
-@app.get("/api/v1/auth/me", response_model=UserResponse)
-def me(user: User = Depends(current_user)):
-    return user
-
 @app.get("/api/v1/journal", response_model=list[TradeResponse])
-def list_journal(limit: int = 100, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def list_journal(limit: int = 100, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     if not 1 <= limit <= 500:
         raise HTTPException(status_code=422, detail="Limit must be between 1 and 500.")
     return list(db.scalars(select(Trade).where(Trade.user_id == user.id).order_by(Trade.id.desc()).limit(limit)))
 
 @app.post("/api/v1/journal", response_model=TradeResponse, status_code=201)
-def create_journal(payload: TradeCreate, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def create_journal(payload: TradeCreate, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     item = Trade(user_id=user.id, symbol=payload.symbol, direction=payload.direction,
                  outcome=payload.outcome, pnl=payload.pnl, notes=payload.notes)
     db.add(item)
@@ -92,7 +101,7 @@ def create_journal(payload: TradeCreate, user: User = Depends(current_user), db:
     return item
 
 @app.delete("/api/v1/journal/{trade_id}", status_code=204)
-def delete_journal(trade_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def delete_journal(trade_id: int, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     item = db.scalar(select(Trade).where(Trade.id == trade_id, Trade.user_id == user.id))
     if item is None:
         raise HTTPException(status_code=404, detail="Journal entry not found.")
@@ -104,7 +113,7 @@ def delete_journal(trade_id: int, user: User = Depends(current_user), db: Sessio
     db.commit()
 
 @app.get("/api/v1/wallet/summary", response_model=WalletSummaryResponse)
-def wallet_summary(user: User = Depends(current_user), db: Session = Depends(get_db)):
+def wallet_summary(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     rows = list(db.scalars(select(WalletTransaction).where(WalletTransaction.user_id == user.id)))
     deposits = sum(row.amount for row in rows if row.transaction_type == "deposit")
     withdrawals = sum(abs(row.amount) for row in rows if row.transaction_type == "withdrawal")
@@ -114,14 +123,14 @@ def wallet_summary(user: User = Depends(current_user), db: Session = Depends(get
                                  trading_pnl=round(trading_pnl, 2))
 
 @app.get("/api/v1/wallet/transactions", response_model=list[WalletTransactionResponse])
-def wallet_transactions(limit: int = 100, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def wallet_transactions(limit: int = 100, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     if not 1 <= limit <= 500:
         raise HTTPException(status_code=422, detail="Limit must be between 1 and 500.")
     return list(db.scalars(select(WalletTransaction).where(WalletTransaction.user_id == user.id)
                            .order_by(WalletTransaction.id.desc()).limit(limit)))
 
 @app.post("/api/v1/wallet/transactions", response_model=WalletTransactionResponse, status_code=201)
-def create_wallet_transaction(payload: WalletTransactionCreate, user: User = Depends(current_user),
+def create_wallet_transaction(payload: WalletTransactionCreate, user: User = Depends(local_workspace),
                                db: Session = Depends(get_db)):
     balance = db.scalar(select(func.coalesce(func.sum(WalletTransaction.amount), 0.0))
                         .where(WalletTransaction.user_id == user.id)) or 0.0
@@ -136,11 +145,11 @@ def create_wallet_transaction(payload: WalletTransactionCreate, user: User = Dep
     return item
 
 @app.get("/api/v1/preferences", response_model=list[PreferenceResponse])
-def get_preferences(user: User = Depends(current_user), db: Session = Depends(get_db)):
+def get_preferences(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     return list(db.scalars(select(Preference).where(Preference.user_id == user.id).order_by(Preference.key)))
 
 @app.put("/api/v1/preferences/{key}", response_model=PreferenceResponse)
-def set_preference(key: str, payload: PreferenceWrite, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def set_preference(key: str, payload: PreferenceWrite, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     if not key.replace("_", "").isalnum() or len(key) > 64:
         raise HTTPException(status_code=422, detail="Invalid preference key.")
     item = db.scalar(select(Preference).where(Preference.user_id == user.id, Preference.key == key))
@@ -154,14 +163,14 @@ def set_preference(key: str, payload: PreferenceWrite, user: User = Depends(curr
     return item
 
 @app.get("/api/v1/ai/status")
-def ai_status(user: User = Depends(current_user)):
+def ai_status(user: User = Depends(local_workspace)):
     return {"configured": bool(AI_BASE_URL and AI_API_KEY and AI_MODEL),
             "provider": "OpenAI-compatible" if AI_BASE_URL else None,
             "model": AI_MODEL or None,
             "note": "AI is disabled until server-side provider settings are configured."}
 
 @app.post("/api/v1/ai/chat", response_model=AIChatResponse)
-async def ai_chat(payload: AIChatRequest, user: User = Depends(current_user)):
+async def ai_chat(payload: AIChatRequest, user: User = Depends(local_workspace)):
     if not (AI_BASE_URL and AI_API_KEY and AI_MODEL):
         raise HTTPException(status_code=503, detail="AI provider is not configured on the server.")
     url = AI_BASE_URL if AI_BASE_URL.endswith("/chat/completions") else AI_BASE_URL + "/chat/completions"
@@ -183,7 +192,7 @@ async def ai_chat(payload: AIChatRequest, user: User = Depends(current_user)):
 
 
 @app.post("/api/v1/telegram/send")
-async def send_telegram_message(payload: TelegramSendRequest, user: User = Depends(current_user)):
+async def send_telegram_message(payload: TelegramSendRequest, user: User = Depends(local_workspace)):
     """Send one user-triggered Telegram message; bot credentials are never stored."""
     import re
     if not re.fullmatch(r"[0-9]{5,12}:[A-Za-z0-9_-]{20,}", payload.bot_token):
@@ -220,26 +229,26 @@ def _save_preference(db: Session, user_id: int, key: str, value: str) -> None:
 DEFAULT_SIGNAL_SETTINGS = {"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1.0,"min_score":7}
 
 @app.get("/api/v1/signals/status")
-def signal_engine_status(user: User = Depends(current_user)):
+def signal_engine_status(user: User = Depends(local_workspace)):
     from .config import TWELVE_DATA_API_KEY
     return {"configured": bool(TWELVE_DATA_API_KEY), "provider":"Twelve Data",
             "symbol":"XAU/USD", "note":"Live analysis requires a valid server-side TWELVE_DATA_API_KEY. The TradingView embed does not expose its candles to this API."}
 
 @app.get("/api/v1/signals/settings")
-def get_signal_settings(user: User = Depends(current_user), db: Session = Depends(get_db)):
+def get_signal_settings(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     try: settings=json.loads(_preference(db,user.id,"signal_settings",json.dumps(DEFAULT_SIGNAL_SETTINGS)))
     except ValueError: settings=DEFAULT_SIGNAL_SETTINGS
     return settings
 
 @app.put("/api/v1/signals/settings")
-def update_signal_settings(payload: SignalSettingsRequest, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def update_signal_settings(payload: SignalSettingsRequest, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     settings=payload.model_dump()
     _save_preference(db,user.id,"signal_settings",json.dumps(settings))
     db.commit()
     return settings
 
 @app.post("/api/v1/signals/scan")
-async def scan_xauusd_signal(user: User = Depends(current_user), db: Session = Depends(get_db)):
+async def scan_xauusd_signal(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     from .signal_engine import build_signal, MarketDataError
     from .config import TWELVE_DATA_API_KEY
     if not TWELVE_DATA_API_KEY:
@@ -281,7 +290,7 @@ async def scan_xauusd_signal(user: User = Depends(current_user), db: Session = D
     return result
 
 @app.post("/api/v1/telegram/connect")
-async def connect_telegram_bot(payload: TelegramConnectRequest, user: User = Depends(current_user), db: Session = Depends(get_db)):
+async def connect_telegram_bot(payload: TelegramConnectRequest, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     if not re.fullmatch(r"[0-9]{5,12}:[A-Za-z0-9_-]{20,}",payload.bot_token):
         raise HTTPException(status_code=422,detail="Telegram bot token format is invalid.")
     if not re.fullmatch(r"(?:@[A-Za-z0-9_]{5,}|-?[0-9]{1,20})",payload.chat_id.strip()):
@@ -305,7 +314,7 @@ async def connect_telegram_bot(payload: TelegramConnectRequest, user: User = Dep
             "note":"The local API must remain running for bot commands and TP1/SL level alerts."}
 
 @app.get("/api/v1/telegram/status")
-def telegram_status(user: User = Depends(current_user), db: Session = Depends(get_db)):
+def telegram_status(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     connected=bool(_preference(db,user.id,"telegram_bot_token_enc") and _preference(db,user.id,"telegram_chat_id"))
     return {"connected":connected,"bot_username":_preference(db,user.id,"telegram_bot_username") if connected else None,
             "display_name":_preference(db,user.id,"telegram_bot_display_name") if connected else None,
@@ -313,12 +322,58 @@ def telegram_status(user: User = Depends(current_user), db: Session = Depends(ge
             "worker":"active while this API process is running"}
 
 @app.delete("/api/v1/telegram/connect")
-def disconnect_telegram_bot(user: User = Depends(current_user), db: Session = Depends(get_db)):
+def disconnect_telegram_bot(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     for key in ["telegram_bot_token_enc","telegram_chat_id","telegram_bot_username","telegram_bot_display_name","telegram_update_offset","active_signal","auto_signal_settings","auto_signal_last_fingerprint"]:
         row=db.scalar(select(Preference).where(Preference.user_id==user.id,Preference.key==key))
         if row:db.delete(row)
     db.commit()
     return {"connected":False}
+
+def backup_legacy_database(db: Session) -> None:
+    """Create a recoverable SQLite snapshot before clearing legacy login data."""
+    users = list(db.scalars(select(User).order_by(User.id)))
+    if not users:
+        return
+    needs_migration = len(users) > 1 or users[0].email != "local@quantnex.invalid" or bool(users[0].password_hash)
+    if not needs_migration or not DATABASE_URL.startswith("sqlite:///"):
+        return
+
+    raw_path = DATABASE_URL[len("sqlite:///"):].split("?", 1)[0]
+    if raw_path == ":memory:":
+        return
+    database_path = Path(raw_path)
+    if not database_path.is_absolute():
+        database_path = Path.cwd() / database_path
+    if not database_path.is_file():
+        return
+
+    backup_dir = Path(__file__).resolve().parents[2] / "data" / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    backup_path = backup_dir / ("quantnex-pre-local-only-" + datetime.now().strftime("%Y%m%d-%H%M%S-%f") + ".db")
+    try:
+        source = sqlite3.connect(str(database_path))
+        target = sqlite3.connect(str(backup_path))
+        try:
+            source.backup(target)
+        finally:
+            source.close()
+            target.close()
+    except Exception:
+        backup_path.unlink(missing_ok=True)
+        raise
+    print(f"[QUANTNEX] Legacy database backup created: {backup_path}", flush=True)
+
+
+@app.on_event("startup")
+async def prepare_local_workspace():
+    """Back up and migrate legacy accounts before the Telegram worker starts."""
+    db = SessionLocal()
+    try:
+        backup_legacy_database(db)
+        local_workspace(db)
+    finally:
+        db.close()
+
 
 @app.on_event("startup")
 async def start_telegram_background_worker():
@@ -334,7 +389,7 @@ async def stop_telegram_background_worker():
         except asyncio.CancelledError:pass
 
 @app.get("/api/v1/telegram/auto-signals")
-def get_auto_signal_settings(user: User = Depends(current_user), db: Session = Depends(get_db)):
+def get_auto_signal_settings(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     raw=_preference(db,user.id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180}')
     try: settings=json.loads(raw)
     except ValueError: settings={"enabled":False,"interval_seconds":180}
@@ -344,7 +399,7 @@ def get_auto_signal_settings(user: User = Depends(current_user), db: Session = D
     return settings
 
 @app.put("/api/v1/telegram/auto-signals")
-def set_auto_signal_settings(payload: AutoSignalSettingsRequest, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def set_auto_signal_settings(payload: AutoSignalSettingsRequest, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     connected=bool(_preference(db,user.id,"telegram_bot_token_enc") and _preference(db,user.id,"telegram_chat_id"))
     if payload.enabled and not connected:
         raise HTTPException(status_code=409,detail="Connect and test your personal Telegram bot before enabling Auto Signals.")
@@ -357,7 +412,7 @@ def set_auto_signal_settings(payload: AutoSignalSettingsRequest, user: User = De
     return {**settings,"telegram_connected":connected,"note":"Automatic XAUUSD alerts run only while this computer's QUANTNEX API process is running."}
 
 @app.post("/api/v1/telegram/notify")
-async def notify_connected_telegram(payload: dict, user: User = Depends(current_user), db: Session = Depends(get_db)):
+async def notify_connected_telegram(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     message=payload.get("message")
     if not isinstance(message,str) or not message.strip() or len(message)>4096:
         raise HTTPException(status_code=422,detail="Message must contain 1–4096 characters.")

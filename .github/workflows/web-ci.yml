@@ -25,10 +25,19 @@ jobs:
         with:
           node-version: "22"
       - name: Validate Web JavaScript syntax
-        run: node --check apps/web/app.js
-      - name: Verify required wallet UI elements exist
+        run: |
+          node --check apps/web/app.js
+          node --check apps/web/signal-tool.js
+      - name: Validate local updater Python syntax
+        run: python -m py_compile apps/web/quantnex_local_server.py
+      - name: Verify local-only wallet and updater UI
         run: |
           grep -q 'id="account"' apps/web/index.html
           grep -q 'id="walletDeposit"' apps/web/index.html
           grep -q 'id="walletWithdraw"' apps/web/index.html
-          grep -q 'id="accountLogin"' apps/web/index.html
+          grep -q 'id="walletArea">' apps/web/index.html
+          grep -q 'LOCAL DEVICE MODE' apps/web/index.html
+          grep -q 'Check &amp; install updates' apps/web/index.html
+          ! grep -q 'id="accountLogin"' apps/web/index.html
+          ! grep -q 'id="accountRegister"' apps/web/index.html
+          ! grep -q 'id="accountPassword"' apps/web/index.html

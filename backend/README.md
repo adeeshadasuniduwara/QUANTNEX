@@ -1,17 +1,16 @@
-# QUANTNEX Backend — Shared API
+# QUANTNEX Backend — Local API
 
-FastAPI shared API foundation for Windows, Android and Web.
+FastAPI service for one QUANTNEX workspace on one Windows computer. There is no user login, registration, password, JWT session or remote account system.
 
 ## Included
 - Health endpoint and OpenAPI documentation.
-- Registration/login, Argon2 password hashes and expiring JWT bearer tokens.
-- Authenticated user profile.
-- User-isolated trade journal list/create/delete APIs.
-- Wallet ledger for manual deposits and withdrawals, with balance checks.
+- Local trade journal list/create/delete APIs.
+- Local wallet ledger for manual deposits and withdrawals, with balance checks.
 - Journal P&L automatically creates a linked wallet ledger entry; deleting a journal record removes its linked P&L entry.
-- User-isolated preferences read/write APIs.
+- Local workspace preferences for signal settings and Telegram configuration.
 - Optional server-side OpenAI-compatible AI chat gateway; disabled until configured.
-- SQLite local development and PostgreSQL driver support.
+- SQLite local development and PostgreSQL driver support for future migrations.
+- Telegram bot credentials encrypted at rest using the persistent local QUANTNEX_SECRET_KEY.
 
 ## Run locally (Python 3.11+)
 
@@ -25,7 +24,7 @@ py -m pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-Set a unique QUANTNEX_SECRET_KEY in .env, then run:
+Keep the generated QUANTNEX_SECRET_KEY in backend/.env stable so saved Telegram tokens remain decryptable. Then run:
 
 ```powershell
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
@@ -33,64 +32,48 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 Open http://127.0.0.1:8000/health and http://127.0.0.1:8000/docs.
 
-## API routes
+## Local-only API routes
 
-| Method | Path | Auth |
+| Method | Path | Access |
 |---|---|---|
-| GET | /health | No |
-| POST | /api/v1/auth/register | No |
-| POST | /api/v1/auth/login | No |
-| GET | /api/v1/auth/me | Bearer |
-| GET, POST | /api/v1/journal | Bearer |
-| DELETE | /api/v1/journal/{trade_id} | Bearer |
-| GET | /api/v1/wallet/summary | Bearer |
-| GET, POST | /api/v1/wallet/transactions | Bearer |
-| GET | /api/v1/preferences | Bearer |
-| PUT | /api/v1/preferences/{key} | Bearer |
-| GET | /api/v1/ai/status | Bearer |
-| POST | /api/v1/ai/chat | Bearer |
+| GET | /health | Loopback only |
+| GET, POST | /api/v1/journal | Loopback only |
+| DELETE | /api/v1/journal/{trade_id} | Loopback only |
+| GET | /api/v1/wallet/summary | Loopback only |
+| GET, POST | /api/v1/wallet/transactions | Loopback only |
+| GET | /api/v1/preferences | Loopback only |
+| PUT | /api/v1/preferences/{key} | Loopback only |
+| GET | /api/v1/ai/status | Loopback only |
+| POST | /api/v1/ai/chat | Loopback only |
+| GET, PUT | /api/v1/signals/settings | Loopback only |
+| POST | /api/v1/signals/scan | Loopback only |
+| GET, POST, DELETE | /api/v1/telegram/* | Loopback only |
 
-Wallet transaction amounts are stored as signed ledger entries. Deposits are positive, withdrawals are negative, and journal P&L is linked to its trade. This is an internal record-keeping ledger, not a bank, broker, or payment integration. Existing clients are not yet connected to these wallet endpoints.
+There are no /api/v1/auth/* routes. The backend binds to 127.0.0.1, restricts accepted Host values, and permits only the local QUANTNEX Web origin. Do not bind it to 0.0.0.0, forward its port, or expose it to a LAN or the public internet. Local API access assumes the Windows user account is trusted.
 
-Set AI_BASE_URL, AI_API_KEY and AI_MODEL on the server only. The API key is never shipped to client applications.
+On first API use, legacy user records are migrated to one internal local workspace owner. Existing trades, wallet transactions and preferences are reassigned to that workspace; duplicate preference keys retain the first workspace value. Legacy account rows are removed and stored password hashes are cleared. Before migration, the app automatically backs up a SQLite database to data/backups/quantnex-pre-local-only-*.db. Keep this backup until you confirm the local workspace contains all your data.
 
-## Production checklist
+Wallet transaction amounts are signed ledger entries. Deposits are positive, withdrawals are negative, and journal P&L is linked to its trade. This is internal record keeping, not a bank, broker or payment integration.
 
-Use HTTPS, managed secrets, PostgreSQL, Alembic migrations, backups, rate limiting, audit logs, monitoring and security testing before public deployment. SQLite/create_all are development MVP choices. This API does not connect to brokers, fetch live prices, run bots or place orders.
+Set AI_BASE_URL, AI_API_KEY and AI_MODEL on the local server only. The API key is never shipped to client applications.
 
+## XAUUSD signal engine and Telegram bot
 
-## XAUUSD signal engine (local API)
+The Web Trading Tool can request XAU/USD multi-timeframe analysis from the local backend. Configure TWELVE_DATA_API_KEY in backend/.env; never put provider keys in browser JavaScript or GitHub. Signal settings are saved to the local workspace.
 
-The Web Trading Tool can request authenticated XAU/USD multi-timeframe analysis from the backend. Configure a Twelve Data API key on the server; do not place provider keys in browser JavaScript or GitHub.
+1. Create a Telegram bot with @BotFather using /newbot.
+2. Open the new bot and send /start. Obtain your private numeric chat ID, or add the bot as a channel admin and use @ChannelUsername.
+3. In QUANTNEX Web, use **Connect bot & enable commands**. The API verifies the token and stores it encrypted using a key derived from QUANTNEX_SECRET_KEY.
+4. The local API background worker polls the connected bot and monitors active XAU/USD signal levels while the API process is running.
 
-1. Create a Twelve Data account and obtain an API key: https://twelvedata.com/
-2. Add `TWELVE_DATA_API_KEY=your_key` to `backend/.env`.
-3. Restart the API process.
-4. Sign in to QUANTNEX Web, select primary/trend/analysis timeframes, then run a signal scan.
+Commands: /help, /timeframes, /settf 5, /settrend 60, /setanalysis 1,5,15,30,60, /scan, /status.
 
-The engine retrieves OHLC candles for M1, M5, M15, M30 and H1. M50 is custom-aggregated from M1 candles and therefore has shorter history (EMA200 is unavailable until enough candles exist). Twelve Data documents supported intervals and output-size limits at https://support.twelvedata.com/en/articles/5656039-how-to-get-historical-prices.
+When a signal is active, the worker checks price levels approximately once per minute and sends SL/TP1/TP2/TP3 touch alerts. TP1 alert advises moving SL to breakeven; it does not change a broker order. This is price-level monitoring, not guaranteed tick-by-tick execution.
 
-### Indicator / confluence rules
+## Safety and operating limits
 
-The current rule-based model calculates EMA 20/50/200, MACD (12,26,9), RSI(14), ADX(14), ATR(14), swing-based BOS/MSS, simple liquidity sweeps, and heuristic Order Block, Breaker Block, FVG and inverse-FVG zones. The selected enabled timeframes contribute to a 0–10 confluence score. The score is a count of rules that align, **not** a measured win probability or backtested accuracy. The default signal threshold is 7/10. A scan returns WAIT when the threshold is not met.
-
-The "Reaper" name does not identify a verified formula or source script in this repository. It is intentionally not counted as an active indicator until its exact definition/source is supplied. OB/Breaker/FVG detection here is an explicitly heuristic implementation, not a certified ICT indicator.
-
-### Telegram bot
-
-1. In Telegram, open @BotFather, send `/newbot`, and create a bot.
-2. Open the new bot and send `/start`. Obtain your private numeric chat ID (or add the bot as a channel admin and use `@ChannelUsername`).
-3. Sign in to QUANTNEX Web and use **Connect bot & enable commands**. The API verifies the token and stores it encrypted using a key derived from `QUANTNEX_SECRET_KEY`.
-4. Keep the local API running. The background worker polls the bot and watches active XAU/USD signal levels while the API process is alive.
-
-Commands: `/help`, `/timeframes`, `/settf 5`, `/settrend 60`, `/setanalysis 1,5,15,30,60`, `/scan`, `/status`.
-
-When a signal is active, the worker checks price levels approximately once per minute and sends SL/TP1/TP2/TP3 touch alerts. TP1 alert advises moving SL to breakeven; it does not change a broker order. This is price-level monitoring, not guaranteed tick-by-tick execution. Provider quotas, outages, stale data and network delays can delay or miss alerts.
-
-### Safety and operating limits
-
-- This is analysis and notification only. No broker account, order routing, trade execution or automatic stop modification is connected.
-- Entry/SL/TP levels are derived from the latest provider candle and ATR/swing structure; validate them against your broker's quote, spread and contract specification.
-- Use a dedicated Telegram bot and a strong, persistent `QUANTNEX_SECRET_KEY`. Changing that key makes stored bot tokens undecryptable; reconnect the bot after key rotation.
-- Do not use the default development secret in a public deployment. Use HTTPS, a persistent always-on host, secure database backups, rate limiting and monitoring before exposing the API to the internet.
-- Test the strategy on historical data and paper trading before relying on it. A 7/10 confluence score does not imply a 70% win rate.
+- This is local analysis and notification only. No broker account, order routing, trade execution or automatic stop modification is connected.
+- Entry/SL/TP levels are derived from provider candles and ATR/swing structure; validate them against your broker quote, spread and contract specification.
+- Keep QUANTNEX_SECRET_KEY stable and private. Changing it makes stored bot tokens undecryptable; reconnect the bot after key rotation.
+- The local API has no per-user authentication because it is intentionally loopback-only. Do not expose it outside the trusted Windows computer.
+- Test strategies on historical data and paper trading before relying on them. A 7/10 confluence score does not imply a 70% win rate.

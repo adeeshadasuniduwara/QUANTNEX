@@ -46,13 +46,11 @@ $("exportJournal").addEventListener("click",()=>{
   const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),link=document.createElement("a");link.href=url;link.download="quantnex-trading-journal.csv";link.click();URL.revokeObjectURL(url);
 });
 renderJournal();
-// Local QUANTNEX updater: the CMD-launched Python server downloads, extracts and installs releases.
-const updateButton = $("webCheckUpdate");
-const installButton = $("webInstallUpdate");
-const releaseVersionLabel = $("webReleaseVersion");
-const releaseNotesLink = $("webReleaseNotes");
-let checkedRelease = null;
-let updatePolling = false;
+// Local QUANTNEX updater. It checks the latest main-branch commit and installs it safely.
+const updateButton=$("webCheckUpdate");
+const releaseVersionLabel=$("webReleaseVersion");
+const releaseNotesLink=$("webReleaseNotes");
+let updatePolling=false;
 
 function showUpdateToast(message){
   let toast=$("quantnexUpdateToast");
@@ -66,42 +64,13 @@ function showUpdateToast(message){
 }
 if(sessionStorage.getItem("quantnex.webUpdateComplete")==="1"){
   sessionStorage.removeItem("quantnex.webUpdateComplete");
-  window.addEventListener("load",()=>showUpdateToast("✓ QUANTNEX Web has been updated. You are now using the latest workspace."));
+  window.addEventListener("load",()=>showUpdateToast("✓ QUANTNEX Web is now updated to the latest verified GitHub commit."));
 }
-
-async function checkLocalUpdate(){
-  const status=$("webUpdateStatus"),progress=$("webUpdateProgress");
-  updateButton.disabled=true;updateButton.textContent="Checking…";progress.hidden=false;
-  status.textContent="Checking the latest published QUANTNEX release…";
-  try{
-    const response=await fetch("/__quantnex/check",{cache:"no-store"});
-    if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||"Local updater is not running.");}
-    checkedRelease=await response.json();
-    $("webInstalledVersion").textContent=String(checkedRelease.installed).startsWith("v")?checkedRelease.installed:"v"+checkedRelease.installed;
-    releaseVersionLabel.textContent=checkedRelease.latest;
-    if(checkedRelease.release_notes)releaseNotesLink.href=checkedRelease.release_notes;
-    if(checkedRelease.update_available){
-      status.textContent="New version "+checkedRelease.latest+" is ready. Install it automatically; QUANTNEX will extract the release, refresh this browser and reopen the updated workspace.";
-      installButton.hidden=false;
-      installButton.disabled=false;
-    }else{
-      status.textContent="You already have the latest published release ("+checkedRelease.latest+").";
-      installButton.hidden=true;
-    }
-  }catch(error){
-    checkedRelease=null;installButton.hidden=true;
-    status.textContent="Automatic updates are available when QUANTNEX is launched using run_quantnex.bat → Start Web Workspace. "+error.message;
-  }finally{
-    updateButton.disabled=false;updateButton.textContent="Check for updates";progress.hidden=true;
-  }
-}
-if(updateButton)updateButton.addEventListener("click",checkLocalUpdate);
 
 async function watchUpdateInstall(){
   if(updatePolling)return;
   updatePolling=true;
-  const status=$("webUpdateStatus");
-  const progress=$("webUpdateProgress");
+  const status=$("webUpdateStatus"),progress=$("webUpdateProgress");
   progress.hidden=false;
   const started=Date.now();
   try{
@@ -112,62 +81,70 @@ async function watchUpdateInstall(){
       if(state.status==="complete"){
         status.textContent=state.message||"Update installed. Refreshing workspace…";
         sessionStorage.setItem("quantnex.webUpdateComplete","1");
-        window.setTimeout(()=>{window.location.replace(window.location.pathname+"?updated="+Date.now());},900);
+        window.setTimeout(()=>window.location.replace(window.location.pathname+"?updated="+Date.now()),900);
         return;
       }
       if(state.status==="error")throw new Error(state.message||"Update installation failed.");
-      if(state.status==="installing")status.textContent=state.message||"Downloading and extracting update…";
+      if(state.status==="installing"||state.status==="starting")status.textContent=state.message||"Downloading and installing the verified GitHub update…";
     }
     throw new Error("The update is taking longer than expected. Check the QUANTNEX Web Server CMD window.");
   }catch(error){
     status.textContent="Update did not finish: "+error.message;
-    installButton.disabled=false;installButton.textContent="Retry update";
   }finally{
     progress.hidden=true;updatePolling=false;
+    updateButton.disabled=false;updateButton.textContent="Check & install updates";
   }
 }
-if(installButton)installButton.addEventListener("click",async()=>{
-  if(!checkedRelease||!checkedRelease.update_available){await checkLocalUpdate();return;}
-  installButton.disabled=true;installButton.textContent="Installing…";
-  $("webUpdateStatus").textContent="Starting automatic update…";
+
+async function installLatestCommit(){
+  const status=$("webUpdateStatus");
+  status.textContent="Starting the verified GitHub update…";
+  const response=await fetch("/__quantnex/install",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(data.error||"Could not start update.");
+  await watchUpdateInstall();
+}
+
+async function checkLocalUpdate(){
+  const status=$("webUpdateStatus"),progress=$("webUpdateProgress");
+  updateButton.disabled=true;updateButton.textContent="Checking…";progress.hidden=false;
+  status.textContent="Checking the latest QUANTNEX main-branch commit on GitHub…";
   try{
-    const response=await fetch("/__quantnex/install",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
-    const data=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(data.error||"Could not start update.");
-    await watchUpdateInstall();
+    const response=await fetch("/__quantnex/check",{cache:"no-store"});
+    if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||"Local updater is not running.");}
+    const result=await response.json();
+    $("webInstalledVersion").textContent=result.installed;
+    releaseVersionLabel.textContent=result.latest;
+    if(result.release_notes)releaseNotesLink.href=result.release_notes;
+    if(result.update_available){
+      status.textContent="New GitHub update found: "+result.latest+". "+(result.latest_message||"")+" Starting automatic installation…";
+      progress.hidden=false;
+      await installLatestCommit();
+    }else{
+      status.textContent="You are already using the latest GitHub source ("+result.latest+").";
+    }
   }catch(error){
-    $("webUpdateStatus").textContent="Could not start update: "+error.message;
-    installButton.disabled=false;installButton.textContent="Install update & restart workspace";
+    status.textContent="Automatic update check failed safely: "+error.message;
+  }finally{
+    progress.hidden=true;
+    if(!updatePolling){updateButton.disabled=false;updateButton.textContent="Check & install updates";}
   }
-});
+}
+if(updateButton)updateButton.addEventListener("click",checkLocalUpdate);
 if(updateButton&&location.hostname==="127.0.0.1"&&location.port==="5500"){
   checkLocalUpdate();
 }
 
-// Authenticated shared API wallet. Access tokens stay in this browser tab's session storage.
-const API_BASE_KEY = "quantnex.apiBase.v1";
-const TOKEN_KEY = "quantnex.sessionToken.v1";
-const apiBaseInput = $("apiBase");
+
+// Local-only wallet API. The backend listens on loopback and has no login/session system.
 const accountMessage = $("accountMessage");
-const walletArea = $("walletArea");
-apiBaseInput.value = localStorage.getItem(API_BASE_KEY) || "http://127.0.0.1:8000";
-function apiBase(){ return apiBaseInput.value.trim().replace(/\/+$/, ""); }
-function sessionToken(){ return sessionStorage.getItem(TOKEN_KEY); }
 function setAccountMessage(message, error=false){ accountMessage.textContent=message; accountMessage.dataset.state=error?"error":"ok"; }
 async function apiRequest(path, options={}){
-  const headers={"Accept":"application/json",...(options.body?{"Content-Type":"application/json"}:{}),...(sessionToken()?{"Authorization":"Bearer "+sessionToken()}:{}),...(options.headers||{})};
-  const response=await fetch(apiBase()+path,{...options,headers});
+  const headers={"Accept":"application/json",...(options.body?{"Content-Type":"application/json"}:{}),...(options.headers||{})};
+  const response=await fetch("http://127.0.0.1:8000"+path,{...options,headers,cache:"no-store"});
   const payload=response.status===204?null:await response.json().catch(()=>null);
   if(!response.ok) throw new Error(payload?.detail||("API request failed ("+response.status+")."));
   return payload;
-}
-function setSignedIn(signedIn){
-  $("accountState").textContent=signedIn?"CONNECTED":"NOT CONNECTED";
-  $("accountState").classList.toggle("connected",signedIn);
-  walletArea.hidden=!signedIn;
-  $("accountLogout").hidden=!signedIn;
-  $("accountLogin").hidden=signedIn;
-  $("accountRegister").hidden=signedIn;
 }
 function renderWalletTransactions(rows){
   const body=$("walletRows");body.replaceChildren();
@@ -178,31 +155,15 @@ async function refreshWallet(){
   const [summary,transactions]=await Promise.all([apiRequest("/api/v1/wallet/summary"),apiRequest("/api/v1/wallet/transactions?limit=100")]);
   $("walletBalance").textContent=money(summary.balance);$("walletDeposits").textContent=money(summary.deposits);$("walletWithdrawals").textContent=money(summary.withdrawals);$("walletPnl").textContent=money(summary.trading_pnl);renderWalletTransactions(transactions);
 }
-async function authenticate(mode){
-  const email=$("accountEmail").value.trim(),password=$("accountPassword").value;
-  if(!email||!password){setAccountMessage("Enter your email and password.",true);return;}
-  if(password.length<12){setAccountMessage("Use a password with at least 12 characters.",true);return;}
-  try{
-    if(mode==="register") await apiRequest("/api/v1/auth/register",{method:"POST",body:JSON.stringify({email,password})});
-    const result=await apiRequest("/api/v1/auth/login",{method:"POST",body:JSON.stringify({email,password})});
-    sessionStorage.setItem(TOKEN_KEY,result.access_token);window.dispatchEvent(new Event("quantnex:auth"));$("accountPassword").value="";setSignedIn(true);await refreshWallet();setAccountMessage("Signed in. Wallet data loaded from the shared API.");
-  }catch(error){setAccountMessage(error.message,true);}
-}
-$("saveApiBase").addEventListener("click",()=>{try{const url=new URL(apiBase());if(!["http:","https:"].includes(url.protocol))throw new Error();localStorage.setItem(API_BASE_KEY,url.origin+url.pathname.replace(/\/+$/,""));setAccountMessage("API server URL saved for this browser.");}catch{setAccountMessage("Enter a valid HTTP or HTTPS API URL.",true);}});
-$("accountLogin").addEventListener("click",()=>authenticate("login"));
-$("accountRegister").addEventListener("click",()=>authenticate("register"));
-$("accountLogout").addEventListener("click",()=>{sessionStorage.removeItem(TOKEN_KEY);setSignedIn(false);setAccountMessage("Signed out. Your wallet records remain on the server.");});
 async function recordWalletTransaction(type){
   const amountInput=$(type==="deposit"?"depositAmount":"withdrawAmount"),descriptionInput=$(type==="deposit"?"depositDescription":"withdrawDescription"),amount=Number(amountInput.value);
   if(!Number.isFinite(amount)||amount<=0){setAccountMessage("Enter an amount greater than zero.",true);return;}
-  try{await apiRequest("/api/v1/wallet/transactions",{method:"POST",body:JSON.stringify({transaction_type:type,amount,description:descriptionInput.value.trim()})});amountInput.value="";descriptionInput.value="";await refreshWallet();setAccountMessage(type==="deposit"?"Deposit record saved.":"Withdrawal record saved.");}
+  try{await apiRequest("/api/v1/wallet/transactions",{method:"POST",body:JSON.stringify({transaction_type:type,amount,description:descriptionInput.value.trim()})});amountInput.value="";descriptionInput.value="";await refreshWallet();setAccountMessage(type==="deposit"?"Deposit record saved locally.":"Withdrawal record saved locally.");}
   catch(error){setAccountMessage(error.message,true);}
 }
 $("walletDeposit").addEventListener("click",()=>recordWalletTransaction("deposit"));
 $("walletWithdraw").addEventListener("click",()=>recordWalletTransaction("withdrawal"));
-if(sessionToken()){
-  setSignedIn(true);refreshWallet().then(()=>setAccountMessage("Restored this tab's session. Wallet data loaded.")).catch(error=>{sessionStorage.removeItem(TOKEN_KEY);setSignedIn(false);setAccountMessage("Session expired or API unavailable: "+error.message,true);});
-}else setSignedIn(false);
+refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays on this computer.")).catch(error=>setAccountMessage("Local API unavailable: "+error.message,true));
 
 
 // Resilient market overview. Prices are sourced by the local API with provider fallbacks.
@@ -212,8 +173,7 @@ if(sessionToken()){
   const lkr=value=>value==null?"Unavailable":"LKR "+Number(value).toLocaleString("en-LK",{minimumFractionDigits:2,maximumFractionDigits:2});
   async function refresh(){
     try{
-      const base=($id("apiBase")?.value||"http://127.0.0.1:8000").trim().replace(/\/+$/,"");
-      const response=await fetch(base+"/api/v1/market/overview",{cache:"no-store"});
+      const response=await fetch("http://127.0.0.1:8000/api/v1/market/overview",{cache:"no-store"});
       if(!response.ok)throw new Error("Market API returned HTTP "+response.status);
       const data=await response.json();
       $id("btcLivePrice").textContent=usd(data.btc_usd);

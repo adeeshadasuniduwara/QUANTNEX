@@ -51,19 +51,15 @@
         <article class="panel market-ticker"><div class="market-ticker-head"><span class="coin-mark gold-mark">Au</span><div><strong>Gold</strong><small>XAU / USD · per troy ounce · Live feed</small></div><span class="chart-live"><i></i> LIVE</span></div><strong class="ticker-price" id="goldLivePrice">Loading…</strong><small class="ticker-foot" id="goldLiveUpdated">Waiting for market feed</small></article>
       </section>
       <section class="panel local-gold-panel"><div><div class="overline">SRI LANKA · INDICATIVE SPOT CONVERSION</div><h3>Gold price in LKR</h3><p>Converted from XAU/USD and USD/LKR. Not a jeweller's retail quote.</p></div><div class="local-gold-values"><div><span>1 gram</span><strong id="goldLkrGram">—</strong></div><div><span>8 grams</span><strong id="goldLkrEight">—</strong></div><div><span>USD / LKR</span><strong id="usdLkrRate">—</strong></div></div><small id="goldLkrNote">Gold conversion uses indicative spot and daily reference exchange rates.</small><small class="market-attribution">FX reference: <a href="https://www.exchangerate-api.com" target="_blank" rel="noopener noreferrer">Rates By Exchange Rate API</a></small></section>
-      <section class="section-heading" id="account"><div><div class="overline">ACCOUNT &amp; CAPITAL</div><h2>Account &amp; wallet</h2><p>Connect to your QUANTNEX API to manage your authenticated wallet ledger.</p></div><span class="pill" id="accountState">NOT CONNECTED</span></section>
+      <section class="section-heading" id="account"><div><div class="overline">ACCOUNT &amp; CAPITAL</div><h2>Account &amp; wallet</h2><p>Your private QUANTNEX workspace and wallet, stored on this computer.</p></div><span class="pill" id="accountState">LOCAL ONLY</span></section>
       <section class="panel account-panel">
-        <div class="api-config"><label>API server URL<input id="apiBase" type="url" value="http://127.0.0.1:8000" placeholder="https://your-api.example.com"></label><button class="secondary-btn" id="saveApiBase">Save API URL</button></div>
-        <div class="account-auth-grid">
-          <label>Email address<input id="accountEmail" type="email" autocomplete="username" placeholder="you@example.com"></label>
-          <label>Password<input id="accountPassword" type="password" autocomplete="current-password" minlength="12" placeholder="At least 12 characters"></label>
-        </div>
-        <div class="account-actions"><button class="primary-btn" id="accountLogin">Log in</button><button class="secondary-btn" id="accountRegister">Create account</button><button class="secondary-btn" id="accountLogout" hidden>Log out</button><span class="helper" id="accountMessage" role="status">Your password is sent only to the API server over the configured connection. Use HTTPS for remote servers.</span></div>
-        <div id="walletArea" hidden>
+        <div class="local-mode-note"><strong>LOCAL DEVICE MODE</strong><span>No QUANTNEX login, registration, password or cloud account. The local API is available only on this computer.</span></div>
+        <div class="account-actions"><span class="helper" id="accountMessage" role="status">Loading your local wallet…</span></div>
+        <div id="walletArea">
           <div class="wallet-metrics"><article class="wallet-metric"><span>Available balance</span><strong id="walletBalance">$0.00</strong></article><article class="wallet-metric"><span>Total deposits</span><strong id="walletDeposits">$0.00</strong></article><article class="wallet-metric"><span>Total withdrawals</span><strong id="walletWithdrawals">$0.00</strong></article><article class="wallet-metric"><span>Recorded trading P&amp;L</span><strong id="walletPnl">$0.00</strong></article></div>
           <div class="wallet-forms"><div><h3>Add deposit record</h3><label>Amount ($)<input id="depositAmount" type="number" min="0.01" step="0.01" placeholder="100.00"></label><label>Description<input id="depositDescription" maxlength="240" placeholder="Initial balance"></label><button class="primary-btn" id="walletDeposit">Record deposit</button></div><div><h3>Record withdrawal</h3><label>Amount ($)<input id="withdrawAmount" type="number" min="0.01" step="0.01" placeholder="25.00"></label><label>Description<input id="withdrawDescription" maxlength="240" placeholder="Cash withdrawal"></label><button class="secondary-btn" id="walletWithdraw">Record withdrawal</button></div></div>
           <div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Amount</th></tr></thead><tbody id="walletRows"><tr><td colspan="4" class="empty-row">No wallet transactions yet.</td></tr></tbody></table></div>
-          <p class="helper">These are manual records only, not verified bank transfers. Journal P&amp;L is added automatically when a trade is created through the authenticated API. Your existing browser-local journal is not synced to this account yet.</p>
+          <p class="helper">These are manual records only, not verified bank transfers. Journal P&amp;L is added automatically when a trade is recorded through the local QUANTNEX API. Your browser-local journal remains stored separately in this browser.</p>
         </div>
       </section>
       <section class="section-heading" id="signal-lab"><div><div class="overline">QUANTNEX · MARKET INTELLIGENCE</div><h2>Signal Lab</h2><p>Multi-timeframe technical analysis and optional Telegram signal delivery.</p></div><span class="pill live-pill">PAPER / ALERTS ONLY</span></section>
@@ -87,7 +83,7 @@
       </section>
       <section class="panel signal-panel signal-results-panel">
         <div class="signal-intro"><div><strong>Live signal analysis</strong><p>EMA 20/50/200 · MACD · RSI · ADX · ATR · Structure · Liquidity · OB / Breaker / FVG / iFVG</p></div><span class="signal-pill" id="signalEngineState">NOT SCANNED</span></div>
-        <div id="signalResult" class="signal-result-empty">Sign in, configure a market-data key on the local API, then run a scan. No live signal is assumed until the feed responds.</div>
+        <div id="signalResult" class="signal-result-empty">Configure a market-data key on the local API, then run a scan. No live signal is assumed until the feed responds.</div>
         <div id="indicatorReadout" class="indicator-readout"></div>
         <p class="signal-feed-note">The 0–10 score counts matching rules; it is not a measured win rate or probability. Reaper is a named third-party/custom indicator with no confirmed formula in this project, so it is not represented as a working confirmation. The engine uses its own documented rule-based approximations for market structure and zones.</p>
       </section>
@@ -178,24 +174,23 @@
 
       <section class="section-heading" id="automation"><div><div class="overline">AUTOMATION</div><h2>Telegram signal delivery</h2><p>Personal bot connection and automatic signal delivery status.</p></div></section>
       <section class="panel bot-panel"><div class="bot-icon">◉</div><div><strong id="telegramMonitorTitle">Telegram bot not connected</strong><p id="telegramMonitorDescription">Open Signal Lab to connect your BotFather bot and explicitly enable Auto Signals. Alerts run while the QUANTNEX API is active.</p></div><span class="pill" id="telegramMonitorPill">OFFLINE</span></section>
-      <section class="section-heading" id="updates"><div><div class="overline">SOFTWARE</div><h2>Updates</h2><p>Check the official QUANTNEX release channel.</p></div></section>
+      <section class="section-heading" id="updates"><div><div class="overline">SOFTWARE</div><h2>Updates</h2><p>Check GitHub for the latest QUANTNEX main-branch update.</p></div></section>
       <section class="panel update-panel">
         <img class="update-orbit-img" src="quantnex-mark.svg" alt="">
         <div class="update-copy">
-          <span class="overline">OFFICIAL GITHUB RELEASE CHANNEL</span>
+          <span class="overline">OFFICIAL GITHUB SOURCE UPDATES</span>
           <h3>Keep your workspace current.</h3>
-          <div class="release-version-row"><span>Installed Web version <strong id="webInstalledVersion">v0.6.0</strong></span><span>Latest published <strong id="webReleaseVersion">Not checked</strong></span></div>
-          <p id="webUpdateStatus">Check GitHub to find the latest published QUANTNEX release.</p>
+          <div class="release-version-row"><span>Installed Web version <strong id="webInstalledVersion">Unknown</strong></span><span>Latest GitHub commit <strong id="webReleaseVersion">Not checked</strong></span></div>
+          <p id="webUpdateStatus">Check GitHub to find the latest QUANTNEX source commit.</p>
           <div class="update-progress" id="webUpdateProgress" hidden><span></span></div>
           <div class="update-actions">
-            <button class="primary-btn" id="webCheckUpdate">Check for updates</button>
-            <button class="primary-btn" id="webInstallUpdate" hidden>Install update &amp; restart workspace</button>
+            <button class="primary-btn" id="webCheckUpdate">Check &amp; install updates</button>
             <a class="secondary-btn link-btn" id="webDownloadReleaseZip" href="#" target="_blank" rel="noreferrer" hidden>Download latest release ZIP</a>
-            <a class="secondary-btn link-btn" id="webReleaseNotes" href="https://github.com/adeeshadasuniduwara/QUANTNEX/releases" target="_blank" rel="noreferrer">Open release notes</a>
+            <a class="secondary-btn link-btn" id="webReleaseNotes" href="https://github.com/adeeshadasuniduwara/QUANTNEX/commits/main" target="_blank" rel="noreferrer">View source commit</a>
             <a class="secondary-btn link-btn" href="https://github.com/adeeshadasuniduwara/QUANTNEX/archive/refs/heads/main.zip" target="_blank" rel="noreferrer">Download current source ZIP</a>
           </div>
           <div class="release-assets" id="webReleaseAssets" hidden></div>
-          <p class="update-manual-note">Web updates are installed manually: download the release ZIP, extract it, back up your current folder, then replace the app files. Windows desktop users can use the built-in updater. The current source ZIP is a development snapshot, not a published stable release.</p>
+          <p class="update-manual-note">The Updates tab checks the latest GitHub main-branch commit on startup and when requested. It downloads a pinned source archive, backs up replaced Web files, and rolls back if installation fails. Your local database and settings are kept separately.</p>
         </div>
         <span class="pill">OFFICIAL</span>
       </section>

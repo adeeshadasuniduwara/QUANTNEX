@@ -2,8 +2,6 @@ fastapi==0.115.12
 uvicorn[standard]==0.34.2
 # 2.0.41+ contains the Python 3.14 typing.Union fix used by Mapped[int | None].
 sqlalchemy==2.0.55
-pwdlib[argon2]==0.2.1
-PyJWT==2.10.1
 httpx==0.28.1
 # Allow pip to select a compatible binary wheel for the active Python version.
 psycopg[binary]>=3.2.10,<4.0

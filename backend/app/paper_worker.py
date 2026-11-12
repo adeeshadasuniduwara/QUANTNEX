@@ -11,6 +11,12 @@ from .phase07_engine import get_quote
 
 logger=logging.getLogger("quantnex.paper")
 
+def publish_auto_closed(events: list[dict]) -> None:
+    """Notify local workspace clients after auto-close transactions commit."""
+    for payload in events:
+        event_hub.publish("paper_trade.changed","paper_trade","auto_closed",payload)
+
+
 def exit_reason(trade, price: float) -> str | None:
     if trade.side=="BUY":
         if price<=trade.stop_loss: return "STOP_LOSS"
@@ -53,8 +59,7 @@ async def paper_trade_monitor() -> None:
                     db.commit()
                 # Publish only after the close transaction commits so all workspace
                 # views refresh from a durable, committed paper-ledger state.
-                for payload in closed_events:
-                    event_hub.publish("paper_trade.changed","paper_trade","auto_closed",payload)
+                publish_auto_closed(closed_events)
         except asyncio.CancelledError:
             raise
         except Exception as exc:

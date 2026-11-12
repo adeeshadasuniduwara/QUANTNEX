@@ -628,3 +628,19 @@ def intelligence_performance(user: User = Depends(local_workspace), db: Session 
             "average_win":round(gross_profit/len(wins),2) if wins else None,
             "average_loss":round(gross_loss/len(losses),2) if losses else None,
             "note":"Statistics use closed QUANTNEX paper trades only; no performance or win-rate guarantee."}
+
+
+@app.on_event("startup")
+async def start_phase07_paper_monitor():
+    from .paper_worker import paper_trade_monitor
+    app.state.paper_monitor_task=asyncio.create_task(paper_trade_monitor())
+
+@app.on_event("shutdown")
+async def stop_phase07_paper_monitor():
+    task=getattr(app.state,"paper_monitor_task",None)
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass

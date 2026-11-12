@@ -24,15 +24,27 @@ async def fetch_candles(interval: str, outputsize: int = 320, symbol: str = "XAU
         binance_interval = BINANCE_INTERVALS.get(interval)
         if not binance_interval:
             raise MarketDataError(f"Unsupported Binance candle interval: {interval}.")
+        requested = min(max(outputsize, 210), 3200)
+        interval_ms = {"1m":60000,"5m":300000,"15m":900000,"30m":1800000,"1h":3600000,"4h":14400000}[binance_interval]
+        rows = []
+        end_time = None
         async with httpx.AsyncClient(timeout=18) as client:
-            response = await client.get("https://api.binance.com/api/v3/klines",
-                params={"symbol":symbol,"interval":binance_interval,"limit":min(max(outputsize, 210), 1000)})
-            response.raise_for_status()
-            payload = response.json()
-        if not isinstance(payload, list):
-            raise MarketDataError("Binance returned an invalid candle response.")
+            while len(rows) < requested:
+                limit = min(1000, requested - len(rows))
+                params = {"symbol":symbol,"interval":binance_interval,"limit":limit}
+                if end_time is not None:
+                    params["endTime"] = end_time
+                response = await client.get("https://api.binance.com/api/v3/klines", params=params)
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, list) or not payload:
+                    break
+                rows = payload + rows
+                end_time = int(payload[0][0]) - 1
+                if len(payload) < limit:
+                    break
         candles=[]
-        for row in payload:
+        for row in rows[-requested:]:
             try:
                 stamp=datetime.fromtimestamp(int(row[0])/1000, timezone.utc).isoformat()
                 candles.append({"time":stamp,"open":float(row[1]),"high":float(row[2]),
@@ -40,7 +52,7 @@ async def fetch_candles(interval: str, outputsize: int = 320, symbol: str = "XAU
             except (IndexError,TypeError,ValueError,OverflowError):
                 continue
         if len(candles) < 210:
-            raise MarketDataError(f"Not enough {symbol} {interval} Binance candles for stable indicators ({len(candles)} received).")
+            raise MarketDataError(f"Not enough {symbol} {interval} Binance candles for stable indicator calculations ({len(candles)} received).")
         return candles
     if symbol != "XAUUSD":
         raise MarketDataError("Supported markets are BTCUSDT, ETHUSDT, SOLUSDT and XAUUSD.")

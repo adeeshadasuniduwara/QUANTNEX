@@ -4,9 +4,9 @@ on:
   pull_request:
     paths:
       - "backend/**"
-      - ".github/workflows/backend-tests.yml"
+      - ".github/workflows/**"
   push:
-    branches: [main]
+    branches: [main, phase06-2-windows-hello-passkeys]
 
 jobs:
   backend-tests:

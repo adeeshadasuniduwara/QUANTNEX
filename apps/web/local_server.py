@@ -18,6 +18,12 @@ UPDATE_STATE = {"status": "idle", "message": "", "version": ""}
 LOCK = threading.Lock()
 
 
+def version_tuple(value):
+    import re
+    found = re.match(r"^v?(\\d+)\\.(\\d+)\\.(\\d+)", str(value or ""))
+    return tuple(int(part) for part in found.groups()) if found else (0, 0, 0)
+
+
 def current_version():
     try:
         return json.loads((ROOT / "version.json").read_text(encoding="utf-8")).get("version", "0.6.0")
@@ -71,8 +77,6 @@ def install_release(release):
         # Keep the local launcher server alive; replace only the browser workspace assets.
         for src in files:
             relative = src.relative_to(source)
-            if relative.as_posix() == "local_server.py":
-                continue
             destination = ROOT / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             staged = destination.with_name(destination.name + ".quantnex-new")
@@ -89,6 +93,10 @@ def install_release(release):
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
+
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        super().end_headers()
 
     def send_json(self, status, payload):
         body = json.dumps(payload).encode("utf-8")
@@ -111,7 +119,7 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json(200, {
                     "installed": current_version(),
                     "latest": latest,
-                    "update_available": latest.lstrip("v") != current_version().lstrip("v"),
+                    "update_available": version_tuple(latest) > version_tuple(current_version()),
                     "release_name": release.get("name") or latest,
                     "release_notes": release.get("html_url"),
                     "published_at": release.get("published_at"),

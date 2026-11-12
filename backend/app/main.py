@@ -46,6 +46,9 @@ def local_workspace(db: Session = Depends(get_db)) -> User:
             trade.user_id = owner.id
         for transaction in db.scalars(select(WalletTransaction).where(WalletTransaction.user_id == legacy.id)):
             transaction.user_id = owner.id
+        # Flush reassigned child rows before deleting the legacy owner; ORM delete cascades
+        # must not interpret the moved rows as orphans.
+        db.flush()
         db.delete(legacy)
         changed = True
 

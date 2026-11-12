@@ -130,7 +130,8 @@
     $("signalEngineState").textContent="FETCHING MARKET DATA";
     try{
       const s=await saveSettings();if(!s)throw new Error("Check timeframe settings.");
-      const symbol=$("signalMarketSymbol")?.value||"BTCUSDT";\n      const data=await apiRequest("/api/v1/signals/scan?symbol="+encodeURIComponent(symbol),{method:"POST"});
+      const symbol=$("signalMarketSymbol")?.value||"BTCUSDT";
+      const data=await apiRequest("/api/v1/signals/scan?symbol="+encodeURIComponent(symbol),{method:"POST"});
       renderScan(data);
       $("timeframeStatus").textContent="Analysis updated at "+new Date(data.generated_at).toLocaleString()+". Source: "+data.provider+".";
     }catch(e){$("signalEngineState").textContent="FEED / API ERROR";$("signalResult").textContent=e.message;}

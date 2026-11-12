@@ -39,16 +39,28 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("QUANTNEX — Trading Workspace")
-        self.geometry("1000x680"); self.minsize(850, 560); self.configure(bg="#ffffff")
+        self.geometry("1000x680"); self.minsize(850, 560); self.configure(bg="#080808")
         self.journal = TradeJournal()
         self.style = ttk.Style(self)
         try: self.style.theme_use("clam")
         except tk.TclError: pass
-        self.style.configure("TFrame", background="#ffffff")
-        self.style.configure("TLabel", background="#f3f5f8", foreground="#111111", font=("Segoe UI", 10))
-        self.style.configure("Title.TLabel", font=("Segoe UI", 22, "bold"))
-        self.style.configure("Muted.TLabel", foreground="#777777")
-        self.style.configure("TButton", font=("Segoe UI", 10), padding=8)
+        self.style.configure("TFrame", background="#101010")
+        self.style.configure("TLabel", background="#101010", foreground="#f2f2f2", font=("Segoe UI", 10))
+        self.style.configure("Title.TLabel", background="#080808", foreground="#ffffff", font=("Segoe UI", 24, "bold"))
+        self.style.configure("Muted.TLabel", background="#101010", foreground="#929292")
+        self.style.configure("TButton", background="#202020", foreground="#f5f5f5", bordercolor="#3a3a3a", font=("Segoe UI", 10, "bold"), padding=9)
+        self.style.map("TButton", background=[("active", "#353535"), ("disabled", "#151515")], foreground=[("disabled", "#666666")])
+        self.style.configure("Accent.TButton", background="#f2f2f2", foreground="#080808", padding=10)
+        self.style.map("Accent.TButton", background=[("active", "#ffffff")], foreground=[("active", "#080808")])
+        self.style.configure("TNotebook", background="#080808", borderwidth=0)
+        self.style.configure("TNotebook.Tab", background="#171717", foreground="#999999", padding=(16, 10), borderwidth=0)
+        self.style.map("TNotebook.Tab", background=[("selected", "#eeeeee")], foreground=[("selected", "#080808")])
+        self.style.configure("TEntry", fieldbackground="#090909", foreground="#ffffff", insertcolor="#ffffff", bordercolor="#3a3a3a", padding=8)
+        self.style.configure("TCombobox", fieldbackground="#090909", background="#202020", foreground="#ffffff", arrowcolor="#ffffff", padding=7)
+        self.style.configure("Treeview", background="#111111", fieldbackground="#111111", foreground="#eeeeee", rowheight=31, font=("Segoe UI", 9), borderwidth=0)
+        self.style.configure("Treeview.Heading", background="#222222", foreground="#dddddd", font=("Segoe UI", 9, "bold"), relief="flat")
+        self.style.map("Treeview", background=[("selected", "#444444")], foreground=[("selected", "#ffffff")])
+        self.style.configure("Horizontal.TProgressbar", troughcolor="#292929", background="#f0f0f0", bordercolor="#292929", lightcolor="#f0f0f0", darkcolor="#f0f0f0")
         self.style.configure("Accent.TButton", background="#111111", foreground="white")
         self.style.configure("Treeview", rowheight=28, font=("Segoe UI", 9))
         self._build()
@@ -56,9 +68,9 @@ class App(tk.Tk):
 
     def _build(self):
         root = ttk.Frame(self, padding=22); root.pack(fill="both", expand=True)
-        ttk.Label(root, text="QUANTNEX", foreground="#2457d6", font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        ttk.Label(root, text="Q U A N T N E X", foreground="#ffffff", font=("Segoe UI", 12, "bold")).pack(anchor="w")
         ttk.Label(root, text="Trading Workspace", style="Title.TLabel").pack(anchor="w", pady=(4, 2))
-        ttk.Label(root, text=f"Windows desktop • Version {APP_VERSION} • Local mode", style="Muted.TLabel").pack(anchor="w", pady=(0, 16))
+        ttk.Label(root, text=f"WINDOWS DESKTOP  /  VERSION {APP_VERSION}  /  LOCAL MODE", style="Muted.TLabel").pack(anchor="w", pady=(0, 16))
         tabs = ttk.Notebook(root); tabs.pack(fill="both", expand=True)
         self.home = ttk.Frame(tabs, padding=18); self.calc = ttk.Frame(tabs, padding=18)
         self.journal_tab = ttk.Frame(tabs, padding=18); self.updates = ttk.Frame(tabs, padding=18)
@@ -136,14 +148,22 @@ class App(tk.Tk):
         ttk.Button(self.updates,text="Check for updates",style="Accent.TButton",command=self._check_background).pack(anchor="w")
         self.update_status=ttk.Label(self.updates,text="QUANTNEX checks for published updates automatically at startup.",style="Muted.TLabel",wraplength=780)
         self.update_status.pack(anchor="w",pady=14)
+        self.update_progress=ttk.Progressbar(self.updates,mode="indeterminate",length=420,style="Horizontal.TProgressbar")
+        ttk.Label(self.updates,text="OFFICIAL RELEASE CHANNEL  •  SHA256 VERIFIED DOWNLOADS",style="Muted.TLabel").pack(anchor="w",pady=(8,4))
         self.install_button=ttk.Button(self.updates,text="Install downloaded update and restart",command=self._install_update)
         ttk.Button(self.updates,text="Open releases page",command=lambda:webbrowser.open(f"https://github.com/{REPO}/releases")).pack(anchor="w")
 
     def _set_update_status(self, message):
-        self.after(0, lambda: self.update_status.configure(text=message))
+        def finish():
+            self.update_status.configure(text=message)
+            self.update_progress.stop()
+            self.update_progress.pack_forget()
+        self.after(0, finish)
 
     def _check_background(self):
         self.update_status.configure(text="Checking GitHub Releases…")
+        self.update_progress.pack(anchor="w",pady=(0,12))
+        self.update_progress.start(12)
         threading.Thread(target=self._check_worker, daemon=True).start()
 
     def _check_worker(self):

@@ -62,3 +62,5 @@
 @media(max-width:760px){.goal-create-grid{grid-template-columns:1fr}.goal-form .goal-wide{grid-column:auto}}
 
 .paper-engine-panel{gap:20px}.paper-engine-settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px}.paper-engine-settings label{display:grid;gap:7px;color:#aaa;font-size:12px}.paper-engine-settings input,.paper-engine-settings select{width:100%;min-height:40px;padding:9px 11px;border:1px solid #343434;border-radius:8px;background:#111;color:#eee}.paper-engine-actions{display:flex;gap:8px;flex-wrap:wrap}.paper-engine-actions button{min-width:135px}@media(max-width:600px){.paper-engine-actions{display:grid;width:100%}.paper-engine-actions button{width:100%}}
+
+.goal-journal-candidates{display:grid;gap:7px;max-height:240px;overflow:auto}.goal-journal-option{display:flex;align-items:center;gap:9px;padding:9px 11px;border:1px solid #303030;border-radius:8px;background:#111;color:#ddd;font-size:12px}.goal-journal-option input{width:auto;min-width:16px;min-height:16px}

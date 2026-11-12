@@ -754,3 +754,83 @@ def strategy_lab_research(user: User = Depends(local_workspace), db: Session = D
                 "win_rate":round(len(wins)/len(closed)*100,2) if closed else None,
                 "net_pnl":round(sum(x.realized_pnl or 0 for x in closed),2)},
             "guidance":"Research summaries describe historical and paper observations only; they are not a prediction or guarantee."}
+
+
+# ---------------------------------------------------------------------------
+# Phase 09 — advanced risk and portfolio intelligence (paper-only).
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/risk/portfolio")
+def risk_portfolio(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .phase09_engine import portfolio_snapshot
+    rows=list(db.scalars(select(PaperTrade).where(PaperTrade.user_id==user.id)))
+    return portfolio_snapshot(rows)
+
+@app.post("/api/v1/risk/position-size")
+def risk_position_size(payload: dict, user: User = Depends(local_workspace)):
+    from .phase09_engine import calculate_position_size
+    try:
+        return calculate_position_size(payload.get("equity"),payload.get("risk_percent"),
+            payload.get("entry"),payload.get("stop_loss"),payload.get("contract_multiplier"))
+    except (ValueError,TypeError) as exc:
+        raise HTTPException(status_code=422,detail=str(exc))
+
+@app.post("/api/v1/risk/guardian")
+def risk_guardian(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .phase09_engine import drawdown_guard
+    try:
+        rows=list(db.scalars(select(PaperTrade).where(PaperTrade.user_id==user.id)))
+        return drawdown_guard(rows,payload.get("equity"),payload.get("daily_loss_limit_percent",3),
+            payload.get("max_drawdown_percent",8),payload.get("max_consecutive_losses",4))
+    except (ValueError,TypeError) as exc:
+        raise HTTPException(status_code=422,detail=str(exc))
+
+@app.post("/api/v1/risk/stress")
+def risk_stress(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .phase09_engine import stress_test
+    rows=list(db.scalars(select(PaperTrade).where(PaperTrade.user_id==user.id)))
+    try:
+        return stress_test(rows,payload.get("shocks"))
+    except (ValueError,TypeError) as exc:
+        raise HTTPException(status_code=422,detail=str(exc))
+
+@app.post("/api/v1/paper-trading/smart-open",status_code=201)
+async def smart_open_paper_trade(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    """Risk-checked paper entry; explicit multiplier required; never sends broker orders."""
+    from .phase07_engine import get_quote, market_info, IntelligenceDataError
+    from .phase09_engine import calculate_position_size, drawdown_guard
+    try:
+        info=market_info(str(payload.get("symbol","")))
+        side=str(payload.get("side","")).upper()
+        if side not in {"BUY","SELL"}: raise ValueError("Side must be BUY or SELL.")
+        equity=float(payload.get("equity",0))
+        risk_percent=float(payload.get("risk_percent",0.5))
+        rows=list(db.scalars(select(PaperTrade).where(PaperTrade.user_id==user.id)))
+        guard=drawdown_guard(rows,equity,payload.get("daily_loss_limit_percent",3),
+            payload.get("max_drawdown_percent",8),payload.get("max_consecutive_losses",4))
+        if not guard["trading_allowed"]:
+            raise HTTPException(status_code=409,detail={"message":"Risk Guardian blocked this paper entry.","guardian":guard})
+        quote=await get_quote(info["symbol"])
+        entry=float(quote["price"])
+        stop=float(payload.get("stop_loss",0)); target=float(payload.get("take_profit",0))
+        if (side=="BUY" and not stop<entry<target) or (side=="SELL" and not target<entry<stop):
+            raise ValueError("For BUY, Stop Loss < live entry < Take Profit. For SELL, Take Profit < live entry < Stop Loss.")
+        sizing=calculate_position_size(equity,risk_percent,entry,stop,payload.get("contract_multiplier"))
+        quantity=sizing["estimated_units"]
+        if not math.isfinite(quantity) or quantity<=0 or quantity>1000000:
+            raise ValueError("Calculated quantity is outside the safe supported range.")
+        item=PaperTrade(user_id=user.id,symbol=info["symbol"],side=side,quantity=quantity,
+            entry_price=entry,stop_loss=stop,take_profit=target,status="OPEN")
+        db.add(item); db.flush()
+        record_audit_event(db,"phase09.smart_paper_trade.opened",{"trade_id":item.id,"symbol":item.symbol,
+            "side":side,"quantity":quantity,"risk_amount":sizing["risk_amount"],"mode":"paper"})
+        db.commit(); db.refresh(item)
+        return {"id":item.id,"symbol":item.symbol,"side":side,"quantity":quantity,"entry_price":entry,
+            "stop_loss":stop,"take_profit":target,"risk":sizing,"guardian":guard,"status":"OPEN","mode":"PAPER"}
+    except HTTPException:
+        raise
+    except (ValueError,TypeError) as exc:
+        raise HTTPException(status_code=422,detail=str(exc))
+    except IntelligenceDataError as exc:
+        raise HTTPException(status_code=502,detail=str(exc))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502,detail="Market provider request failed. Check provider configuration and quota.")

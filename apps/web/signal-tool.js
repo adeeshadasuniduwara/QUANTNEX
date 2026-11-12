@@ -82,7 +82,7 @@
   loadLocalSettings();
   apiRequest("/api/v1/signals/settings").then(applySettings).catch(()=>{});
   apiRequest("/api/v1/signals/status").then(status=>{
-    $("signalEngineState").textContent=status.configured?"MARKET FEED READY":"ADD MARKET DATA KEY";
+    $("signalEngineState").textContent=status.crypto_configured?(status.gold_configured?"CRYPTO + GOLD FEEDS READY":"CRYPTO FEED READY · GOLD OPTIONAL"):"MARKET FEED UNAVAILABLE";
   }).catch(()=>{});
 
   function addStat(parent,label,value) {

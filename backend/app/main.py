@@ -313,3 +313,25 @@ async def stop_telegram_background_worker():
         task.cancel()
         try:await task
         except asyncio.CancelledError:pass
+
+@app.post("/api/v1/telegram/notify")
+async def notify_connected_telegram(payload: dict, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    message=payload.get("message")
+    if not isinstance(message,str) or not message.strip() or len(message)>4096:
+        raise HTTPException(status_code=422,detail="Message must contain 1–4096 characters.")
+    token_enc=_preference(db,user.id,"telegram_bot_token_enc")
+    chat_id=_preference(db,user.id,"telegram_chat_id")
+    if not token_enc or not chat_id:
+        raise HTTPException(status_code=409,detail="Connect your Telegram bot first.")
+    try: token=decrypt_secret(token_enc)
+    except ValueError as exc: raise HTTPException(status_code=409,detail=str(exc))
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            response=await client.post("https://api.telegram.org/bot"+token+"/sendMessage",
+                json={"chat_id":chat_id,"text":message,"disable_web_page_preview":True})
+            data=response.json()
+        if response.status_code>=400 or not data.get("ok"):
+            raise HTTPException(status_code=502,detail="Telegram rejected the message. Check bot permissions and chat ID.")
+        return {"ok":True,"message_id":data.get("result",{}).get("message_id")}
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502,detail="Could not reach Telegram.")

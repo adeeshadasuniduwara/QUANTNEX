@@ -281,7 +281,7 @@
    const response=await fetch(localUrl,{cache:"no-store",headers:{Accept:"application/json"}});
    const payload=await response.json().catch(()=>null);
    if(response.ok&&Array.isArray(payload?.candles)&&payload.candles.length)return payload;
-   localError=new Error(payload?.detail||"Local chart API returned HTTP "+response.status+".");
+   localError=new Error(payload?.detail||(response.ok?"Local chart API returned no candle data.":"Local chart API returned HTTP "+response.status+"."));
   }catch(error){localError=error;}
   if(["BTCUSDT","ETHUSDT","SOLUSDT"].includes(cfg.symbol)){
    try{

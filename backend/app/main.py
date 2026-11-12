@@ -575,7 +575,7 @@ async def open_paper_trade(payload: dict, user: User = Depends(local_workspace),
         return {"id":item.id,"symbol":item.symbol,"side":item.side,"quantity":item.quantity,
                 "entry_price":item.entry_price,"stop_loss":item.stop_loss,"take_profit":item.take_profit,
                 "status":item.status,"mode":"PAPER"}
-    except ValueError as exc:
+    except (ValueError,TypeError) as exc:
         raise HTTPException(status_code=422,detail=str(exc))
     except IntelligenceDataError as exc:
         raise HTTPException(status_code=502,detail=str(exc))

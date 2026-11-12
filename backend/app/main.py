@@ -678,6 +678,7 @@ async def strategy_lab_backtest(payload: dict, user: User = Depends(local_worksp
     try:
         info=market_info(payload.get("symbol","BTCUSDT"))
         timeframe=payload.get("timeframe","15m")
+        if timeframe not in {"5m","15m","1h","4h"}: raise ValueError("Unsupported timeframe. Choose 5m, 15m, 1h or 4h.")
         strategy=validate_strategy(payload.get("strategy") or {})
         candles=await get_candles(info["symbol"],timeframe,500)
         result=run_backtest(candles,strategy)
@@ -699,6 +700,7 @@ async def strategy_lab_optimize(payload: dict, user: User = Depends(local_worksp
     try:
         info=market_info(payload.get("symbol","BTCUSDT"))
         timeframe=payload.get("timeframe","15m")
+        if timeframe not in {"5m","15m","1h","4h"}: raise ValueError("Unsupported timeframe. Choose 5m, 15m, 1h or 4h.")
         candles=await get_candles(info["symbol"],timeframe,500)
         result=optimize(candles)
     except (ValueError,TypeError) as exc:

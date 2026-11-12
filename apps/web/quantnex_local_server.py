@@ -149,6 +149,6 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(502,{"error":str(exc)})
 
 if __name__ == "__main__":
-    print(f"QUANTNEX Web: http://{HOST}:{PORT}",flush=True)
+    print("QUANTNEX Web: http://localhost:5500/",flush=True)
     print("Keep this CMD window open while installing updates.",flush=True)
     ThreadingHTTPServer((HOST,PORT),Handler).serve_forever()

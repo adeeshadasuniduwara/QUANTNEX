@@ -1,12 +1,13 @@
 """Loopback-only system maintenance endpoints for QUANTNEX."""
 from pathlib import Path
+import asyncio
 import shutil
 import psutil
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy import select, text
 from .config import DATABASE_URL
 from .database import SessionLocal, engine
-from .maintenance import create_backup, list_backups, record_audit_event, restore_backup, verify_backup
+from .maintenance import create_backup, daily_backup_worker, list_backups, record_audit_event, restore_backup, verify_backup
 from .models import AuditEvent
 
 router = APIRouter(prefix="/api/v1/system", tags=["local-system"])
@@ -72,9 +73,23 @@ def check_backup(filename: str):
         raise HTTPException(status_code=422, detail=str(exc))
 
 @router.post("/backups/{filename}/restore")
-def restore_database(filename: str):
+async def restore_database(filename: str, request: Request):
+    # Pause DB-using background workers so Windows can safely replace the SQLite file.
+    paused_telegram = getattr(request.app.state, "telegram_worker_task", None) is not None
+    paused_daily = getattr(request.app.state, "daily_backup_task", None) is not None
+    for attribute in ("telegram_worker_task", "daily_backup_task"):
+        task = getattr(request.app.state, attribute, None)
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
+            setattr(request.app.state, attribute, None)
     try:
-        result = restore_backup(filename, DATABASE_URL, engine)
+        result = await asyncio.to_thread(restore_backup, filename, DATABASE_URL, engine)
         with SessionLocal() as db:
             record_audit_event(db, "backup.restored", {"filename": filename,
                                                        "pre_restore_backup": result["pre_restore_backup"]},
@@ -85,6 +100,12 @@ def restore_database(filename: str):
         raise HTTPException(status_code=422, detail=str(exc))
     except Exception:
         raise HTTPException(status_code=500, detail="Restore failed. Check the local database and restart QUANTNEX if needed.")
+    finally:
+        if paused_telegram:
+            from .telegram_worker import telegram_worker
+            request.app.state.telegram_worker_task = asyncio.create_task(telegram_worker())
+        if paused_daily:
+            request.app.state.daily_backup_task = asyncio.create_task(daily_backup_worker())
 
 @router.get("/audit")
 def get_audit_log(limit: int = Query(default=100, ge=1, le=500)):

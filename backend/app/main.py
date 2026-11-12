@@ -479,10 +479,12 @@ async def intelligence_candles(symbol: str, timeframe: str = "15m",
         candles=await get_candles(info["symbol"],timeframe)
         return {"symbol":info["symbol"],"timeframe":timeframe,"provider":info["provider"],
                 "candles":candles,"count":len(candles)}
-    except ValueError as exc:
+    except (ValueError,TypeError) as exc:
         raise HTTPException(status_code=422,detail=str(exc))
-    except (IntelligenceDataError,httpx.HTTPError) as exc:
+    except IntelligenceDataError as exc:
         raise HTTPException(status_code=502,detail=str(exc))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502,detail="Market provider request failed. Check API key, quota or network connection.")
 
 @app.get("/api/v1/intelligence/market/{symbol}/orderbook")
 async def intelligence_orderbook(symbol: str, user: User = Depends(local_workspace)):
@@ -506,8 +508,10 @@ async def intelligence_signal_scan(payload: dict, user: User = Depends(local_wor
         result=await scan_market_signal(info["symbol"],threshold)
     except ValueError as exc:
         raise HTTPException(status_code=422,detail=str(exc))
-    except (IntelligenceDataError,httpx.HTTPError) as exc:
+    except IntelligenceDataError as exc:
         raise HTTPException(status_code=502,detail=str(exc))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502,detail="Market provider request failed. Check API key, quota or network connection.")
     if result.get("signal"):
         record_audit_event(db,"phase07.signal_generated",{"symbol":result["symbol"],"side":result["signal"]["side"],
             "score":result["signal"]["score"],"mode":"paper_only"})
@@ -572,8 +576,10 @@ async def open_paper_trade(payload: dict, user: User = Depends(local_workspace),
                 "status":item.status,"mode":"PAPER"}
     except ValueError as exc:
         raise HTTPException(status_code=422,detail=str(exc))
-    except (IntelligenceDataError,httpx.HTTPError) as exc:
+    except IntelligenceDataError as exc:
         raise HTTPException(status_code=502,detail=str(exc))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502,detail="Market provider request failed. Check API key, quota or network connection.")
 
 @app.post("/api/v1/paper-trading/trades/{trade_id}/close")
 async def close_paper_trade(trade_id: int, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
@@ -584,8 +590,10 @@ async def close_paper_trade(trade_id: int, user: User = Depends(local_workspace)
     try:
         quote=await get_quote(item.symbol)
         exit_price=float(quote["price"])
-    except (IntelligenceDataError,httpx.HTTPError) as exc:
+    except IntelligenceDataError as exc:
         raise HTTPException(status_code=502,detail=str(exc))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502,detail="Market provider request failed. Check API key, quota or network connection.")
     pnl=(exit_price-item.entry_price)*item.quantity*(1 if item.side=="BUY" else -1)
     item.exit_price=exit_price
     item.realized_pnl=round(pnl,8)
@@ -609,7 +617,6 @@ def paper_trading_summary(user: User = Depends(local_workspace), db: Session = D
             "win_rate":round(len(wins)/len(closed)*100,2) if closed else None,
             "realized_pnl":round(sum(x.realized_pnl or 0 for x in closed),2),
             "profit_factor":round(gross_profit/gross_loss,3) if gross_loss else (None if not gross_profit else "infinite"),
-            "starting_balance":10000.0,
             "note":"Separate virtual ledger. Existing wallet and journal balances are not changed."}
 
 @app.get("/api/v1/intelligence/performance")

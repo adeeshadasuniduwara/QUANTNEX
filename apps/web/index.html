@@ -132,6 +132,17 @@
       <section class="panel phase07-panel">
         <div class="p7-kpi-grid" id="p7PerformanceKpis"><article><span>Trades</span><strong>—</strong></article><article><span>Win rate</span><strong>—</strong></article><article><span>Profit factor</span><strong>—</strong></article><article><span>Net P&amp;L</span><strong>—</strong></article></div>
         <p class="p7-note" id="p7PerformanceNote">Statistics are calculated from closed QUANTNEX paper trades only. No win-rate guarantee.</p>
+        <div class="p11-toolbar"><div><strong>Advanced analytics</strong><p>Equity curve, expectancy, drawdown, streaks and symbol breakdown.</p></div><label>Period <select id="p11Period"><option value="0">All history</option><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option><option value="365">Last 365 days</option></select></label><button class="secondary-btn" id="p11Refresh">Refresh analytics</button></div>
+        <div class="p7-kpi-grid p11-extra-kpis" id="p11ExtraKpis"><article><span>Expectancy / trade</span><strong>—</strong></article><article><span>Average R (estimate)</span><strong>—</strong></article><article><span>Max drawdown</span><strong>—</strong></article><article><span>Average hold</span><strong>—</strong></article></div>
+        <div class="p11-chart-grid">
+          <div class="p11-chart-card"><div class="p11-chart-title">Cumulative realized P&amp;L</div><div id="p11EquityChart" class="p11-chart"><p class="p7-note">No closed paper trades in this period.</p></div></div>
+          <div class="p11-chart-card"><div class="p11-chart-title">Daily realized P&amp;L</div><div id="p11DailyChart" class="p11-chart"><p class="p7-note">No daily results yet.</p></div></div>
+        </div>
+        <div class="p11-table-grid">
+          <div><div class="p11-chart-title">Performance by market</div><div class="p7-table-wrap"><table><thead><tr><th>Market</th><th>Trades</th><th>Win rate</th><th>Net P&amp;L</th><th>Profit factor</th></tr></thead><tbody id="p11SymbolRows"><tr><td colspan="5" class="empty-row">No market data.</td></tr></tbody></table></div></div>
+          <div><div class="p11-chart-title">Trade quality &amp; consistency</div><div id="p11Consistency" class="p11-consistency"><p class="p7-note">Analytics will appear after closed paper trades.</p></div></div>
+        </div>
+        <p class="p7-note" id="p11Methodology">Analytics are estimates from the local closed-paper ledger. No broker-normalized R, strategy attribution or performance guarantee.</p>
       </section>
       <section class="section-heading" id="risk-management"><div><div class="overline">PHASE 07 · CAPITAL PROTECTION</div><h2>Risk Management</h2><p>Estimate risk amount and theoretical base-unit size before opening a paper trade.</p></div><span class="pill">MAX CALCULATOR RISK 5%</span></section>
       <section class="panel phase07-panel">

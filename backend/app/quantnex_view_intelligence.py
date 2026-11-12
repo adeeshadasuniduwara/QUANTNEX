@@ -156,7 +156,7 @@ def backtest_candles(candles: list[dict[str, Any]], symbol: str, interval: str,
             hit_sl = row["low"] <= stop if side == "BUY" else row["high"] >= stop
             if hit_sl:
                 # Conservative ordering: if SL and TP are both inside one candle, SL wins.
-                pnl = active["risk_cash"] * (-1.0 if not active["be"] else 0.0)
+                pnl = active.get("realized", 0.0) + (0.0 if active["be"] else -active["risk_cash"])
                 balance += pnl
                 trades.append({**active, "exit": stop, "pnl": round(pnl, 2), "result": "LOSS" if pnl < 0 else "BREAKEVEN", "exit_time": row["time"]})
                 active = None
@@ -172,11 +172,10 @@ def backtest_candles(candles: list[dict[str, Any]], symbol: str, interval: str,
                         if n == 0:
                             active["be"] = True
                             active["stop"] = entry
+                        active["realized"] = active.get("realized", 0.0) + gain
                         if n == 2:
-                            trades.append({**active, "exit": target, "pnl": round(active["realized"], 2) if "realized" in active else round(active["risk_cash"] * 2, 2), "result": "WIN", "exit_time": row["time"]})
+                            trades.append({**active, "exit": target, "pnl": round(active["realized"], 2), "result": "WIN", "exit_time": row["time"]})
                             active = None
-                        else:
-                            active["realized"] = active.get("realized", 0.0) + gain
                 if active and active["be"] and not (active["tp1_hit"] or active["tp2_hit"] or active["tp3_hit"]):
                     pass
             peak = max(peak, balance)
@@ -192,14 +191,16 @@ def backtest_candles(candles: list[dict[str, Any]], symbol: str, interval: str,
         risk_cash = balance * risk_percent / 100
         active = {"symbol": symbol, "side": sig["side"], "entry": sig["entry"], "stop": sig["stop_loss"],
                   "tp1": sig["tp1"], "tp2": sig["tp2"], "tp3": sig["tp3"], "risk_cash": risk_cash,
-                  "be": False, "tp1_hit": False, "tp2_hit": False, "tp3_hit": False,
+                  "risk_distance": sig["risk_distance"], "be": False,
+                  "tp1_hit": False, "tp2_hit": False, "tp3_hit": False,
                   "signal_time": row["time"], "families": sig["confirmations"]}
     if active:
         # Close the final open trade at the last candle close; no future candle is assumed.
         close = float(candles[-1]["close"])
         sign = 1 if active["side"] == "BUY" else -1
         remaining = sum(not active[f"tp{x}_hit"] for x in (1,2,3))/3
-        pnl = active.get("realized", 0.0) + max(-active["risk_cash"], min(active["risk_cash"]*3, (close-active["entry"])*sign/active["risk_distance"]*active["risk_cash"]))*remaining
+        remaining_pnl = max(-active["risk_cash"], min(active["risk_cash"]*3, (close-active["entry"])*sign/active["risk_distance"]*active["risk_cash"])) * remaining
+        pnl = active.get("realized", 0.0) + (max(0.0, remaining_pnl) if active["be"] else remaining_pnl)
         balance += pnl
         trades.append({**active, "exit": close, "pnl": round(pnl,2), "result": "WIN" if pnl>0 else "LOSS" if pnl<0 else "BREAKEVEN", "exit_time": candles[-1]["time"]})
     wins = sum(t["pnl"] > 0 for t in trades)

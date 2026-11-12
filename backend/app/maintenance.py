@@ -62,15 +62,18 @@ def _write_manifest(path: Path, digest: str) -> None:
     temp.write_text(digest + "  " + path.name + "\n", encoding="ascii")
     os.replace(temp, manifest)
 
-def _prune_backups(backup_dir: Path, keep: int = BACKUP_RETENTION) -> int:
+def _prune_backups(backup_dir: Path, keep: int = BACKUP_RETENTION, protect: set[str] | None = None) -> int:
     files = sorted(backup_dir.glob("quantnex-*.sqlite3"), key=lambda item: item.stat().st_mtime, reverse=True)
+    protected = set(protect or ())
+    recent = [item.name for item in files if item.name not in protected][:max(0, keep - len(protected))]
+    retained = protected | set(recent)
     removed = 0
-    for old in files[max(1, keep):]:
-        old.unlink(missing_ok=True)
-        old.with_suffix(old.suffix + ".sha256").unlink(missing_ok=True)
-        removed += 1
+    for old in files:
+        if old.name not in retained:
+            old.unlink(missing_ok=True)
+            old.with_suffix(old.suffix + ".sha256").unlink(missing_ok=True)
+            removed += 1
     return removed
-
 def create_backup(database_url: str, backup_dir: Path = BACKUP_DIR, prune: bool = True) -> dict:
     source_path = sqlite_database_path(database_url)
     if not source_path.is_file():

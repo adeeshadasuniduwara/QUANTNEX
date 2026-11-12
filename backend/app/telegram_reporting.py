@@ -59,6 +59,7 @@ def build_daily_paper_pdf(db, user_id: int, report_day: date | None = None) -> t
         "breakeven": breakeven, "gross_profit": round(gross_profit, 2),
         "total_loss": round(total_loss, 2), "net": round(net, 2),
         "win_rate": round(win_rate, 2),
+        "profit_factor": round(gross_profit / total_loss, 2) if total_loss > 0 else ("infinite" if gross_profit > 0 else None),
     }
 
     buffer = BytesIO()
@@ -91,7 +92,7 @@ def build_daily_paper_pdf(db, user_id: int, report_day: date | None = None) -> t
     summary = [
         ["TRADES OPENED", "TRADES CLOSED", "OPEN AT CUTOFF", "WIN RATE"],
         [str(stats["opened"]), str(stats["closed"]), str(stats["open_at_cutoff"]), f'{stats["win_rate"]:.2f}%'],
-        ["GROSS PROFIT", "TOTAL LOSSES", "NET P&L", "W / L / BE"],
+        ["GROSS PROFIT", "TOTAL LOSSES", "RECORDED P&L", "W / L / BE"],
         [f'${stats["gross_profit"]:.2f}', f'-${stats["total_loss"]:.2f}',
          f'${stats["net"]:.2f}', f'{wins} / {losses} / {breakeven}'],
     ]
@@ -105,7 +106,11 @@ def build_daily_paper_pdf(db, user_id: int, report_day: date | None = None) -> t
         ("VALIGN",(0,0),(-1,-1),"MIDDLE"),("BACKGROUND",(0,1),(-1,1),colors.HexColor("#F0F0F0")),
         ("BACKGROUND",(0,3),(-1,3),colors.HexColor("#F0F0F0")),
     ]))
-    story += [table, Paragraph("Closed paper trades", heading)]
+    story += [table,
+              Paragraph("Profit factor: "+(str(stats["profit_factor"]) if stats["profit_factor"] is not None else "—")
+                        +" · Current ledger does not store fees, spread or slippage; P&L below is the recorded realized amount.",
+                        ParagraphStyle("scope", parent=styles["Normal"], fontSize=7, textColor=colors.HexColor("#555555"))),
+              Paragraph("Closed paper trades", heading)]
     data = [["Symbol","Side","Qty","Entry","SL","TP","Exit","Opened","Exited","Net P&L"]]
     for trade in closed_today:
         exit_time = _local(trade.closed_at)
@@ -142,7 +147,7 @@ def build_daily_paper_pdf(db, user_id: int, report_day: date | None = None) -> t
         ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F4F4F4")]),
     ]))
     story += [open_table, Spacer(1,5*mm),
-              Paragraph("Source: QUANTNEX local PaperTrade ledger. Simulated results only; not broker execution or real-account profit.",
+              Paragraph("Source: QUANTNEX local PaperTrade ledger. Simulated results only; recorded P&L may exclude fees, spread and slippage. Not broker execution or real-account profit.",
                         ParagraphStyle("foot", parent=styles["Normal"], fontSize=7, textColor=colors.HexColor("#555555")))]
     doc.build(story, onFirstPage=decorate, onLaterPages=decorate)
     return buffer.getvalue(), stats

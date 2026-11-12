@@ -166,3 +166,26 @@ These are the next ten planned delivery phases. They are roadmap commitments, no
 - Added an inline image preview and clickable full-image link. Google Images result/search-page URLs are not themselves image files; paste the direct HTTPS image URL shown by the image host. A failed preview is explained instead of silently disappearing.
 - Fixed literal escaped newline sequences in the HTML that could appear as stray text and interfere with adjacent markup.
 - Added the goals client to the web JavaScript syntax checks and added regression assertions for the goal preview and minimal form.
+
+
+## Phases 12–20 — implementation slice added on branch `feature-qx-phases-12-20-paper-platform`
+
+This branch contains an initial connected implementation across the nine phases. It is not a claim that every planned sub-feature is production-complete; see the verified scope below.
+
+- **Phase 12:** Added a persistent local paper-autopilot settings API and opt-in background worker. It starts disabled, scans the existing validated BTCUSDT/ETHUSDT/SOLUSDT signal path, rejects stale quotes and duplicate signal candles, sizes paper positions from configured risk, and monitors worker-created positions for stop/target closure. The worker runs only while the local API is running.
+- **Phase 13:** Added Binance Spot exchange metadata discovery for eligible TRADING USDT pairs, excluding leveraged tokens. Discovery is informational; the automated signal worker remains limited to BTC/ETH/SOL until broader symbols have validated signal coverage.
+- **Phase 14:** Added a persistent `paper_trade_events` ledger for manual and automatic opens/closes, plus event API/UI. Existing paper trade table is preserved. Partial TP1/TP2 accounting and fee-aware multi-fill execution remain a follow-up; no partial fills are fabricated.
+- **Phase 15:** Added daily realized-loss, max drawdown and concurrent-position guards to the automated paper worker, with configurable limits and fail-closed entry behavior.
+- **Phase 16:** Added provider-mark monitoring for open paper positions, including timestamp freshness and unavailable-feed states. Marks are indicative only and do not represent broker execution prices.
+- **Phase 17:** Added paper-only performance metrics: wins/losses/breakeven, win rate, profit factor, expectancy, equity curve and max drawdown. Existing stored P&L has no historical fees/slippage, so the API warns accordingly.
+- **Phase 18:** Added chronological 70/30 holdout validation using the existing deterministic strategy backtester and saves the result as a research run. This is a single holdout, not a full walk-forward optimization or proof of future edge.
+- **Phase 19:** Reuses the existing local Telegram menu, retry handling and opt-in Colombo 20:00 PDF scheduler. The new engine has website controls and local state; Telegram start/stop buttons and full event-ledger PDF rendering are not yet wired in this slice.
+- **Phase 20:** Added an optional journal-profit preview/import flow with explicit real-funds confirmation and per-goal deduplication. It is limited to USD goals because the journal schema does not store currency; it does not automatically assume journal P&L is cash savings.
+
+### Operational safeguards and validation still required
+- Paper mode is disabled by default; no broker order API, credentials or real-money execution were added.
+- Automatic sizing is limited to crypto spot units. Forex/Gold remain excluded until contract multipliers and tick values are verified.
+- Quote monitoring uses periodic provider snapshots; it cannot know intrabar stop/target order when both levels are crossed between snapshots. Stop is treated conservatively if both conditions appear true on a single mark.
+- TP1/TP2 partial exits, fee/slippage event accounting, full dynamic pair scanning by the strategy engine, multi-window walk-forward testing, Telegram engine controls and event-ledger PDF inclusion remain pending.
+- New SQLAlchemy event table is created on startup through existing metadata creation; existing user data tables are not dropped or reset.
+- CI checks are required before marking this branch ready. A local Windows UI/market-feed test remains necessary after the PR is checked out and run on the user's computer.

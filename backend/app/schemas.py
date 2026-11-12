@@ -1,32 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-class RegisterRequest(BaseModel):
-    email: str = Field(min_length=5, max_length=254)
-    password: str = Field(min_length=12, max_length=128)
-    @field_validator("email")
-    @classmethod
-    def normalize_email(cls, value):
-        value = value.strip().lower()
-        if value.count("@") != 1 or "." not in value.rsplit("@", 1)[-1]:
-            raise ValueError("Enter a valid email address.")
-        return value
-
-class LoginRequest(BaseModel):
-    email: str
-    password: str
-
-class UserResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    id: int
-    email: str
-    created_at: datetime
-
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    expires_in: int
-
 class TradeCreate(BaseModel):
     symbol: str = Field(min_length=1, max_length=20)
     direction: str

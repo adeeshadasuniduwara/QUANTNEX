@@ -69,3 +69,50 @@ def test_binance_crypto_candles_use_public_klines(monkeypatch):
     assert result[0]["open"] == 42000.0
     assert result[-1]["close"] == 42220.0
     assert result[-1]["volume"] == 12.5
+
+
+def test_telegram_scan_command_supports_crypto_symbols(monkeypatch):
+    import asyncio
+    from app import telegram_worker
+
+    calls = []
+    async def fake_build_signal(settings, symbol):
+        calls.append(symbol)
+        return {"signal": None, "confluence_score": 4, "score_note": "Rule-based score."}
+
+    class FakeDB:
+        def scalar(self, query):
+            return None
+        def add(self, item):
+            raise AssertionError("Crypto WAIT scans must not touch the Gold TP watcher.")
+        def commit(self):
+            pass
+
+    monkeypatch.setattr(telegram_worker, "build_signal", fake_build_signal)
+    response = asyncio.run(telegram_worker._handle_command(None, FakeDB(), 1, "token", "chat", "/scan ETHUSDT"))
+    assert calls == ["ETHUSDT"]
+    assert "ETHUSDT" in response
+    assert "WAIT" in response
+
+
+def test_telegram_scan_command_defaults_to_bitcoin(monkeypatch):
+    import asyncio
+    from app import telegram_worker
+
+    calls = []
+    async def fake_build_signal(settings, symbol):
+        calls.append(symbol)
+        return {"signal": None, "confluence_score": 3, "score_note": "Rule-based score."}
+
+    class FakeDB:
+        def scalar(self, query):
+            return None
+        def add(self, item):
+            raise AssertionError("Crypto WAIT scans must not touch the Gold TP watcher.")
+        def commit(self):
+            pass
+
+    monkeypatch.setattr(telegram_worker, "build_signal", fake_build_signal)
+    response = asyncio.run(telegram_worker._handle_command(None, FakeDB(), 1, "token", "chat", "/scan"))
+    assert calls == ["BTCUSDT"]
+    assert "BTCUSDT" in response

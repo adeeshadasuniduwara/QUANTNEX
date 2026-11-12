@@ -437,7 +437,7 @@ def telegram_status(user: User = Depends(local_workspace), db: Session = Depends
 
 @app.delete("/api/v1/telegram/connect")
 def disconnect_telegram_bot(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
-    for key in ["telegram_bot_token_enc","telegram_chat_id","telegram_bot_username","telegram_bot_display_name","telegram_update_offset","active_signal","auto_signal_settings","auto_signal_last_fingerprint","auto_signal_last_fingerprint_btcusdt","auto_signal_last_fingerprint_ethusdt","auto_signal_last_fingerprint_solusdt","auto_signal_last_fingerprint_xauusd"]:
+    for key in ["telegram_bot_token_enc","telegram_chat_id","telegram_bot_username","telegram_bot_display_name","telegram_update_offset","active_signal","telegram_daily_report_enabled","telegram_daily_report_sent_date","auto_signal_settings","auto_signal_last_fingerprint","auto_signal_last_fingerprint_btcusdt","auto_signal_last_fingerprint_ethusdt","auto_signal_last_fingerprint_solusdt","auto_signal_last_fingerprint_xauusd"]:
         row=db.scalar(select(Preference).where(Preference.user_id==user.id,Preference.key==key))
         if row:db.delete(row)
     record_audit_event(db, "telegram.disconnected")
@@ -530,6 +530,27 @@ def set_auto_signal_settings(payload: AutoSignalSettingsRequest, user: User = De
     db.commit()
     event_hub.publish("preferences.changed", "signals", "auto_settings_updated", {"key": "auto_signal_settings", "enabled": settings["enabled"], "symbols": settings["symbols"]})
     return {**settings,"telegram_connected":connected,"note":"Automatic crypto signal alerts run while this computer's QUANTNEX API and Telegram worker are running."}
+
+@app.get("/api/v1/telegram/reports")
+def get_telegram_report_settings(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    connected=bool(_preference(db,user.id,"telegram_bot_token_enc") and _preference(db,user.id,"telegram_chat_id"))
+    enabled=_preference(db,user.id,"telegram_daily_report_enabled","false")=="true"
+    return {"enabled":enabled,"schedule":"20:00","timezone":"Asia/Colombo","telegram_connected":connected}
+
+@app.put("/api/v1/telegram/reports")
+def set_telegram_report_settings(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    enabled=payload.get("enabled")
+    if not isinstance(enabled,bool):
+        raise HTTPException(status_code=422,detail="enabled must be true or false.")
+    connected=bool(_preference(db,user.id,"telegram_bot_token_enc") and _preference(db,user.id,"telegram_chat_id"))
+    if enabled and not connected:
+        raise HTTPException(status_code=409,detail="Connect your Telegram bot before enabling daily PDF reports.")
+    _save_preference(db,user.id,"telegram_daily_report_enabled","true" if enabled else "false")
+    if not enabled:
+        _save_preference(db,user.id,"telegram_daily_report_sent_date","")
+    record_audit_event(db,"telegram.daily_report_settings_updated",{"enabled":enabled,"schedule":"20:00","timezone":"Asia/Colombo"})
+    db.commit()
+    return {"enabled":enabled,"schedule":"20:00","timezone":"Asia/Colombo","telegram_connected":connected}
 
 @app.post("/api/v1/telegram/notify")
 async def notify_connected_telegram(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):

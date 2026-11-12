@@ -155,6 +155,10 @@ async function refreshWallet(){
   const [summary,transactions]=await Promise.all([apiRequest("/api/v1/wallet/summary"),apiRequest("/api/v1/wallet/transactions?limit=100")]);
   $("walletBalance").textContent=money(summary.balance);$("walletDeposits").textContent=money(summary.deposits);$("walletWithdrawals").textContent=money(summary.withdrawals);$("walletPnl").textContent=money(summary.trading_pnl);renderWalletTransactions(transactions);
 }
+window.addEventListener("quantnex:workspace-event",event=>{
+  if(event.detail?.type==="wallet.changed")refreshWallet().catch(error=>setAccountMessage("Wallet refresh failed: "+error.message,true));
+});
+window.addEventListener("quantnex:workspace-resync",()=>refreshWallet().catch(error=>setAccountMessage("Wallet refresh failed: "+error.message,true)));
 async function recordWalletTransaction(type){
   const amountInput=$(type==="deposit"?"depositAmount":"withdrawAmount"),descriptionInput=$(type==="deposit"?"depositDescription":"withdrawDescription"),amount=Number(amountInput.value);
   if(!Number.isFinite(amount)||amount<=0){setAccountMessage("Enter an amount greater than zero.",true);return;}
@@ -520,6 +524,8 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     }catch(error){$("p7PerformanceNote").textContent="Performance data unavailable: "+error.message;}
   }
   async function refreshAnalytics(){await Promise.all([loadPaper(),loadPerformance()]);}
+  window.addEventListener("quantnex:workspace-event",event=>{if(event.detail?.type==="paper_trade.changed")refreshAnalytics();});
+  window.addEventListener("quantnex:workspace-resync",refreshAnalytics);
   async function openPaper(){
     const button=$("p7OpenPaper");button.disabled=true;button.textContent="Opening…";
     try{

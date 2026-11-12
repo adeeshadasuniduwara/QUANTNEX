@@ -81,3 +81,16 @@ def test_auto_closed_paper_trades_publish_workspace_refresh_events(monkeypatch):
     assert (event_type, entity, action) == ("paper_trade.changed", "paper_trade", "auto_closed")
     assert payload["trade_id"] == 42
     assert payload["reason"] == "TAKE_PROFIT"
+
+
+def test_telegram_timeframe_commands_publish_preference_change(monkeypatch):
+    from app import telegram_worker
+
+    published = []
+    monkeypatch.setattr(telegram_worker.event_hub, "publish", lambda *args: published.append(args))
+    telegram_worker._publish_signal_settings_changed()
+
+    assert len(published) == 1
+    event_type, entity, action, payload = published[0]
+    assert (event_type, entity, action) == ("preferences.changed", "preferences", "updated")
+    assert payload == {"key": "signal_settings"}

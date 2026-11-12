@@ -13,8 +13,15 @@ class RegisterRequest(BaseModel):
         return value
 
 class LoginRequest(BaseModel):
-    email: str
-    password: str
+    email: str = Field(min_length=5, max_length=254)
+    password: str = Field(min_length=1, max_length=128)
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value):
+        value = value.strip().lower()
+        if value.count("@") != 1 or "." not in value.rsplit("@", 1)[-1]:
+            raise ValueError("Enter a valid email address.")
+        return value
 
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

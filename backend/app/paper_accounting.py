@@ -80,7 +80,9 @@ class PaperPositionLedger:
 
     @property
     def realized_net_pnl(self) -> Decimal:
-        return sum((item.net_pnl for item in self.exits), Decimal("0"))
+        # Aggregate unrounded gross P&L and fee allocations first, then round once.
+        # Summing individually rounded partial-exit net values can create a cent drift.
+        return _money(self.realized_gross_pnl - self.realized_fees)
 
     @property
     def closed(self) -> bool:

@@ -183,4 +183,33 @@
   $("openBotGuide").addEventListener("click",()=>{$("telegramGuide").hidden=!$("telegramGuide").hidden;});
   $("clearTelegram").title="Disconnect the saved Telegram bot";
   renderPosition();
+
+  // TradingView is a single dedicated chart tab with a selectable instrument.
+  $("tradingViewSymbol")?.addEventListener("change",applyChartTimeframe);
+  if($("tradingViewSymbol"))applyChartTimeframe();
+
+  async function loadAutoSignalSettings(){
+    if(typeof sessionToken!=="function"||!sessionToken())return;
+    try{
+      const settings=await apiRequest("/api/v1/telegram/auto-signals");
+      $("autoSignalsEnabled").checked=!!settings.enabled;
+      $("autoSignalInterval").value=String(settings.interval_seconds||180);
+      $("autoSignalStatus").textContent=settings.enabled?"Auto Signals ON · scans while the QUANTNEX API is running.":"Auto Signals OFF.";
+    }catch(error){$("autoSignalStatus").textContent=error.message;}
+  }
+  $("saveAutoSignals")?.addEventListener("click",async()=>{
+    const enabled=$("autoSignalsEnabled").checked;
+    const interval_seconds=Number($("autoSignalInterval").value||180);
+    const button=$("saveAutoSignals");button.disabled=true;button.textContent="Saving…";
+    try{
+      if(typeof sessionToken!=="function"||!sessionToken())throw new Error("Sign in to QUANTNEX first.");
+      const result=await apiRequest("/api/v1/telegram/auto-signals",{method:"PUT",body:JSON.stringify({enabled,interval_seconds})});
+      $("autoSignalStatus").textContent=result.enabled?"Auto Signals ON · strict 8/10 minimum · every "+(interval_seconds/60)+" minute(s). Keep this computer/VPS and QUANTNEX API running.":"Auto Signals OFF. No automatic Telegram signals will be sent.";
+    }catch(error){
+      $("autoSignalsEnabled").checked=false;
+      $("autoSignalStatus").textContent=error.message;
+    }finally{button.disabled=false;button.textContent="Save Auto Signal settings";}
+  });
+  if(typeof sessionToken==="function"&&sessionToken())loadAutoSignalSettings();
+  window.addEventListener("quantnex:auth",loadAutoSignalSettings);
 })();

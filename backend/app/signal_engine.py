@@ -126,10 +126,13 @@ def structure(c: list[dict[str,Any]]) -> dict[str,Any]:
     bear_ifvg={"low":bear_fvg["low"],"high":bear_fvg["high"]} if bear_fvg and last["close"]>bear_fvg["high"] else None
     bear_breaker={"low":bull_ob["low"],"high":bull_ob["high"]} if bull_ob and last["close"]<bull_ob["low"] else None
     bull_breaker={"low":bear_ob["low"],"high":bear_ob["high"]} if bear_ob and last["close"]>bear_ob["high"] else None
+    equilibrium=(swing_high+swing_low)/2
+    premium_discount="DISCOUNT" if last["close"]<equilibrium else "PREMIUM"
     return {"bos_mss":bos,"liquidity_sweep":sweep,"bullish_fvg":bull_fvg,"bearish_fvg":bear_fvg,
             "bullish_ifvg":bull_ifvg,"bearish_ifvg":bear_ifvg,
             "bullish_order_block":bull_ob,"bearish_order_block":bear_ob,
             "bullish_breaker_block":bull_breaker,"bearish_breaker_block":bear_breaker,
+            "premium_discount":premium_discount,"equilibrium":equilibrium,
             "swing_high":swing_high,"swing_low":swing_low}
 
 def inspect_tf(c: list[dict[str,Any]]) -> dict[str,Any]:

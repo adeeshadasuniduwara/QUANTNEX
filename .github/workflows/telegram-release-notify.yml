@@ -12,66 +12,63 @@ jobs:
   announce:
     runs-on: ubuntu-latest
     steps:
-      - name: Check Telegram configuration
-        id: config
+      - name: Send Telegram release announcement
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "Telegram secrets are not configured. Skipping announcement."
-          else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Prepare release announcement
-        if: steps.config.outputs.configured == 'true'
-        id: message
-        env:
           EVENT_NAME: ${{ github.event_name }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           RELEASE_NAME: ${{ github.event.release.name }}
           RELEASE_URL: ${{ github.event.release.html_url }}
           REPO: ${{ github.repository }}
         run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "Telegram secrets are not configured. Skipping announcement."
+            exit 0
+          fi
           python - <<'PY'
-          import os, html
+          import html
+          import json
+          import os
+          import urllib.request
+
+          repo = os.environ["REPO"]
           if os.environ["EVENT_NAME"] == "workflow_dispatch":
               title = "Telegram notification test"
               tag = "Configuration test"
-              url = "https://github.com/" + os.environ["REPO"]
+              release_url = "https://github.com/" + repo
               intro = "The QUANTNEX Telegram release notification is connected."
           else:
               title = html.escape(os.environ.get("RELEASE_NAME") or os.environ.get("RELEASE_TAG") or "New release")
               tag = html.escape(os.environ.get("RELEASE_TAG") or "Release")
-              url = os.environ.get("RELEASE_URL") or ("https://github.com/" + os.environ["REPO"] + "/releases")
+              release_url = os.environ.get("RELEASE_URL") or ("https://github.com/" + repo + "/releases")
               intro = "A new QUANTNEX version has been published."
-          text = (
-              "🚀 <b>QUANTNEX — NEW UPDATE AVAILABLE!</b>\n\n"
-              + "<b>" + title + "</b>\n"
-              + "Version: <code>" + tag + "</code>\n\n"
-              + intro + "\n\n"
-              + "📦 <a href=\"" + url + "\">Open release &amp; downloads</a>\n"
-              + "🌐 <a href=\"https://github.com/" + os.environ["REPO"] + "\">QUANTNEX GitHub</a>\n\n"
+
+          message = (
+              "🚀 <b>QUANTNEX — NEW UPDATE AVAILABLE!</b>\\n\\n"
+              + "<b>" + title + "</b>\\n"
+              + "Version: <code>" + tag + "</code>\\n\\n"
+              + intro + "\\n\\n"
+              + "📦 <a href=\\"" + release_url + "\\">Open release &amp; downloads</a>\\n"
+              + "🌐 <a href=\\"https://github.com/" + repo + "\\">QUANTNEX GitHub</a>\\n\\n"
               + "<i>Official automated update notification</i>"
           )
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
-              f.write("text=" + json.dumps(text, ensure_ascii=False) + "\n")
-          PY
 
-      - name: Send Telegram announcement
-        if: steps.config.outputs.configured == 'true'
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          MESSAGE: ${{ steps.message.outputs.text }}
-        run: |
-          payload=$(jq -n --arg chat_id "$TELEGRAM_CHAT_ID" --arg text "$MESSAGE" '{chat_id:$chat_id,text:$text,parse_mode:"HTML",disable_web_page_preview:false}')
-          response=$(curl --silent --show-error --fail-with-body \
-            --request POST \
-            --header "Content-Type: application/json" \
-            --data "$payload" \
-            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage")
-          echo "$response" | jq -e '.ok == true' >/dev/null
-          echo "Telegram announcement sent."
+          payload = json.dumps({
+              "chat_id": os.environ["TELEGRAM_CHAT_ID"],
+              "text": message,
+              "parse_mode": "HTML",
+              "disable_web_page_preview": False
+          }).encode("utf-8")
+          request = urllib.request.Request(
+              "https://api.telegram.org/bot" + os.environ["TELEGRAM_BOT_TOKEN"] + "/sendMessage",
+              data=payload,
+              headers={"Content-Type": "application/json"},
+              method="POST"
+          )
+          with urllib.request.urlopen(request, timeout=20) as response:
+              result = json.loads(response.read().decode("utf-8"))
+          if not result.get("ok"):
+              raise SystemExit("Telegram API rejected the announcement.")
+          print("Telegram announcement sent successfully.")
+          PY

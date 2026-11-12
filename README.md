@@ -25,7 +25,11 @@ QUANTNEX is a modular, multi-platform trading software project. The repository k
 
 See [Phase 01 plan](docs/PHASE-01.md) and [architecture](docs/ARCHITECTURE.md).
 
-## Phase 03 — Windows desktop MVP\n\nA lightweight Windows desktop app is in `apps/windows/quantnex_desktop.py`. It includes the position-size calculator, local SQLite trade journal and a GitHub Releases update check. A Windows GitHub Actions workflow builds `QUANTNEX.exe` as a downloadable workflow artifact when relevant files change. The executable is not available until that workflow succeeds.\n\n## Run the web prototype
+## Phase 03 — Windows desktop MVP
+
+A lightweight Windows desktop app is in `apps/windows/quantnex_desktop.py`. It includes the position-size calculator, local SQLite trade journal and a GitHub Releases update check. A Windows GitHub Actions workflow builds `QUANTNEX.exe` as a downloadable workflow artifact when relevant files change. The executable is not available until that workflow succeeds.
+
+## Run the web prototype
 
 Open `apps/web/index.html` in a modern browser. It is a static prototype and does not require an API key or backend.
 

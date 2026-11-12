@@ -46,13 +46,11 @@ $("exportJournal").addEventListener("click",()=>{
   const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),link=document.createElement("a");link.href=url;link.download="quantnex-trading-journal.csv";link.click();URL.revokeObjectURL(url);
 });
 renderJournal();
-// Local QUANTNEX updater: the CMD-launched Python server downloads, extracts and installs releases.
-const updateButton = $("webCheckUpdate");
-const installButton = $("webInstallUpdate");
-const releaseVersionLabel = $("webReleaseVersion");
-const releaseNotesLink = $("webReleaseNotes");
-let checkedRelease = null;
-let updatePolling = false;
+// Local QUANTNEX updater. It checks the latest main-branch commit and installs it safely.
+const updateButton=$("webCheckUpdate");
+const releaseVersionLabel=$("webReleaseVersion");
+const releaseNotesLink=$("webReleaseNotes");
+let updatePolling=false;
 
 function showUpdateToast(message){
   let toast=$("quantnexUpdateToast");
@@ -66,42 +64,13 @@ function showUpdateToast(message){
 }
 if(sessionStorage.getItem("quantnex.webUpdateComplete")==="1"){
   sessionStorage.removeItem("quantnex.webUpdateComplete");
-  window.addEventListener("load",()=>showUpdateToast("✓ QUANTNEX Web has been updated. You are now using the latest workspace."));
+  window.addEventListener("load",()=>showUpdateToast("✓ QUANTNEX Web is now updated to the latest verified GitHub commit."));
 }
-
-async function checkLocalUpdate(){
-  const status=$("webUpdateStatus"),progress=$("webUpdateProgress");
-  updateButton.disabled=true;updateButton.textContent="Checking…";progress.hidden=false;
-  status.textContent="Checking the latest published QUANTNEX release…";
-  try{
-    const response=await fetch("/__quantnex/check",{cache:"no-store"});
-    if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||"Local updater is not running.");}
-    checkedRelease=await response.json();
-    $("webInstalledVersion").textContent=String(checkedRelease.installed).startsWith("v")?checkedRelease.installed:"v"+checkedRelease.installed;
-    releaseVersionLabel.textContent=checkedRelease.latest;
-    if(checkedRelease.release_notes)releaseNotesLink.href=checkedRelease.release_notes;
-    if(checkedRelease.update_available){
-      status.textContent="New version "+checkedRelease.latest+" is ready. Install it automatically; QUANTNEX will extract the release, refresh this browser and reopen the updated workspace.";
-      installButton.hidden=false;
-      installButton.disabled=false;
-    }else{
-      status.textContent="You already have the latest published release ("+checkedRelease.latest+").";
-      installButton.hidden=true;
-    }
-  }catch(error){
-    checkedRelease=null;installButton.hidden=true;
-    status.textContent="Automatic updates are available when QUANTNEX is launched using run_quantnex.bat → Start Web Workspace. "+error.message;
-  }finally{
-    updateButton.disabled=false;updateButton.textContent="Check for updates";progress.hidden=true;
-  }
-}
-if(updateButton)updateButton.addEventListener("click",checkLocalUpdate);
 
 async function watchUpdateInstall(){
   if(updatePolling)return;
   updatePolling=true;
-  const status=$("webUpdateStatus");
-  const progress=$("webUpdateProgress");
+  const status=$("webUpdateStatus"),progress=$("webUpdateProgress");
   progress.hidden=false;
   const started=Date.now();
   try{
@@ -112,37 +81,60 @@ async function watchUpdateInstall(){
       if(state.status==="complete"){
         status.textContent=state.message||"Update installed. Refreshing workspace…";
         sessionStorage.setItem("quantnex.webUpdateComplete","1");
-        window.setTimeout(()=>{window.location.replace(window.location.pathname+"?updated="+Date.now());},900);
+        window.setTimeout(()=>window.location.replace(window.location.pathname+"?updated="+Date.now()),900);
         return;
       }
       if(state.status==="error")throw new Error(state.message||"Update installation failed.");
-      if(state.status==="installing")status.textContent=state.message||"Downloading and extracting update…";
+      if(state.status==="installing"||state.status==="starting")status.textContent=state.message||"Downloading and installing the verified GitHub update…";
     }
     throw new Error("The update is taking longer than expected. Check the QUANTNEX Web Server CMD window.");
   }catch(error){
     status.textContent="Update did not finish: "+error.message;
-    installButton.disabled=false;installButton.textContent="Retry update";
   }finally{
     progress.hidden=true;updatePolling=false;
+    updateButton.disabled=false;updateButton.textContent="Check & install updates";
   }
 }
-if(installButton)installButton.addEventListener("click",async()=>{
-  if(!checkedRelease||!checkedRelease.update_available){await checkLocalUpdate();return;}
-  installButton.disabled=true;installButton.textContent="Installing…";
-  $("webUpdateStatus").textContent="Starting automatic update…";
+
+async function installLatestCommit(){
+  const status=$("webUpdateStatus");
+  status.textContent="Starting the verified GitHub update…";
+  const response=await fetch("/__quantnex/install",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(data.error||"Could not start update.");
+  await watchUpdateInstall();
+}
+
+async function checkLocalUpdate(){
+  const status=$("webUpdateStatus"),progress=$("webUpdateProgress");
+  updateButton.disabled=true;updateButton.textContent="Checking…";progress.hidden=false;
+  status.textContent="Checking the latest QUANTNEX main-branch commit on GitHub…";
   try{
-    const response=await fetch("/__quantnex/install",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
-    const data=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(data.error||"Could not start update.");
-    await watchUpdateInstall();
+    const response=await fetch("/__quantnex/check",{cache:"no-store"});
+    if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||"Local updater is not running.");}
+    const result=await response.json();
+    $("webInstalledVersion").textContent=result.installed;
+    releaseVersionLabel.textContent=result.latest;
+    if(result.release_notes)releaseNotesLink.href=result.release_notes;
+    if(result.update_available){
+      status.textContent="New GitHub update found: "+result.latest+". "+(result.latest_message||"")+" Starting automatic installation…";
+      progress.hidden=false;
+      await installLatestCommit();
+    }else{
+      status.textContent="You are already using the latest GitHub source ("+result.latest+").";
+    }
   }catch(error){
-    $("webUpdateStatus").textContent="Could not start update: "+error.message;
-    installButton.disabled=false;installButton.textContent="Install update & restart workspace";
+    status.textContent="Automatic update check failed safely: "+error.message;
+  }finally{
+    progress.hidden=true;
+    if(!updatePolling){updateButton.disabled=false;updateButton.textContent="Check & install updates";}
   }
-});
+}
+if(updateButton)updateButton.addEventListener("click",checkLocalUpdate);
 if(updateButton&&location.hostname==="127.0.0.1"&&location.port==="5500"){
   checkLocalUpdate();
 }
+
 
 // Local-only wallet API. The backend listens on loopback and has no login/session system.
 const accountMessage = $("accountMessage");

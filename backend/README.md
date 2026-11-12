@@ -5,6 +5,8 @@ FastAPI shared API foundation for Windows, Android and Web.
 ## Included
 - Health endpoint and OpenAPI documentation.
 - Registration/login, Argon2 password hashes and expiring JWT bearer tokens.
+- WebAuthn passkeys for platform authenticators such as Windows Hello, with one-time five-minute challenges, origin/RP validation, user verification and signature/counter checks.
+- Multiple passkeys per account; the last registered passkey cannot be removed.
 - Authentication endpoint throttling: up to five login/registration attempts per client IP per minute (per local API process).
 - Telegram commands restricted to the configured owner's private chat; group/channel posts cannot control settings.
 - Telegram `/help`, `/settings`, `/pause` and `/resume` commands in addition to timeframe, scan and status commands.
@@ -43,6 +45,12 @@ Open http://127.0.0.1:8000/health and http://127.0.0.1:8000/docs.
 | GET | /health | No |
 | POST | /api/v1/auth/register | No |
 | POST | /api/v1/auth/login | No |
+| POST | /api/v1/auth/passkeys/login/options | No |
+| POST | /api/v1/auth/passkeys/login/verify | No |
+| POST | /api/v1/auth/passkeys/register/options | Bearer |
+| POST | /api/v1/auth/passkeys/register/verify | Bearer |
+| GET | /api/v1/auth/passkeys | Bearer |
+| DELETE | /api/v1/auth/passkeys/{credential_pk} | Bearer |
 | GET | /api/v1/auth/me | Bearer |
 | GET, POST | /api/v1/journal | Bearer |
 | DELETE | /api/v1/journal/{trade_id} | Bearer |
@@ -99,3 +107,24 @@ When a signal is active, the worker checks price levels approximately once per m
 - Use a dedicated Telegram bot and a strong, persistent `QUANTNEX_SECRET_KEY`. Changing that key makes stored bot tokens undecryptable; reconnect the bot after key rotation.
 - Do not use the default development secret in a public deployment. Use HTTPS, a persistent always-on host, secure database backups, rate limiting and monitoring before exposing the API to the internet.
 - Test the strategy on historical data and paper trading before relying on it. A 7/10 confluence score does not imply a 70% win rate.
+
+
+## Windows Hello / Passkey sign-in
+
+The local launcher opens the web workspace at http://localhost:5500/ because WebAuthn requires a secure context; localhost is treated as secure by modern browsers. Keep the browser on this hostname (do not switch to 127.0.0.1) for passkey enrollment and sign-in.
+
+1. Start QUANTNEX with run_quantnex.bat.
+2. Sign in once with the existing QUANTNEX email and password.
+3. Select Add Windows Hello Passkey and approve the Windows Security prompt with the Windows Hello PIN, fingerprint or face sign-in supported by the device.
+4. Sign out, enter the same account email, and choose Sign in with Windows Hello to test the passkey.
+5. Keep a second passkey/recovery method where possible.
+
+The website never receives the Windows account password. WebAuthn private keys remain with the platform authenticator; QUANTNEX stores the credential public key and credential identifier only. Passkey challenges expire after five minutes and are single-use. The API checks the exact allowed origin and RP ID and requires user verification.
+
+Default local configuration:
+- WEBAUTHN_RP_ID=localhost
+- WEBAUTHN_ALLOWED_ORIGINS=http://localhost:5500
+
+For a remote deployment, configure a real HTTPS origin and matching RP ID; do not expose the local development defaults to the public internet.
+
+Migration safety: existing email/password login remains available in this release. Do not disable it until the owner has successfully tested the passkey and configured a recovery passkey. Losing the only platform passkey before recovery is configured can lock the user out. The new credential/challenge tables are created additively at API startup; existing user, journal and wallet rows are not rewritten.

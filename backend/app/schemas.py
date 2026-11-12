@@ -108,6 +108,11 @@ class TelegramSendRequest(BaseModel):
 class TelegramConnectRequest(BaseModel):
     bot_token: str = Field(min_length=20, max_length=200)
     chat_id: str = Field(min_length=1, max_length=128)
+    display_name: str = Field(default="", max_length=40)
+
+class AutoSignalSettingsRequest(BaseModel):
+    enabled: bool = False
+    interval_seconds: int = Field(default=180, ge=60, le=3600)
 
 class SignalSettingsRequest(BaseModel):
     primary: str = Field(default="5", pattern="^(1|5|15|30|50|60)$")

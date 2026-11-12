@@ -168,6 +168,9 @@ function setSignedIn(signedIn){
   $("accountLogout").hidden=!signedIn;
   $("accountLogin").hidden=signedIn;
   $("accountRegister").hidden=signedIn;
+  $("passkeyLogin").hidden=signedIn;
+  $("registerPasskey").hidden=!signedIn;
+  if(signedIn)refreshPasskeyStatus();
 }
 function renderWalletTransactions(rows){
   const body=$("walletRows");body.replaceChildren();
@@ -178,6 +181,96 @@ async function refreshWallet(){
   const [summary,transactions]=await Promise.all([apiRequest("/api/v1/wallet/summary"),apiRequest("/api/v1/wallet/transactions?limit=100")]);
   $("walletBalance").textContent=money(summary.balance);$("walletDeposits").textContent=money(summary.deposits);$("walletWithdrawals").textContent=money(summary.withdrawals);$("walletPnl").textContent=money(summary.trading_pnl);renderWalletTransactions(transactions);
 }
+
+// Browser-side WebAuthn ceremony helpers. The private key never leaves the platform authenticator.
+function b64urlToBytes(value){
+  const padded=value.replace(/-/g,"+").replace(/_/g,"/")+"===".slice((value.length+3)%4);
+  const raw=atob(padded), bytes=new Uint8Array(raw.length);
+  for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+  return bytes;
+}
+function bytesToB64url(buffer){
+  const bytes=new Uint8Array(buffer);let binary="";
+  for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);
+  return btoa(binary).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+}
+function preparePasskeyOptions(options){
+  const result={...options,challenge:b64urlToBytes(options.challenge)};
+  if(options.user)result.user={...options.user,id:b64urlToBytes(options.user.id)};
+  for(const key of ["allowCredentials","excludeCredentials"]){
+    if(Array.isArray(options[key]))result[key]=options[key].map(item=>({...item,id:b64urlToBytes(item.id)}));
+  }
+  return result;
+}
+function serializePasskeyCredential(credential, registration){
+  const response=credential.response;
+  const payload={
+    id:credential.id,rawId:bytesToB64url(credential.rawId),type:credential.type,
+    response:{
+      clientDataJSON:bytesToB64url(response.clientDataJSON),
+      ...(registration?{
+        attestationObject:bytesToB64url(response.attestationObject),
+        transports:typeof response.getTransports==="function"?response.getTransports():[]
+      }:{
+        authenticatorData:bytesToB64url(response.authenticatorData),
+        signature:bytesToB64url(response.signature),
+        userHandle:response.userHandle?bytesToB64url(response.userHandle):null
+      })
+    },
+    clientExtensionResults:credential.getClientExtensionResults?credential.getClientExtensionResults():{}
+  };
+  if(credential.authenticatorAttachment)payload.authenticatorAttachment=credential.authenticatorAttachment;
+  return payload;
+}
+function passkeySupported(){
+  return !!(window.PublicKeyCredential&&navigator.credentials&&navigator.credentials.create&&navigator.credentials.get);
+}
+async function refreshPasskeyStatus(){
+  const status=$("passkeyStatus");
+  if(!sessionToken()){status.textContent="Sign in with your existing account to add a Windows Hello passkey.";return;}
+  try{
+    const data=await apiRequest("/api/v1/auth/passkeys");
+    status.textContent=data.enabled?("Passkeys registered: "+data.count+". Keep a recovery method until you have tested sign-in."):"No passkey registered yet. Add one using Windows Hello.";
+  }catch(error){status.textContent="Could not load passkey status: "+error.message;}
+}
+$("passkeyLogin").addEventListener("click",async()=>{
+  const email=$("accountEmail").value.trim();
+  if(!email){setAccountMessage("Enter your account email first, then choose Windows Hello.",true);return;}
+  if(!passkeySupported()){setAccountMessage("This browser does not support passkeys. Use current Edge or Chrome on Windows.",true);return;}
+  const button=$("passkeyLogin");button.disabled=true;button.textContent="Waiting for Windows Hello…";
+  try{
+    const started=await apiRequest("/api/v1/auth/passkeys/login/options",{method:"POST",body:JSON.stringify({email})});
+    const assertion=await navigator.credentials.get({publicKey:preparePasskeyOptions(started.publicKey)});
+    if(!assertion)throw new Error("Windows Hello sign-in was cancelled.");
+    const result=await apiRequest("/api/v1/auth/passkeys/login/verify",{method:"POST",body:JSON.stringify({
+      challenge_id:started.challenge_id,credential:serializePasskeyCredential(assertion,false)
+    })});
+    sessionStorage.setItem(TOKEN_KEY,result.access_token);window.dispatchEvent(new Event("quantnex:auth"));
+    setSignedIn(true);await refreshWallet();await refreshPasskeyStatus();
+    setAccountMessage("Signed in with your Windows Hello passkey. Wallet data loaded.");
+  }catch(error){
+    setAccountMessage(error.name==="NotAllowedError"?"Windows Hello sign-in was cancelled or timed out. Try again.":error.message,true);
+  }finally{button.disabled=false;button.textContent="Sign in with Windows Hello";}
+});
+$("registerPasskey").addEventListener("click",async()=>{
+  if(!sessionToken()){setAccountMessage("Sign in with your existing account first.",true);return;}
+  if(!passkeySupported()){setAccountMessage("This browser does not support passkeys. Use current Edge or Chrome on Windows.",true);return;}
+  const button=$("registerPasskey");button.disabled=true;button.textContent="Waiting for Windows Hello…";
+  try{
+    const started=await apiRequest("/api/v1/auth/passkeys/register/options",{method:"POST"});
+    const credential=await navigator.credentials.create({publicKey:preparePasskeyOptions(started.publicKey)});
+    if(!credential)throw new Error("Passkey registration was cancelled.");
+    await apiRequest("/api/v1/auth/passkeys/register/verify",{method:"POST",body:JSON.stringify({
+      challenge_id:started.challenge_id,credential:serializePasskeyCredential(credential,true)
+    })});
+    await refreshPasskeyStatus();
+    setAccountMessage("Windows Hello passkey added. Sign out and test passkey login before removing password recovery.");
+  }catch(error){
+    setAccountMessage(error.name==="NotAllowedError"?"Passkey setup was cancelled or timed out. Try again.":error.message,true);
+  }finally{button.disabled=false;button.textContent="Add Windows Hello Passkey";}
+});
+if(!passkeySupported())$("passkeyLogin").disabled=true;
+
 async function authenticate(mode){
   const email=$("accountEmail").value.trim(),password=$("accountPassword").value;
   if(!email||!password){setAccountMessage("Enter your email and password.",true);return;}
@@ -201,7 +294,7 @@ async function recordWalletTransaction(type){
 $("walletDeposit").addEventListener("click",()=>recordWalletTransaction("deposit"));
 $("walletWithdraw").addEventListener("click",()=>recordWalletTransaction("withdrawal"));
 if(sessionToken()){
-  setSignedIn(true);refreshWallet().then(()=>setAccountMessage("Restored this tab's session. Wallet data loaded.")).catch(error=>{sessionStorage.removeItem(TOKEN_KEY);setSignedIn(false);setAccountMessage("Session expired or API unavailable: "+error.message,true);});
+  setSignedIn(true);refreshWallet().then(()=>{refreshPasskeyStatus();setAccountMessage("Restored this tab's session. Wallet data loaded.");}).catch(error=>{sessionStorage.removeItem(TOKEN_KEY);setSignedIn(false);setAccountMessage("Session expired or API unavailable: "+error.message,true);});
 }else setSignedIn(false);
 
 

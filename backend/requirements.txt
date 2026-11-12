@@ -4,7 +4,8 @@ sqlalchemy==2.0.40
 pwdlib[argon2]==0.2.1
 PyJWT==2.10.1
 httpx==0.28.1
-psycopg[binary]==3.2.9
+# Select an available compatible Psycopg 3.2 binary release instead of pinning 3.2.9.
+psycopg[binary]>=3.2.10,<3.3
 pytest==8.3.5
 python-dotenv==1.1.0
 cryptography==44.0.3

@@ -19,6 +19,7 @@ from .schemas import AIChatRequest, AIChatResponse, PreferenceResponse, Preferen
 from .security import decrypt_secret, encrypt_secret
 from .maintenance import daily_backup_worker, record_audit_event
 from .system_security import router as system_security_router
+from .events import event_hub, router as events_router
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="QUANTNEX Local API", description="Loopback-only local workspace API. No user login or remote account system.", version="0.8.0")
@@ -26,6 +27,7 @@ app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials
                    allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Content-Type"])
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
 app.include_router(system_security_router)
+app.include_router(events_router)
 
 
 def local_workspace(db: Session = Depends(get_db)) -> User:
@@ -103,6 +105,8 @@ def create_journal(payload: TradeCreate, user: User = Depends(local_workspace), 
     record_audit_event(db, "journal.created", {"trade_id": item.id, "symbol": item.symbol, "direction": item.direction, "pnl": item.pnl})
     db.commit()
     db.refresh(item)
+    event_hub.publish("journal.changed", "journal", "created", {"trade_id": item.id, "symbol": item.symbol})
+    event_hub.publish("wallet.changed", "wallet", "journal_pnl_recorded", {"trade_id": item.id})
     return item
 
 @app.delete("/api/v1/journal/{trade_id}", status_code=204)
@@ -117,6 +121,8 @@ def delete_journal(trade_id: int, user: User = Depends(local_workspace), db: Ses
     db.delete(item)
     record_audit_event(db, "journal.deleted", {"trade_id": trade_id})
     db.commit()
+    event_hub.publish("journal.changed", "journal", "deleted", {"trade_id": trade_id})
+    event_hub.publish("wallet.changed", "wallet", "journal_pnl_reversed", {"trade_id": trade_id})
 
 @app.get("/api/v1/wallet/summary", response_model=WalletSummaryResponse)
 def wallet_summary(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
@@ -149,6 +155,7 @@ def create_wallet_transaction(payload: WalletTransactionCreate, user: User = Dep
     record_audit_event(db, "wallet.transaction_created", {"transaction_type": item.transaction_type, "amount": item.amount})
     db.commit()
     db.refresh(item)
+    event_hub.publish("wallet.changed", "wallet", "transaction_created", {"transaction_id": item.id, "transaction_type": item.transaction_type, "amount": item.amount})
     return item
 
 @app.get("/api/v1/preferences", response_model=list[PreferenceResponse])
@@ -168,6 +175,7 @@ def set_preference(key: str, payload: PreferenceWrite, user: User = Depends(loca
     record_audit_event(db, "preference.updated", {"key": key})
     db.commit()
     db.refresh(item)
+    event_hub.publish("preferences.changed", "preferences", "updated", {"key": key})
     return item
 
 @app.get("/api/v1/ai/status")
@@ -614,6 +622,7 @@ async def open_paper_trade(payload: dict, user: User = Depends(local_workspace),
             "quantity":quantity,"entry":entry,"mode":"paper"})
         db.commit()
         db.refresh(item)
+        event_hub.publish("paper_trade.changed", "paper_trade", "opened", {"trade_id": item.id, "symbol": item.symbol, "side": item.side, "status": item.status})
         return {"id":item.id,"symbol":item.symbol,"side":item.side,"quantity":item.quantity,
                 "entry_price":item.entry_price,"stop_loss":item.stop_loss,"take_profit":item.take_profit,
                 "status":item.status,"mode":"PAPER"}
@@ -645,6 +654,7 @@ async def close_paper_trade(trade_id: int, user: User = Depends(local_workspace)
     record_audit_event(db,"paper_trade.closed",{"trade_id":item.id,"symbol":item.symbol,
         "exit":exit_price,"realized_pnl":item.realized_pnl,"mode":"paper"})
     db.commit()
+    event_hub.publish("paper_trade.changed", "paper_trade", "closed", {"trade_id": item.id, "symbol": item.symbol, "status": item.status, "realized_pnl": item.realized_pnl})
     return {"id":item.id,"status":item.status,"exit_price":exit_price,"realized_pnl":item.realized_pnl,"mode":"PAPER"}
 
 @app.get("/api/v1/paper-trading/summary")
@@ -882,6 +892,7 @@ async def smart_open_paper_trade(payload: dict, user: User = Depends(local_works
         record_audit_event(db,"phase09.smart_paper_trade.opened",{"trade_id":item.id,"symbol":item.symbol,
             "side":side,"quantity":quantity,"risk_amount":sizing["risk_amount"],"mode":"paper"})
         db.commit(); db.refresh(item)
+        event_hub.publish("paper_trade.changed", "paper_trade", "opened", {"trade_id": item.id, "symbol": item.symbol, "side": item.side, "status": item.status, "source": "risk_guardian"})
         return {"id":item.id,"symbol":item.symbol,"side":side,"quantity":quantity,"entry_price":entry,
             "stop_loss":stop,"take_profit":target,"risk":sizing,"guardian":guard,"status":"OPEN","mode":"PAPER"}
     except HTTPException:

@@ -86,3 +86,20 @@ def test_signal_settings_and_telegram_status_are_user_scoped():
     assert status.status_code == 200
     assert status.json()["connected"] is False
     assert client.get("/api/v1/signals/settings").status_code == 401
+
+
+def test_auto_signal_settings_are_opt_in_and_require_a_connected_bot():
+    client = TestClient(app)
+    headers = create_user(client)
+    defaults = client.get("/api/v1/telegram/auto-signals", headers=headers)
+    assert defaults.status_code == 200
+    assert defaults.json()["enabled"] is False
+    saved = client.put("/api/v1/telegram/auto-signals", headers=headers, json={
+        "enabled": False, "interval_seconds": 300
+    })
+    assert saved.status_code == 200
+    assert saved.json()["interval_seconds"] == 300
+    denied = client.put("/api/v1/telegram/auto-signals", headers=headers, json={
+        "enabled": True, "interval_seconds": 180
+    })
+    assert denied.status_code == 409

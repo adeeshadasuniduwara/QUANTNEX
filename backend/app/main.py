@@ -1386,3 +1386,28 @@ async def stop_paper_autopilot_worker():
             await task
         except asyncio.CancelledError:
             pass
+
+
+@app.get("/api/v1/paper-engine/monitor")
+async def paper_engine_monitor(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .phase07_engine import get_quote, IntelligenceDataError
+    from .phase10_engine import assess_quote
+    rows = list(db.scalars(select(PaperTrade).where(PaperTrade.user_id == user.id, PaperTrade.status == "OPEN").order_by(PaperTrade.id.desc())))
+    output = []
+    for item in rows[:50]:
+        try:
+            quote = await get_quote(item.symbol)
+            health = assess_quote(quote)
+            mark = float(quote["price"])
+            pnl = (mark - item.entry_price) * item.quantity * (1 if item.side == "BUY" else -1)
+            output.append({"trade_id": item.id, "symbol": item.symbol, "side": item.side,
+                "entry_price": item.entry_price, "mark_price": mark,
+                "unrealized_pnl_estimate": round(pnl, 8), "provider": quote["provider"],
+                "data_health": health, "timestamp": quote["timestamp"]})
+        except (IntelligenceDataError, httpx.HTTPError, ValueError, KeyError):
+            output.append({"trade_id": item.id, "symbol": item.symbol, "side": item.side,
+                "entry_price": item.entry_price, "mark_price": None,
+                "unrealized_pnl_estimate": None, "data_health": {"status":"UNAVAILABLE","trading_safe":False},
+                "timestamp": None})
+    return {"positions": output, "count": len(output),
+            "note": "Indicative provider marks only. Stale/unavailable quotes are not treated as current prices or broker-executable values."}

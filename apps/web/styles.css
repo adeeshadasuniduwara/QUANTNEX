@@ -167,3 +167,40 @@
 .p11-stat-row strong{text-align:right;color:#eee}
 @media(max-width:900px){.p11-chart-grid,.p11-table-grid{grid-template-columns:1fr}}
 @media(max-width:560px){.p11-toolbar{align-items:stretch}.p11-toolbar label{justify-content:space-between}.p11-toolbar select{flex:1}.p11-toolbar button{width:100%}}
+
+
+/* Isolated sidebar navigation scroll region: keep brand and footer fixed. */
+.sidebar{
+  height:100vh;
+  height:100dvh;
+  min-height:0;
+  overflow:hidden;
+}
+.sidebar .brand,
+.sidebar .sidebar-bottom{
+  flex:0 0 auto;
+}
+.sidebar .sidebar-nav{
+  flex:1 1 auto;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  overflow-x:hidden;
+  overflow-y:auto;
+  overscroll-behavior-y:contain;
+  -webkit-overflow-scrolling:touch;
+  touch-action:pan-y;
+  scrollbar-width:thin;
+  scrollbar-color:#555 #111;
+  scrollbar-gutter:stable;
+  padding:2px 2px 12px 0;
+}
+.sidebar .sidebar-nav::-webkit-scrollbar{width:7px}
+.sidebar .sidebar-nav::-webkit-scrollbar-track{background:#111}
+.sidebar .sidebar-nav::-webkit-scrollbar-thumb{background:#555;border-radius:8px}
+.sidebar .sidebar-nav>*{flex-shrink:0;min-height:max-content}
+.sidebar .sidebar-bottom{margin-top:0}
+@media(max-width:720px){
+  .sidebar .sidebar-nav{width:100%;overflow-y:auto;overflow-x:hidden}
+  .sidebar .sidebar-nav .nav-link{display:flex!important}
+}

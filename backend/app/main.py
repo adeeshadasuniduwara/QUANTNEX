@@ -680,6 +680,18 @@ def intelligence_performance(user: User = Depends(local_workspace), db: Session 
             "note":"Statistics use closed QUANTNEX paper trades only; no performance or win-rate guarantee."}
 
 
+@app.get("/api/v1/performance/advanced")
+def advanced_paper_performance(period_days: int = 0,
+                               user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .phase11_engine import advanced_performance
+    if period_days not in {0,7,30,90,365}:
+        raise HTTPException(status_code=422,detail="period_days must be one of 0, 7, 30, 90 or 365.")
+    rows=list(db.scalars(select(PaperTrade).where(
+        PaperTrade.user_id==user.id,PaperTrade.status=="CLOSED"
+    ).order_by(PaperTrade.closed_at,PaperTrade.id)))
+    return advanced_performance(rows,period_days)
+
+
 @app.on_event("startup")
 async def start_phase07_paper_monitor():
     from .paper_worker import paper_trade_monitor

@@ -106,3 +106,63 @@ Status: implementation scope and safety contract. This phase is based on the ope
 - Telegram daily report extensions for strategy version, fee ledger, partial fills and timestamped live mark/unrealized P&L.
 - Exact SVG asset embedding and final browser visual review. Current PDFs use a compact monochrome vector Q-mark approximation; Windows build has passed CI.
 - Full integration testing of Telegram callback delivery with an actual user bot; no live Telegram message was sent during development. Latest backend, web and Windows CI checks passed.
+
+## QUANTNEX roadmap — next ten phases (12–21)
+
+These are the next ten planned delivery phases. They are roadmap commitments, not claims that the features below are already implemented. Each phase must be developed on a reviewable branch, retain the local-only/no-login model, preserve existing SQLite and browser data, and pass automated checks before it is presented as complete.
+
+### Phase 12 — Autonomous Paper Desk foundation
+- Local opt-in scheduler, explicit start/stop controls, process heartbeat, pause/resume and persisted engine state.
+- Paper-only execution boundary; no broker order endpoints or live credentials.
+- Crash-safe restart and duplicate-run prevention.
+
+### Phase 13 — Full market-universe discovery
+- Exchange metadata discovery for eligible Binance Spot pairs, with quote filters, symbol status and leveraged-token exclusions.
+- Provider adapters for supported Forex and XAUUSD feeds, each with source timestamps and rate-limit handling.
+- Cache freshness and incomplete-universe warnings; never silently label a partial scan as complete.
+
+### Phase 14 — Paper position lifecycle and event ledger
+- Persistent simulated orders, fills, partial exits, SL/TP events and restart recovery.
+- TP1 partial-profit accounting with remaining quantity moved to entry only after simulated fill confirmation.
+- Separate gross, fees, modeled slippage and net realized P&L; no fabricated fill prices.
+
+### Phase 15 — Risk Guardian and Prop Challenge Toolkit integration
+- Per-trade risk, daily loss, max drawdown, exposure, concurrent-position and cooldown limits.
+- Static/trailing prop drawdown configuration and clear breach warnings.
+- Fail-closed behavior when required price or account data is stale; no guarantee that an external MT5 terminal can always close a position.
+
+### Phase 16 — Live paper-position monitoring
+- Timestamped provider marks, unrealized P&L, stale-feed detection and per-position source labels.
+- WebSocket with bounded polling fallback, reconnect/resync and duplicate-event handling.
+- Stop new simulated entries when data health is unsafe; disclose that provider marks are not broker-executable prices.
+
+### Phase 17 — Performance and portfolio analytics
+- Equity curve, drawdown, expectancy, profit factor, win/loss distribution and symbol/strategy/timeframe breakdown.
+- Clearly separated paper, backtest and manual-journal reports.
+- Sample-size and date-range labels; no uncalibrated confluence score presented as a win probability.
+
+### Phase 18 — Strategy Laboratory and validation pipeline
+- Walk-forward and out-of-sample tests, parameter stability checks and realistic cost assumptions.
+- Versioned strategy configurations and reproducible experiment records.
+- Reject promotion when sample size, data coverage or risk criteria are inadequate.
+
+### Phase 19 — Telegram control room and reporting v2
+- Compact inline-button menu, message editing, opt-in event alerts and configurable Colombo-time reports.
+- A4 PDF with full trade-event/fee coverage once the event ledger exists; idempotent scheduling and bounded retries.
+- Strict command authorization for the local owner and no token leakage into logs or browser code.
+
+### Phase 20 — Personal goals and journal bridge
+- Optional import of eligible user-confirmed manual journal records, with preview and deduplication before applying.
+- Minimal goal creation fields, inline image preview for direct HTTPS image URLs, and clear fallback for non-image Google search/result URLs.
+- Paper trades and backtests remain excluded from real-savings goals; certificate integrity limits remain explicit for a local-only app.
+
+### Phase 21 — Reliability, security and release engineering
+- Regression suite, API contract checks, migration/backup/restore tests and Windows clean-install/update tests.
+- Local API binding and origin checks, secret redaction, dependency/security review and safe rollback.
+- Release checklist, changelog, verified artifacts and a final feature/limitation matrix before a stable release.
+
+## Phase 11 follow-up fixes
+- Simplified goal creation to the essentials: goal name, target amount, currency and optional image URL. Savings are entered separately through the existing contribution control, retaining the real-funds confirmation.
+- Added an inline image preview and clickable full-image link. Google Images result/search-page URLs are not themselves image files; paste the direct HTTPS image URL shown by the image host. A failed preview is explained instead of silently disappearing.
+- Fixed literal escaped newline sequences in the HTML that could appear as stray text and interfere with adjacent markup.
+- Added the goals client to the web JavaScript syntax checks and added regression assertions for the goal preview and minimal form.

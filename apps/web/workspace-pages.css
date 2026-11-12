@@ -1,0 +1,33 @@
+/* Ten additional QUANTNEX workspace pages. */
+.workspace-page-panel{display:grid;gap:18px}
+.workspace-page-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.workspace-page-toolbar strong{display:block;color:#f2f2f2;font-size:14px}
+.workspace-page-toolbar p{margin:5px 0 0;color:#999;font-size:12px}
+.workspace-page-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.workspace-page-card{min-width:0;padding:16px;border:1px solid #292929;border-radius:12px;background:linear-gradient(145deg,#171717,#101010);display:grid;gap:8px}
+.workspace-page-card span{font-size:11px;color:#999;text-transform:uppercase;letter-spacing:.08em}
+.workspace-page-card strong{font-size:22px;color:#f3f3f3;font-weight:650;overflow-wrap:anywhere}
+.workspace-page-card small{font-size:11px;color:#9a9a9a;line-height:1.5}
+.workspace-page-form{display:flex;align-items:end;gap:12px;flex-wrap:wrap}
+.workspace-page-form label{display:grid;gap:7px;min-width:150px;flex:1;color:#aaa;font-size:12px}
+.workspace-page-form input,.workspace-page-form select,.workspace-page-toolbar select{width:100%;min-height:40px;padding:9px 11px;border:1px solid #343434;border-radius:8px;background:#111;color:#eee}
+.workspace-page-form.compact{align-items:end;flex:0 1 auto}
+.workspace-page-form.compact label{min-width:115px}
+.workspace-page-panel h3{margin:10px 0 0;font-size:14px;color:#eee}
+.workspace-page-panel .p7-table-wrap{max-width:100%;overflow:auto}
+.workspace-page-panel table{width:100%;min-width:650px}
+.workspace-page-panel td,.workspace-page-panel th{white-space:nowrap}
+.workspace-page-status-good{color:#8ed8a5!important}
+.workspace-page-status-warn{color:#e9c27b!important}
+.workspace-page-status-bad{color:#f08a8a!important}
+.workspace-page-empty{padding:16px;color:#999;font-size:13px}
+@media(max-width:720px){
+ .workspace-page-toolbar{align-items:stretch}
+ .workspace-page-toolbar>button{width:100%}
+ .workspace-page-form{display:grid;grid-template-columns:1fr}
+ .workspace-page-form label{min-width:0}
+ .workspace-page-cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .workspace-page-card{padding:12px}
+ .workspace-page-card strong{font-size:18px}
+}
+@media(max-width:420px){.workspace-page-cards{grid-template-columns:1fr}}

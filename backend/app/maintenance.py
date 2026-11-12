@@ -134,7 +134,8 @@ def restore_backup(filename: str, database_url: str, engine, backup_dir: Path = 
         os.replace(temporary_path, database_path)
     finally:
         temporary_path.unlink(missing_ok=True)
-    _prune_backups(backup_dir, protect={filename})\n    return {"restored": filename, "verified": verified["verified"], "pre_restore_backup": safety}
+    _prune_backups(backup_dir, protect={filename})
+    return {"restored": filename, "verified": verified["verified"], "pre_restore_backup": safety}
 
 def record_audit_event(db: Session, event_type: str, details: dict | None = None, severity: str = "info") -> None:
     payload = json.dumps(details or {}, ensure_ascii=True, separators=(",", ":"))[:2000]

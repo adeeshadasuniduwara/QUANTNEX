@@ -1,5 +1,6 @@
 """Loopback-only system maintenance endpoints for QUANTNEX."""
 from pathlib import Path
+from datetime import datetime, timezone
 import asyncio
 import shutil
 import psutil
@@ -126,7 +127,7 @@ def live_system_metrics():
     try:
         disk=shutil.disk_usage(Path.cwd())
         memory=psutil.virtual_memory()
-        return {"timestamp":__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+        return {"timestamp":datetime.now(timezone.utc).isoformat(),
                 "cpu_percent":psutil.cpu_percent(interval=0),
                 "memory_percent":memory.percent,"memory_used_bytes":memory.used,
                 "memory_total_bytes":memory.total,"disk_free_bytes":disk.free,

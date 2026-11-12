@@ -188,7 +188,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
       const stamp=data.timestamp?new Date(data.timestamp).toLocaleTimeString():"";
       const sources=data.sources||{};
       const eventTime=data.timestamp?Date.parse(data.timestamp):Date.now();
-      [["BTCUSDT",data.btc_usd,sources.btc],["XAUUSD",data.gold_usd_oz,sources.gold]].forEach(([symbol,price,source])=>{
+      [["XAUUSD",data.gold_usd_oz,sources.gold]].forEach(([symbol,price,source])=>{
         if(Number.isFinite(Number(price))&&Number(price)>0){
           window.dispatchEvent(new CustomEvent("quantnex:market-tick",{detail:{symbol,price:Number(price),eventTime,kind:"provider_quote",source:source||"Market provider"}}));
         }
@@ -202,7 +202,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
       if($id("goldLkrNote"))$id("goldLkrNote").textContent="BTC and Gold use keyless fallback providers; USD/LKR uses a daily reference rate. Check that the local QUANTNEX API is running.";
     }
   }
-  if($id("btcLivePrice")){refresh();window.setInterval(refresh,25000);}
+  if($id("btcLivePrice")){refresh();window.setInterval(refresh,30000);}
 })();
 
 ;

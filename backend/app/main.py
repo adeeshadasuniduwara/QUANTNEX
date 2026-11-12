@@ -349,10 +349,15 @@ def backup_legacy_database(db: Session) -> None:
 
     backup_dir = Path(__file__).resolve().parents[2] / "data" / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
-    backup_path = backup_dir / ("quantnex-pre-local-only-" + datetime.now().strftime("%Y%m%d-%H%M%S") + ".db")
+    backup_path = backup_dir / ("quantnex-pre-local-only-" + datetime.now().strftime("%Y%m%d-%H%M%S-%f") + ".db")
     try:
-        with sqlite3.connect(str(database_path)) as source, sqlite3.connect(str(backup_path)) as target:
+        source = sqlite3.connect(str(database_path))
+        target = sqlite3.connect(str(backup_path))
+        try:
             source.backup(target)
+        finally:
+            source.close()
+            target.close()
     except Exception:
         backup_path.unlink(missing_ok=True)
         raise

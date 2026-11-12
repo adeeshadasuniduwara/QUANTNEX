@@ -29,7 +29,7 @@ def advanced_performance(trades, period_days=0, now=None):
         if stamp is None: continue
         if period_days and (now-stamp).total_seconds()>period_days*86400: continue
         pnl=_value(trade.realized_pnl)
-        risk=abs(_value(trade.entry_price)*0 + (_value(trade.entry_price)-_value(trade.stop_loss))*_value(trade.quantity))
+        risk=abs(_value(trade.entry_price)-_value(trade.stop_loss))*_value(trade.quantity)
         r_multiple=pnl/risk if risk>0 else None
         opened=_time(getattr(trade,"created_at",None))
         duration=max(0.0,(stamp-opened).total_seconds()/60) if opened else None

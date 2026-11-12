@@ -74,3 +74,24 @@
 @media(max-width:850px){.chart-workspace-heading{align-items:flex-start;flex-direction:column}.chart-toolbar{width:100%;justify-content:flex-start}.tradingview-widget-container{height:68vh;min-height:480px}}
 @media(max-width:520px){.chart-workspace-heading{padding:15px}.chart-toolbar{display:grid;grid-template-columns:1fr 1fr}.chart-toolbar .chart-select-label select{min-width:0;width:100%}.chart-fullscreen-btn{grid-column:1/-1;justify-content:center}.chart-frame{padding:6px}.tradingview-widget-container{height:66vh;min-height:420px}.chart-footer{align-items:flex-start;flex-direction:column;gap:5px}}
 @media(prefers-reduced-motion:reduce){.chart-loading-spinner{animation:none}}
+
+
+/* Final layout overrides: signal-tool.css loads after this file, so scope the
+   workspace rules strongly enough to keep a full-size, full-width chart. */
+.chart-workspace.chart-panel{display:flex;flex-direction:column;gap:0;width:100%;max-width:100%;min-width:0;padding:0!important;margin:0 0 24px;overflow:hidden}
+.chart-workspace .chart-frame{display:block;position:relative;width:100%;min-width:0;min-height:0;padding:10px;background:#080b10}
+.chart-workspace #xauTradingView.tradingview-widget-container{position:relative;display:block;width:100%!important;max-width:none!important;height:clamp(620px,78vh,1000px)!important;min-height:620px!important;margin:0;overflow:hidden;border:1px solid #252d37;border-radius:9px;background:#0b0e13}
+.chart-workspace #xauTradingView .tradingview-widget-container__widget{position:absolute;inset:0;width:100%!important;height:100%!important;min-width:0;min-height:0}
+.chart-workspace #xauTradingView iframe{position:absolute;inset:0;display:block;width:100%!important;height:100%!important;min-width:100%!important;min-height:100%!important;border:0!important}
+.chart-workspace #xauTradingView .chart-loading{position:absolute;inset:0;z-index:3}
+.chart-workspace #xauTradingView.chart-error{display:grid;place-items:center;padding:24px}
+.chart-error-message{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;max-width:420px;text-align:center;color:#dce4ee}
+.chart-error-message strong{font-size:16px}.chart-error-message span{font-size:12px;line-height:1.6;color:#98a4b3}
+.chart-error-message a{color:#dce8f8;font-size:12px;text-underline-offset:3px}
+.chart-error-message button{padding:9px 15px;border:1px solid #526174;border-radius:8px;background:#1b2836;color:#eef4fb;font:inherit;font-size:11px;font-weight:750;cursor:pointer}
+.chart-workspace:fullscreen{width:100vw!important;height:100vh!important;max-width:none!important;max-height:100vh!important;margin:0!important;padding:0!important;border:0;border-radius:0;display:flex;flex-direction:column}
+.chart-workspace:fullscreen .chart-frame{flex:1 1 auto;display:flex;min-height:0;padding:8px}
+.chart-workspace:fullscreen #xauTradingView.tradingview-widget-container{flex:1 1 auto;width:100%!important;height:100%!important;min-height:0!important}
+@media(max-width:900px){.chart-workspace #xauTradingView.tradingview-widget-container{height:72vh!important;min-height:560px!important}}
+@media(max-width:600px){.chart-workspace-heading{padding:15px;align-items:flex-start;flex-direction:column}.chart-toolbar{display:grid;grid-template-columns:1fr 1fr;width:100%;gap:9px}.chart-toolbar .chart-select-label{display:grid;gap:5px}.chart-toolbar .chart-select-label select{width:100%;min-width:0}.chart-fullscreen-btn{grid-column:1/-1;justify-content:center}.chart-workspace .chart-frame{padding:6px}.chart-workspace #xauTradingView.tradingview-widget-container{height:68vh!important;min-height:500px!important}.chart-workspace .chart-footer{align-items:flex-start;flex-direction:column;gap:5px}}
+@media(prefers-reduced-motion:reduce){.chart-loading-spinner{animation:none}}

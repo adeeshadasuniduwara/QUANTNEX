@@ -267,8 +267,9 @@ DEFAULT_SIGNAL_SETTINGS = {"primary":"5","trend":"60","enabled":["60","30","15",
 @app.get("/api/v1/signals/status")
 def signal_engine_status(user: User = Depends(local_workspace)):
     from .config import TWELVE_DATA_API_KEY
-    return {"configured": bool(TWELVE_DATA_API_KEY), "provider":"Twelve Data",
-            "symbol":"XAU/USD", "note":"Live analysis requires a valid server-side TWELVE_DATA_API_KEY. The TradingView embed does not expose its candles to this API."}
+    return {"configured": True, "crypto_configured": True, "gold_configured": bool(TWELVE_DATA_API_KEY),
+            "providers":{"crypto":"Binance Spot public market data","gold":"Twelve Data" if TWELVE_DATA_API_KEY else None},
+            "note":"Crypto candles and signals use Binance Spot public data. XAUUSD requires a configured Twelve Data key."}
 
 @app.get("/api/v1/signals/settings")
 def get_signal_settings(user: User = Depends(local_workspace), db: Session = Depends(get_db)):

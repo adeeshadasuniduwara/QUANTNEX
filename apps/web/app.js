@@ -409,7 +409,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
             $("btcLivePrice").textContent=fmt(price,2);
             $("btcLiveUpdated").textContent="Live trade · "+new Date(eventTime).toLocaleTimeString()+" · Binance";
           }
-          window.dispatchEvent(new CustomEvent("quantnex:market-tick",{detail:{symbol,price,eventTime,kind:isTrade?"trade":"ticker",source:"Binance WebSocket"}}));
+          window.dispatchEvent(new CustomEvent("quantnex:market-tick",{detail:{symbol,price,eventTime,kind:isTrade?"trade":"ticker",volume:isTrade?Number(data.q||0):0,source:"Binance WebSocket"}}));
         }catch{}
       };
       tickerSocket.onclose=()=>{tickerSocket=null;window.dispatchEvent(new CustomEvent("quantnex:stream-status",{detail:{feed:"crypto",status:"reconnecting"}}));if(!document.hidden){clearTimeout(tickerRetry);tickerRetry=setTimeout(connectCryptoTicker,2500);}};

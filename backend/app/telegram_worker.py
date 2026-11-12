@@ -173,12 +173,41 @@ async def telegram_worker() -> None:
                             if data.get("ok"):
                                 for update in data.get("result",[]):
                                     offset=max(offset,int(update.get("update_id",0))+1)
+                                    callback=update.get("callback_query")
+                                    if callback:
+                                        message=callback.get("message") or {}
+                                        chat=message.get("chat") or {}
+                                        if str(chat.get("id")) != str(chat_id): continue
+                                        await _telegram_post(client,token,"answerCallbackQuery",{"callback_query_id":callback.get("id")})
+                                        action=str(callback.get("data",""))
+                                        if action=="qx:daily_toggle":
+                                            enabled=_get(db,user_id,"telegram_daily_report_enabled","false")=="true"
+                                            _set(db,user_id,"telegram_daily_report_enabled","false" if enabled else "true")
+                                            db.commit()
+                                            answer="🕗 Daily PDF at 20:00 Asia/Colombo is now "+("OFF" if enabled else "ON")+"."
+                                        elif action=="qx:daily":
+                                            try:
+                                                stats=await _deliver_daily_pdf(client,db,user_id,token,chat_id)
+                                                answer="📄 Today report sent · Closed "+str(stats["closed"])+" · Win rate "+format(stats["win_rate"],".2f")+"% · Net $"+format(stats["net"],".2f")
+                                            except Exception as exc:
+                                                logger.warning("Daily PDF request failed for local user %s: %s",user_id,type(exc).__name__)
+                                                answer="Could not generate/send PDF. Check the PaperTrade ledger and Telegram connection."
+                                        elif action.startswith("qx:scan:"): answer=await _handle_command(client,db,user_id,token,chat_id,"/scan "+action.split(":")[-1])
+                                        elif action=="qx:status": answer=await _handle_command(client,db,user_id,token,chat_id,"/status")
+                                        elif action=="qx:timeframes": answer=await _handle_command(client,db,user_id,token,chat_id,"/timeframes")
+                                        elif action=="qx:help": answer="QUANTNEX menu · Choose a button to request a scan, check status or receive the daily paper PDF."
+                                        else: answer="📊 QUANTNEX local workspace · Signal alerts only. Paper simulation and broker execution are separate."
+                                        try: await _edit_message(client,token,chat_id,int(message.get("message_id")),answer)
+                                        except Exception: await _send(client,token,chat_id,answer,MENU)
+                                        continue
                                     message=update.get("message") or update.get("channel_post") or {}
                                     chat=message.get("chat") or {}
                                     if str(chat.get("id"))!=str(chat_id) and not (str(chat_id).startswith("@") and ("@"+str(chat.get("username","")).lower())==str(chat_id).lower()):continue
                                     command=message.get("text","")
                                     answer=await _handle_command(client,db,user_id,token,chat_id,command)
-                                    if answer:await _send(client,token,chat_id,answer)
+                                    if answer:
+                                        is_start=command.strip().split(" ")[0].split("@")[0].lower() in {"/start","/help"}
+                                        await _send(client,token,chat_id,answer,MENU if is_start else None)
                                 _set(db,user_id,"telegram_update_offset",str(offset));db.commit()
                         except (httpx.HTTPError,ValueError) as exc:
                             logger.warning("Telegram polling failed for local user %s: %s",user_id,type(exc).__name__)

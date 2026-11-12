@@ -207,6 +207,48 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
 
 ;
 
+// Live BTC/XAUUSD gross P&L estimate from the latest available market events.
+(function initLivePnlCalculator(){
+  const symbolInput=$("livePnlSymbol");
+  if(!symbolInput)return;
+  const prices=new Map();
+  const money=value=>(value<0?"−":"+")+"$"+Math.abs(value).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  const priceText=value=>"$"+Number(value).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  function update(){
+    const symbol=symbolInput.value,price=prices.get(symbol);
+    const unit=$("livePnlUnit"),quantity=$("livePnlQuantity");
+    if(unit)unit.textContent=symbol==="BTCUSDT"?"BTC":"troy oz";
+    if(quantity)quantity.placeholder=symbol==="BTCUSDT"?"0.001":"1.0";
+    $("livePnlCurrent").textContent=Number.isFinite(price)?priceText(price):"Waiting for quote…";
+    if(!Number.isFinite(price)){
+      $("livePnlUpdated").textContent="Waiting for "+(symbol==="BTCUSDT"?"Binance trade feed":"Gold provider quote");
+      $("livePnlResult").textContent="—";$("livePnlMove").textContent="Live price not available";return;
+    }
+    const entry=Number($("livePnlEntry").value),qty=Number(quantity.value),direction=$("livePnlSide").value==="LONG"?1:-1;
+    if(!Number.isFinite(entry)||entry<=0||!Number.isFinite(qty)||qty<=0){
+      $("livePnlResult").textContent="—";$("livePnlMove").textContent="Enter a valid entry price and quantity";return;
+    }
+    const pnl=(price-entry)*qty*direction,pct=((price-entry)/entry)*direction*100;
+    $("livePnlResult").textContent=money(pnl);
+    $("livePnlResult").className=pnl>=0?"positive":"negative";
+    $("livePnlMove").textContent=(pct>=0?"+":"")+pct.toFixed(3)+"% price move · gross estimate";
+  }
+  window.addEventListener("quantnex:market-tick",event=>{
+    const data=event.detail||{},symbol=String(data.symbol||"").toUpperCase(),price=Number(data.price);
+    if((symbol==="BTCUSDT"||symbol==="XAUUSD")&&Number.isFinite(price)&&price>0){
+      prices.set(symbol,price);
+      if(symbol===symbolInput.value){
+        $("livePnlUpdated").textContent=(data.source||"Market feed")+" · "+new Date(Number(data.eventTime)||Date.now()).toLocaleTimeString();
+        update();
+      }
+    }
+  });
+  [symbolInput,$("livePnlSide"),$("livePnlEntry"),$("livePnlQuantity")].forEach(input=>{
+    input.addEventListener("input",update);input.addEventListener("change",update);
+  });
+  update();
+})();
+
 // Phase 06.3 local system health, backup and audit UI.
 (function initSystemSecurity(){
   const panel=$("system-security");
@@ -292,7 +334,6 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
       const tr=document.createElement("tr");cell(tr,"Could not load audit log: "+error.message,"empty-row").colSpan=4;body.append(tr);
     }
   }
-  $("refreshSystemHealth").addEventListener("click",refreshHealth);
   $("refreshSystemBackups").addEventListener("click",refreshBackups);
   $("refreshSystemAudit").addEventListener("click",refreshAudit);
   $("createSystemBackup").addEventListener("click",async()=>{
@@ -911,12 +952,14 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
 })();
 
 
-// One-second local CPU/RAM telemetry; samples the actual host via the loopback API.
+// One-second local CPU/RAM telemetry. Poll only while the health panel is visible.
 (function initLiveSystemMeters(){
-  if(!$("systemCpu"))return;
-  let busy=false;
+  const panel=$("system-security");
+  if(!panel||!$("systemCpu"))return;
+  let busy=false,panelVisible=false;
   const update=async()=>{
-    if(busy||document.hidden)return;busy=true;
+    if(busy||document.hidden||!panelVisible)return;
+    busy=true;
     try{
       const data=await apiRequest("/api/v1/system/metrics");
       const cpu=Math.max(0,Math.min(100,Number(data.cpu_percent)||0));
@@ -930,5 +973,13 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     }catch(error){if($("systemHealthStatus"))$("systemHealthStatus").textContent="Live telemetry unavailable: "+error.message;}
     finally{busy=false;}
   };
-  update();setInterval(update,1000);
-})();
+  if("IntersectionObserver" in window){
+    const observer=new IntersectionObserver(entries=>{
+      panelVisible=entries.some(entry=>entry.isIntersecting);
+      if(panelVisible)update();
+    },{threshold:0.05});
+    observer.observe(panel);
+  }else panelVisible=true;
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden&&panelVisible)update();});
+  update();window.setInterval(update,1000);
+})();;

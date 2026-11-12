@@ -297,3 +297,5 @@
   .live-pnl-result-grid{grid-template-columns:1fr}
   .p7-bookmap,.p7-bookmap canvas{height:240px;min-height:240px}
 }
+
+.live-pnl-grid [hidden]{display:none!important}

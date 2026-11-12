@@ -29,3 +29,10 @@ def test_timeframe_aggregation_and_snapshot():
     assert snapshot["bias"]=="BULLISH"
     assert snapshot["ema20"]>snapshot["ema50"]
     assert snapshot["structure"]["swing_high"]>snapshot["structure"]["swing_low"]
+
+
+def test_lkr_gold_price_conversion_uses_troy_ounce_and_gram():
+    from app.market_data import gold_lkr_per_gram
+    per_gram = gold_lkr_per_gram(3000.0, 300.0)
+    assert round(per_gram, 2) == round((3000.0 / 31.1034768) * 300.0, 2)
+    assert round(per_gram * 8, 2) == round((3000.0 / 31.1034768) * 300.0 * 8, 2)

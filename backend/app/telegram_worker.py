@@ -152,6 +152,7 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
 async def telegram_worker() -> None:
     """Poll connected user bots, respond to commands and monitor active TP1 levels."""
     last_monitor={}
+    last_daily_attempt={}
     async with httpx.AsyncClient(timeout=12) as client:
         while True:
             try:
@@ -178,7 +179,10 @@ async def telegram_worker() -> None:
                                         message=callback.get("message") or {}
                                         chat=message.get("chat") or {}
                                         if str(chat.get("id")) != str(chat_id): continue
-                                        await _telegram_post(client,token,"answerCallbackQuery",{"callback_query_id":callback.get("id")})
+                                        try:
+                                            await _telegram_post(client,token,"answerCallbackQuery",{"callback_query_id":callback.get("id")})
+                                        except Exception:
+                                            pass
                                         action=str(callback.get("data",""))
                                         if action=="qx:daily_toggle":
                                             enabled=_get(db,user_id,"telegram_daily_report_enabled","false")=="true"
@@ -291,7 +295,8 @@ async def telegram_worker() -> None:
                         if _get(db,user_id,"telegram_daily_report_enabled","false")=="true":
                             local_now=datetime.now(ZoneInfo("Asia/Colombo"))
                             sent_day=_get(db,user_id,"telegram_daily_report_sent_date","")
-                            if local_now.hour>=20 and sent_day!=local_now.date().isoformat():
+                            if local_now.hour>=20 and sent_day!=local_now.date().isoformat() and now-last_daily_attempt.get(user_id,0)>=300:
+                                last_daily_attempt[user_id]=now
                                 try:
                                     await _deliver_daily_pdf(client,db,user_id,token,chat_id,local_now.date())
                                     _set(db,user_id,"telegram_daily_report_sent_date",local_now.date().isoformat())

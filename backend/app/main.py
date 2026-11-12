@@ -663,6 +663,7 @@ async def strategy_lab_replay(symbol: str = "BTCUSDT", timeframe: str = "15m",
     from .phase07_engine import market_info, get_candles
     try:
         info=market_info(symbol)
+        if timeframe not in {"5m","15m","1h","4h"}: raise ValueError("Unsupported timeframe. Choose 5m, 15m, 1h or 4h.")
         candles=await get_candles(info["symbol"],timeframe,250)
         return {"symbol":info["symbol"],"timeframe":timeframe,"candles":candles,
                 "count":len(candles),"mode":"HISTORICAL_REPLAY"}
@@ -720,6 +721,7 @@ async def strategy_lab_forward_evaluate(payload: dict, user: User = Depends(loca
     try:
         info=market_info(payload.get("symbol","BTCUSDT"))
         timeframe=payload.get("timeframe","15m")
+        if timeframe not in {"5m","15m","1h","4h"}: raise ValueError("Unsupported timeframe. Choose 5m, 15m, 1h or 4h.")
         strategy=validate_strategy(payload.get("strategy") or {})
         candles=await get_candles(info["symbol"],timeframe,250)
     except (ValueError,TypeError) as exc:

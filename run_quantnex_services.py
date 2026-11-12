@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 from pathlib import Path
 import subprocess
 import sys
@@ -30,7 +29,7 @@ def run_checked(command: list[str], cwd: Path, label: str) -> None:
 def prepare_backend() -> Path:
     if not VENV_PYTHON.exists():
         run_checked([sys.executable, "-m", "venv", str(BACKEND / ".venv")], BACKEND, "Create backend virtual environment")
-    print("\\n[SETUP] Update pip (optional)", flush=True)
+    print("\n[SETUP] Update pip (optional)", flush=True)
     pip_update = subprocess.run([str(VENV_PYTHON), "-m", "pip", "install", "--upgrade", "pip"], cwd=BACKEND)
     if pip_update.returncode:
         print("[WARNING] pip could not update; continuing with the installed pip version.", flush=True)

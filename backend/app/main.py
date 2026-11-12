@@ -262,6 +262,7 @@ def update_signal_settings(payload: SignalSettingsRequest, user: User = Depends(
     _save_preference(db,user.id,"signal_settings",json.dumps(settings))
     record_audit_event(db, "signals.settings_updated", {"primary": settings["primary"], "trend": settings["trend"]})
     db.commit()
+    event_hub.publish("preferences.changed", "signals", "settings_updated", {"key": "signal_settings"})
     return settings
 
 @app.post("/api/v1/signals/scan")
@@ -304,6 +305,7 @@ async def scan_xauusd_signal(user: User = Depends(local_workspace), db: Session 
     else:
         _save_preference(db,user.id,"active_signal","")
     db.commit()
+    event_hub.publish("signals.changed", "signals", "scan_completed", {"symbol": result.get("symbol")})
     return result
 
 @app.post("/api/v1/telegram/connect")
@@ -327,6 +329,7 @@ async def connect_telegram_bot(payload: TelegramConnectRequest, user: User = Dep
     _save_preference(db,user.id,"telegram_bot_display_name",payload.display_name.strip() or bot.get("first_name","QUANTNEX Bot"))
     record_audit_event(db, "telegram.connected", {"bot_username": bot.get("username", "")})
     db.commit()
+    event_hub.publish("integration.changed", "telegram", "connected", {"bot_username": bot.get("username", "")})
     return {"connected":True,"bot_username":bot.get("username"),"chat_id":payload.chat_id.strip(),
             "commands":["/help","/timeframes","/settf 5","/settrend 60","/setanalysis 1,5,15,30,60","/scan","/status"],
             "note":"The local API must remain running for bot commands and TP1/SL level alerts."}
@@ -346,6 +349,7 @@ def disconnect_telegram_bot(user: User = Depends(local_workspace), db: Session =
         if row:db.delete(row)
     record_audit_event(db, "telegram.disconnected")
     db.commit()
+    event_hub.publish("integration.changed", "telegram", "disconnected", {"connected": False})
     return {"connected":False}
 
 def backup_legacy_database(db: Session) -> None:
@@ -429,6 +433,7 @@ def set_auto_signal_settings(payload: AutoSignalSettingsRequest, user: User = De
     _save_preference(db,user.id,"auto_signal_settings",json.dumps(settings))
     record_audit_event(db, "signals.auto_settings_updated", {"enabled": settings["enabled"], "interval_seconds": settings["interval_seconds"]})
     db.commit()
+    event_hub.publish("preferences.changed", "signals", "auto_settings_updated", {"key": "auto_signal_settings", "enabled": settings["enabled"]})
     return {**settings,"telegram_connected":connected,"note":"Automatic XAUUSD alerts run only while this computer's QUANTNEX API process is running."}
 
 @app.post("/api/v1/telegram/notify")

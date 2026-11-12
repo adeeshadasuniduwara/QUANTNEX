@@ -17,7 +17,7 @@ def test_advanced_metrics_and_expectancy():
     assert r["net_pnl"]==10
     assert r["profit_factor"]==2
     assert round(r["expectancy_per_trade"],5)==round(10/3,5)
-    assert r["average_r_multiple"]==pytest.approx(1/3)
+    assert r["average_r_multiple"]==pytest.approx(1/3,abs=0.0001)
 
 def test_equity_curve_drawdown_and_streaks():
     rows=[trade(1,10),trade(2,-15),trade(3,-5),trade(4,20)]

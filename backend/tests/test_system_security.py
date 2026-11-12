@@ -49,3 +49,15 @@ def test_restore_creates_safety_backup_and_restores_verified_snapshot(tmp_path):
 def test_restore_rejects_path_traversal(tmp_path):
     with pytest.raises(ValueError, match="Invalid backup filename"):
         verify_backup("../quantnex.db", tmp_path / "backups")
+
+
+def test_live_system_metrics_returns_actual_host_samples():
+    from app.system_security import live_system_metrics
+    result = live_system_metrics()
+    assert 0 <= result["cpu_percent"] <= 100
+    assert 0 <= result["memory_percent"] <= 100
+    assert result["memory_total_bytes"] > 0
+    assert result["memory_used_bytes"] >= 0
+    assert result["disk_total_bytes"] > 0
+    assert result["disk_free_bytes"] >= 0
+    assert result["timestamp"].endswith("+00:00")

@@ -5,7 +5,7 @@ from sqlalchemy.pool import StaticPool
 import sqlite3
 from pathlib import Path
 import app.main as main_module
-from app.database import Base
+from app.database import Base, engine
 from app.main import app, local_workspace, backup_legacy_database
 from app.models import PaperTrade, Preference, StrategyLabRun, Trade, User, WalletTransaction
 
@@ -205,3 +205,13 @@ def test_mutating_api_requests_allow_the_local_quantnex_web_origin():
         headers={"Origin": "http://127.0.0.1:5500"},
     )
     assert response.status_code == 200
+
+
+def test_sqlite_engine_uses_foreign_keys_wal_and_busy_timeout():
+    if not main_module.DATABASE_URL.startswith("sqlite"):
+        return
+    with engine.connect() as connection:
+        assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
+        assert connection.exec_driver_sql("PRAGMA busy_timeout").scalar() >= 20000
+        journal_mode = connection.exec_driver_sql("PRAGMA journal_mode").scalar().lower()
+        assert journal_mode in {"wal", "memory"}

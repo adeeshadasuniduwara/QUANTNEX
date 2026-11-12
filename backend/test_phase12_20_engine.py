@@ -55,3 +55,13 @@ def test_walk_forward_requires_enough_candles_and_keeps_holdout_separate():
     assert train[-1]["close"] < holdout[0]["close"]
     with pytest.raises(ValueError):
         walk_forward_slices(candles[:100])
+
+
+def test_risk_guard_includes_floating_loss_and_blocks_when_open_feed_is_unpriced():
+    settings = normalize_settings({"paper_equity": 1000, "max_daily_loss_percent": 2})
+    result = risk_snapshot([trade(status="OPEN")], settings,
+        datetime(2026, 11, 13, 12, tzinfo=timezone.utc),
+        unrealized_pnl=-21, unpriced_open_position=True)
+    assert result["entry_allowed"] is False
+    assert "DAILY_LOSS_LIMIT" in result["blocks"]
+    assert "UNPRICED_OPEN_POSITION_DATA" in result["blocks"]

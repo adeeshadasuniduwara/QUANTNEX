@@ -203,3 +203,33 @@ $("walletWithdraw").addEventListener("click",()=>recordWalletTransaction("withdr
 if(sessionToken()){
   setSignedIn(true);refreshWallet().then(()=>setAccountMessage("Restored this tab's session. Wallet data loaded.")).catch(error=>{sessionStorage.removeItem(TOKEN_KEY);setSignedIn(false);setAccountMessage("Session expired or API unavailable: "+error.message,true);});
 }else setSignedIn(false);
+
+
+// Compact live market overview. This public endpoint returns indicative spot conversions.
+(function initMarketOverview(){
+  const $id=id=>document.getElementById(id);
+  const usd=value=>value==null?"Unavailable":"$"+Number(value).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+  const lkr=value=>value==null?"Unavailable":"LKR "+Number(value).toLocaleString("en-LK",{minimumFractionDigits:2,maximumFractionDigits:2});
+  async function refresh(){
+    try{
+      const base=($id("apiBase")?.value||"http://127.0.0.1:8000").trim().replace(/\/+$/,"");
+      const response=await fetch(base+"/api/v1/market/overview",{cache:"no-store"});
+      if(!response.ok)throw new Error("Market feed unavailable");
+      const data=await response.json();
+      $id("btcLivePrice").textContent=usd(data.btc_usd);
+      $id("goldLivePrice").textContent=usd(data.gold_usd_oz);
+      $id("goldLkrGram").textContent=lkr(data.gold_lkr_gram);
+      $id("goldLkrEight").textContent=lkr(data.gold_lkr_8g);
+      $id("usdLkrRate").textContent=data.usd_lkr==null?"Unavailable":"LKR "+Number(data.usd_lkr).toFixed(2);
+      const stamp=data.timestamp?new Date(data.timestamp).toLocaleTimeString():"";
+      $id("btcLiveUpdated").textContent="Updated "+stamp+" · Binance";
+      $id("goldLiveUpdated").textContent="Updated "+stamp+" · Twelve Data";
+      $id("goldLkrNote").textContent=data.note+" "+data.gold_calculation;
+    }catch(error){
+      ["btcLivePrice","goldLivePrice","goldLkrGram","goldLkrEight","usdLkrRate"].forEach(id=>{if($id(id))$id(id).textContent="Feed unavailable";});
+      if($id("btcLiveUpdated"))$id("btcLiveUpdated").textContent="Start the local QUANTNEX API and configure Twelve Data for Gold/LKR.";
+      if($id("goldLkrNote"))$id("goldLkrNote").textContent="BTC uses Binance public data; Gold and USD/LKR require the server-side Twelve Data API key.";
+    }
+  }
+  if($id("btcLivePrice")){refresh();window.setInterval(refresh,15000);}
+})();

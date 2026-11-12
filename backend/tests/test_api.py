@@ -67,3 +67,22 @@ def test_wallet_ledger_deposits_withdrawals_and_journal_pnl():
     assert deleted.status_code == 204
     summary_after_delete = client.get("/api/v1/wallet/summary", headers=headers)
     assert summary_after_delete.json()["balance"] == 400.0
+
+
+def test_signal_settings_and_telegram_status_are_user_scoped():
+    client = TestClient(app)
+    headers = create_user(client)
+    defaults = client.get("/api/v1/signals/settings", headers=headers)
+    assert defaults.status_code == 200
+    assert defaults.json()["primary"] == "5"
+    updated = client.put("/api/v1/signals/settings", headers=headers, json={
+        "primary": "1", "trend": "60", "enabled": ["60", "30", "5", "1"],
+        "risk_percent": 0.5, "min_score": 8
+    })
+    assert updated.status_code == 200
+    assert updated.json()["primary"] == "1"
+    assert updated.json()["min_score"] == 8
+    status = client.get("/api/v1/telegram/status", headers=headers)
+    assert status.status_code == 200
+    assert status.json()["connected"] is False
+    assert client.get("/api/v1/signals/settings").status_code == 401

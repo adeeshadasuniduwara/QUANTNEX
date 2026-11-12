@@ -63,7 +63,9 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
         try:
             result=await build_signal(settings)
             sig=result.get("signal")
-            if not sig:\n                _set(db,user_id,"active_signal","");db.commit()\n                return "QUANTNEX · XAUUSD\\nWAIT — no setup reached the minimum confluence threshold.\\nScore: "+str(result["confluence_score"])+"/10\\n"+result["score_note"]
+            if not sig:
+                _set(db,user_id,"active_signal","");db.commit()
+                return "QUANTNEX · XAUUSD\\nWAIT — no setup reached the minimum confluence threshold.\\nScore: "+str(result["confluence_score"])+"/10\\n"+result["score_note"]
             _set(db,user_id,"active_signal",json.dumps({**sig,"tp1_notified":False,"tp2_notified":False,"tp3_notified":False,"sl_notified":False}))
             db.commit()
             return ("QUANTNEX · XAUUSD "+sig["side"]+"\\nEntry: "+str(sig["entry"])+"\\nSL: "+str(sig["stop_loss"])+

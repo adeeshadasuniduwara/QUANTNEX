@@ -197,7 +197,6 @@ def passkey_login_options(payload: PasskeyOptionsRequest, request: Request,
         rp_id=rp_id,
         allow_credentials=[PublicKeyCredentialDescriptor(
             id=base64url_to_bytes(item.credential_id),
-            transports=json.loads(item.transports or "[]"),
         ) for item in credentials],
         user_verification=UserVerificationRequirement.REQUIRED,
         timeout=60000,

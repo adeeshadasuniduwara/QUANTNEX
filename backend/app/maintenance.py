@@ -1,10 +1,12 @@
 """Local-only database backup, integrity verification and audit helpers."""
 from __future__ import annotations
-import hashlib, hmac, json, os, re, sqlite3, tempfile
+import asyncio, hashlib, hmac, json, logging, os, re, sqlite3, tempfile, time
 from datetime import datetime, timezone
 from pathlib import Path
 from sqlalchemy.orm import Session
 from .models import AuditEvent
+from .config import DATABASE_URL
+from .database import SessionLocal
 
 BACKUP_RETENTION = 14
 BACKUP_DIR = Path(__file__).resolve().parents[2] / "data" / "backups"
@@ -133,3 +135,24 @@ def restore_backup(filename: str, database_url: str, engine, backup_dir: Path = 
 def record_audit_event(db: Session, event_type: str, details: dict | None = None, severity: str = "info") -> None:
     payload = json.dumps(details or {}, ensure_ascii=True, separators=(",", ":"))[:2000]
     db.add(AuditEvent(event_type=event_type[:80], severity=severity[:16], details=payload))
+
+
+async def daily_backup_worker() -> None:
+    """Create one verified backup per 24 hours while the local API is running."""
+    logger = logging.getLogger("quantnex.maintenance")
+    while True:
+        try:
+            if DATABASE_URL.startswith("sqlite:///"):
+                backups = list_backups()
+                latest_path = _safe_backup_path(backups[0]["filename"], BACKUP_DIR) if backups else None
+                due = latest_path is None or (time.time() - latest_path.stat().st_mtime) >= 86400
+                if due:
+                    result = create_backup(DATABASE_URL)
+                    with SessionLocal() as db:
+                        record_audit_event(db, "backup.daily_created",
+                                            {"filename": result["filename"], "size_bytes": result["size_bytes"]})
+                        db.commit()
+        except Exception as exc:
+            # Keep the worker alive; do not log database contents or credentials.
+            logger.warning("Daily local backup check failed: %s", type(exc).__name__)
+        await asyncio.sleep(3600)

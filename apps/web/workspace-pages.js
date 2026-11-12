@@ -229,12 +229,12 @@ function init(){
   const item=latestMarkets.get(symbol);if(item){item.price=price;item.timestamp=new Date(Number(detail.eventTime)||Date.now()).toISOString();}
   if(symbol==="BTCUSDT"||symbol==="ETHUSDT"||symbol==="SOLUSDT"){
    const root=$("cryptoDeskCards");
-   if(root){const card=[...root.children].find(x=>x.querySelector("span")?.textContent.startsWith(symbol));if(card){const strong=card.querySelector("strong");if(strong)strong.textContent=fmt(price,digits(symbol));const small=card.querySelectorAll("small");if(small.length>1)small[1].textContent="Binance trade event · "+new Date(Number(detail.eventTime)||Date.now()).toLocaleTimeString();}}
+   if(root){const card=[...root.children].find(x=>x.querySelector("span")?.textContent.startsWith(symbol));if(card){const strong=card.querySelector("strong");if(strong)strong.textContent=fmt(price,digits(symbol));const small=card.querySelectorAll("small");if(small.length>1)small[1].textContent="Binance "+(detail.kind==="trade"?"trade":"ticker")+" event · "+new Date(Number(detail.eventTime)||Date.now()).toLocaleTimeString();}}
    const body=$("watchlistRows");if(body){const row=[...body.rows].find(x=>x.cells[0]?.textContent===symbol);if(row){row.cells[2].textContent=fmt(price,digits(symbol));row.cells[5].textContent=new Date(Number(detail.eventTime)||Date.now()).toLocaleTimeString();}}
    let triggered=false;
-   alerts.filter(x=>x.symbol===symbol&&!x.triggered).forEach(x=>{if(checkAlert(x,price,"Binance WebSocket trade"))triggered=true;});
+   if(detail.kind==="trade")alerts.filter(x=>x.symbol===symbol&&!x.triggered).forEach(x=>{if(checkAlert(x,price,"Binance WebSocket trade"))triggered=true;});
    if(triggered){saveAlerts();renderAlerts();}
-   setStatus("cryptoDeskStatus",symbol+" live trade · "+fmt(price,digits(symbol))+" · "+new Date(Number(detail.eventTime)||Date.now()).toLocaleTimeString());
+   setStatus("cryptoDeskStatus",symbol+" live "+(detail.kind==="trade"?"trade":"ticker")+" · "+fmt(price,digits(symbol))+" · "+new Date(Number(detail.eventTime)||Date.now()).toLocaleTimeString());
   }
  });
 }

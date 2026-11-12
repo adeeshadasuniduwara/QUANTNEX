@@ -79,6 +79,8 @@ def local_workspace(db: Session = Depends(get_db)) -> User:
         # trades and strategy research created before local-only mode.
         for paper_trade in db.scalars(select(PaperTrade).where(PaperTrade.user_id == legacy.id)):
             paper_trade.user_id = owner.id
+        for paper_event in db.scalars(select(PaperTradeEvent).where(PaperTradeEvent.user_id == legacy.id)):
+            paper_event.user_id = owner.id
         for research_run in db.scalars(select(StrategyLabRun).where(StrategyLabRun.user_id == legacy.id)):
             research_run.user_id = owner.id
         for personal_goal in db.scalars(select(PersonalGoal).where(PersonalGoal.user_id == legacy.id)):
@@ -1318,7 +1320,7 @@ def goal_journal_import_preview(goal_id: int, user: User = Depends(local_workspa
         raise HTTPException(status_code=404, detail="Goal not found.")
     rows = list(db.scalars(select(Trade).where(Trade.user_id == user.id, Trade.pnl > 0).order_by(Trade.created_at.desc()).limit(200)))
     already = {str(c.note).removeprefix("journal_import:") for c in db.scalars(
-        select(GoalContribution).where(GoalContribution.goal_id == goal.id, GoalContribution.user_id == user.id,
+        select(GoalContribution).where(GoalContribution.user_id == user.id,
                                        GoalContribution.source == "manual_journal_import"))}
     return {"goal_id": goal.id, "goal_currency": goal.currency,
             "candidates": [{"trade_id": t.id, "created_at": t.created_at.isoformat(),
@@ -1346,7 +1348,7 @@ def import_goal_journal_records(goal_id: int, payload: dict, user: User = Depend
     if len(rows) != len(ids):
         raise HTTPException(status_code=422, detail="One or more selected journal entries are missing or have no positive recorded P&L.")
     existing = {str(c.note).removeprefix("journal_import:") for c in db.scalars(
-        select(GoalContribution).where(GoalContribution.goal_id == goal.id, GoalContribution.user_id == user.id,
+        select(GoalContribution).where(GoalContribution.user_id == user.id,
                                        GoalContribution.source == "manual_journal_import"))}
     duplicates = [str(t.id) for t in rows if str(t.id) in existing]
     if duplicates:

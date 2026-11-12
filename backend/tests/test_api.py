@@ -168,3 +168,29 @@ def test_legacy_database_is_backed_up_before_password_hashes_are_cleared(tmp_pat
     with sqlite3.connect(backups[-1]) as backup:
         row = backup.execute("SELECT email, password_hash FROM users").fetchone()
     assert row == ("old@example.com", "legacy-hash")
+
+
+def test_mutating_api_requests_reject_untrusted_browser_origins():
+    client = TestClient(app)
+    blocked_signal_scan = client.post(
+        "/api/v1/signals/scan?symbol=BTCUSDT",
+        headers={"Origin": "https://attacker.example"},
+    )
+    assert blocked_signal_scan.status_code == 403
+    assert "Cross-origin" in blocked_signal_scan.json()["detail"]
+
+    blocked_backup = client.post(
+        "/api/v1/system/backups",
+        headers={"Origin": "https://attacker.example"},
+    )
+    assert blocked_backup.status_code == 403
+
+
+def test_mutating_api_requests_allow_the_local_quantnex_web_origin():
+    client = TestClient(app)
+    response = client.put(
+        "/api/v1/preferences/origin-policy-test",
+        json={"value": "local-web-origin-accepted"},
+        headers={"Origin": "http://127.0.0.1:5500"},
+    )
+    assert response.status_code == 200

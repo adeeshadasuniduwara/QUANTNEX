@@ -51,7 +51,7 @@ Open http://127.0.0.1:8000/health and http://127.0.0.1:8000/docs.
 
 There are no /api/v1/auth/* routes. The backend binds to 127.0.0.1, restricts accepted Host values, and permits only the local QUANTNEX Web origin. Do not bind it to 0.0.0.0, forward its port, or expose it to a LAN or the public internet. Local API access assumes the Windows user account is trusted.
 
-On first API use, legacy user records are migrated to one internal local workspace owner. Existing trades, wallet transactions and preferences are reassigned to that workspace; duplicate preference keys retain the first workspace value. Legacy account rows are removed and stored password hashes are cleared. Back up backend/quantnex.db before upgrading if you need a separate copy of the old account records.
+On first API use, legacy user records are migrated to one internal local workspace owner. Existing trades, wallet transactions and preferences are reassigned to that workspace; duplicate preference keys retain the first workspace value. Legacy account rows are removed and stored password hashes are cleared. Before migration, the app automatically backs up a SQLite database to data/backups/quantnex-pre-local-only-*.db. Keep this backup until you confirm the local workspace contains all your data.
 
 Wallet transaction amounts are signed ledger entries. Deposits are positive, withdrawals are negative, and journal P&L is linked to its trade. This is internal record keeping, not a bank, broker or payment integration.
 

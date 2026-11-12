@@ -43,6 +43,7 @@ def aggregate_minutes(candles: list[dict[str, Any]], minutes: int) -> list[dict[
     for c in candles:
         try:
             stamp=datetime.fromisoformat(c["time"].replace("Z","+00:00"))
+            if stamp.tzinfo is None: stamp=stamp.replace(tzinfo=timezone.utc)
             epoch=int(stamp.timestamp())
         except (ValueError,TypeError):
             continue

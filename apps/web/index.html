@@ -16,11 +16,11 @@
       <a class="brand" href="#overview"><img class="brand-mark-img" src="quantnex-mark.svg" alt=""><span>QUANTNEX</span></a>
       <div class="side-caption">WORKSPACE</div>
       <a class="nav-link active" href="#overview"><span>⌂</span>Overview</a>
-      <a class="nav-link" href="#charts"><span>▥</span>Live charts</a>
+      <a class="nav-link" href="#tradingview"><span>▥</span>TradingView</a>
       <a class="nav-link" href="#tools"><span>⌗</span>Position calculator</a>
       <a class="nav-link" href="#journal"><span>▤</span>Trade journal</a>
       <a class="nav-link" href="#account"><span>◈</span>Account &amp; wallet</a>
-      <a class="nav-link" href="#automation"><span>◉</span>Bot monitor</a>
+      <a class="nav-link" href="#signal-lab"><span>⌁</span>Signal Lab</a>
       <a class="nav-link" href="#updates"><span>↻</span>Updates</a>
       <div class="sidebar-bottom"><span class="live-dot"></span>Local workspace</div>
     </aside>
@@ -61,11 +61,14 @@
           <p class="helper">These are manual records only, not verified bank transfers. Journal P&amp;L is added automatically when a trade is created through the authenticated API. Your existing browser-local journal is not synced to this account yet.</p>
         </div>
       </section>
-      <section class="section-heading" id="charts"><div><div class="overline">LIVE MARKET</div><h2>Market charts</h2><p>Streaming market charts from TradingView. Prices are indicative and may differ by broker.</p></div><span class="pill live-pill">LIVE FEED</span></section>
-      <section class="charts-grid">
-        <article class="panel chart-panel"><div class="chart-heading"><div><strong>Gold / US Dollar</strong><span>OANDA · XAUUSD</span></div><span class="chart-live"><i></i> LIVE</span></div><div id="xauTradingView" class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div><script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>{"autosize":true,"symbol":"OANDA:XAUUSD","interval":"15","timezone":"Etc/UTC","theme":"dark","style":"1","locale":"en","allow_symbol_change":true,"calendar":false,"support_host":"https://www.tradingview.com"}</script></div></article>
-        <article class="panel chart-panel"><div class="chart-heading"><div><strong>Bitcoin / USDT</strong><span>BINANCE · BTCUSDT</span></div><span class="chart-live"><i></i> LIVE</span></div><div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div><script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>{"autosize":true,"symbol":"BINANCE:BTCUSDT","interval":"15","timezone":"Etc/UTC","theme":"dark","style":"1","locale":"en","allow_symbol_change":true,"calendar":false,"support_host":"https://www.tradingview.com"}</script></div></article>
+      <section class="market-ticker-grid" aria-label="Live market overview">
+        <article class="panel market-ticker"><div class="market-ticker-head"><span class="coin-mark btc-mark">₿</span><div><strong>Bitcoin</strong><small>BTC / USD · Binance</small></div><span class="chart-live"><i></i> LIVE</span></div><strong class="ticker-price" id="btcLivePrice">Loading…</strong><small class="ticker-foot" id="btcLiveUpdated">Waiting for market feed</small></article>
+        <article class="panel market-ticker"><div class="market-ticker-head"><span class="coin-mark gold-mark">Au</span><div><strong>Gold</strong><small>XAU / USD · per troy ounce</small></div><span class="chart-live"><i></i> LIVE</span></div><strong class="ticker-price" id="goldLivePrice">Loading…</strong><small class="ticker-foot" id="goldLiveUpdated">Waiting for market feed</small></article>
       </section>
+      <section class="panel local-gold-panel"><div><div class="overline">SRI LANKA · INDICATIVE SPOT CONVERSION</div><h3>Gold price in LKR</h3><p>Converted from XAU/USD and USD/LKR. Not a jeweller's retail quote.</p></div><div class="local-gold-values"><div><span>1 gram</span><strong id="goldLkrGram">—</strong></div><div><span>8 grams</span><strong id="goldLkrEight">—</strong></div><div><span>USD / LKR</span><strong id="usdLkrRate">—</strong></div></div><small id="goldLkrNote">Gold conversion requires the XAU/USD and USD/LKR market feeds.</small></section>
+      <section class="section-heading" id="signal-lab"><div><div class="overline">QUANTNEX · MARKET INTELLIGENCE</div><h2>Signal Lab</h2><p>Multi-timeframe technical analysis and optional Telegram signal delivery.</p></div><span class="pill live-pill">PAPER / ALERTS ONLY</span></section>
+      <section class="section-heading" id="tradingview"><div><div class="overline">CHARTING</div><h2>TradingView</h2><p>One dedicated chart workspace. Select a symbol and timeframe.</p></div><span class="pill live-pill">CHART TAB</span></section>
+      <section class="panel chart-panel"><div class="chart-heading"><div><strong>TradingView Advanced Chart</strong><span>Choose XAUUSD or BTCUSDT</span></div><label class="chart-select-label">Symbol <select id="tradingViewSymbol"><option value="OANDA:XAUUSD">XAUUSD</option><option value="BINANCE:BTCUSDT">BTCUSDT</option></select></label></div><div id="xauTradingView" class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div><script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>{"autosize":true,"symbol":"OANDA:XAUUSD","interval":"15","timezone":"Etc/UTC","theme":"dark","style":"1","locale":"en","allow_symbol_change":true,"calendar":false,"support_host":"https://www.tradingview.com"}</script></div></section>
       <section class="panel timeframe-panel">
         <div class="signal-intro"><div><strong>Signal timeframe preferences</strong><p>Choose the timeframes and confluence threshold used by the live XAUUSD analysis engine.</p></div><span class="signal-pill">USER CONFIGURABLE</span></div>
         <div class="timeframe-grid">
@@ -113,10 +116,17 @@
         </article>
         <article class="panel signal-panel">
           <div class="signal-intro"><div><strong>Telegram bot connection</strong><p>Use your own private bot and chat.</p></div><span class="signal-pill">LOCAL SETUP</span></div>
+          <div class="telegram-bot-identity"><label>Your bot display name<input id="tgBotDisplayName" maxlength="40" placeholder="e.g. QUANTNEX Gold Scout"></label><small>Choose this label for your workspace. Set the actual Telegram bot name and username in @BotFather.</small></div>
           <div class="telegram-config">
             <label>Telegram bot token<input id="tgBotToken" type="password" autocomplete="off" placeholder="Paste token from BotFather"></label>
             <label>Telegram chat ID / channel<input id="tgChatId" type="text" autocomplete="off" placeholder="Your chat ID or @channel"></label>
             <div class="signal-actions"><button class="primary-btn" id="connectTelegram">Connect bot &amp; enable commands</button><button class="secondary-btn" id="testTelegram">Test Telegram message</button><button class="secondary-btn" id="clearTelegram">Clear credentials</button></div>
+            <div class="auto-signal-controls">
+              <label class="auto-signal-toggle"><input type="checkbox" id="autoSignalsEnabled"><span><strong>Enable Auto Signals</strong><small>Only send a Telegram alert when a fresh setup passes the strict confirmation rules.</small></span></label>
+              <label>Scan interval<select id="autoSignalInterval"><option value="60">Every 1 minute</option><option value="180" selected>Every 3 minutes</option><option value="300">Every 5 minutes</option><option value="900">Every 15 minutes</option></select></label>
+              <button class="primary-btn" id="saveAutoSignals">Save Auto Signal settings</button>
+              <p class="telegram-status" id="autoSignalStatus">Auto signals are OFF until you explicitly enable them.</p>
+            </div>
             <p class="telegram-status" id="telegramStatus" aria-live="polite">Credentials are used for this request only and are not saved by this page.</p>
           </div>
           <div class="signal-actions"><button class="secondary-btn" id="openBotGuide">Show bot setup guide</button></div>

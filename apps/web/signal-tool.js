@@ -216,7 +216,7 @@
  const secs={"1m":60,"5m":300,"15m":900,"30m":1800,"1h":3600,"4h":14400};
  const status=(m,bad=false)=>{const e=$("qxChartStatus");if(e){e.textContent=m;e.dataset.state=bad?"error":"ok";}};
  const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(cfg));}catch{}};
- const timeOf=v=>{if(typeof v==="number")return Math.floor(v);let t=String(v||"");if(/^\\d{4}-\\d{2}-\\d{2} \\d/.test(t))t=t.replace(" ","T")+"Z";const n=Date.parse(t);return Number.isFinite(n)?Math.floor(n/1000):NaN;};
+ const timeOf=v=>{if(typeof v==="number")return Math.floor(v);let t=String(v||"");if(/^\d{4}-\d{2}-\d{2} \d/.test(t))t=t.replace(" ","T")+"Z";const n=Date.parse(t);return Number.isFinite(n)?Math.floor(n/1000):NaN;};
  const clean=r=>({time:timeOf(r.time),open:+r.open,high:+r.high,low:+r.low,close:+r.close,volume:+(r.volume||0)});
  const ha=data=>{let prev=null;return data.map(c=>{const close=(c.open+c.high+c.low+c.close)/4,open=prev?(prev.open+prev.close)/2:(c.open+c.close)/2,x={time:c.time,open,high:Math.max(c.high,open,close),low:Math.min(c.low,open,close),close};prev=x;return x;});};
  const avg=(data,n,kind)=>{let sum=0,value=data[0]?.close||0,out=[],k=2/(n+1);data.forEach((c,i)=>{if(kind==="sma"){sum+=c.close;if(i>=n)sum-=data[i-n].close;if(i>=n-1)out.push({time:c.time,value:sum/n});}else{value=i===0?c.close:c.close*k+value*(1-k);if(i>=n-1)out.push({time:c.time,value});}});return out;};

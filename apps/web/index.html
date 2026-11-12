@@ -179,13 +179,14 @@
           <label>Market<select id="livePnlSymbol"><option value="BTCUSDT">Bitcoin · BTCUSDT</option><option value="XAUUSD">Gold · XAUUSD</option></select></label>
           <label>Direction<select id="livePnlSide"><option value="LONG">BUY / LONG</option><option value="SHORT">SELL / SHORT</option></select></label>
           <label>Entry price<input id="livePnlEntry" type="number" min="0" step="any" placeholder="Enter your entry price"></label>
-          <label>Quantity <span id="livePnlUnit">BTC</span><input id="livePnlQuantity" type="number" min="0" step="any" placeholder="0.01"></label>
+          <label>Quantity <span id="livePnlUnit">BTC</span><input id="livePnlQuantity" type="number" min="0" step="any" placeholder="0.001"></label>
+          <label id="livePnlContractSizeWrap" hidden>Gold contract size (oz / lot)<input id="livePnlContractSize" type="number" min="0.01" step="any" value="100"></label>
         </div>
         <div class="live-pnl-result-grid">
           <article><span>Latest market price</span><strong id="livePnlCurrent">Waiting for quote…</strong><small id="livePnlUpdated">Waiting for live market data</small></article>
           <article><span>Estimated result</span><strong id="livePnlResult">—</strong><small id="livePnlMove">Enter entry and quantity</small></article>
         </div>
-        <p class="p7-note">BTC quantity is measured in BTC. Gold quantity is measured in troy ounces, not broker lots. This estimate excludes spread, commission, swap, funding and broker-specific contract rules.</p>
+        <p class="p7-note">BTC quantity is measured in BTC. Gold quantity is measured in broker lots using the editable ounces-per-lot contract size (default 100 oz; confirm with your broker). This gross estimate excludes spread, commission, swap, funding and slippage.</p>
       </section>
       <section class="panel timeframe-panel">
         <div class="signal-intro"><div><strong>Signal timeframe preferences</strong><p>Choose the timeframes and confluence threshold used by the live XAUUSD analysis engine.</p></div><span class="signal-pill">USER CONFIGURABLE</span></div>

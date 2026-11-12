@@ -7,7 +7,7 @@ const targets = [...html.matchAll(/class="nav-link[^"]*" href="#([^"]+)"/g)].map
 const ids = [...html.matchAll(/<section\b[^>]*\bid="([^"]+)"/g)].map(match => match[1]);
 const missing = targets.filter(target => target !== "overview" && !ids.includes(target));
 assert.deepEqual(missing, [], "Every sidebar navigation target must have a page marker");
-assert.match(nav, /data-workspace-view/);
+assert.match(nav, /dataset\\.workspaceView/);
 assert.match(nav, /quantnex:view-changed/);
 assert.match(nav, /prefers-reduced-motion/);
 assert.match(css, /qnx-view-fade-in/);

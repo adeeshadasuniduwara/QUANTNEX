@@ -38,3 +38,5 @@
 @media(max-width:720px){.market-ticker-grid{grid-template-columns:1fr 1fr}.local-gold-panel{grid-template-columns:1fr}.local-gold-values{grid-template-columns:1fr 1fr}}@media(max-width:480px){.market-ticker-grid{grid-template-columns:1fr}.local-gold-values{grid-template-columns:1fr}}
 
 .market-attribution{display:block;margin-top:6px;font-size:10px;color:#777}.market-attribution a{color:#aaa;text-decoration:underline;text-underline-offset:2px}
+
+.local-mode-note{display:flex;align-items:center;gap:12px;padding:13px 15px;border:1px solid #343434;border-radius:9px;background:#101010;margin:4px 0 14px}.local-mode-note strong{font-size:10px;letter-spacing:.1em;color:#eee;white-space:nowrap}.local-mode-note span{font-size:11px;color:#999;line-height:1.5}@media(max-width:600px){.local-mode-note{align-items:flex-start;flex-direction:column;gap:5px}}

@@ -54,3 +54,10 @@ console.log("QUANTNEX VIEW and crypto Telegram signal checks passed.");
 assert.ok(html.includes("cdn.jsdelivr.net/npm/lightweight-charts"), "QUANTNEX VIEW must have a primary chart-engine CDN");
 assert.ok(html.includes("unpkg.com/lightweight-charts"), "QUANTNEX VIEW must have a fallback chart-engine CDN");
 assert.match(signal, /chart engine did not load/, "Chart engine load failures must be visible instead of leaving a blank chart");
+
+assert.match(signal, /api\.binance\.com\/api\/v3\/klines/, "Crypto chart must fall back to Binance public candles when the local chart endpoint is missing");
+assert.match(signal, /Binance Spot · direct fallback/, "Crypto fallback provider must be identified honestly");
+assert.match(signal, /SIGNAL STATUS UNAVAILABLE/, "Signal status API errors must not be mislabeled as market-feed failures");
+assert.match(signal, /Chart data unavailable/, "Chart load errors must use a clear chart-specific status");
+assert.match(css, /height:clamp\(390px,58vh,620px\)/, "QUANTNEX VIEW must use a responsive chart height");
+console.log("QUANTNEX VIEW fallback, status clarity and responsive chart styling checks passed.");

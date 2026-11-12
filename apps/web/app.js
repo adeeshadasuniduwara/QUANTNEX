@@ -63,3 +63,64 @@ if (updateButton) updateButton.addEventListener("click", async () => {
   } catch (error) { status.textContent = "Could not check updates: " + error.message + ". You can open the official releases page instead."; }
   finally { updateButton.disabled = false; updateButton.textContent = "Check for updates"; progress.hidden = true; }
 });
+
+
+// Authenticated shared API wallet. Access tokens stay in this browser tab's session storage.
+const API_BASE_KEY = "quantnex.apiBase.v1";
+const TOKEN_KEY = "quantnex.sessionToken.v1";
+const apiBaseInput = $("apiBase");
+const accountMessage = $("accountMessage");
+const walletArea = $("walletArea");
+apiBaseInput.value = localStorage.getItem(API_BASE_KEY) || "http://127.0.0.1:8000";
+function apiBase(){ return apiBaseInput.value.trim().replace(/\/+$/, ""); }
+function sessionToken(){ return sessionStorage.getItem(TOKEN_KEY); }
+function setAccountMessage(message, error=false){ accountMessage.textContent=message; accountMessage.dataset.state=error?"error":"ok"; }
+async function apiRequest(path, options={}){
+  const headers={"Accept":"application/json",...(options.body?{"Content-Type":"application/json"}:{}),...(sessionToken()?{"Authorization":"Bearer "+sessionToken()}:{}),...(options.headers||{})};
+  const response=await fetch(apiBase()+path,{...options,headers});
+  const payload=response.status===204?null:await response.json().catch(()=>null);
+  if(!response.ok) throw new Error(payload?.detail||("API request failed ("+response.status+")."));
+  return payload;
+}
+function setSignedIn(signedIn){
+  $("accountState").textContent=signedIn?"CONNECTED":"NOT CONNECTED";
+  $("accountState").classList.toggle("connected",signedIn);
+  walletArea.hidden=!signedIn;
+  $("accountLogout").hidden=!signedIn;
+  $("accountLogin").hidden=signedIn;
+  $("accountRegister").hidden=signedIn;
+}
+function renderWalletTransactions(rows){
+  const body=$("walletRows");body.replaceChildren();
+  if(!rows.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=4;td.className="empty-row";td.textContent="No wallet transactions yet.";tr.append(td);body.append(tr);return;}
+  rows.forEach(item=>{const tr=document.createElement("tr");const date=new Date(item.created_at).toLocaleString();const amount=Number(item.amount);[date,item.transaction_type.replaceAll("_"," "),item.description||"—",money(amount)].forEach((value,index)=>{const td=document.createElement("td");td.textContent=value;if(index===3)td.className=amount<0?"negative":"positive";tr.append(td);});body.append(tr);});
+}
+async function refreshWallet(){
+  const [summary,transactions]=await Promise.all([apiRequest("/api/v1/wallet/summary"),apiRequest("/api/v1/wallet/transactions?limit=100")]);
+  $("walletBalance").textContent=money(summary.balance);$("walletDeposits").textContent=money(summary.deposits);$("walletWithdrawals").textContent=money(summary.withdrawals);$("walletPnl").textContent=money(summary.trading_pnl);renderWalletTransactions(transactions);
+}
+async function authenticate(mode){
+  const email=$("accountEmail").value.trim(),password=$("accountPassword").value;
+  if(!email||!password){setAccountMessage("Enter your email and password.",true);return;}
+  if(password.length<12){setAccountMessage("Use a password with at least 12 characters.",true);return;}
+  try{
+    if(mode==="register") await apiRequest("/api/v1/auth/register",{method:"POST",body:JSON.stringify({email,password})});
+    const result=await apiRequest("/api/v1/auth/login",{method:"POST",body:JSON.stringify({email,password})});
+    sessionStorage.setItem(TOKEN_KEY,result.access_token);$("accountPassword").value="";setSignedIn(true);await refreshWallet();setAccountMessage("Signed in. Wallet data loaded from the shared API.");
+  }catch(error){setAccountMessage(error.message,true);}
+}
+$("saveApiBase").addEventListener("click",()=>{try{const url=new URL(apiBase());if(!["http:","https:"].includes(url.protocol))throw new Error();localStorage.setItem(API_BASE_KEY,url.origin+url.pathname.replace(/\/+$/,""));setAccountMessage("API server URL saved for this browser.");}catch{setAccountMessage("Enter a valid HTTP or HTTPS API URL.",true);}});
+$("accountLogin").addEventListener("click",()=>authenticate("login"));
+$("accountRegister").addEventListener("click",()=>authenticate("register"));
+$("accountLogout").addEventListener("click",()=>{sessionStorage.removeItem(TOKEN_KEY);setSignedIn(false);setAccountMessage("Signed out. Your wallet records remain on the server.");});
+async function recordWalletTransaction(type){
+  const amountInput=$(type==="deposit"?"depositAmount":"withdrawAmount"),descriptionInput=$(type==="deposit"?"depositDescription":"withdrawDescription"),amount=Number(amountInput.value);
+  if(!Number.isFinite(amount)||amount<=0){setAccountMessage("Enter an amount greater than zero.",true);return;}
+  try{await apiRequest("/api/v1/wallet/transactions",{method:"POST",body:JSON.stringify({transaction_type:type,amount,description:descriptionInput.value.trim()})});amountInput.value="";descriptionInput.value="";await refreshWallet();setAccountMessage(type==="deposit"?"Deposit record saved.":"Withdrawal record saved.");}
+  catch(error){setAccountMessage(error.message,true);}
+}
+$("walletDeposit").addEventListener("click",()=>recordWalletTransaction("deposit"));
+$("walletWithdraw").addEventListener("click",()=>recordWalletTransaction("withdrawal"));
+if(sessionToken()){
+  setSignedIn(true);refreshWallet().then(()=>setAccountMessage("Restored this tab's session. Wallet data loaded.")).catch(error=>{sessionStorage.removeItem(TOKEN_KEY);setSignedIn(false);setAccountMessage("Session expired or API unavailable: "+error.message,true);});
+}else setSignedIn(false);

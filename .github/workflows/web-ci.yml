@@ -1,0 +1,34 @@
+name: QUANTNEX Web CI
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/**"
+      - ".github/workflows/web-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+      - ".github/workflows/web-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  web-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate Web JavaScript syntax
+        run: node --check apps/web/app.js
+      - name: Verify required wallet UI elements exist
+        run: |
+          grep -q 'id="account"' apps/web/index.html
+          grep -q 'id="walletDeposit"' apps/web/index.html
+          grep -q 'id="walletWithdraw"' apps/web/index.html
+          grep -q 'id="accountLogin"' apps/web/index.html

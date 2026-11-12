@@ -150,7 +150,8 @@ async def daily_backup_worker() -> None:
         try:
             if DATABASE_URL.startswith("sqlite:///"):
                 backups = list_backups()
-                latest_path = _safe_backup_path(backups[0]["filename"], BACKUP_DIR) if backups else None
+                latest_verified = next((item for item in backups if item.get("verified") is True), None)
+                latest_path = _safe_backup_path(latest_verified["filename"], BACKUP_DIR) if latest_verified else None
                 due = latest_path is None or (time.time() - latest_path.stat().st_mtime) >= 86400
                 if due:
                     result = create_backup(DATABASE_URL)

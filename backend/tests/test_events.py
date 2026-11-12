@@ -61,3 +61,36 @@ def test_event_hub_rejects_invalid_names_and_oversized_payloads():
         hub.publish("INVALID EVENT", "wallet", "updated", {})
     with pytest.raises(ValueError):
         hub.publish("wallet.changed", "wallet", "updated", {"data": "x" * 17000})
+
+
+def test_auto_closed_paper_trades_publish_workspace_refresh_events(monkeypatch):
+    from app import paper_worker
+
+    published = []
+    monkeypatch.setattr(paper_worker.event_hub, "publish", lambda *args: published.append(args))
+    paper_worker.publish_auto_closed([{
+        "trade_id": 42,
+        "symbol": "BTCUSDT",
+        "reason": "TAKE_PROFIT",
+        "exit_price": 70000.0,
+        "realized_pnl": 25.0,
+    }])
+
+    assert len(published) == 1
+    event_type, entity, action, payload = published[0]
+    assert (event_type, entity, action) == ("paper_trade.changed", "paper_trade", "auto_closed")
+    assert payload["trade_id"] == 42
+    assert payload["reason"] == "TAKE_PROFIT"
+
+
+def test_telegram_timeframe_commands_publish_preference_change(monkeypatch):
+    from app import telegram_worker
+
+    published = []
+    monkeypatch.setattr(telegram_worker.event_hub, "publish", lambda *args: published.append(args))
+    telegram_worker._publish_signal_settings_changed()
+
+    assert len(published) == 1
+    event_type, entity, action, payload = published[0]
+    assert (event_type, entity, action) == ("preferences.changed", "preferences", "updated")
+    assert payload == {"key": "signal_settings"}

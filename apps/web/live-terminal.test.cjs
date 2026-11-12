@@ -58,6 +58,7 @@ assert.match(html, /id="webUpdateModalChanges"/, "The update dialog must list wh
 assert.match(html, /id="webUpdateModalInstall"/, "The update dialog must offer Download & Install Now");
 assert.match(html, /id="webInstallUpdate" hidden/, "The Updates page install action must remain hidden until an update is found");
 assert.match(app, /New update released:/, "The updater must announce a newly available version");
+assert.match(app, /\["127\.0\.0\.1","localhost"\]\.includes\(location\.hostname\)/, "The updater must work on both supported loopback hostnames");
 assert.match(app, /openUpdateModal\(result\)/, "A detected update must open the notification dialog");
 assert.match(app, /modalInstallButton\?\.addEventListener\("click",\(\)=>installLatestCommit\(\)/, "The popup install action must start the update only after a click");
 assert.match(app, /rememberUpdateDismissed\(sha\)/, "The user must be able to dismiss the same notification until the next version");
@@ -68,3 +69,19 @@ assert.match(updater, /"files_changed": files_changed/, "The updater must return
 assert.match(css, /\.web-update-dialog/, "The update dialog must have dedicated responsive styling");
 
 console.log("QUANTNEX update notification and user-approved install checks passed.");
+
+assert.ok(html.includes("cdn.jsdelivr.net/npm/lightweight-charts"), "QUANTNEX VIEW must load its chart engine from the primary CDN");
+assert.ok(html.includes("unpkg.com/lightweight-charts"), "QUANTNEX VIEW must have a fallback chart-engine CDN");
+assert.match(signal, /api\.binance\.com\/api\/v3\/klines/, "Crypto chart must fall back to Binance public OHLC candles");
+assert.match(signal, /Binance Spot · direct fallback/, "Direct crypto fallback provider must be identified");
+assert.match(signal, /SIGNAL STATUS UNAVAILABLE/, "Signal status API errors must be visible instead of leaving a stale feed status");
+assert.match(signal, /Chart data unavailable/, "Chart load errors must use a chart-specific status");
+assert.match(signal, /if\(!window\.LightweightCharts\)throw new Error/, "Missing chart library must be caught and shown in the chart panel");
+assert.match(css, /height:clamp\(390px,58vh,620px\)/, "QUANTNEX VIEW must use a responsive chart height");
+console.log("QUANTNEX VIEW CDN fallback, direct market fallback and error-state checks passed.");
+
+assert.match(signal, /quantnex:workspace-event/, "Signal Lab must react to local workspace events");
+assert.match(signal, /detail\.type==="preferences\.changed"/, "Telegram timeframe changes must refresh Signal Lab settings");
+assert.match(signal, /detail\.type==="integration\.changed"/, "Telegram connect/disconnect events must refresh the Signal Lab bot status");
+assert.match(signal, /quantnex:workspace-resync/, "Signal Lab must refresh provider/settings state after event-stream resync");
+console.log("Signal Lab local event integration checks passed.");

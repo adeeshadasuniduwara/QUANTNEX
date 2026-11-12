@@ -22,14 +22,14 @@ Build artifacts are temporary and retained for 30 days. The Web Updates panel al
 
 ## Applications
 
-- Web: responsive browser workspace with position sizing, local journal, TradingView XAUUSD chart, configurable multi-timeframe XAUUSD confluence scans, risk planner and Telegram bot controls.
-- Windows: desktop workspace with position sizing, local SQLite journal, Binance BTCUSDT candles, installation ID and a local wallet. No login or registration.
+- Web: responsive local browser workspace with QUANTNEX VIEW first-party charts, live crypto/Gold market data, multi-timeframe signal analysis, local journal and wallet, paper trading, risk tools, strategy research and Telegram controls.
+- Windows: desktop workspace with position sizing, a local SQLite journal, Binance BTCUSDT candles, installation ID and a wallet shared with the local backend when it is running. No login or registration.
 - Android: native application starter.
 - Backend: loopback-only FastAPI service for the local journal, wallet ledger, preferences, optional AI gateway, Twelve Data XAU/USD analysis and Telegram bot command / price-level alert worker.
 
 ## Run from source on Windows
 
-From the repository root, run run_quantnex.bat. Option 1 starts the current Python source (preferred for development and source ZIP updates); option 6 starts the packaged EXE when present. Choose Web or both for the browser workspace. The Web workspace can also be opened from apps/web/index.html.
+From the repository root, run run_quantnex.bat. Option 1 starts the Windows Desktop source app; option 2 starts the local Backend API and Web updater together (recommended for the complete browser workspace); option 3 starts Desktop + Backend + Web together; option 4 starts the Backend API only; option 5 opens the Web source folder; option 6 starts the packaged EXE when present. Use option 2 or 3 for the full Web experience. Do not open apps/web/index.html directly: API-backed features require the trusted local origin served at http://127.0.0.1:5500.
 
 ## Backend
 
@@ -37,7 +37,7 @@ See backend/README.md and docs/ARCHITECTURE.md. The local API has no login, regi
 
 ## Current capability and safety
 
-The calculator uses broker-specific pip values entered by the user. The web journal stores data in that browser; the Windows journal stores data locally. The Web chart view embeds TradingView; signal calculations use a separate Twelve Data OHLC feed configured server-side in backend/.env. The rule-based 0–10 confluence score is not a win probability. EMA, MACD, RSI, ADX, ATR, swing structure, liquidity sweep and heuristic OB / Breaker / FVG / iFVG / premium-discount zones are included. The Reaper indicator is not active because its exact formula/source has not been confirmed. Telegram commands and approximate once-per-minute TP/SL price-level alerts require a connected bot, a configured market-data key and the local API to remain running. These alerts do not modify broker orders. The Windows Charts tab reads public BTCUSDT candles from Binance; its Gold button opens TradingView XAUUSD in a browser. The Windows installation ID is a random local identifier, not a login credential. Broker connections and automated order execution are not enabled. Never commit API keys, passwords, signing keys or broker tokens. QUANTNEX is configured for local single-computer use, not public deployment; do not expose its loopback API.
+The calculator uses broker-specific pip values entered by the user. The web journal stores data in that browser; the Windows journal stores data locally. QUANTNEX VIEW renders first-party charts using TradingView Lightweight Charts (the rendering library, not a hosted TradingView widget). Crypto OHLC candles use Binance Spot; XAUUSD candles use the Twelve Data OHLC feed configured server-side in backend/.env. The rule-based 0–10 confluence score is not a win probability. EMA, MACD, RSI, ADX, ATR, swing structure, liquidity sweep and heuristic OB / Breaker / FVG / iFVG / premium-discount zones are included. The Reaper indicator is not active because its exact formula/source has not been confirmed. Telegram commands and approximate once-per-minute TP/SL price-level alerts require a connected bot, a configured market-data key and the local API to remain running. These alerts do not modify broker orders. The Windows Charts tab reads public BTCUSDT candles from Binance; its Gold button opens TradingView XAUUSD in a browser. The Windows installation ID is a random local identifier, not a login credential. Broker connections and automated order execution are not enabled. Never commit API keys, passwords, signing keys or broker tokens. QUANTNEX is configured for local single-computer use, not public deployment; do not expose its loopback API.
 
 ## GitHub source updates
 
@@ -50,7 +50,7 @@ QUANTNEX includes an optional GitHub Actions workflow that announces published r
 ## Live market overview, Signal Lab and Telegram Auto Signals
 
 - The Overview displays BTC/USD and XAU/USD spot estimates from keyless Gold-API feeds with provider fallbacks, plus indicative LKR/gram and LKR/8g conversions using a daily USD/LKR reference rate. The LKR conversion is a spot-price estimate, not a local jeweller's retail quote; purity, taxes and dealer premiums are excluded.
-- The two embedded TradingView charts are replaced by one dedicated TradingView workspace tab with XAUUSD/BTCUSDT symbol selection.
+- QUANTNEX VIEW is a dedicated first-party chart workspace with BTCUSDT/ETHUSDT/SOLUSDT and XAUUSD selection, multiple chart types, intervals, volume and local drawing tools.
 - The Signal Lab retains XAUUSD multi-timeframe analysis and adds directional quality gates for primary/trend EMA bias, selected-timeframe consensus, MACD direction, ADX strength and RSI range. Scores remain rule-count confluence, not win probability.
 - The local user creates a Telegram bot through @BotFather, then connects its token and destination chat to the QUANTNEX workspace. Tokens are encrypted in the local database using a key derived from QUANTNEX_SECRET_KEY.
 - Auto Signals are opt-in for the local workspace. When enabled, the local API scans XAUUSD at the selected interval (minimum 60 seconds), requires at least 8/10 confluence plus directional filters, and sends only a new primary-timeframe candle signal to the connected local bot. It does not place trades.

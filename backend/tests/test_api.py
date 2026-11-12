@@ -1,13 +1,13 @@
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 import sqlite3
 from pathlib import Path
 import app.main as main_module
-from app.database import Base
+from app.database import Base, engine
 from app.main import app, local_workspace, backup_legacy_database
-from app.models import Preference, Trade, User, WalletTransaction
+from app.models import PaperTrade, Preference, StrategyLabRun, Trade, User, WalletTransaction
 
 
 def test_health_and_local_journal_flow():
@@ -115,6 +115,11 @@ def test_legacy_accounts_are_consolidated_without_losing_local_data():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+
+    @event.listens_for(test_engine, "connect")
+    def enable_test_foreign_keys(connection, _record):
+        connection.execute("PRAGMA foreign_keys=ON")
+
     Base.metadata.create_all(test_engine)
     with Session(test_engine) as db:
         owner = User(email="first@example.com", password_hash="legacy-password-hash")
@@ -128,6 +133,11 @@ def test_legacy_accounts_are_consolidated_without_losing_local_data():
             Preference(user_id=legacy.id, key="telegram_chat_id", value="123456"),
             Trade(user_id=legacy.id, symbol="XAUUSD", direction="buy", outcome="win", pnl=12.5, notes="keep me"),
             WalletTransaction(user_id=legacy.id, transaction_type="deposit", amount=50, description="keep wallet"),
+            PaperTrade(user_id=legacy.id, symbol="BTCUSDT", side="BUY", quantity=0.01,
+                       entry_price=65000, stop_loss=64000, take_profit=67000),
+            StrategyLabRun(user_id=legacy.id, run_type="backtest", symbol="BTCUSDT",
+                           timeframe="15m", strategy_json='{"name":"EMA"}',
+                           result_json='{"net_pnl":12.5}'),
         ])
         db.commit()
 
@@ -142,6 +152,12 @@ def test_legacy_accounts_are_consolidated_without_losing_local_data():
         preferences = {row.key: row.value for row in db.scalars(select(Preference))}
         assert len(trades) == 1 and trades[0].user_id == owner_id
         assert len(wallet) == 1 and wallet[0].user_id == owner_id
+        paper_trades = list(db.scalars(select(PaperTrade)))
+        research_runs = list(db.scalars(select(StrategyLabRun)))
+        assert len(paper_trades) == 1 and paper_trades[0].user_id == owner_id
+        assert paper_trades[0].entry_price == 65000
+        assert len(research_runs) == 1 and research_runs[0].user_id == owner_id
+        assert research_runs[0].result_json == '{"net_pnl":12.5}'
         assert preferences["signal_settings"] == "first-value"
         assert preferences["telegram_chat_id"] == "123456"
 
@@ -168,3 +184,39 @@ def test_legacy_database_is_backed_up_before_password_hashes_are_cleared(tmp_pat
     with sqlite3.connect(backups[-1]) as backup:
         row = backup.execute("SELECT email, password_hash FROM users").fetchone()
     assert row == ("old@example.com", "legacy-hash")
+
+
+def test_mutating_api_requests_reject_untrusted_browser_origins():
+    client = TestClient(app)
+    blocked_signal_scan = client.post(
+        "/api/v1/signals/scan?symbol=BTCUSDT",
+        headers={"Origin": "https://attacker.example"},
+    )
+    assert blocked_signal_scan.status_code == 403
+    assert "Cross-origin" in blocked_signal_scan.json()["detail"]
+
+    blocked_backup = client.post(
+        "/api/v1/system/backups",
+        headers={"Origin": "https://attacker.example"},
+    )
+    assert blocked_backup.status_code == 403
+
+
+def test_mutating_api_requests_allow_the_local_quantnex_web_origin():
+    client = TestClient(app)
+    response = client.put(
+        "/api/v1/preferences/origin_policy_test",
+        json={"value": "local-web-origin-accepted"},
+        headers={"Origin": "http://127.0.0.1:5500"},
+    )
+    assert response.status_code == 200
+
+
+def test_sqlite_engine_uses_foreign_keys_wal_and_busy_timeout():
+    if not main_module.DATABASE_URL.startswith("sqlite"):
+        return
+    with engine.connect() as connection:
+        assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
+        assert connection.exec_driver_sql("PRAGMA busy_timeout").scalar() >= 20000
+        journal_mode = connection.exec_driver_sql("PRAGMA journal_mode").scalar().lower()
+        assert journal_mode in {"wal", "memory"}

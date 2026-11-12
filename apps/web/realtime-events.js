@@ -23,8 +23,8 @@ function connect(){
   if(event.type==="stream.ping"){if(socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:"stream.pong"}));return;}
   if(event.type==="stream.ready"){
    const current=Number(event.event_id)||0;
-   if(connectedOnce&&current>lastEventId)emit("quantnex:workspace-resync",{reason:"events_missed_during_disconnect",from:lastEventId,to:current});
-   lastEventId=Math.max(lastEventId,current);connectedOnce=true;retryMs=1000;
+   if(connectedOnce&&current!==lastEventId)emit("quantnex:workspace-resync",{reason:current<lastEventId?"event_stream_restarted":"events_missed_during_disconnect",from:lastEventId,to:current});
+   lastEventId=current;connectedOnce=true;retryMs=1000;
    status("connected",{eventId:lastEventId,replay:false});
    return;
   }

@@ -7,7 +7,7 @@ import psutil
 from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy import select, text
 from .config import DATABASE_URL
-from .database import SessionLocal, engine
+from .database import Base, SessionLocal, engine, enable_sqlite_wal
 from .maintenance import create_backup, daily_backup_worker, list_backups, record_audit_event, restore_backup, verify_backup
 from .models import AuditEvent
 
@@ -92,6 +92,11 @@ async def restore_database(filename: str, request: Request):
             setattr(request.app.state, attribute, None)
     try:
         result = await asyncio.to_thread(restore_backup, filename, DATABASE_URL, engine)
+        # Restore switches SQLite back to DELETE mode while replacing the file.
+        # Re-enable WAL, then recreate additive Phase 07/08 tables if this is an
+        # older valid backup before any route or background worker queries them.
+        await asyncio.to_thread(enable_sqlite_wal)
+        await asyncio.to_thread(Base.metadata.create_all, bind=engine)
         with SessionLocal() as db:
             record_audit_event(db, "backup.restored", {"filename": filename,
                                                        "pre_restore_backup": result["pre_restore_backup"]},

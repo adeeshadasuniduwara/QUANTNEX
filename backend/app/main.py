@@ -6,7 +6,8 @@ import sqlite3
 import httpx
 from datetime import datetime, timezone
 from pathlib import Path
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import func, select, text
@@ -28,6 +29,24 @@ app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
 app.include_router(system_security_router)
 app.include_router(events_router)
+
+
+@app.middleware("http")
+async def reject_untrusted_browser_mutations(request: Request, call_next):
+    """Reject cross-origin browser writes while keeping native local clients usable.
+
+    CORS alone does not stop a simple cross-origin form POST from reaching a
+    loopback endpoint. Mutating requests with a browser Origin must come from
+    the explicitly trusted local QUANTNEX Web workspace.
+    """
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        origin = request.headers.get("origin")
+        if origin and origin not in CORS_ORIGINS:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Cross-origin changes are blocked by the local QUANTNEX security policy."},
+            )
+    return await call_next(request)
 
 
 def local_workspace(db: Session = Depends(get_db)) -> User:
@@ -55,6 +74,13 @@ def local_workspace(db: Session = Depends(get_db)) -> User:
             trade.user_id = owner.id
         for transaction in db.scalars(select(WalletTransaction).where(WalletTransaction.user_id == legacy.id)):
             transaction.user_id = owner.id
+        # Phase 07/08 user-scoped ledgers must move with the original workspace too.
+        # Otherwise legacy-account consolidation can orphan or cascade-delete paper
+        # trades and strategy research created before local-only mode.
+        for paper_trade in db.scalars(select(PaperTrade).where(PaperTrade.user_id == legacy.id)):
+            paper_trade.user_id = owner.id
+        for research_run in db.scalars(select(StrategyLabRun).where(StrategyLabRun.user_id == legacy.id)):
+            research_run.user_id = owner.id
         # Flush reassigned child rows before deleting the legacy owner; ORM delete cascades
         # must not interpret the moved rows as orphans.
         db.flush()

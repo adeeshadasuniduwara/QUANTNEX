@@ -210,7 +210,7 @@ async function checkLocalUpdate(options={}){
   }
 }
 if(updateButton)updateButton.addEventListener("click",()=>checkLocalUpdate());
-if(updateButton&&location.hostname==="127.0.0.1"&&location.port==="5500"){
+if(updateButton&&["127.0.0.1","localhost"].includes(location.hostname)&&location.port==="5500"){
   checkLocalUpdate();
   window.setInterval(()=>{
     if(document.visibilityState==="visible")checkLocalUpdate({silent:true});

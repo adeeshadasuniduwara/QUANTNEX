@@ -9,6 +9,16 @@ assert.equal(new Set(sectionIds).size, sectionIds.length, "Section IDs must be u
 const missingTargets = navTargets.filter(target => target !== "overview" && !sectionIds.includes(target));
 assert.deepEqual(missingTargets, [], "Every sidebar link must point to an existing section");
 
+const sidebar = html.match(/<aside class="sidebar">([\\s\\S]*?)<\\/aside>/);
+assert.ok(sidebar, "Sidebar shell must exist");
+assert.match(sidebar[1], /<nav class="sidebar-nav" aria-label="Workspace navigation">/, "Sidebar links must live in a dedicated navigation scroll region");
+assert.match(sidebar[1], /<a class="brand"/, "Brand must remain outside the scrolling navigation");
+assert.match(sidebar[1], /<div class="sidebar-bottom"/, "Local workspace footer must remain outside the scrolling navigation");
+const styles = fs.readFileSync("apps/web/styles.css", "utf8");
+assert.match(styles, /\\.sidebar \\.sidebar-nav\\s*\\{[^}]*overflow-y:auto/s, "Sidebar navigation must scroll independently");
+assert.match(styles, /\\.sidebar\\s*\\{[^}]*overflow:hidden/s, "Sidebar shell must clip overflow so only its menu scrolls");
+
+
 const requiredPages = [
   "watchlist-desk", "forex-desk", "crypto-desk", "gold-desk", "price-alerts",
   "economic-calendar", "trade-history", "strategy-library", "portfolio-monitor",

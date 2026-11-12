@@ -367,3 +367,22 @@
 @keyframes qxUpdateRise{from{opacity:0;transform:translateY(15px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
 @media(max-width:560px){.web-update-modal{padding:12px}.web-update-dialog{padding:25px 20px;border-radius:19px}.web-update-dialog h2{font-size:23px}.web-update-modal-actions{flex-direction:column}.web-update-modal-actions button{width:100%}}
 @media(prefers-reduced-motion:reduce){.web-update-modal,.web-update-dialog,.web-update-pulse{animation:none!important}}
+
+
+/* QUANTNEX VIEW — refined responsive chart surface */
+.qx-chart-panel{background:linear-gradient(155deg,rgba(19,29,41,.98),rgba(10,16,24,.99));border:1px solid rgba(127,155,184,.18);box-shadow:0 18px 48px rgba(0,0,0,.22)}
+.qx-chart-host{height:clamp(390px,58vh,620px);min-height:360px;background:#0b1118;border:1px solid rgba(127,155,184,.14);border-radius:10px}
+.qx-chart-market strong{font-size:clamp(22px,2vw,29px);letter-spacing:-.035em}
+.qx-chart-toolbar select,.qx-chart-market select{background:#111c28;border-color:rgba(127,155,184,.25);transition:border-color .18s ease,background .18s ease}
+.qx-chart-toolbar select:focus,.qx-chart-market select:focus{outline:none;border-color:#5da9ff;background:#142235}
+.qx-chart-options{gap:10px 16px}
+.qx-chart-options label{padding:5px 7px;border-radius:6px;background:rgba(255,255,255,.025)}
+.qx-drawing-toolbar{border-bottom:1px solid rgba(127,155,184,.13);margin-bottom:12px}
+.qx-chart-status{padding:5px 9px;border-radius:20px;background:rgba(93,169,255,.08)}
+.qx-chart-status[data-state=error]{background:rgba(240,93,104,.1)}
+.qx-chart-footer{padding:12px 2px 2px}
+.qx-chart-footer a{color:#8ec5ff;text-decoration:none}
+.qx-chart-footer a:hover{text-decoration:underline}
+.qx-chart-loading{background:radial-gradient(ellipse at 50% 45%,rgba(47,87,128,.12),transparent 65%);color:#9eafc3}
+.qx-chart-error{color:#ff9da5}
+@media(max-width:700px){.qx-chart-host{height:430px;min-height:360px}.qx-chart-options{gap:7px}.qx-chart-options label{font-size:10px}}

@@ -241,7 +241,9 @@
   if(mode==="trend"){if(!firstPoint){firstPoint={time:param.time,price};status("Trend line: click its second point.");return;}if(firstPoint.time===param.time){status("Choose a different candle for the second point.",true);return;}const pts=[firstPoint,{time:param.time,price}].sort((a,b)=>a.time-b.time),series=chart.addSeries(window.LightweightCharts.LineSeries,{color:"#e8bd55",lineWidth:2,priceLineVisible:false,lastValueVisible:false});series.setData(pts.map(p=>({time:p.time,value:p.price})));drawings.push({kind:"trend",series});firstPoint=null;status("Trend line added.");}
  }
  async function load(){
-  status("Loading "+cfg.symbol+" "+cfg.interval+" candles…");if(!chart)host.innerHTML='<div class="qx-chart-loading">Loading real market candles…</div>';
+  status("Loading "+cfg.symbol+" "+cfg.interval+" candles…");
+  if(!window.LightweightCharts){throw new Error("QUANTNEX VIEW chart engine did not load. Check your internet connection and reload the workspace.");}
+  if(!chart)host.innerHTML='<div class="qx-chart-loading">Loading real market candles…</div>';
   try{
    const res=await fetch(API+"/api/v1/charts/candles?symbol="+encodeURIComponent(cfg.symbol)+"&interval="+encodeURIComponent(cfg.interval)+"&limit=500",{cache:"no-store",headers:{Accept:"application/json"}}),body=await res.json().catch(()=>null);if(!res.ok)throw new Error(body?.detail||"Market data request failed ("+res.status+").");
    bars=(body.candles||[]).map(clean).filter(c=>Number.isFinite(c.time)&&[c.open,c.high,c.low,c.close].every(Number.isFinite));if(!bars.length)throw new Error("The market provider returned no valid candles.");

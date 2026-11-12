@@ -64,7 +64,16 @@ class App(tk.Tk):
         self.style.configure("Accent.TButton", background="#111111", foreground="white")
         self.style.configure("Treeview", rowheight=28, font=("Segoe UI", 9))
         self._build()
+        self._fade_in()
         self.after(1600, self._check_background)
+
+    def _fade_in(self, step=0):
+        try:
+            self.attributes("-alpha", min(1.0, step / 10))
+            if step < 10:
+                self.after(28, lambda: self._fade_in(step + 1))
+        except tk.TclError:
+            pass
 
     def _build(self):
         root = ttk.Frame(self, padding=22); root.pack(fill="both", expand=True)
@@ -226,7 +235,7 @@ class App(tk.Tk):
             self.staged_update=staged
             self.after(0,lambda:self.install_button.pack(anchor="w",pady=(10,0)))
             self._set_update_status("Version "+latest+" downloaded. Review release notes, then choose Install and restart.")
-        except (urllib.error.URLError,TimeoutError,ValueError,json.JSONDecodeError,OSError,KeyError) as exc:
+        except (urllib.error.URLError,TimeoutError,ValueError,json.JSONDecodeError,OSError,KeyError,RuntimeError,subprocess.SubprocessError) as exc:
             self._set_update_status("Could not check or download an update: "+str(exc))
 
     def _restart_source(self):

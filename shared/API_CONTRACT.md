@@ -43,6 +43,16 @@ data require a locally configured Twelve Data key. Market data is indicative;
 provider prices are not guaranteed broker execution prices. Unsupported order
 books are reported as unsupported rather than simulated.
 
+### QUANTNEX VIEW signal intelligence and research
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/quantnex-view/strategies` | Read the 100-variant setup catalogue |
+| GET | `/api/v1/quantnex-view/analyze` | Analyze the selected market/timeframe and return indicators, zones, setup evaluations and one selected signal or WAIT |
+| GET | `/api/v1/quantnex-view/backtest` | Run a historical single-position-per-symbol paper simulation |
+
+The catalogue contains 10 named setup families with 10 context variants each. These are research filters, not 100 independently validated trading edges. The engine reports confluence scores, not win probabilities. The historical simulator uses closed candles, conservative stop-first handling when stop and target levels fall in the same candle, partial TP1/TP2/TP3 exits, and a break-even stop after TP1. Backtest results are not live performance and do not guarantee future accuracy. The engine does not submit broker orders or modify a real broker stop.
+
 ## Local records and preferences
 
 | Method | Path | Purpose |

@@ -171,7 +171,7 @@
 
 /* Navigation and live monitoring improvements */
 .sidebar{height:100vh;height:100dvh;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#555 #111;scroll-padding-block:16px}
-.sidebar::-webkit-scrollbar{width:7px}
+.sidebar>*{flex-shrink:0}.sidebar::-webkit-scrollbar{width:7px}
 .sidebar::-webkit-scrollbar-track{background:#111}
 .sidebar::-webkit-scrollbar-thumb{background:#555;border-radius:8px}
 .sidebar .sidebar-bottom{flex:0 0 auto}

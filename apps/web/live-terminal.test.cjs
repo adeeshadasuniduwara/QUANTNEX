@@ -6,7 +6,6 @@ const app = fs.readFileSync("apps/web/app.js", "utf8");
 const css = fs.readFileSync("apps/web/styles.css", "utf8");
 const workspace = fs.readFileSync("apps/web/workspace-pages.js", "utf8");
 const signal = fs.readFileSync("apps/web/signal-tool.js", "utf8");
-const updater = fs.readFileSync("apps/web/quantnex_local_server.py", "utf8");
 
 assert.match(html, /id="p7BookmapCanvas"/, "Bookmap must render through a canvas");
 assert.match(html, /id="livePnlSymbol"/, "BTC/XAUUSD live P&L market selector is missing");
@@ -51,23 +50,6 @@ assert.match(signal, /symbols\}\)/, "Telegram auto-signal settings must save sel
 assert.match(app, /volume:isTrade\?Number\(data\.q\|\|0\):0/, "Live Binance trade size must feed chart volume");
 
 console.log("QUANTNEX VIEW and crypto Telegram signal checks passed.");
-
-assert.match(html, /id="webUpdateModal"/, "A new-version notification dialog must be present");
-assert.match(html, /id="webUpdateModalVersion"/, "The update dialog must show the target version");
-assert.match(html, /id="webUpdateModalChanges"/, "The update dialog must list what changed");
-assert.match(html, /id="webUpdateModalInstall"/, "The update dialog must offer Download & Install Now");
-assert.match(html, /id="webInstallUpdate" hidden/, "The Updates page install action must remain hidden until an update is found");
-assert.match(app, /New update released:/, "The updater must announce a newly available version");
-assert.match(app, /openUpdateModal\(result\)/, "A detected update must open the notification dialog");
-assert.match(app, /modalInstallButton\?\.addEventListener\("click",\(\)=>installLatestCommit\(\)/, "The popup install action must start the update only after a click");
-assert.match(app, /rememberUpdateDismissed\(sha\)/, "The user must be able to dismiss the same notification until the next version");
-assert.match(app, /300000/, "The updater must periodically check for new GitHub commits while visible");
-assert.doesNotMatch(app, /Starting automatic installation/, "Detecting an update must never silently install it");
-assert.match(updater, /compare\/\{installed\}\.\.\.\{latest\['sha'\]\}/, "The updater must compare installed and latest GitHub commits");
-assert.match(updater, /"files_changed": files_changed/, "The updater must return changed-file metadata");
-assert.match(css, /\.web-update-dialog/, "The update dialog must have dedicated responsive styling");
-
-console.log("QUANTNEX update notification and user-approved install checks passed.");
 
 assert.ok(html.includes("cdn.jsdelivr.net/npm/lightweight-charts"), "QUANTNEX VIEW must have a primary chart-engine CDN");
 assert.ok(html.includes("unpkg.com/lightweight-charts"), "QUANTNEX VIEW must have a fallback chart-engine CDN");

@@ -94,6 +94,30 @@
     $("signalEngineState").textContent="SIGNAL STATUS UNAVAILABLE";
     $("signalEngineState").title="The local signal-status API could not be reached: "+error.message;
   });
+  window.addEventListener("quantnex:workspace-event",event=>{
+    const detail=event.detail||{};
+    if(detail.type==="preferences.changed"&&detail.payload?.key==="signal_settings"){
+      apiRequest("/api/v1/signals/settings").then(applySettings).catch(error=>{
+        $("timeframeStatus").textContent="Signal settings refresh failed: "+error.message;
+      });
+    }
+    if(detail.type==="integration.changed"&&detail.entity==="telegram"){
+      apiRequest("/api/v1/telegram/status").then(botStatus=>{
+        $("telegramStatus").textContent=botStatus.connected?"Telegram bot connected.":"Telegram bot not connected.";
+      }).catch(error=>{$("telegramStatus").textContent="Telegram status unavailable: "+error.message;});
+    }
+  });
+  window.addEventListener("quantnex:workspace-resync",()=>{
+    apiRequest("/api/v1/signals/settings").then(applySettings).catch(()=>{});
+    apiRequest("/api/v1/signals/status").then(feedStatus=>{
+      $("signalEngineState").textContent=feedStatus.crypto_configured
+        ?(feedStatus.gold_configured?"CRYPTO + GOLD READY":"CRYPTO READY · GOLD OPTIONAL")
+        :"SIGNAL FEED NOT CONFIGURED";
+    }).catch(error=>{
+      $("signalEngineState").textContent="SIGNAL STATUS UNAVAILABLE";
+      $("signalEngineState").title=error.message;
+    });
+  });
 
   function addStat(parent,label,value) {
     const d=document.createElement("div"),s=document.createElement("span"),v=document.createElement("strong");

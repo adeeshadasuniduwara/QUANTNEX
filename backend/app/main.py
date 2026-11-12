@@ -81,6 +81,10 @@ def local_workspace(db: Session = Depends(get_db)) -> User:
             paper_trade.user_id = owner.id
         for research_run in db.scalars(select(StrategyLabRun).where(StrategyLabRun.user_id == legacy.id)):
             research_run.user_id = owner.id
+        for personal_goal in db.scalars(select(PersonalGoal).where(PersonalGoal.user_id == legacy.id)):
+            personal_goal.user_id = owner.id
+        for goal_contribution in db.scalars(select(GoalContribution).where(GoalContribution.user_id == legacy.id)):
+            goal_contribution.user_id = owner.id
         # Flush reassigned child rows before deleting the legacy owner; ORM delete cascades
         # must not interpret the moved rows as orphans.
         db.flush()

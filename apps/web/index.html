@@ -24,6 +24,7 @@
       <a class="nav-link" href="#updates"><span>↻</span>Updates</a>
       <div class="side-caption">INTELLIGENCE</div>
       <a class="nav-link" href="#market-intelligence"><span>◉</span>Market Intelligence</a>
+      <a class="nav-link" href="#data-reliability"><span>⌁</span>Data Reliability</a>
       <a class="nav-link" href="#ai-signal-center"><span>⌁</span>AI Signal Center</a>
       <a class="nav-link" href="#orderflow-liquidity"><span>≋</span>Order Flow &amp; Liquidity</a>
       <a class="nav-link" href="#news-intelligence"><span>▤</span>News Intelligence</a>
@@ -80,6 +81,18 @@
         <div class="phase07-toolbar"><div><strong>Market watch</strong><p>BTC, ETH, SOL, XAUUSD, EURUSD, GBPUSD and USDJPY.</p></div><button class="secondary-btn" id="p7RefreshMarkets">Refresh markets</button></div>
         <div class="p7-market-grid" id="p7MarketCards"><div class="p7-empty">Loading live provider quotes…</div></div>
         <p class="p7-note" id="p7MarketNote">Indicative quotes. Provider availability and timestamps are shown per market.</p>
+      </section>
+      <section class="section-heading" id="data-reliability"><div><div class="overline">PHASE 10 · MARKET DATA TRUST</div><h2>Market Data Reliability</h2><p>Verify provider timestamps, quote freshness and candle integrity before paper entries.</p></div><span class="pill">DATA GUARDIAN</span></section>
+      <section class="panel phase10-panel">
+        <div class="phase07-toolbar"><div><strong>Provider health monitor</strong><p>Every supported market is checked independently. Missing source timestamps are treated as unsafe.</p></div><button class="primary-btn" id="p10ScanMarkets">Scan all markets</button></div>
+        <p id="p10Status" class="p7-note" role="status">Run a scan to inspect current provider health.</p>
+        <div class="p7-kpi-grid" id="p10Kpis"><article><span>Healthy</span><strong>—</strong></article><article><span>Degraded</span><strong>—</strong></article><article><span>Unsafe</span><strong>—</strong></article><article><span>Safe to paper-enter</span><strong>—</strong></article></div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Market</th><th>Provider</th><th>Health</th><th>Price</th><th>Age (sec)</th><th>Issues</th></tr></thead><tbody id="p10MarketRows"><tr><td colspan="6" class="empty-row">No reliability scan yet.</td></tr></tbody></table></div>
+        <div class="p10-detail">
+          <div class="p7-form-row"><label>Detailed market <select id="p10Symbol"><option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option><option>XAUUSD</option><option>EURUSD</option><option>GBPUSD</option><option>USDJPY</option></select></label><label>Timeframe <select id="p10Timeframe"><option>15m</option><option>5m</option><option>1h</option><option>4h</option></select></label><button class="secondary-btn" id="p10CheckCandles">Validate candles</button></div>
+          <div id="p10DetailResult" class="p10-detail-result"><p class="p7-note">Select a market to validate its latest candle series.</p></div>
+        </div>
+        <p class="p7-note">UNSAFE data blocks new QUANTNEX paper entries. DEGRADED data is shown with warnings; candle gaps can occur during legitimate market closures. Existing positions are not forcibly closed by this monitor.</p>
       </section>
       <section class="section-heading" id="ai-signal-center"><div><div class="overline">PHASE 07 · MULTI-TIMEFRAME ANALYSIS</div><h2>AI Signal Center</h2><p>Transparent rule-based analysis. Signal scores are confluence counts, not win probabilities.</p></div><span class="pill">WAIT / BUY / SELL</span></section>
       <section class="panel phase07-panel">

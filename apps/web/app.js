@@ -217,18 +217,21 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   function update(){
     const symbol=symbolInput.value,price=prices.get(symbol);
     const unit=$("livePnlUnit"),quantity=$("livePnlQuantity");
-    if(unit)unit.textContent=symbol==="BTCUSDT"?"BTC":"troy oz";
-    if(quantity)quantity.placeholder=symbol==="BTCUSDT"?"0.001":"1.0";
+    if(unit)unit.textContent=symbol==="BTCUSDT"?"BTC":"lots";
+    if(quantity)quantity.placeholder=symbol==="BTCUSDT"?"0.001":"0.01";
+    const contractWrap=$("livePnlContractSizeWrap");
+    if(contractWrap)contractWrap.hidden=symbol!=="XAUUSD";
     $("livePnlCurrent").textContent=Number.isFinite(price)?priceText(price):"Waiting for quote…";
     if(!Number.isFinite(price)){
       $("livePnlUpdated").textContent="Waiting for "+(symbol==="BTCUSDT"?"Binance trade feed":"Gold provider quote");
       $("livePnlResult").textContent="—";$("livePnlMove").textContent="Live price not available";return;
     }
     const entry=Number($("livePnlEntry").value),qty=Number(quantity.value),direction=$("livePnlSide").value==="LONG"?1:-1;
-    if(!Number.isFinite(entry)||entry<=0||!Number.isFinite(qty)||qty<=0){
-      $("livePnlResult").textContent="—";$("livePnlMove").textContent="Enter a valid entry price and quantity";return;
+    const contractSize=symbol==="XAUUSD"?Number($("livePnlContractSize").value):1;
+    if(!Number.isFinite(entry)||entry<=0||!Number.isFinite(qty)||qty<=0||!Number.isFinite(contractSize)||contractSize<=0){
+      $("livePnlResult").textContent="—";$("livePnlMove").textContent="Enter valid entry, quantity and contract size";return;
     }
-    const pnl=(price-entry)*qty*direction,pct=((price-entry)/entry)*direction*100;
+    const pnl=(price-entry)*qty*contractSize*direction,pct=((price-entry)/entry)*direction*100;
     $("livePnlResult").textContent=money(pnl);
     $("livePnlResult").className=pnl>=0?"positive":"negative";
     $("livePnlMove").textContent=(pct>=0?"+":"")+pct.toFixed(3)+"% price move · gross estimate";
@@ -243,7 +246,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
       }
     }
   });
-  [symbolInput,$("livePnlSide"),$("livePnlEntry"),$("livePnlQuantity")].forEach(input=>{
+  [symbolInput,$("livePnlSide"),$("livePnlEntry"),$("livePnlQuantity"),$("livePnlContractSize")].forEach(input=>{
     input.addEventListener("input",update);input.addEventListener("change",update);
   });
   update();

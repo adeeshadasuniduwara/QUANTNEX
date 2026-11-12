@@ -106,7 +106,7 @@ class App(tk.Tk):
         self.device_tab = ttk.Frame(tabs, padding=18)
         tabs.add(self.home, text="Overview"); tabs.add(self.charts, text="Charts")
         tabs.add(self.calc, text="Position Calculator")
-        tabs.add(self.journal_tab, text="Trade Journal"); tabs.add(self.account_tab, text="Account & Wallet")
+        tabs.add(self.journal_tab, text="Trade Journal"); tabs.add(self.account_tab, text="Local Wallet")
         tabs.add(self.device_tab, text="Device"); tabs.add(self.updates, text="Updates")
         self._home(); self._charts(); self._calculator(); self._journal(); self._account(); self._device(); self._updates()
         ttk.Label(root, text="Local demo workspace • No broker connection • No orders placed", style="Muted.TLabel").pack(anchor="w", pady=(12,0))
@@ -378,7 +378,7 @@ class App(tk.Tk):
         actions=ttk.Frame(card); actions.pack(anchor="w")
         ttk.Button(actions,text="Copy ID",command=self._copy_device_id).pack(side="left")
         ttk.Button(actions,text="Reset / Generate new ID",command=self._reset_device_id).pack(side="left",padx=8)
-        ttk.Label(self.device_tab,text="Resetting the ID creates a new local identity. It does not create a QUANTNEX login or register this device with a server; account authentication and server-side device management are still future work.",style="Muted.TLabel",wraplength=820).pack(anchor="w",pady=14)
+        ttk.Label(self.device_tab,text="Resetting the ID creates a new random local installation identifier. It does not change your local journal, wallet or workspace data.",style="Muted.TLabel",wraplength=820).pack(anchor="w",pady=14)
 
     def _copy_device_id(self):
         self.clipboard_clear(); self.clipboard_append(self.device_id.get())

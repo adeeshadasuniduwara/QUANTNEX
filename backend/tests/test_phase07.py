@@ -23,3 +23,18 @@ def test_risk_calculator_returns_position_units_not_broker_lots():
 def test_risk_calculator_rejects_invalid_inputs(args):
     with pytest.raises(ValueError):
         calculate_risk(*args)
+
+from types import SimpleNamespace
+from app.paper_worker import exit_reason
+
+def test_paper_buy_trade_closes_at_stop_or_target():
+    trade=SimpleNamespace(side="BUY",stop_loss=95,take_profit=110)
+    assert exit_reason(trade,94.5)=="STOP_LOSS"
+    assert exit_reason(trade,110)=="TAKE_PROFIT"
+    assert exit_reason(trade,100) is None
+
+def test_paper_sell_trade_closes_at_stop_or_target():
+    trade=SimpleNamespace(side="SELL",stop_loss=105,take_profit=90)
+    assert exit_reason(trade,106)=="STOP_LOSS"
+    assert exit_reason(trade,89)=="TAKE_PROFIT"
+    assert exit_reason(trade,100) is None

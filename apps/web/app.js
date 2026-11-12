@@ -339,7 +339,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
       $("p7MarketNote").textContent=data.note+" Crypto prices update from Binance WebSocket; Gold/Forex refresh according to provider availability.";
     }catch(error){if(!root.children.length)root.replaceChildren(node("div","Market feed unavailable: "+error.message,"p7-empty"));}
   }
-  let tickerSocket=null,tickerRetry=null,bookSocket=null,bookRetry=null,bookGeneration=0;
+  let tickerSocket=null,tickerRetry=null,bookSocket=null,bookRetry=null,bookGeneration=0,bookHistory=[],latestBookData=null,bookRenderTimer=null,lastBookTableAt=0;
   function connectCryptoTicker(){
     if(document.hidden||tickerSocket||!window.WebSocket)return;
     try{
@@ -374,37 +374,78 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   }
   function stopCryptoTicker(){clearTimeout(tickerRetry);tickerRetry=null;if(tickerSocket){tickerSocket.onclose=null;tickerSocket.close();tickerSocket=null;}}
   function renderBookmap(symbol,bids,asks){
-    const root=$("p7Bookmap");if(!root)return;root.replaceChildren();
-    const max=Math.max(1,...bids.map(x=>Number(x[1])),...asks.map(x=>Number(x[1])));
-    const side=(rows,kind)=>{
-      const column=node("div",undefined,"p7-bookmap-side");
-      rows.slice(0,15).forEach(([price,qty])=>{
-        const row=node("div",undefined,"p7-bookmap-row "+kind);
-        const bar=node("span",undefined,"depth-bar");bar.style.width=Math.max(1,Number(qty)/max*100)+"%";
-        row.append(bar,node("span",fmt(Number(price),priceDigits(symbol)),"depth-price"),node("span",fmt(Number(qty),6),"depth-size"));
-        column.append(row);
-      });
-      return column;
-    };
-    root.append(side(bids,"bid"),side(asks,"ask"));
-    const totalBid=bids.reduce((sum,x)=>sum+Number(x[1]),0),totalAsk=asks.reduce((sum,x)=>sum+Number(x[1]),0);
-    const sum=totalBid+totalAsk,imbalance=sum?(totalBid-totalAsk)/sum*100:0;
-    $("p7BookImbalance").textContent="Live depth imbalance "+imbalance.toFixed(1)+"%";
-    $("p7BookLiveStatus").textContent="LIVE · Binance depth stream · "+new Date().toLocaleTimeString();
-    $("p7BookLiveStatus").className="p7-live-indicator";
-    [["p7Bids",bids],["p7Asks",asks]].forEach(([id,rows])=>{
-      const body=$(id);body.replaceChildren();
-      rows.slice(0,12).forEach(([price,qty])=>{const tr=node("tr");addCell(tr,fmt(Number(price),priceDigits(symbol)));addCell(tr,fmt(Number(qty),6));body.append(tr);});
+    latestBookData={symbol,bids:bids.slice(0,20).map(row=>[Number(row[0]),Number(row[1])]),asks:asks.slice(0,20).map(row=>[Number(row[0]),Number(row[1])]),receivedAt:Date.now()};
+    bookHistory.push(latestBookData);
+    if(bookHistory.length>120)bookHistory.shift();
+    if(bookRenderTimer===null)bookRenderTimer=setTimeout(drawBookmap,90);
+  }
+  function drawBookmap(){
+    bookRenderTimer=null;
+    const root=$("p7Bookmap"),canvas=$("p7BookmapCanvas");
+    if(!root||!canvas||!latestBookData)return;
+    const width=Math.max(1,root.clientWidth),height=Math.max(180,root.clientHeight||280);
+    const ratio=Math.min(window.devicePixelRatio||1,1.25);
+    const pixelWidth=Math.round(width*ratio),pixelHeight=Math.round(height*ratio);
+    if(canvas.width!==pixelWidth||canvas.height!==pixelHeight){canvas.width=pixelWidth;canvas.height=pixelHeight;}
+    canvas.style.width=width+"px";canvas.style.height=height+"px";
+    const ctx=canvas.getContext("2d");if(!ctx)return;
+    ctx.setTransform(ratio,0,0,ratio,0,0);
+    ctx.fillStyle="#090d0b";ctx.fillRect(0,0,width,height);
+    const priceRows=bookHistory.flatMap(snap=>[...snap.bids,...snap.asks].map(row=>row[0])).filter(Number.isFinite);
+    if(!priceRows.length)return;
+    let minPrice=Math.min(...priceRows),maxPrice=Math.max(...priceRows);
+    if(maxPrice<=minPrice){minPrice-=0.5;maxPrice+=0.5;}
+    const quantityRows=bookHistory.flatMap(snap=>[...snap.bids,...snap.asks].map(row=>row[1])).filter(v=>Number.isFinite(v)&&v>0);
+    const maxQty=Math.max(1,...quantityRows);
+    const leftPad=2,topPad=20,bottomPad=12,plotHeight=height-topPad-bottomPad;
+    const colWidth=(width-leftPad)/Math.max(1,bookHistory.length);
+    const rowHeight=Math.max(2,plotHeight/64);
+    bookHistory.forEach((snap,index)=>{
+      const x=leftPad+index*colWidth;
+      const drawSide=(rows,isBid)=>{
+        rows.forEach(([price,quantity])=>{
+          if(!Number.isFinite(price)||!Number.isFinite(quantity)||quantity<=0)return;
+          const y=topPad+(maxPrice-price)/(maxPrice-minPrice)*plotHeight;
+          const intensity=Math.min(0.88,0.10+Math.sqrt(quantity/maxQty)*0.78);
+          ctx.fillStyle=isBid?"rgba(37,190,130,"+intensity+")":"rgba(230,82,94,"+intensity+")";
+          ctx.fillRect(x,y-rowHeight/2,Math.max(1,colWidth+0.5),rowHeight);
+        });
+      };
+      drawSide(snap.bids,true);drawSide(snap.asks,false);
     });
-    $("p7BookNote").textContent="Live partial-depth updates from Binance Spot. Visible levels are resting orders, not executed trades or guaranteed liquidity.";
+    const bestBid=latestBookData.bids[0]?.[0],bestAsk=latestBookData.asks[0]?.[0];
+    if(Number.isFinite(bestBid)&&Number.isFinite(bestAsk)){
+      const mid=(bestBid+bestAsk)/2,y=topPad+(maxPrice-mid)/(maxPrice-minPrice)*plotHeight;
+      ctx.strokeStyle="rgba(255,255,255,.58)";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(width,y);ctx.stroke();
+    }
+    ctx.fillStyle="rgba(245,245,245,.78)";ctx.font="10px sans-serif";
+    ctx.fillText("ASK LIQUIDITY",8,13);ctx.fillText("BID LIQUIDITY",8,height-3);
+    const now=Date.now();
+    if(now-lastBookTableAt>=500){
+      lastBookTableAt=now;
+      const bids=latestBookData.bids,asks=latestBookData.asks;
+      const totalBid=bids.reduce((sum,row)=>sum+row[1],0),totalAsk=asks.reduce((sum,row)=>sum+row[1],0);
+      const total=totalBid+totalAsk,imbalance=total?(totalBid-totalAsk)/total*100:0;
+      $("p7BookImbalance").textContent="Live depth imbalance "+imbalance.toFixed(1)+"%";
+      $("p7BookLiveStatus").textContent="LIVE · 100ms Binance depth · "+new Date(latestBookData.receivedAt).toLocaleTimeString();
+      $("p7BookLiveStatus").className="p7-live-indicator";
+      [["p7Bids",bids],["p7Asks",asks]].forEach(([id,rows])=>{
+        const body=$(id);body.replaceChildren();
+        rows.slice(0,12).forEach(([price,qty])=>{const tr=node("tr");addCell(tr,fmt(price,priceDigits(latestBookData.symbol)));addCell(tr,fmt(qty,6));body.append(tr);});
+      });
+      $("p7BookNote").textContent="Rolling 12-second liquidity history from Binance Spot top-20 partial-depth snapshots. Resting orders only; not executed volume or guaranteed liquidity.";
+    }
   }
   function loadBook(){
     const symbol=$("p7BookSymbol").value.toLowerCase();
     const generation=++bookGeneration;
     clearTimeout(bookRetry);bookRetry=null;
+    if(bookRenderTimer!==null){clearTimeout(bookRenderTimer);bookRenderTimer=null;}
+    bookHistory=[];latestBookData=null;lastBookTableAt=0;
     if(bookSocket){bookSocket.onclose=null;bookSocket.close();bookSocket=null;}
     $("p7BookLiveStatus").textContent="Connecting to "+symbol.toUpperCase()+" depth stream…";
-    $("p7Bookmap").replaceChildren(node("div","Waiting for live depth updates…","p7-empty"));
+    const canvas=$("p7BookmapCanvas");
+    if(canvas){const ctx=canvas.getContext("2d");if(ctx)ctx.clearRect(0,0,canvas.width,canvas.height);}
     if(!window.WebSocket||document.hidden)return;
     try{
       bookSocket=new WebSocket("wss://stream.binance.com:9443/ws/"+symbol+"@depth20@100ms");
@@ -417,6 +458,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
       bookSocket.onclose=()=>{if(generation===bookGeneration&&!document.hidden){$("p7BookLiveStatus").textContent="Stream disconnected · reconnecting…";bookRetry=setTimeout(loadBook,2500);}};
     }catch(error){$("p7BookLiveStatus").textContent="Live depth unavailable: "+error.message;}
   }
+  window.addEventListener("resize",()=>{if(latestBookData)drawBookmap();});
   function renderSignal(data){
     const root=$("p7SignalResult");root.replaceChildren();
     const signal=data.signal;

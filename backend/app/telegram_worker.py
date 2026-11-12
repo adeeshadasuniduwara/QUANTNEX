@@ -66,7 +66,7 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
         return "Trend filter set to "+names[parts[1]]+"."
     if command=="/setanalysis" and len(parts)>1:
         selected=list(dict.fromkeys(x for x in parts[1].split(",") if x in {"1","5","15","30","50","60"}))
-        if not selected:return "Use /setanalysis 1,5,15,30,60"
+        if not selected:return "Use /setanalysis 1,5,15,30,50,60"
         settings["enabled"]=selected;_set(db,user_id,"signal_settings",json.dumps(settings));db.commit()
         return "Analysis timeframes saved: "+", ".join(names[x] for x in selected)
     if command=="/status":

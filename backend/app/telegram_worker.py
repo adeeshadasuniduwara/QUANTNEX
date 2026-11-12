@@ -20,8 +20,11 @@ def _set(db, user_id: int, key: str, value: str) -> None:
     else: row.value=value
 
 async def _send(client: httpx.AsyncClient, token: str, chat_id: str, text: str) -> None:
-    await client.post(f"https://api.telegram.org/bot{token}/sendMessage",
+    response=await client.post(f"https://api.telegram.org/bot{token}/sendMessage",
         json={"chat_id":chat_id,"text":text[:4000],"disable_web_page_preview":True})
+    response.raise_for_status()
+    if not response.json().get("ok"):
+        raise httpx.HTTPStatusError("Telegram did not accept the message.",request=response.request,response=response)
 
 async def _price(client: httpx.AsyncClient) -> float | None:
     if not TWELVE_DATA_API_KEY:return None

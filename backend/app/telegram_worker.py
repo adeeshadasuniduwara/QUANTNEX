@@ -161,12 +161,12 @@ async def telegram_worker() -> None:
                                         fingerprint="|".join([market_symbol,str(candidate.get("side")),str(candidate.get("timeframe")),str(candidate.get("signal_candle_time"))])
                                         previous=_get(db,user_id,fingerprint_key)
                                         if fingerprint and fingerprint!=previous:
-                                            msg=("QUANTNEX · AUTO SIGNAL · "+market_symbol+" "+candidate["side"]+"\\n"
-                                                +"Signal TF: "+str(candidate["timeframe"])+"m · Trend TF: "+str(candidate["trend_timeframe"])+"m\\n"
-                                                +"Entry: "+str(candidate["entry"])+"\\nSL: "+str(candidate["stop_loss"])+"\\n"
-                                                +"TP1: "+str(candidate["tp1"])+"\\nTP2: "+str(candidate["tp2"])+"\\nTP3: "+str(candidate["tp3"])+"\\n"
-                                                +"Confluence: "+str(candidate["score"])+"/10 (rule count, not win probability)\\n"
-                                                +"Confirmations: "+", ".join(candidate["confirmations"])+"\\n"
+                                            msg=("QUANTNEX · AUTO SIGNAL · "+market_symbol+" "+candidate["side"]+"\n"
+                                                +"Signal TF: "+str(candidate["timeframe"])+"m · Trend TF: "+str(candidate["trend_timeframe"])+"m\n"
+                                                +"Entry: "+str(candidate["entry"])+"\nSL: "+str(candidate["stop_loss"])+"\n"
+                                                +"TP1: "+str(candidate["tp1"])+"\nTP2: "+str(candidate["tp2"])+"\nTP3: "+str(candidate["tp3"])+"\n"
+                                                +"Confluence: "+str(candidate["score"])+"/10 (rule count, not win probability)\n"
+                                                +"Confirmations: "+", ".join(candidate["confirmations"])+"\n"
                                                 +"Signal only; verify spread, fees and execution. No order is placed.")
                                             await _send(client,token,chat_id,msg)
                                             _set(db,user_id,fingerprint_key,fingerprint)

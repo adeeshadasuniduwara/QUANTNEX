@@ -287,7 +287,8 @@ async def paper_autopilot_worker() -> None:
                             side = candidate["side"]
                             stop = entry - distance if side == "BUY" else entry + distance
                             target = entry + distance * 3 if side == "BUY" else entry - distance * 3
-                            risk_cash = settings["paper_equity"] * settings["risk_percent"] / 100
+                            current_equity = max(100.0, float(guard["paper_equity_estimate"]))
+                            risk_cash = current_equity * settings["risk_percent"] / 100
                             quantity = risk_cash / distance
                             if not math.isfinite(quantity) or not 0 < quantity <= 1000000:
                                 continue

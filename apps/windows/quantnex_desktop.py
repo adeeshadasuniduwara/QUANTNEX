@@ -1,6 +1,7 @@
 from __future__ import annotations
 import hashlib, json, os, shutil, sqlite3, subprocess, sys, threading, urllib.error, urllib.request, webbrowser
 from datetime import datetime
+import uuid
 from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox, ttk
@@ -13,6 +14,17 @@ def app_data():
     path = Path.home() / "AppData" / "Local" / "QUANTNEX"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+def get_device_id():
+    """Create a stable random installation ID; never read hardware serials."""
+    identity_file = app_data() / "device_id.txt"
+    try:
+        value = identity_file.read_text(encoding="utf-8").strip()
+        return str(uuid.UUID(value))
+    except (OSError, ValueError, AttributeError):
+        value = str(uuid.uuid4())
+        identity_file.write_text(value, encoding="utf-8")
+        return value
 
 def calculate_position_size(equity, risk_percent, stop_pips, pip_value):
     if equity <= 0 or not 0 < risk_percent <= 100 or stop_pips <= 0 or pip_value <= 0:
@@ -68,6 +80,7 @@ class App(tk.Tk):
         self._build()
         self._fade_in()
         self.after(1600, self._check_background)
+        self.after(1200, self._refresh_chart)
 
     def _fade_in(self, step=0):
         try:
@@ -85,9 +98,12 @@ class App(tk.Tk):
         tabs = ttk.Notebook(root); tabs.pack(fill="both", expand=True)
         self.home = ttk.Frame(tabs, padding=18); self.calc = ttk.Frame(tabs, padding=18)
         self.journal_tab = ttk.Frame(tabs, padding=18); self.updates = ttk.Frame(tabs, padding=18)
-        tabs.add(self.home, text="Overview"); tabs.add(self.calc, text="Position Calculator")
-        tabs.add(self.journal_tab, text="Trade Journal"); tabs.add(self.updates, text="Updates")
-        self._home(); self._calculator(); self._journal(); self._updates()
+        self.charts = ttk.Frame(tabs, padding=18); self.device_tab = ttk.Frame(tabs, padding=18)
+        tabs.add(self.home, text="Overview"); tabs.add(self.charts, text="Charts")
+        tabs.add(self.calc, text="Position Calculator")
+        tabs.add(self.journal_tab, text="Trade Journal"); tabs.add(self.device_tab, text="Device")
+        tabs.add(self.updates, text="Updates")
+        self._home(); self._charts(); self._calculator(); self._journal(); self._device(); self._updates()
         ttk.Label(root, text="Local demo workspace • No broker connection • No orders placed", style="Muted.TLabel").pack(anchor="w", pady=(12,0))
 
     def _home(self):
@@ -152,6 +168,105 @@ class App(tk.Tk):
     def _refresh(self):
         for item in self.table.get_children(): self.table.delete(item)
         for row in self.journal.recent(): self.table.insert("","end",values=(row[0],row[1],row[2],row[3],f"{row[4]:.2f}"))
+
+    def _charts(self):
+        ttk.Label(self.charts, text="Live Market Charts", font=("Segoe UI", 18, "bold")).pack(anchor="w")
+        ttk.Label(self.charts, text="BTCUSDT candles stream from Binance public market data. Gold opens the live OANDA:XAUUSD TradingView chart.", style="Muted.TLabel", wraplength=850).pack(anchor="w", pady=(4,12))
+        top = ttk.Frame(self.charts); top.pack(fill="x", pady=(0,10))
+        self.btc_quote = ttk.Label(top, text="BTCUSDT  •  Connecting…", font=("Segoe UI", 14, "bold"))
+        self.btc_quote.pack(side="left")
+        self.chart_status = ttk.Label(top, text="15m · Binance public feed", style="Muted.TLabel")
+        self.chart_status.pack(side="right")
+        self.chart_canvas = tk.Canvas(self.charts, height=390, bg="#090909", highlightthickness=1, highlightbackground="#303030")
+        self.chart_canvas.pack(fill="both", expand=True)
+        actions = ttk.Frame(self.charts); actions.pack(fill="x", pady=(12,0))
+        ttk.Button(actions, text="Open BTC TradingView", command=lambda:webbrowser.open("https://www.tradingview.com/chart/?symbol=BINANCE%3ABTCUSDT")).pack(side="left")
+        ttk.Button(actions, text="Open Gold XAUUSD Chart", style="Accent.TButton", command=lambda:webbrowser.open("https://www.tradingview.com/chart/?symbol=OANDA%3AXAUUSD")).pack(side="left", padx=8)
+        ttk.Label(self.charts, text="Market data is for charting and analysis only. It is not a broker quote guarantee or an order connection.", style="Muted.TLabel", wraplength=850).pack(anchor="w", pady=(10,0))
+
+    def _refresh_chart(self):
+        if not hasattr(self, "chart_canvas"):
+            return
+        if getattr(self, "_chart_loading", False):
+            self.after(5000, self._refresh_chart)
+            return
+        self._chart_loading = True
+        def worker():
+            try:
+                request = urllib.request.Request(
+                    "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=15m&limit=60",
+                    headers={"User-Agent":"QUANTNEX-Desktop"})
+                with urllib.request.urlopen(request, timeout=10) as response:
+                    rows = json.loads(response.read().decode("utf-8"))
+                candles = [{"open":float(x[1]),"high":float(x[2]),"low":float(x[3]),"close":float(x[4])} for x in rows]
+                price = candles[-1]["close"] if candles else None
+                self.after(0, lambda:self._chart_loaded(candles, price, None))
+            except Exception as exc:
+                self.after(0, lambda:self._chart_loaded([], None, str(exc)))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _chart_loaded(self, candles, price, error):
+        self._chart_loading = False
+        if error:
+            self.chart_status.configure(text="Feed unavailable · retrying")
+            self.chart_canvas.delete("all")
+            self.chart_canvas.create_text(20, 24, anchor="nw", fill="#aaaaaa",
+                text="Could not load Binance candles. Check your internet connection and try again.")
+        else:
+            self.chart_status.configure(text="LIVE · Binance · 15m candles")
+            self.btc_quote.configure(text=f"BTCUSDT  ${price:,.2f}" if price else "BTCUSDT")
+            self._draw_candles(candles)
+        self.after(15000, self._refresh_chart)
+
+    def _draw_candles(self, candles):
+        canvas = self.chart_canvas
+        canvas.delete("all")
+        width = max(canvas.winfo_width(), 400); height = max(canvas.winfo_height(), 260)
+        left, right, top, bottom = 66, width-18, 18, height-34
+        if not candles:
+            canvas.create_text(left, top, anchor="nw", fill="#aaaaaa", text="Waiting for market data…")
+            return
+        low = min(c["low"] for c in candles); high = max(c["high"] for c in candles)
+        pad = max((high-low)*0.08, high*0.0005); low -= pad; high += pad
+        plot_h = bottom-top; plot_w = right-left
+        for i in range(5):
+            y = top + plot_h*i/4
+            value = high - (high-low)*i/4
+            canvas.create_line(left,y,right,y,fill="#252525")
+            canvas.create_text(left-8,y,anchor="e",fill="#888888",font=("Segoe UI",8),text=f"{value:,.0f}")
+        step = plot_w/len(candles); body_w=max(3,step*0.58)
+        for i,c in enumerate(candles):
+            x=left+step*(i+0.5)
+            y=lambda v: bottom-(v-low)/(high-low)*plot_h
+            up=c["close"]>=c["open"]; color="#d8d8d8" if up else "#777777"
+            canvas.create_line(x,y(c["high"]),x,y(c["low"]),fill=color,width=1)
+            y1,y2=sorted((y(c["open"]),y(c["close"])))
+            if y2-y1<1: y2=y1+1
+            canvas.create_rectangle(x-body_w/2,y1,x+body_w/2,y2,fill=color,outline=color)
+        canvas.create_text(left,bottom+12,anchor="w",fill="#777777",font=("Segoe UI",8),text="60 × 15-minute candles · Latest at right")
+
+    def _device(self):
+        ttk.Label(self.device_tab, text="Device & Security", font=("Segoe UI", 18, "bold")).pack(anchor="w")
+        ttk.Label(self.device_tab, text="A random installation ID for future account/device linking. No hardware serial number or MAC address is collected.", style="Muted.TLabel", wraplength=800).pack(anchor="w", pady=(5,18))
+        self.device_id = tk.StringVar(value=get_device_id())
+        card=ttk.Frame(self.device_tab, padding=18, relief="solid"); card.pack(fill="x")
+        ttk.Label(card,text="THIS INSTALLATION ID",style="Muted.TLabel").pack(anchor="w")
+        ttk.Label(card,textvariable=self.device_id,font=("Consolas",12,"bold"),wraplength=780).pack(anchor="w",pady=10)
+        actions=ttk.Frame(card); actions.pack(anchor="w")
+        ttk.Button(actions,text="Copy ID",command=self._copy_device_id).pack(side="left")
+        ttk.Button(actions,text="Reset / Generate new ID",command=self._reset_device_id).pack(side="left",padx=8)
+        ttk.Label(self.device_tab,text="Resetting the ID creates a new local identity. It does not create a QUANTNEX login or register this device with a server; account authentication and server-side device management are still future work.",style="Muted.TLabel",wraplength=820).pack(anchor="w",pady=14)
+
+    def _copy_device_id(self):
+        self.clipboard_clear(); self.clipboard_append(self.device_id.get())
+        messagebox.showinfo("Device ID","Installation ID copied.")
+
+    def _reset_device_id(self):
+        if not messagebox.askyesno("Reset Device ID","Generate a new installation ID for this copy of QUANTNEX?"):
+            return
+        value=str(uuid.uuid4())
+        (app_data()/"device_id.txt").write_text(value,encoding="utf-8")
+        self.device_id.set(value)
 
     def _updates(self):
         ttk.Label(self.updates,text="Software Updates",font=("Segoe UI",17,"bold")).pack(anchor="w")

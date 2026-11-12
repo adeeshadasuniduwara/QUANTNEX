@@ -215,6 +215,13 @@ function init(){
   alerts.push({id:Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,8),symbol,condition,target,triggered:false,createdAt:new Date().toISOString()});
   saveAlerts();renderAlerts();$("alertTarget").value="";setStatus("alertStatus","Local alert saved for "+symbol+". It will trigger when a supported price event crosses the target.");
  });
+ window.addEventListener("quantnex:stream-status",event=>{
+  const detail=event.detail||{};
+  if(detail.feed==="crypto"){
+   const connected=detail.status==="connected";
+   setStatus("cryptoDeskStatus",connected?"Binance Spot WebSocket connected · waiting for provider trade events.":"Binance Spot stream reconnecting · snapshot quotes remain available.",!connected);
+  }
+ });
  window.addEventListener("quantnex:market-tick",event=>{
   const detail=event.detail||{},symbol=String(detail.symbol||"").toUpperCase(),price=Number(detail.price);
   if(!symbol||!Number.isFinite(price))return;

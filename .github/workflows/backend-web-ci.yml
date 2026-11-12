@@ -43,6 +43,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Check Web updater Python syntax
+        run: python -m py_compile apps/web/quantnex_local_server.py
       - name: Check web JavaScript syntax
         run: |
           node --check apps/web/app.js

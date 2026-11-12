@@ -7,7 +7,7 @@ import psutil
 from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy import select, text
 from .config import DATABASE_URL
-from .database import SessionLocal, engine
+from .database import Base, SessionLocal, engine
 from .maintenance import create_backup, daily_backup_worker, list_backups, record_audit_event, restore_backup, verify_backup
 from .models import AuditEvent
 
@@ -92,6 +92,9 @@ async def restore_database(filename: str, request: Request):
             setattr(request.app.state, attribute, None)
     try:
         result = await asyncio.to_thread(restore_backup, filename, DATABASE_URL, engine)
+        # Older valid backups may predate additive Phase 07/08 tables. Recreate
+        # missing current tables before any route or background worker queries them.
+        await asyncio.to_thread(Base.metadata.create_all, bind=engine)
         with SessionLocal() as db:
             record_audit_event(db, "backup.restored", {"filename": filename,
                                                        "pre_restore_backup": result["pre_restore_backup"]},

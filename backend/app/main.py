@@ -1,14 +1,17 @@
 import asyncio
 import json
 import re
+import sqlite3
 import httpx
+from datetime import datetime
+from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
-from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS
+from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, DATABASE_URL
 from .database import Base, engine, get_db, SessionLocal
 from .models import Preference, Trade, User, WalletTransaction
 from .schemas import AIChatRequest, AIChatResponse, PreferenceResponse, PreferenceWrite, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TradeCreate, TradeResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
@@ -326,11 +329,42 @@ def disconnect_telegram_bot(user: User = Depends(local_workspace), db: Session =
     db.commit()
     return {"connected":False}
 
+def backup_legacy_database(db: Session) -> None:
+    """Create a recoverable SQLite snapshot before clearing legacy login data."""
+    users = list(db.scalars(select(User).order_by(User.id)))
+    if not users:
+        return
+    needs_migration = len(users) > 1 or users[0].email != "local@quantnex.invalid" or bool(users[0].password_hash)
+    if not needs_migration or not DATABASE_URL.startswith("sqlite:///"):
+        return
+
+    raw_path = DATABASE_URL[len("sqlite:///"):].split("?", 1)[0]
+    if raw_path == ":memory:":
+        return
+    database_path = Path(raw_path)
+    if not database_path.is_absolute():
+        database_path = Path.cwd() / database_path
+    if not database_path.is_file():
+        return
+
+    backup_dir = Path(__file__).resolve().parents[2] / "data" / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    backup_path = backup_dir / ("quantnex-pre-local-only-" + datetime.now().strftime("%Y%m%d-%H%M%S") + ".db")
+    try:
+        with sqlite3.connect(str(database_path)) as source, sqlite3.connect(str(backup_path)) as target:
+            source.backup(target)
+    except Exception:
+        backup_path.unlink(missing_ok=True)
+        raise
+    print(f"[QUANTNEX] Legacy database backup created: {backup_path}", flush=True)
+
+
 @app.on_event("startup")
 async def prepare_local_workspace():
-    """Migrate legacy accounts before the Telegram worker starts."""
+    """Back up and migrate legacy accounts before the Telegram worker starts."""
     db = SessionLocal()
     try:
+        backup_legacy_database(db)
         local_workspace(db)
     finally:
         db.close()

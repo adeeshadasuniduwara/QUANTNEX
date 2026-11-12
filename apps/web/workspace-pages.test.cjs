@@ -27,6 +27,14 @@ assert.ok(!html.includes("\\n"), "HTML must not contain literal escaped newline 
 assert.ok(html.includes('id="goalImagePreview"'), "Personal goals must expose an inline image preview");
 assert.ok(html.includes('id="goalImage"'), "Personal goals must accept an image URL");
 assert.ok(!html.includes('id="goalDescription"'), "Personal goal creation should keep optional details minimal");
+assert.ok(html.includes('id="paper-autopilot"'), "Paper autopilot workspace section must exist");
+assert.ok(html.includes('id="paperEngineToggle"'), "Paper autopilot must expose an explicit start/pause control");
+assert.ok(html.includes('id="paperUniverseRefresh"'), "Market universe discovery control must exist");
+assert.ok(html.includes('id="paperWalkForwardRun"'), "Strategy holdout validation control must exist");
+assert.ok(html.includes('id="goalJournalPreview"'), "Personal goals must support journal preview");
+assert.ok(html.includes('id="goalJournalImport"'), "Personal goals must require explicit journal import");
+assert.ok(html.includes('src="phase12-20.js"'), "Paper platform client must be loaded");
+assert.ok(fs.existsSync("apps/web/phase12-20.js"), "Paper platform client asset must exist");
 console.log("Workspace page checks passed: 10 new pages, unique section IDs, valid navigation and local event client.");
 
 assert.match(realtime, /connectedOnce&&current!==lastEventId/, "A restarted event gateway must trigger a workspace snapshot resync");

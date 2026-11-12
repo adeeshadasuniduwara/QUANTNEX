@@ -5,6 +5,9 @@ from datetime import datetime, timezone
 import httpx
 from .config import TWELVE_DATA_API_KEY
 
+def gold_lkr_per_gram(gold_usd_per_troy_ounce: float, usd_lkr: float) -> float:
+    return gold_usd_per_troy_ounce / 31.1034768 * usd_lkr
+
 async def _twelve_price(client: httpx.AsyncClient, symbol: str):
     if not TWELVE_DATA_API_KEY:
         return None
@@ -26,7 +29,7 @@ async def get_market_overview():
     btc_price,gold_usd,usd_lkr=results
     def value(x):return None if isinstance(x,Exception) else x
     btc_price,gold_usd,usd_lkr=map(value,(btc_price,gold_usd,usd_lkr))
-    gold_lkr_gram=(gold_usd/31.1034768*usd_lkr) if gold_usd is not None and usd_lkr is not None else None
+    gold_lkr_gram=gold_lkr_per_gram(gold_usd,usd_lkr) if gold_usd is not None and usd_lkr is not None else None
     return {
         "btc_usd":btc_price,"gold_usd_oz":gold_usd,"usd_lkr":usd_lkr,
         "gold_lkr_gram":gold_lkr_gram,"gold_lkr_8g":gold_lkr_gram*8 if gold_lkr_gram is not None else None,

@@ -93,12 +93,12 @@ async def telegram_worker() -> None:
                         offset=int(_get(db,user_id,"telegram_update_offset","0") or "0")
                         try:
                             resp=await client.get(f"https://api.telegram.org/bot{token}/getUpdates",
-                                params={"offset":offset,"timeout":0,"allowed_updates":'["message"]'})
+                                params={"offset":offset,"timeout":0,"allowed_updates":'["message","channel_post"]'})
                             data=resp.json()
                             if data.get("ok"):
                                 for update in data.get("result",[]):
                                     offset=max(offset,int(update.get("update_id",0))+1)
-                                    message=update.get("message") or {}
+                                    message=update.get("message") or update.get("channel_post") or {}
                                     chat=message.get("chat") or {}
                                     if str(chat.get("id"))!=str(chat_id) and not (str(chat_id).startswith("@") and ("@"+str(chat.get("username","")).lower())==str(chat_id).lower()):continue
                                     command=message.get("text","")

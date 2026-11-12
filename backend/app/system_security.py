@@ -118,3 +118,18 @@ def get_audit_log(limit: int = Query(default=100, ge=1, le=500)):
         return {"items": [{"id": row.id, "created_at": row.created_at.isoformat(),
                            "event_type": row.event_type, "severity": row.severity,
                            "details": row.details} for row in rows]}
+
+
+@router.get("/metrics")
+def live_system_metrics():
+    """One-second local telemetry sample for the QUANTNEX dashboard."""
+    try:
+        disk=shutil.disk_usage(Path.cwd())
+        memory=psutil.virtual_memory()
+        return {"timestamp":__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+                "cpu_percent":psutil.cpu_percent(interval=0),
+                "memory_percent":memory.percent,"memory_used_bytes":memory.used,
+                "memory_total_bytes":memory.total,"disk_free_bytes":disk.free,
+                "disk_total_bytes":disk.total}
+    except Exception:
+        raise HTTPException(status_code=503,detail="Local system metrics are temporarily unavailable.")

@@ -188,13 +188,16 @@ async function loadIntegrations(){
 }
 function init(){
  const navLinks=[...document.querySelectorAll(".sidebar .nav-link")];
+ const pageTitle=document.querySelector(".topbar h1");
  const syncActiveNav=()=>{
   const current=window.location.hash||"#overview";
+  let activeLabel="Overview";
   navLinks.forEach(link=>{
    const active=link.getAttribute("href")===current;
    link.classList.toggle("active",active);
-   if(active)link.setAttribute("aria-current","location");else link.removeAttribute("aria-current");
+   if(active){link.setAttribute("aria-current","location");activeLabel=link.textContent.trim();}else link.removeAttribute("aria-current");
   });
+  if(pageTitle)pageTitle.textContent=activeLabel;
  };
  navLinks.forEach(link=>link.addEventListener("click",()=>{navLinks.forEach(item=>{item.classList.remove("active");item.removeAttribute("aria-current");});link.classList.add("active");link.setAttribute("aria-current","location");}));
  window.addEventListener("hashchange",syncActiveNav);

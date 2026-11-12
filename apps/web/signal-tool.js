@@ -178,7 +178,7 @@
   $("clearTelegram").addEventListener("click",async()=>{
     try{if(typeof sessionToken==="function"&&sessionToken())await apiRequest("/api/v1/telegram/connect",{method:"DELETE"});}
     catch(e){$("telegramStatus").textContent=e.message;return;}
-    $("tgBotToken").value="";$("tgChatId").value="";$("autoSignalsEnabled").checked=false;$("autoSignalStatus").textContent="Auto Signals OFF. Reconnect a bot before enabling it again.";$("telegramStatus").textContent="Telegram bot disconnected and stored token removed.";
+    $("tgBotToken").value="";$("tgChatId").value="";$("autoSignalsEnabled").checked=false;$("autoSignalStatus").textContent="Auto Signals OFF. Reconnect a bot before enabling it again.";$("telegramMonitorTitle").textContent="Telegram bot not connected";$("telegramMonitorDescription").textContent="Connect a bot in Signal Lab to enable delivery.";$("telegramMonitorPill").textContent="OFFLINE";$("telegramStatus").textContent="Telegram bot disconnected and stored token removed.";
   });
   $("openBotGuide").addEventListener("click",()=>{$("telegramGuide").hidden=!$("telegramGuide").hidden;});
   $("clearTelegram").title="Disconnect the saved Telegram bot";
@@ -192,8 +192,8 @@
     if(typeof sessionToken!=="function"||!sessionToken())return;
     try{
       const [settings,bot]=await Promise.all([apiRequest("/api/v1/telegram/auto-signals"),apiRequest("/api/v1/telegram/status")]);
-      if(bot.connected){$("tgBotDisplayName").value=bot.display_name||"";$("telegramStatus").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username))+" · "+bot.chat_id;}
-      else $("telegramStatus").textContent="No Telegram bot connected yet. Create one with @BotFather and connect it here.";
+      if(bot.connected){$("tgBotDisplayName").value=bot.display_name||"";$("telegramStatus").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username))+" · "+bot.chat_id;$("telegramMonitorTitle").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username));$("telegramMonitorDescription").textContent="Your personal Telegram bot is connected. Turn on Auto Signals in Signal Lab to receive new high-confluence XAUUSD setups.";$("telegramMonitorPill").textContent=settings.enabled?"AUTO ON":"CONNECTED";}
+      else {$("telegramStatus").textContent="No Telegram bot connected yet. Create one with @BotFather and connect it here.";$("telegramMonitorTitle").textContent="Telegram bot not connected";$("telegramMonitorDescription").textContent="Open Signal Lab to connect your BotFather bot and explicitly enable Auto Signals. Alerts run while the QUANTNEX API is active.";$("telegramMonitorPill").textContent="OFFLINE";}
       $("autoSignalsEnabled").checked=!!settings.enabled;
       $("autoSignalInterval").value=String(settings.interval_seconds||180);
       $("autoSignalStatus").textContent=settings.enabled?"Auto Signals ON · scans while the QUANTNEX API is running.":"Auto Signals OFF.";
@@ -206,7 +206,7 @@
     try{
       if(typeof sessionToken!=="function"||!sessionToken())throw new Error("Sign in to QUANTNEX first.");
       const result=await apiRequest("/api/v1/telegram/auto-signals",{method:"PUT",body:JSON.stringify({enabled,interval_seconds})});
-      $("autoSignalStatus").textContent=result.enabled?"Auto Signals ON · strict 8/10 minimum · every "+(interval_seconds/60)+" minute(s). Keep this computer/VPS and QUANTNEX API running.":"Auto Signals OFF. No automatic Telegram signals will be sent.";
+      $("autoSignalStatus").textContent=result.enabled?"Auto Signals ON · strict 8/10 minimum · every "+(interval_seconds/60)+" minute(s). Keep this computer/VPS and QUANTNEX API running.":"Auto Signals OFF. No automatic Telegram signals will be sent.";$("telegramMonitorPill").textContent=result.enabled?"AUTO ON":"CONNECTED";
     }catch(error){
       $("autoSignalsEnabled").checked=false;
       $("autoSignalStatus").textContent=error.message;

@@ -1,7 +1,7 @@
 /* Shared local QUANTNEX event stream. No cloud relay, credentials or synthetic market data. */
 (()=>{
 "use strict";
-const localHosts=new Set(["127.0.0.1","localhost","[::1]"]);
+const localHosts=new Set(["127.0.0.1","localhost"]);
 if(!localHosts.has(location.hostname))return;
 let socket=null,retryTimer=null,retryMs=1000,closedByPage=false,lastEventId=0,connectedOnce=false;
 const emit=(name,detail)=>window.dispatchEvent(new CustomEvent(name,{detail}));

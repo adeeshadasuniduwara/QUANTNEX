@@ -39,13 +39,13 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
     except ValueError: settings={"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":7}
     names={"1":"M1","5":"M5","15":"M15","30":"M30","50":"M50","60":"H1","240":"H4"}
     if command in {"/start","/help"}:
-        return ("QUANTNEX XAUUSD Signal Bot\\n"
-            "/timeframes — show settings\\n/settf 1|5|15|30|50|60 — primary signal timeframe\\n"
-            "/settrend 15|30|60|240 — trend filter\\n/setanalysis 1,5,15,30,60 — analysis timeframes\\n"
-            "/scan — run a fresh confluence scan\\n/status — connection status")
+        return ("QUANTNEX XAUUSD Signal Bot\n"
+            "/timeframes — show settings\n/settf 1|5|15|30|50|60 — primary signal timeframe\n"
+            "/settrend 15|30|60|240 — trend filter\n/setanalysis 1,5,15,30,60 — analysis timeframes\n"
+            "/scan — run a fresh confluence scan\n/status — connection status")
     if command=="/timeframes":
         enabled=", ".join(names.get(str(x),str(x)) for x in settings.get("enabled",[]))
-        return f"Primary: {names.get(str(settings.get('primary')))}\\nTrend: {names.get(str(settings.get('trend')))}\\nAnalysis: {enabled}"
+        return f"Primary: {names.get(str(settings.get('primary')))}\nTrend: {names.get(str(settings.get('trend')))}\nAnalysis: {enabled}"
     if command=="/settf" and len(parts)>1 and parts[1] in {"1","5","15","30","50","60"}:
         settings["primary"]=parts[1];_set(db,user_id,"signal_settings",json.dumps(settings));db.commit()
         return "Primary signal timeframe set to "+names[parts[1]]+"."
@@ -65,13 +65,13 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
             sig=result.get("signal")
             if not sig:
                 _set(db,user_id,"active_signal","");db.commit()
-                return "QUANTNEX · XAUUSD\\nWAIT — no setup reached the minimum confluence threshold.\\nScore: "+str(result["confluence_score"])+"/10\\n"+result["score_note"]
+                return "QUANTNEX · XAUUSD\nWAIT — no setup reached the minimum confluence threshold.\nScore: "+str(result["confluence_score"])+"/10\n"+result["score_note"]
             _set(db,user_id,"active_signal",json.dumps({**sig,"tp1_notified":False,"tp2_notified":False,"tp3_notified":False,"sl_notified":False}))
             db.commit()
-            return ("QUANTNEX · XAUUSD "+sig["side"]+"\\nEntry: "+str(sig["entry"])+"\\nSL: "+str(sig["stop_loss"])+
-                "\\nTP1: "+str(sig["tp1"])+"\\nTP2: "+str(sig["tp2"])+"\\nTP3: "+str(sig["tp3"])+
-                "\\nConfluence: "+str(sig["score"])+"/10 (not win probability)\\nConfirmations: "+", ".join(sig["confirmations"])+
-                "\\nTP1 hit alert monitoring is active while the local API is running. No broker order is placed.")
+            return ("QUANTNEX · XAUUSD "+sig["side"]+"\nEntry: "+str(sig["entry"])+"\nSL: "+str(sig["stop_loss"])+
+                "\nTP1: "+str(sig["tp1"])+"\nTP2: "+str(sig["tp2"])+"\nTP3: "+str(sig["tp3"])+
+                "\nConfluence: "+str(sig["score"])+"/10 (not win probability)\nConfirmations: "+", ".join(sig["confirmations"])+
+                "\nTP1 hit alert monitoring is active while the local API is running. No broker order is placed.")
         except MarketDataError as exc:return "Signal scan unavailable: "+str(exc)
         except Exception:return "Signal scan failed. Check the local API logs and market-data provider configuration."
     return "Unknown command. Send /help."
@@ -119,10 +119,10 @@ async def telegram_worker() -> None:
                                         hit_tp2=price>=active["tp2"] if side=="BUY" else price<=active["tp2"]
                                         hit_tp3=price>=active["tp3"] if side=="BUY" else price<=active["tp3"]
                                         if hit_sl and not active.get("sl_notified") and not active.get("tp1_notified"):
-                                            await _send(client,token,chat_id,f"⚠️ QUANTNEX · XAUUSD SL level touched\\nObserved price: {price}\\nCheck your broker execution. No order was modified.")
+                                            await _send(client,token,chat_id,f"⚠️ QUANTNEX · XAUUSD SL level touched\nObserved price: {price}\nCheck your broker execution. No order was modified.")
                                             active["sl_notified"]=True;active_raw=""
                                         elif hit_tp1 and not active.get("tp1_notified"):
-                                            await _send(client,token,chat_id,f"⚠️ QUANTNEX · XAUUSD TP1 level touched\\nObserved price: {price}\\nReview moving Stop Loss to breakeven (Entry {active['entry']}). Verify the actual position and move SL manually in your broker. QUANTNEX does not modify broker orders.")
+                                            await _send(client,token,chat_id,f"⚠️ QUANTNEX · XAUUSD TP1 level touched\nObserved price: {price}\nReview moving Stop Loss to breakeven (Entry {active['entry']}). Verify the actual position and move SL manually in your broker. QUANTNEX does not modify broker orders.")
                                             active["tp1_notified"]=True
                                         if hit_tp2 and not active.get("tp2_notified"):
                                             await _send(client,token,chat_id,f"QUANTNEX · XAUUSD TP2 level touched at {price}. Check broker execution.")
@@ -153,12 +153,12 @@ async def telegram_worker() -> None:
                                     fingerprint="|".join([str(candidate.get("side")),str(candidate.get("timeframe")),str(candidate.get("signal_candle_time"))])
                                     previous=_get(db,user_id,"auto_signal_last_fingerprint")
                                     if fingerprint and fingerprint!=previous:
-                                        msg=("QUANTNEX · AUTO SIGNAL · XAUUSD "+candidate["side"]+"\\n"
-                                            +"Signal TF: "+str(candidate["timeframe"])+"m · Trend TF: "+str(candidate["trend_timeframe"])+"m\\n"
-                                            +"Entry: "+str(candidate["entry"])+"\\nSL: "+str(candidate["stop_loss"])+"\\n"
-                                            +"TP1: "+str(candidate["tp1"])+"\\nTP2: "+str(candidate["tp2"])+"\\nTP3: "+str(candidate["tp3"])+"\\n"
-                                            +"Confluence: "+str(candidate["score"])+"/10 (rule count, not win probability)\\n"
-                                            +"Confirmations: "+", ".join(candidate["confirmations"])+"\\n"
+                                        msg=("QUANTNEX · AUTO SIGNAL · XAUUSD "+candidate["side"]+"\n"
+                                            +"Signal TF: "+str(candidate["timeframe"])+"m · Trend TF: "+str(candidate["trend_timeframe"])+"m\n"
+                                            +"Entry: "+str(candidate["entry"])+"\nSL: "+str(candidate["stop_loss"])+"\n"
+                                            +"TP1: "+str(candidate["tp1"])+"\nTP2: "+str(candidate["tp2"])+"\nTP3: "+str(candidate["tp3"])+"\n"
+                                            +"Confluence: "+str(candidate["score"])+"/10 (rule count, not win probability)\n"
+                                            +"Confirmations: "+", ".join(candidate["confirmations"])+"\n"
                                             +"Signal only; verify price, spread and broker execution. No order is placed.")
                                         await _send(client,token,chat_id,msg)
                                         _set(db,user_id,"auto_signal_last_fingerprint",fingerprint)

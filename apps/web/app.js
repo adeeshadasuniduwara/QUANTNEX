@@ -475,7 +475,8 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   $("p7RunScan").addEventListener("click",scan);
   $("p7LoadBook").addEventListener("click",loadBook);
   $("p7LoadNews").addEventListener("click",loadNews);
-  $("p7OpenPaper").addEventListener("click",openPaper);\n  $("p7RefreshPaper").addEventListener("click",refreshAnalytics);
+  $("p7OpenPaper").addEventListener("click",openPaper);
+  $("p7RefreshPaper").addEventListener("click",refreshAnalytics);
   $("p7CalculateRisk").addEventListener("click",calculateRisk);
   $("p7UseSignal").addEventListener("click",()=>{
     if(!lastSignal)return;

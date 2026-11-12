@@ -51,7 +51,7 @@ async function loadMarketBoard(force=false){
  marketBoardCache=data;marketBoardFetchedAt=Date.now();
  latestMarkets=new Map((data.items||[]).map(item=>[item.symbol,item]));
  let triggered=false;
- (data.items||[]).filter(item=>item.status==="ok").forEach(item=>{
+ (data.items||[]).filter(item=>item.status==="ok"&&item.kind!=="crypto").forEach(item=>{
   alerts.filter(alert=>alert.symbol===item.symbol).forEach(alert=>{
    if(checkAlert(alert,item.price,item.provider||"provider refresh"))triggered=true;
   });

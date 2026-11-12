@@ -20,7 +20,7 @@ def prepare_environment() -> None:
 
     values = dotenv_values(ENV_FILE)
     current = (values.get("QUANTNEX_SECRET_KEY") or "").strip()
-    if not current or current == "local-development-only-change-me":
+    if not current or current == "local-development-only-change-me" or current.startswith("replace-with-"):
         lines = ENV_FILE.read_text(encoding="utf-8").splitlines()
         new_key = secrets.token_urlsafe(48)
         replaced = False

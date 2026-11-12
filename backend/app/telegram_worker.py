@@ -108,10 +108,7 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
     db.commit()
     names={"1":"M1","5":"M5","15":"M15","30":"M30","50":"M50","60":"H1","240":"H4"}
     if command in {"/start","/help"}:
-        return ("QUANTNEX Crypto + Gold Signal Bot\n"
-            "/timeframes — show settings\n/settf 1|5|15|30|50|60 — primary signal timeframe\n"
-            "/settrend 15|30|60|240 — trend filter\n/setanalysis 1,5,15,30,60 — analysis timeframes\n"
-            "/scan [BTCUSDT|ETHUSDT|SOLUSDT|XAUUSD] — run a fresh market scan (default BTCUSDT)\n/status — connection status")
+        return ("🤖 QUANTNEX Trading Assistant\nUse the buttons below for market scans, dashboard, status and reports.\nMarket scans are analysis alerts only; no broker orders are placed.")
     if command=="/timeframes":
         enabled=", ".join(names.get(str(x),str(x)) for x in settings.get("enabled",[]))
         return f"Primary: {names.get(str(settings.get('primary')))}\nTrend: {names.get(str(settings.get('trend')))}\nAnalysis: {enabled}"
@@ -171,7 +168,7 @@ async def telegram_worker() -> None:
                         db.commit()
                         try:
                             resp=await client.get(f"https://api.telegram.org/bot{token}/getUpdates",
-                                params={"offset":offset,"timeout":0,"allowed_updates":'["message","channel_post"]'})
+                                params={"offset":offset,"timeout":0,"allowed_updates":'["message","channel_post","callback_query"]'})
                             data=resp.json()
                             if data.get("ok"):
                                 for update in data.get("result",[]):

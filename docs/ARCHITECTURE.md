@@ -14,7 +14,7 @@
 
 The Windows launcher starts the FastAPI backend on 127.0.0.1:8000 and the Web updater/server on 127.0.0.1:5500. The browser opens after both services pass health checks. Keep the single CMD supervisor running behind the browser; Ctrl+C stops its child processes.
 
-QUANTNEX is currently a single-computer local application. It has no login, registration, password, JWT or remote account system. The backend keeps one internal local workspace identity so journal, wallet, preferences and Telegram configuration can share a consistent database owner. On first startup, legacy account data is consolidated into that local workspace and old password hashes are cleared.
+QUANTNEX is currently a single-computer local application. It has no login, registration, password, JWT or remote account system. The backend keeps one internal local workspace identity so journal, wallet, preferences and Telegram configuration can share a consistent database owner. On first startup, the SQLite database is backed up under data/backups, legacy account data is consolidated into that local workspace and old password hashes are cleared.
 
 ## Security boundaries
 

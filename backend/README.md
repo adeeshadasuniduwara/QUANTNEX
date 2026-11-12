@@ -57,3 +57,40 @@ Set AI_BASE_URL, AI_API_KEY and AI_MODEL on the server only. The API key is neve
 ## Production checklist
 
 Use HTTPS, managed secrets, PostgreSQL, Alembic migrations, backups, rate limiting, audit logs, monitoring and security testing before public deployment. SQLite/create_all are development MVP choices. This API does not connect to brokers, fetch live prices, run bots or place orders.
+
+
+## XAUUSD signal engine (local API)
+
+The Web Trading Tool can request authenticated XAU/USD multi-timeframe analysis from the backend. Configure a Twelve Data API key on the server; do not place provider keys in browser JavaScript or GitHub.
+
+1. Create a Twelve Data account and obtain an API key: https://twelvedata.com/
+2. Add `TWELVE_DATA_API_KEY=your_key` to `backend/.env`.
+3. Restart the API process.
+4. Sign in to QUANTNEX Web, select primary/trend/analysis timeframes, then run a signal scan.
+
+The engine retrieves OHLC candles for M1, M5, M15, M30 and H1. M50 is custom-aggregated from M1 candles and therefore has shorter history (EMA200 is unavailable until enough candles exist). Twelve Data documents supported intervals and output-size limits at https://support.twelvedata.com/en/articles/5656039-how-to-get-historical-prices.
+
+### Indicator / confluence rules
+
+The current rule-based model calculates EMA 20/50/200, MACD (12,26,9), RSI(14), ADX(14), ATR(14), swing-based BOS/MSS, simple liquidity sweeps, and heuristic Order Block, Breaker Block, FVG and inverse-FVG zones. The selected enabled timeframes contribute to a 0–10 confluence score. The score is a count of rules that align, **not** a measured win probability or backtested accuracy. The default signal threshold is 7/10. A scan returns WAIT when the threshold is not met.
+
+The "Reaper" name does not identify a verified formula or source script in this repository. It is intentionally not counted as an active indicator until its exact definition/source is supplied. OB/Breaker/FVG detection here is an explicitly heuristic implementation, not a certified ICT indicator.
+
+### Telegram bot
+
+1. In Telegram, open @BotFather, send `/newbot`, and create a bot.
+2. Open the new bot and send `/start`. Obtain your private numeric chat ID (or add the bot as a channel admin and use `@ChannelUsername`).
+3. Sign in to QUANTNEX Web and use **Connect bot & enable commands**. The API verifies the token and stores it encrypted using a key derived from `QUANTNEX_SECRET_KEY`.
+4. Keep the local API running. The background worker polls the bot and watches active XAU/USD signal levels while the API process is alive.
+
+Commands: `/help`, `/timeframes`, `/settf 5`, `/settrend 60`, `/setanalysis 1,5,15,30,60`, `/scan`, `/status`.
+
+When a signal is active, the worker checks price levels approximately once per minute and sends SL/TP1/TP2/TP3 touch alerts. TP1 alert advises moving SL to breakeven; it does not change a broker order. This is price-level monitoring, not guaranteed tick-by-tick execution. Provider quotas, outages, stale data and network delays can delay or miss alerts.
+
+### Safety and operating limits
+
+- This is analysis and notification only. No broker account, order routing, trade execution or automatic stop modification is connected.
+- Entry/SL/TP levels are derived from the latest provider candle and ATR/swing structure; validate them against your broker's quote, spread and contract specification.
+- Use a dedicated Telegram bot and a strong, persistent `QUANTNEX_SECRET_KEY`. Changing that key makes stored bot tokens undecryptable; reconnect the bot after key rotation.
+- Do not use the default development secret in a public deployment. Use HTTPS, a persistent always-on host, secure database backups, rate limiting and monitoring before exposing the API to the internet.
+- Test the strategy on historical data and paper trading before relying on it. A 7/10 confluence score does not imply a 70% win rate.

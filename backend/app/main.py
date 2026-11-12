@@ -1120,6 +1120,8 @@ def update_personal_goal(goal_id: int, payload: dict, user: User = Depends(local
 def add_goal_contribution(goal_id: int, payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     goal=db.scalar(select(PersonalGoal).where(PersonalGoal.id==goal_id,PersonalGoal.user_id==user.id))
     if goal is None: raise HTTPException(status_code=404,detail="Goal not found.")
+    if goal.achieved_at is not None:
+        raise HTTPException(status_code=409,detail="This goal is already achieved and its certificate record is locked.")
     if payload.get("confirmed_available_real_funds") is not True:
         raise HTTPException(status_code=422,detail="Confirm this is genuinely available real-account profit or savings, not simulated P&L.")
     try: amount=float(payload.get("amount"))
@@ -1144,7 +1146,7 @@ def add_goal_contribution(goal_id: int, payload: dict, user: User = Depends(loca
         "achieved":bool(goal.achieved_at),"source":"manual_real_account"}
 
 
-def _goal_certificate_signature(db: Session, user_id: int, goal: PersonalGoal) -> tuple[str,str]:
+def _goal_certificate_signature(db: Session, user_id: int, goal: PersonalGoal, saved_amount: float) -> tuple[str,str]:
     import hashlib, hmac, secrets
     secret_enc=_preference(db,user_id,"goal_certificate_secret")
     if not secret_enc:
@@ -1155,7 +1157,7 @@ def _goal_certificate_signature(db: Session, user_id: int, goal: PersonalGoal) -
     if not goal.certificate_id:
         import uuid
         goal.certificate_id="QX-"+uuid.uuid4().hex[:20].upper()
-    payload="|".join([str(goal.id),goal.title,str(goal.target_amount),goal.currency,
+    payload="|".join([str(goal.id),goal.title,str(goal.target_amount),str(round(saved_amount,2)),goal.currency,
         goal.created_at.isoformat(),goal.achieved_at.isoformat(),goal.certificate_id])
     digest=hmac.new(secret.encode("utf-8"),payload.encode("utf-8"),hashlib.sha256).hexdigest()
     return goal.certificate_id,digest
@@ -1172,7 +1174,7 @@ def generate_goal_certificate(goal_id: int, payload: dict, user: User = Depends(
     display_name=str(payload.get("display_name","")).strip()
     if not display_name or len(display_name)>80:
         raise HTTPException(status_code=422,detail="Enter the display name to print on the certificate (max 80 characters).")
-    certificate_id,digest=_goal_certificate_signature(db,user.id,goal)
+    certificate_id,digest=_goal_certificate_signature(db,user.id,goal,saved)
     if goal.certificate_hash and not __import__("hmac").compare_digest(goal.certificate_hash,digest):
         raise HTTPException(status_code=409,detail="Certificate integrity check failed. The stored goal record has changed.")
     goal.certificate_hash=digest;db.commit()
@@ -1184,7 +1186,8 @@ def generate_goal_certificate(goal_id: int, payload: dict, user: User = Depends(
     elapsed=max(0,(achieved-created).days)
     pdf=build_goal_certificate_pdf(display_name=display_name,goal_title=goal.title,
         created_at=created,achieved_at=achieved,elapsed_days=elapsed,
-        certificate_id=certificate_id,integrity_fingerprint=digest)
+        certificate_id=certificate_id,integrity_fingerprint=digest,
+        target_amount=goal.target_amount,saved_amount=saved,currency=goal.currency)
     safe_name="".join(ch for ch in display_name if ch.isalnum() or ch in "-_")[:32] or "Trader"
     return Response(content=pdf,media_type="application/pdf",
         headers={"Content-Disposition":f'attachment; filename="QUANTNEX-Achievement-{safe_name}.pdf"'})
@@ -1196,6 +1199,8 @@ def verify_goal_certificate(goal_id: int, user: User = Depends(local_workspace),
     if goal is None: raise HTTPException(status_code=404,detail="Goal not found.")
     if not goal.certificate_hash or not goal.certificate_id:
         return {"verified":False,"reason":"No certificate has been issued."}
-    certificate_id,digest=_goal_certificate_signature(db,user.id,goal)
+    saved=float(goal.initial_amount or 0)+float(db.scalar(select(func.coalesce(func.sum(GoalContribution.amount),0)).where(
+        GoalContribution.goal_id==goal.id,GoalContribution.user_id==user.id)) or 0)
+    certificate_id,digest=_goal_certificate_signature(db,user.id,goal,saved)
     return {"verified":__import__("hmac").compare_digest(goal.certificate_hash,digest),
         "certificate_id":certificate_id,"verification_scope":"local workspace integrity only"}

@@ -27,4 +27,5 @@ console.log("Workspace page checks passed: 10 new pages, unique section IDs, val
 
 assert.match(realtime, /connectedOnce&&current!==lastEventId/, "A restarted event gateway must trigger a workspace snapshot resync");
 assert.match(realtime, /event_stream_restarted/, "A lower sequence after reconnect must be identified as an event-service restart");
+assert.match(realtime, /lastEventId=current/, "The event cursor must reset to the new process sequence after a restart");
 console.log("Realtime event restart-resync checks passed.");

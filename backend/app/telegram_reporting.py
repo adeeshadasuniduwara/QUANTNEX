@@ -26,7 +26,7 @@ def _local(value: datetime | None) -> datetime | None:
 def build_daily_paper_pdf(db, user_id: int, report_day: date | None = None) -> tuple[bytes, dict]:
     """Build a report from persisted PaperTrade rows only; never reads manual journal."""
     from sqlalchemy import select
-    from .models import PaperTrade
+    from .models import PaperTrade, PaperTradeEvent
 
     day = report_day or datetime.now(COLOMBO).date()
     rows = list(db.scalars(select(PaperTrade).where(PaperTrade.user_id == user_id).order_by(PaperTrade.created_at)))
@@ -42,6 +42,10 @@ def build_daily_paper_pdf(db, user_id: int, report_day: date | None = None) -> t
         if created and created <= cutoff and (closed is None or closed > cutoff):
             open_at_cutoff.append(trade)
 
+    event_rows = list(db.scalars(select(PaperTradeEvent).where(
+        PaperTradeEvent.user_id == user_id).order_by(PaperTradeEvent.created_at)))
+    events_today = [event for event in event_rows
+                    if _local(event.created_at) and _local(event.created_at).date() == day]
     pnl_values = [float(t.realized_pnl or 0) for t in closed_today]
     wins = sum(1 for value in pnl_values if value > 0)
     losses = sum(1 for value in pnl_values if value < 0)
@@ -57,6 +61,8 @@ def build_daily_paper_pdf(db, user_id: int, report_day: date | None = None) -> t
         "total_loss": round(total_loss, 2), "net": round(net, 2),
         "win_rate": round(win_rate, 2),
         "profit_factor": round(gross_profit / total_loss, 2) if total_loss > 0 else ("infinite" if gross_profit > 0 else None),
+        "event_count": len(events_today),
+        "automatic_entries": sum(1 for event in events_today if event.event_type == "AUTO_OPENED"),
     }
 
     buffer = BytesIO()
@@ -116,7 +122,27 @@ def build_daily_paper_pdf(db, user_id: int, report_day: date | None = None) -> t
         ("GRID",(0,0),(-1,-1),0.35,colors.HexColor("#999999")),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
         ("ALIGN",(2,1),(-1,-1),"RIGHT"),("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F4F4F4")]),
     ]))
-    story += [trade_table, Paragraph("Open positions at report cutoff", heading)]
+    story += [trade_table, Paragraph("Paper execution event ledger", heading)]
+    event_data = [["Time", "Trade", "Event", "Price", "Qty", "Recorded P&L"]]
+    for event in events_today:
+        event_time = _local(event.created_at)
+        event_data.append([
+            event_time.strftime("%H:%M:%S") if event_time else "—",
+            str(event.trade_id), event.event_type, f"{event.price:g}", f"{event.quantity:g}",
+            "$" + format(float(event.pnl or 0), ".2f"),
+        ])
+    if len(event_data) == 1:
+        event_data.append(["No paper events today", "", "", "", "", ""])
+    event_table = Table(event_data, repeatRows=1,
+        colWidths=[24*mm, 16*mm, 42*mm, 28*mm, 25*mm, 36*mm])
+    event_table.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,0),colors.HexColor("#111111")),
+        ("TEXTCOLOR",(0,0),(-1,0),colors.white),
+        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),7),
+        ("GRID",(0,0),(-1,-1),0.35,colors.HexColor("#999999")),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F4F4F4")]),
+    ]))
+    story += [event_table, Paragraph("Open positions at report cutoff", heading)]
     open_data = [["Symbol","Side","Qty","Entry","SL","TP","Opened"]]
     for trade in open_at_cutoff:
         opened = _local(trade.created_at)

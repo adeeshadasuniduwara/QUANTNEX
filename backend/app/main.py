@@ -1,9 +1,10 @@
 import asyncio
 import json
+import math
 import re
 import sqlite3
 import httpx
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,15 +14,18 @@ from sqlalchemy.orm import Session
 
 from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, DATABASE_URL
 from .database import Base, engine, get_db, SessionLocal
-from .models import Preference, Trade, User, WalletTransaction
+from .models import AuditEvent, PaperTrade, Preference, Trade, User, WalletTransaction
 from .schemas import AIChatRequest, AIChatResponse, PreferenceResponse, PreferenceWrite, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TradeCreate, TradeResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
 from .security import decrypt_secret, encrypt_secret
+from .maintenance import daily_backup_worker, record_audit_event
+from .system_security import router as system_security_router
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="QUANTNEX Local API", description="Loopback-only local workspace API. No user login or remote account system.", version="0.7.0")
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials=False,
                    allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Content-Type"])
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
+app.include_router(system_security_router)
 
 
 def local_workspace(db: Session = Depends(get_db)) -> User:
@@ -96,6 +100,7 @@ def create_journal(payload: TradeCreate, user: User = Depends(local_workspace), 
     db.flush()
     db.add(WalletTransaction(user_id=user.id, transaction_type="trade_pnl", amount=payload.pnl,
                              description=f"{payload.symbol} {payload.direction.upper()} journal P&L", trade_id=item.id))
+    record_audit_event(db, "journal.created", {"trade_id": item.id, "symbol": item.symbol, "direction": item.direction, "pnl": item.pnl})
     db.commit()
     db.refresh(item)
     return item
@@ -110,6 +115,7 @@ def delete_journal(trade_id: int, user: User = Depends(local_workspace), db: Ses
     if linked is not None:
         db.delete(linked)
     db.delete(item)
+    record_audit_event(db, "journal.deleted", {"trade_id": trade_id})
     db.commit()
 
 @app.get("/api/v1/wallet/summary", response_model=WalletSummaryResponse)
@@ -140,6 +146,7 @@ def create_wallet_transaction(payload: WalletTransactionCreate, user: User = Dep
     item = WalletTransaction(user_id=user.id, transaction_type=payload.transaction_type,
                              amount=signed_amount, description=payload.description.strip())
     db.add(item)
+    record_audit_event(db, "wallet.transaction_created", {"transaction_type": item.transaction_type, "amount": item.amount})
     db.commit()
     db.refresh(item)
     return item
@@ -158,6 +165,7 @@ def set_preference(key: str, payload: PreferenceWrite, user: User = Depends(loca
         db.add(item)
     else:
         item.value = payload.value
+    record_audit_event(db, "preference.updated", {"key": key})
     db.commit()
     db.refresh(item)
     return item
@@ -244,6 +252,7 @@ def get_signal_settings(user: User = Depends(local_workspace), db: Session = Dep
 def update_signal_settings(payload: SignalSettingsRequest, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     settings=payload.model_dump()
     _save_preference(db,user.id,"signal_settings",json.dumps(settings))
+    record_audit_event(db, "signals.settings_updated", {"primary": settings["primary"], "trend": settings["trend"]})
     db.commit()
     return settings
 
@@ -308,6 +317,7 @@ async def connect_telegram_bot(payload: TelegramConnectRequest, user: User = Dep
     _save_preference(db,user.id,"telegram_chat_id",payload.chat_id.strip())
     _save_preference(db,user.id,"telegram_bot_username",bot.get("username",""))
     _save_preference(db,user.id,"telegram_bot_display_name",payload.display_name.strip() or bot.get("first_name","QUANTNEX Bot"))
+    record_audit_event(db, "telegram.connected", {"bot_username": bot.get("username", "")})
     db.commit()
     return {"connected":True,"bot_username":bot.get("username"),"chat_id":payload.chat_id.strip(),
             "commands":["/help","/timeframes","/settf 5","/settrend 60","/setanalysis 1,5,15,30,60","/scan","/status"],
@@ -326,6 +336,7 @@ def disconnect_telegram_bot(user: User = Depends(local_workspace), db: Session =
     for key in ["telegram_bot_token_enc","telegram_chat_id","telegram_bot_username","telegram_bot_display_name","telegram_update_offset","active_signal","auto_signal_settings","auto_signal_last_fingerprint"]:
         row=db.scalar(select(Preference).where(Preference.user_id==user.id,Preference.key==key))
         if row:db.delete(row)
+    record_audit_event(db, "telegram.disconnected")
     db.commit()
     return {"connected":False}
 
@@ -408,6 +419,7 @@ def set_auto_signal_settings(payload: AutoSignalSettingsRequest, user: User = De
         raise HTTPException(status_code=503,detail="Add TWELVE_DATA_API_KEY to backend/.env and restart the QUANTNEX API before enabling Auto Signals.")
     settings=payload.model_dump()
     _save_preference(db,user.id,"auto_signal_settings",json.dumps(settings))
+    record_audit_event(db, "signals.auto_settings_updated", {"enabled": settings["enabled"], "interval_seconds": settings["interval_seconds"]})
     db.commit()
     return {**settings,"telegram_connected":connected,"note":"Automatic XAUUSD alerts run only while this computer's QUANTNEX API process is running."}
 
@@ -432,3 +444,211 @@ async def notify_connected_telegram(payload: dict, user: User = Depends(local_wo
         return {"ok":True,"message_id":data.get("result",{}).get("message_id")}
     except httpx.HTTPError:
         raise HTTPException(status_code=502,detail="Could not reach Telegram.")
+
+
+@app.on_event("startup")
+async def start_daily_backup_worker():
+    app.state.daily_backup_task = asyncio.create_task(daily_backup_worker())
+
+
+@app.on_event("shutdown")
+async def stop_daily_backup_worker():
+    task = getattr(app.state, "daily_backup_task", None)
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Phase 07 — multi-market intelligence, paper trading, performance and risk.
+# All trading endpoints are simulation-only. No broker execution is available.
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/intelligence/markets")
+async def intelligence_markets(user: User = Depends(local_workspace)):
+    from .phase07_engine import get_market_board
+    return await get_market_board()
+
+@app.get("/api/v1/intelligence/market/{symbol}/candles")
+async def intelligence_candles(symbol: str, timeframe: str = "15m",
+                                user: User = Depends(local_workspace)):
+    from .phase07_engine import get_candles, market_info, IntelligenceDataError
+    try:
+        info=market_info(symbol)
+        candles=await get_candles(info["symbol"],timeframe)
+        return {"symbol":info["symbol"],"timeframe":timeframe,"provider":info["provider"],
+                "candles":candles,"count":len(candles)}
+    except (ValueError,TypeError) as exc:
+        raise HTTPException(status_code=422,detail=str(exc))
+    except IntelligenceDataError as exc:
+        raise HTTPException(status_code=502,detail=str(exc))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502,detail="Market provider request failed. Check API key, quota or network connection.")
+
+@app.get("/api/v1/intelligence/market/{symbol}/orderbook")
+async def intelligence_orderbook(symbol: str, user: User = Depends(local_workspace)):
+    from .phase07_engine import get_order_book, market_info
+    try:
+        return await get_order_book(market_info(symbol)["symbol"])
+    except ValueError as exc:
+        raise HTTPException(status_code=422,detail=str(exc))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502,detail="Order-book provider is temporarily unavailable.")
+
+@app.post("/api/v1/intelligence/signals/scan")
+async def intelligence_signal_scan(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .phase07_engine import scan_market_signal, market_info, IntelligenceDataError
+    symbol=payload.get("symbol","XAUUSD")
+    threshold=payload.get("min_score",6)
+    if not isinstance(threshold,int) or not 4<=threshold<=10:
+        raise HTTPException(status_code=422,detail="min_score must be an integer between 4 and 10.")
+    try:
+        info=market_info(symbol)
+        result=await scan_market_signal(info["symbol"],threshold)
+    except (ValueError,TypeError) as exc:
+        raise HTTPException(status_code=422,detail=str(exc))
+    except IntelligenceDataError as exc:
+        raise HTTPException(status_code=502,detail=str(exc))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502,detail="Market provider request failed. Check API key, quota or network connection.")
+    if result.get("signal"):
+        record_audit_event(db,"phase07.signal_generated",{"symbol":result["symbol"],"side":result["signal"]["side"],
+            "score":result["signal"]["score"],"mode":"paper_only"})
+        db.commit()
+    return result
+
+@app.get("/api/v1/intelligence/news")
+async def intelligence_news(days: int = 7, user: User = Depends(local_workspace)):
+    from .phase07_engine import get_economic_calendar
+    try:
+        return await get_economic_calendar(days)
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502,detail="Economic calendar provider is temporarily unavailable.")
+
+@app.post("/api/v1/intelligence/risk/calculate")
+def intelligence_risk_calculate(payload: dict, user: User = Depends(local_workspace)):
+    from .phase07_engine import calculate_risk
+    try:
+        return calculate_risk(float(payload.get("equity",0)),float(payload.get("risk_percent",0)),
+                              float(payload.get("entry",0)),float(payload.get("stop_loss",0)))
+    except (ValueError,TypeError) as exc:
+        raise HTTPException(status_code=422,detail=str(exc))
+
+@app.get("/api/v1/paper-trading/trades")
+def list_paper_trades(limit: int = 100, status: str = "ALL",
+                      user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    if not 1<=limit<=500: raise HTTPException(status_code=422,detail="Limit must be between 1 and 500.")
+    query=select(PaperTrade).where(PaperTrade.user_id==user.id)
+    if status.upper() in {"OPEN","CLOSED"}: query=query.where(PaperTrade.status==status.upper())
+    elif status.upper()!="ALL": raise HTTPException(status_code=422,detail="Status must be OPEN, CLOSED or ALL.")
+    rows=list(db.scalars(query.order_by(PaperTrade.id.desc()).limit(limit)))
+    return [{"id":x.id,"symbol":x.symbol,"side":x.side,"quantity":x.quantity,"entry_price":x.entry_price,
+             "stop_loss":x.stop_loss,"take_profit":x.take_profit,"status":x.status,"exit_price":x.exit_price,
+             "realized_pnl":x.realized_pnl,"created_at":x.created_at.isoformat(),
+             "closed_at":x.closed_at.isoformat() if x.closed_at else None} for x in rows]
+
+@app.post("/api/v1/paper-trading/trades",status_code=201)
+async def open_paper_trade(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .phase07_engine import get_quote, market_info, IntelligenceDataError
+    try:
+        info=market_info(str(payload.get("symbol","")))
+        side=str(payload.get("side","")).upper()
+        quantity=float(payload.get("quantity",0))
+        stop=float(payload.get("stop_loss",0))
+        target=float(payload.get("take_profit",0))
+        if side not in {"BUY","SELL"} or not all(math.isfinite(x) for x in (quantity,stop,target)) or not 0<quantity<=1000000 or stop<=0 or target<=0:
+            raise ValueError("Side, quantity, stop loss and take profit are invalid.")
+        quote=await get_quote(info["symbol"])
+        entry=float(quote["price"])
+        if (side=="BUY" and not stop<entry<target) or (side=="SELL" and not target<entry<stop):
+            raise ValueError("For BUY, Stop Loss < live entry < Take Profit. For SELL, Take Profit < live entry < Stop Loss.")
+        item=PaperTrade(user_id=user.id,symbol=info["symbol"],side=side,quantity=quantity,
+                        entry_price=entry,stop_loss=stop,take_profit=target,status="OPEN")
+        db.add(item)
+        db.flush()
+        record_audit_event(db,"paper_trade.opened",{"trade_id":item.id,"symbol":item.symbol,"side":side,
+            "quantity":quantity,"entry":entry,"mode":"paper"})
+        db.commit()
+        db.refresh(item)
+        return {"id":item.id,"symbol":item.symbol,"side":item.side,"quantity":item.quantity,
+                "entry_price":item.entry_price,"stop_loss":item.stop_loss,"take_profit":item.take_profit,
+                "status":item.status,"mode":"PAPER"}
+    except (ValueError,TypeError) as exc:
+        raise HTTPException(status_code=422,detail=str(exc))
+    except IntelligenceDataError as exc:
+        raise HTTPException(status_code=502,detail=str(exc))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502,detail="Market provider request failed. Check API key, quota or network connection.")
+
+@app.post("/api/v1/paper-trading/trades/{trade_id}/close")
+async def close_paper_trade(trade_id: int, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .phase07_engine import get_quote, IntelligenceDataError
+    item=db.scalar(select(PaperTrade).where(PaperTrade.id==trade_id,PaperTrade.user_id==user.id))
+    if item is None: raise HTTPException(status_code=404,detail="Paper trade not found.")
+    if item.status!="OPEN": raise HTTPException(status_code=409,detail="Paper trade is already closed.")
+    try:
+        quote=await get_quote(item.symbol)
+        exit_price=float(quote["price"])
+    except IntelligenceDataError as exc:
+        raise HTTPException(status_code=502,detail=str(exc))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502,detail="Market provider request failed. Check API key, quota or network connection.")
+    pnl=(exit_price-item.entry_price)*item.quantity*(1 if item.side=="BUY" else -1)
+    item.exit_price=exit_price
+    item.realized_pnl=round(pnl,8)
+    item.status="CLOSED"
+    item.closed_at=datetime.now(timezone.utc)
+    record_audit_event(db,"paper_trade.closed",{"trade_id":item.id,"symbol":item.symbol,
+        "exit":exit_price,"realized_pnl":item.realized_pnl,"mode":"paper"})
+    db.commit()
+    return {"id":item.id,"status":item.status,"exit_price":exit_price,"realized_pnl":item.realized_pnl,"mode":"PAPER"}
+
+@app.get("/api/v1/paper-trading/summary")
+def paper_trading_summary(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    rows=list(db.scalars(select(PaperTrade).where(PaperTrade.user_id==user.id)))
+    closed=[x for x in rows if x.status=="CLOSED"]
+    wins=[x for x in closed if (x.realized_pnl or 0)>0]
+    losses=[x for x in closed if (x.realized_pnl or 0)<0]
+    gross_profit=sum(x.realized_pnl or 0 for x in wins)
+    gross_loss=abs(sum(x.realized_pnl or 0 for x in losses))
+    return {"mode":"PAPER ONLY","open_trades":sum(x.status=="OPEN" for x in rows),
+            "closed_trades":len(closed),"wins":len(wins),"losses":len(losses),
+            "win_rate":round(len(wins)/len(closed)*100,2) if closed else None,
+            "realized_pnl":round(sum(x.realized_pnl or 0 for x in closed),2),
+            "profit_factor":round(gross_profit/gross_loss,3) if gross_loss else (None if not gross_profit else "infinite"),
+            "note":"Separate virtual ledger. Existing wallet and journal balances are not changed."}
+
+@app.get("/api/v1/intelligence/performance")
+def intelligence_performance(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    rows=list(db.scalars(select(PaperTrade).where(PaperTrade.user_id==user.id,PaperTrade.status=="CLOSED")))
+    wins=[x for x in rows if (x.realized_pnl or 0)>0]
+    losses=[x for x in rows if (x.realized_pnl or 0)<0]
+    gross_profit=sum(x.realized_pnl or 0 for x in wins)
+    gross_loss=abs(sum(x.realized_pnl or 0 for x in losses))
+    return {"mode":"PAPER ONLY","total_trades":len(rows),"wins":len(wins),"losses":len(losses),
+            "breakeven":len(rows)-len(wins)-len(losses),
+            "win_rate":round(len(wins)/len(rows)*100,2) if rows else None,
+            "gross_profit":round(gross_profit,2),"gross_loss":round(gross_loss,2),
+            "net_pnl":round(gross_profit-gross_loss,2),
+            "profit_factor":round(gross_profit/gross_loss,3) if gross_loss else None,
+            "average_win":round(gross_profit/len(wins),2) if wins else None,
+            "average_loss":round(gross_loss/len(losses),2) if losses else None,
+            "note":"Statistics use closed QUANTNEX paper trades only; no performance or win-rate guarantee."}
+
+
+@app.on_event("startup")
+async def start_phase07_paper_monitor():
+    from .paper_worker import paper_trade_monitor
+    app.state.paper_monitor_task=asyncio.create_task(paper_trade_monitor())
+
+@app.on_event("shutdown")
+async def stop_phase07_paper_monitor():
+    task=getattr(app.state,"paper_monitor_task",None)
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass

@@ -12,6 +12,7 @@ AI_BASE_URL = os.getenv("AI_BASE_URL", "").rstrip("/")
 AI_API_KEY = os.getenv("AI_API_KEY", "")
 AI_MODEL = os.getenv("AI_MODEL", "")
 TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "").strip()
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "").strip()
 
 if ENVIRONMENT == "production" and SECRET_KEY == "local-development-only-change-me":
     raise ValueError("Set a strong QUANTNEX_SECRET_KEY in production.")

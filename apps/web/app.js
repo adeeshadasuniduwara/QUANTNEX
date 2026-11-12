@@ -194,3 +194,296 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   }
   if($id("btcLivePrice")){refresh();window.setInterval(refresh,30000);}
 })();
+
+;
+
+// Phase 06.3 local system health, backup and audit UI.
+(function initSystemSecurity(){
+  const panel=$("system-security");
+  if(!panel)return;
+  const status=$("systemSecurityMessage");
+  const setStatus=(message,error=false)=>{status.textContent=message;status.dataset.state=error?"error":"ok";};
+  const bytes=value=>{
+    if(value==null)return "—";
+    const units=["B","KB","MB","GB","TB"];let n=Number(value),i=0;
+    while(n>=1024&&i<units.length-1){n/=1024;i++;}
+    return n.toFixed(i===0?0:1)+" "+units[i];
+  };
+  const cell=(row,value,className="")=>{
+    const td=document.createElement("td");td.textContent=value??"—";if(className)td.className=className;row.append(td);return td;
+  };
+  async function refreshHealth(){
+    try{
+      const data=await apiRequest("/api/v1/system/health");
+      $("systemDbStatus").textContent=data.database.connected?"Connected":"Unavailable";
+      $("systemDbSize").textContent=data.database.size_bytes==null?"Size not available":bytes(data.database.size_bytes);
+      $("systemCpu").textContent=Number(data.system.cpu_percent).toFixed(0)+"%";
+      $("systemMemory").textContent=Number(data.system.memory_percent).toFixed(0)+"%";
+      $("systemDisk").textContent=bytes(data.system.disk_free_bytes);
+      $("systemDiskTotal").textContent=bytes(data.system.disk_total_bytes)+" total";
+      $("systemHealthStatus").textContent="Healthy · "+data.backups.count+" local backups · latest "+(data.backups.latest?"recorded":"not yet created");
+    }catch(error){
+      $("systemHealthStatus").textContent="Local API unavailable: "+error.message;
+      $("systemDbStatus").textContent="Offline";
+    }
+  }
+  async function refreshBackups(){
+    const body=$("systemBackupRows");body.replaceChildren();
+    try{
+      const data=await apiRequest("/api/v1/system/backups");
+      if(!data.items.length){const tr=document.createElement("tr");cell(tr,"No backups yet. Create one now or wait for the daily backup worker.","empty-row").colSpan=5;body.append(tr);return;}
+      data.items.forEach(item=>{
+        const tr=document.createElement("tr");
+        cell(tr,item.filename);
+        cell(tr,item.created_at?new Date(item.created_at).toLocaleString():"—");
+        cell(tr,bytes(item.size_bytes));
+        cell(tr,item.verified?"Verified":"Needs verification",item.verified?"positive":"negative");
+        const actions=cell(tr,"");
+        const verify=document.createElement("button");verify.className="secondary-btn compact-btn";verify.textContent="Verify";
+        verify.addEventListener("click",async()=>{
+          try{await apiRequest("/api/v1/system/backups/"+encodeURIComponent(item.filename)+"/verify",{method:"POST"});setStatus("Backup integrity check passed: "+item.filename);await refreshBackups();}
+          catch(error){setStatus("Backup verification failed: "+error.message,true);await refreshBackups();}
+        });
+        actions.append(verify);
+        if(item.verified){
+          const restore=document.createElement("button");restore.className="secondary-btn compact-btn restore-btn";restore.textContent="Restore";
+          restore.addEventListener("click",async()=>{
+            if(!window.confirm("Restore this backup? QUANTNEX will first create a separate backup of the current database. The current wallet and journal will be replaced with the selected snapshot."))return;
+            try{
+              restore.disabled=true;setStatus("Restoring database safely…");
+              const result=await apiRequest("/api/v1/system/backups/"+encodeURIComponent(item.filename)+"/restore",{method:"POST"});
+              setStatus("Restore complete. Safety backup: "+(result.pre_restore_backup||"not needed")+". Refreshing workspace…");
+              await Promise.all([refreshHealth(),refreshBackups(),refreshAudit()]);
+            }catch(error){setStatus("Restore failed: "+error.message,true);}
+            finally{restore.disabled=false;}
+          });
+          actions.append(restore);
+        }
+        body.append(tr);
+      });
+    }catch(error){
+      const tr=document.createElement("tr");cell(tr,"Could not load backups: "+error.message,"empty-row").colSpan=5;body.append(tr);
+    }
+  }
+  async function refreshAudit(){
+    const body=$("systemAuditRows");body.replaceChildren();
+    try{
+      const data=await apiRequest("/api/v1/system/audit?limit=100");
+      if(!data.items.length){const tr=document.createElement("tr");cell(tr,"No audit events recorded yet.","empty-row").colSpan=4;body.append(tr);return;}
+      data.items.forEach(item=>{
+        const tr=document.createElement("tr");
+        cell(tr,new Date(item.created_at).toLocaleString());
+        cell(tr,item.event_type);
+        cell(tr,item.severity,item.severity==="warning"?"negative":"");
+        cell(tr,item.details);
+        body.append(tr);
+      });
+    }catch(error){
+      const tr=document.createElement("tr");cell(tr,"Could not load audit log: "+error.message,"empty-row").colSpan=4;body.append(tr);
+    }
+  }
+  $("refreshSystemHealth").addEventListener("click",refreshHealth);
+  $("refreshSystemBackups").addEventListener("click",refreshBackups);
+  $("refreshSystemAudit").addEventListener("click",refreshAudit);
+  $("createSystemBackup").addEventListener("click",async()=>{
+    try{
+      $("createSystemBackup").disabled=true;setStatus("Creating a consistent SQLite snapshot and checking its integrity…");
+      const result=await apiRequest("/api/v1/system/backups",{method:"POST"});
+      setStatus("Backup created and verified: "+result.filename);
+      await Promise.all([refreshHealth(),refreshBackups(),refreshAudit()]);
+    }catch(error){setStatus("Backup failed: "+error.message,true);}
+    finally{$("createSystemBackup").disabled=false;}
+  });
+  refreshHealth();refreshBackups();refreshAudit();
+})();
+
+
+// Phase 07 — multi-market intelligence and paper-only trading UI.
+(function initPhase07(){
+  const ids=["p7RefreshMarkets","p7RunScan","p7LoadBook","p7LoadNews","p7OpenPaper","p7CalculateRisk"];
+  if(!$(ids[0]))return;
+  const fmt=(value,digits=2)=>value==null||!Number.isFinite(Number(value))?"—":Number(value).toLocaleString(undefined,{maximumFractionDigits:digits});
+  const priceDigits=symbol=>symbol==="XAUUSD"?2:["EURUSD","GBPUSD","USDJPY"].includes(symbol)?5:symbol==="BTCUSDT"?2:4;
+  const node=(tag,text,className)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;if(className)el.className=className;return el;};
+  const setMessage=(id,message,error=false)=>{const el=$(id);if(!el)return;el.textContent=message;el.className=error?"p7-note p7-status-error":"p7-note p7-status-ok";};
+  const addCell=(row,text)=>row.append(node("td",text));
+  let lastSignal=null;
+  async function loadMarkets(){
+    const root=$("p7MarketCards");root.replaceChildren(node("div","Fetching live provider quotes…","p7-empty"));
+    try{
+      const data=await apiRequest("/api/v1/intelligence/markets");root.replaceChildren();
+      data.items.forEach(item=>{
+        const card=node("article",undefined,"p7-market-card");
+        const top=node("div",undefined,"p7-symbol");top.append(node("span",item.symbol),node("span",item.kind.toUpperCase()));card.append(top);
+        card.append(node("small",item.label));
+        if(item.status==="ok"){
+          card.append(node("strong",fmt(item.price,priceDigits(item.symbol))));
+          const change=Number(item.change_percent||0);
+          card.append(node("small",(change>=0?"+":"")+fmt(change,2)+"% · 24h change",change>=0?"positive":"negative"));
+          card.append(node("small","High "+fmt(item.high_24h,priceDigits(item.symbol))+" · Low "+fmt(item.low_24h,priceDigits(item.symbol))));
+          card.append(node("small",item.provider+" · "+new Date(item.timestamp).toLocaleTimeString()));
+        }else{
+          card.append(node("strong","Unavailable","unavailable"));
+          card.append(node("small",item.reason||"Provider not available.","unavailable"));
+        }
+        root.append(card);
+      });
+      $("p7MarketNote").textContent=data.note;
+    }catch(error){root.replaceChildren(node("div","Market feed unavailable: "+error.message,"p7-empty"));}
+  }
+  function renderSignal(data){
+    const root=$("p7SignalResult");root.replaceChildren();
+    const signal=data.signal;
+    const header=node("div",undefined,"p7-signal-heading");
+    header.append(node("strong",data.symbol+" · "+(signal?signal.side:"WAIT"),signal?(signal.side==="BUY"?"buy":"sell"):"wait"));
+    header.append(node("span","Confluence "+data.confluence_score+"/10 · "+data.status));
+    root.append(header);
+    root.append(node("p",data.message+" "+data.score_note,"p7-note"));
+    if(signal){
+      const levels=node("div",undefined,"p7-signal-levels");
+      [["Entry",signal.entry],["Stop Loss",signal.stop_loss],["TP1",signal.tp1],["TP2 / TP3",signal.tp2+" / "+signal.tp3]].forEach(([label,value])=>{
+        const box=node("div");box.append(node("span",label),node("b",String(value)));levels.append(box);
+      });
+      root.append(levels);
+      root.append(node("p","Confirmations: "+signal.confirmations.join(" · "),"p7-note"));
+    }
+    const frames=$("p7SignalFrames");frames.replaceChildren();
+    Object.entries(data.timeframes||{}).forEach(([tf,item])=>{
+      const tr=node("tr");
+      [tf,item.bias,fmt(item.close,priceDigits(data.symbol)),fmt(item.rsi,1),fmt(item.adx,1),fmt(item.atr,5)].forEach(x=>addCell(tr,String(x)));
+      frames.append(tr);
+    });
+    lastSignal=signal||null;$("p7SignalTicket").hidden=!signal;
+  }
+  async function scan(){
+    const button=$("p7RunScan");button.disabled=true;button.textContent="Analyzing…";
+    try{
+      const data=await apiRequest("/api/v1/intelligence/signals/scan",{method:"POST",body:JSON.stringify({
+        symbol:$("p7SignalSymbol").value,min_score:Number($("p7SignalThreshold").value)
+      })});
+      renderSignal(data);
+    }catch(error){$("p7SignalResult").replaceChildren(node("p",error.message,"p7-status-error"));}
+    finally{button.disabled=false;button.textContent="Scan market";}
+  }
+  async function loadBook(){
+    const symbol=$("p7BookSymbol").value;
+    $("p7BookNote").textContent="Loading Binance order-book snapshot…";
+    try{
+      const data=await apiRequest("/api/v1/intelligence/market/"+symbol+"/orderbook");
+      if(!data.supported){$("p7Bids").replaceChildren();$("p7Asks").replaceChildren();$("p7BookNote").textContent=data.reason;return;}
+      [["p7Bids",data.bids],["p7Asks",data.asks]].forEach(([id,rows])=>{
+        const body=$(id);body.replaceChildren();
+        rows.slice(0,12).forEach(item=>{const tr=node("tr");addCell(tr,fmt(item.price,priceDigits(symbol)));addCell(tr,fmt(item.quantity,6));body.append(tr);});
+      });
+      $("p7BookImbalance").textContent="Bid/ask imbalance "+(data.imbalance*100).toFixed(1)+"%";
+      $("p7BookNote").textContent=data.note+" Snapshot: "+new Date(data.timestamp).toLocaleTimeString();
+    }catch(error){$("p7BookNote").textContent="Order book unavailable: "+error.message;}
+  }
+  async function loadNews(){
+    $("p7NewsStatus").textContent="Loading economic calendar…";
+    const body=$("p7NewsRows");body.replaceChildren();
+    try{
+      const data=await apiRequest("/api/v1/intelligence/news?days="+$("p7NewsDays").value);
+      $("p7NewsStatus").textContent=data.note;
+      if(!data.configured||!data.events?.length){
+        const tr=node("tr");const td=node("td",data.configured?"No events returned for this date range.":"Add FINNHUB_API_KEY to backend/.env and restart QUANTNEX to enable the economic calendar.","empty-row");td.colSpan=7;tr.append(td);body.append(tr);return;
+      }
+      data.events.forEach(event=>{
+        const tr=node("tr");
+        const rawTime=event.time||event.date||"—";
+        const stamp=typeof rawTime==="number"||/^\d{10,13}$/.test(String(rawTime))?new Date(Number(rawTime)*(String(rawTime).length===13?1:1000)).toLocaleString():String(rawTime);
+        [stamp,event.country,event.event,event.impact,event.actual,event.estimate,event.prev].forEach(v=>addCell(tr,v==null?"—":String(v)));
+        body.append(tr);
+      });
+    }catch(error){$("p7NewsStatus").textContent="Calendar unavailable: "+error.message;}
+  }
+  async function loadPaper(){
+    try{
+      const [summary,trades]=await Promise.all([
+        apiRequest("/api/v1/paper-trading/summary"),
+        apiRequest("/api/v1/paper-trading/trades?limit=100")
+      ]);
+      const kpis=$("p7PaperSummary");kpis.replaceChildren();
+      [["Open trades",summary.open_trades],["Closed trades",summary.closed_trades],
+       ["Win rate",summary.win_rate==null?"—":fmt(summary.win_rate,1)+"%"],
+       ["Realized P&L","$"+fmt(summary.realized_pnl,2)]].forEach(([label,value])=>{
+        const card=node("article");card.append(node("span",label),node("strong",String(value)));kpis.append(card);
+      });
+      const body=$("p7PaperRows");body.replaceChildren();
+      if(!trades.length){const tr=node("tr");const td=node("td","No paper trades yet.","empty-row");td.colSpan=9;tr.append(td);body.append(tr);}
+      trades.forEach(item=>{
+        const tr=node("tr");
+        [new Date(item.created_at).toLocaleString(),item.symbol,item.side,fmt(item.quantity,6),
+         fmt(item.entry_price,priceDigits(item.symbol)),fmt(item.stop_loss,priceDigits(item.symbol)),
+         fmt(item.take_profit,priceDigits(item.symbol)),item.status].forEach(v=>addCell(tr,String(v)));
+        const action=node("td");
+        if(item.status==="OPEN"){
+          const button=node("button","Close","p7-action-btn");
+          button.addEventListener("click",async()=>{
+            button.disabled=true;
+            try{await apiRequest("/api/v1/paper-trading/trades/"+item.id+"/close",{method:"POST"});setMessage("p7PaperStatus","Paper position closed using a fresh provider quote.");await refreshAnalytics();}
+            catch(error){setMessage("p7PaperStatus",error.message,true);button.disabled=false;}
+          });
+          action.append(button);
+        }else addCell(tr,"");
+        tr.append(action);body.append(tr);
+      });
+    }catch(error){setMessage("p7PaperStatus","Paper ledger unavailable: "+error.message,true);}
+  }
+  async function loadPerformance(){
+    try{
+      const data=await apiRequest("/api/v1/intelligence/performance");
+      const root=$("p7PerformanceKpis");root.replaceChildren();
+      [["Closed trades",data.total_trades],["Win rate",data.win_rate==null?"—":fmt(data.win_rate,1)+"%"],
+       ["Profit factor",data.profit_factor==null?"—":fmt(data.profit_factor,2)],
+       ["Net P&L","$"+fmt(data.net_pnl,2)]].forEach(([label,value])=>{
+        const card=node("article");card.append(node("span",label),node("strong",String(value)));root.append(card);
+      });
+      $("p7PerformanceNote").textContent="Wins "+data.wins+" · Losses "+data.losses+" · Breakeven "+data.breakeven+
+        " · Gross profit $"+fmt(data.gross_profit,2)+" · Gross loss $"+fmt(data.gross_loss,2)+". "+data.note;
+    }catch(error){$("p7PerformanceNote").textContent="Performance data unavailable: "+error.message;}
+  }
+  async function refreshAnalytics(){await Promise.all([loadPaper(),loadPerformance()]);}
+  async function openPaper(){
+    const button=$("p7OpenPaper");button.disabled=true;button.textContent="Opening…";
+    try{
+      const result=await apiRequest("/api/v1/paper-trading/trades",{method:"POST",body:JSON.stringify({
+        symbol:$("p7PaperSymbol").value,side:$("p7PaperSide").value,
+        quantity:Number($("p7PaperQty").value),stop_loss:Number($("p7PaperSL").value),
+        take_profit:Number($("p7PaperTP").value)
+      })});
+      setMessage("p7PaperStatus","Paper trade #"+result.id+" opened at "+fmt(result.entry_price,priceDigits(result.symbol))+". No broker order was placed.");
+      await refreshAnalytics();
+    }catch(error){setMessage("p7PaperStatus",error.message,true);}
+    finally{button.disabled=false;button.textContent="Open paper trade";}
+  }
+  async function calculateRisk(){
+    const button=$("p7CalculateRisk");button.disabled=true;
+    try{
+      const data=await apiRequest("/api/v1/intelligence/risk/calculate",{method:"POST",body:JSON.stringify({
+        equity:Number($("p7RiskEquity").value),risk_percent:Number($("p7RiskPercent").value),
+        entry:Number($("p7RiskEntry").value),stop_loss:Number($("p7RiskStop").value)
+      })});
+      const root=$("p7RiskResult");root.replaceChildren();
+      root.append(node("strong","Maximum planned loss: $"+fmt(data.risk_amount,2)));
+      root.append(node("p","Estimated position size: "+fmt(data.estimated_units,6)+" base units · Price distance: "+fmt(data.price_distance,6),"p7-note"));
+      root.append(node("p",data.note,"p7-note"));
+    }catch(error){$("p7RiskResult").replaceChildren(node("p",error.message,"p7-status-error"));}
+    finally{button.disabled=false;}
+  }
+  $("p7RefreshMarkets").addEventListener("click",loadMarkets);
+  $("p7RunScan").addEventListener("click",scan);
+  $("p7LoadBook").addEventListener("click",loadBook);
+  $("p7LoadNews").addEventListener("click",loadNews);
+  $("p7OpenPaper").addEventListener("click",openPaper);
+  $("p7RefreshPaper").addEventListener("click",refreshAnalytics);
+  $("p7CalculateRisk").addEventListener("click",calculateRisk);
+  $("p7UseSignal").addEventListener("click",()=>{
+    if(!lastSignal)return;
+    $("p7PaperSymbol").value=lastSignal.symbol;$("p7PaperSide").value=lastSignal.side;
+    $("p7PaperSL").value=lastSignal.stop_loss;$("p7PaperTP").value=lastSignal.tp1;
+    location.hash="#paper-trading";
+    $("p7PaperQty").focus();
+  });
+  loadMarkets();loadBook();refreshAnalytics();
+})();

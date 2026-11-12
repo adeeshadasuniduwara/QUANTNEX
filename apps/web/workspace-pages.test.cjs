@@ -18,7 +18,8 @@ for (const page of requiredPages) {
   assert.ok(sectionIds.includes(page), "Missing page section: " + page);
   assert.ok(navTargets.includes(page), "Missing sidebar link: " + page);
 }
-for (const asset of ["apps/web/workspace-pages.js", "apps/web/workspace-pages.css"]) {
+for (const asset of ["apps/web/workspace-pages.js", "apps/web/workspace-pages.css", "apps/web/realtime-events.js"]) {
   assert.ok(fs.existsSync(asset), "Missing workspace page asset: " + asset);
 }
-console.log("Workspace page checks passed: 10 new pages, unique section IDs and valid sidebar targets.");
+assert.ok(html.indexOf('src="realtime-events.js"') > html.indexOf('src="app.js"'), "Realtime event client must load after the main app");
+console.log("Workspace page checks passed: 10 new pages, unique section IDs, valid navigation and local event client.");

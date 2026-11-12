@@ -3,7 +3,7 @@ import json
 import re
 import httpx
 import jwt
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import func, select, text
@@ -14,7 +14,7 @@ from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, TOKEN_MINUT
 from .database import Base, engine, get_db
 from .models import Preference, Trade, User, WalletTransaction
 from .schemas import AIChatRequest, AIChatResponse, LoginRequest, PreferenceResponse, PreferenceWrite, RegisterRequest, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TokenResponse, TradeCreate, TradeResponse, UserResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
-from .security import create_access_token, decode_access_token, decrypt_secret, encrypt_secret, hash_password, verify_password
+from .security import create_access_token, decode_access_token, decrypt_secret, encrypt_secret, hash_password, verify_password, enforce_auth_rate_limit
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="QUANTNEX API", description="Shared backend for the QUANTNEX trading workspace.", version="0.5.0")
@@ -49,7 +49,7 @@ def health(db: Session = Depends(get_db)):
     return {"status": "ok", "service": "quantnex-api", "version": app.version, "database": "connected"}
 
 @app.post("/api/v1/auth/register", response_model=UserResponse, status_code=201)
-def register(payload: RegisterRequest, db: Session = Depends(get_db)):
+def register(payload: RegisterRequest, request: Request, _rate_limit: None = Depends(enforce_auth_rate_limit), db: Session = Depends(get_db)):
     if db.scalar(select(User).where(User.email == payload.email)):
         raise HTTPException(status_code=409, detail="An account with this email already exists.")
     user = User(email=payload.email, password_hash=hash_password(payload.password))
@@ -63,7 +63,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     return user
 
 @app.post("/api/v1/auth/login", response_model=TokenResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)):
+def login(payload: LoginRequest, request: Request, _rate_limit: None = Depends(enforce_auth_rate_limit), db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.email == payload.email.strip().lower()))
     if user is None or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Email or password is incorrect.")

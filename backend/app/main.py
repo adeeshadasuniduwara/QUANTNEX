@@ -74,6 +74,26 @@ def local_workspace(db: Session = Depends(get_db)) -> User:
         db.refresh(owner)
     return owner
 
+@app.get("/api/v1/charts/candles")
+async def chart_candles(symbol: str = "BTCUSDT", interval: str = "15m", limit: int = 500):
+    """Historical OHLC candles for the first-party QuantumX View chart."""
+    from .signal_engine import fetch_candles, MarketDataError, CRYPTO_SYMBOLS, BINANCE_INTERVALS
+    allowed_intervals = {"1m":"1min","5m":"5min","15m":"15min","30m":"30min","1h":"1h","4h":"4h"}
+    symbol = symbol.upper()
+    if symbol not in CRYPTO_SYMBOLS and symbol != "XAUUSD":
+        raise HTTPException(status_code=422, detail="Supported chart markets: BTCUSDT, ETHUSDT, SOLUSDT and XAUUSD.")
+    if interval not in allowed_intervals or not 210 <= limit <= 1000:
+        raise HTTPException(status_code=422, detail="Choose a supported interval and 210–1000 candles.")
+    try:
+        candles = await fetch_candles(allowed_intervals[interval], limit, symbol)
+        return {"symbol":symbol,"interval":interval,"provider":"Binance Spot" if symbol in CRYPTO_SYMBOLS else "Twelve Data",
+                "candles":candles[-limit:],"count":min(limit,len(candles)),
+                "timestamp":datetime.now(timezone.utc).isoformat()}
+    except MarketDataError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="Chart market-data provider is temporarily unavailable.")
+
 @app.get("/api/v1/market/overview")
 async def market_overview():
     """Indicative BTC/USD, XAU/USD and converted Sri Lankan gold values."""
@@ -266,19 +286,22 @@ def update_signal_settings(payload: SignalSettingsRequest, user: User = Depends(
     return settings
 
 @app.post("/api/v1/signals/scan")
-async def scan_xauusd_signal(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
-    from .signal_engine import build_signal, MarketDataError
+async def scan_market_signal(symbol: str = "BTCUSDT", user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .signal_engine import build_signal, MarketDataError, CRYPTO_SYMBOLS
     from .config import TWELVE_DATA_API_KEY
-    if not TWELVE_DATA_API_KEY:
-        raise HTTPException(status_code=503,detail="Market feed not configured. Add TWELVE_DATA_API_KEY to backend/.env and restart the API.")
+    symbol = symbol.upper()
+    if symbol not in CRYPTO_SYMBOLS and symbol != "XAUUSD":
+        raise HTTPException(status_code=422, detail="Supported signal markets: BTCUSDT, ETHUSDT, SOLUSDT and XAUUSD.")
+    if symbol == "XAUUSD" and not TWELVE_DATA_API_KEY:
+        raise HTTPException(status_code=503,detail="Gold market feed not configured. Add TWELVE_DATA_API_KEY to backend/.env and restart the API.")
     try: settings=json.loads(_preference(db,user.id,"signal_settings",json.dumps(DEFAULT_SIGNAL_SETTINGS)))
     except ValueError: settings=DEFAULT_SIGNAL_SETTINGS
     try:
-        result=await build_signal(settings)
+        result=await build_signal(settings, symbol)
     except MarketDataError as exc:
         raise HTTPException(status_code=502,detail=str(exc))
     except httpx.HTTPError:
-        raise HTTPException(status_code=502,detail="Could not retrieve XAUUSD candles from the configured market-data provider.")
+        raise HTTPException(status_code=502,detail="Could not retrieve "+symbol+" candles from the configured market-data provider.")
     signal=result.get("signal")
     if signal:
         _save_preference(db,user.id,"active_signal",json.dumps({**signal,"tp1_notified":False,"tp2_notified":False,"tp3_notified":False,"sl_notified":False}))

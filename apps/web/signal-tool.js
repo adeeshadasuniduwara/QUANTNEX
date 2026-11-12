@@ -69,7 +69,7 @@
     host.replaceChildren();const widget=document.createElement("div");widget.className="tradingview-widget-container__widget";host.append(widget);
     const script=document.createElement("script");script.type="text/javascript";script.async=true;
     script.src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
-    script.text=JSON.stringify({autosize:true,symbol:"OANDA:XAUUSD",interval:s.chart,timezone:"Etc/UTC",theme:"dark",style:"1",locale:"en",allow_symbol_change:true,calendar:false,support_host:"https://www.tradingview.com"});
+    script.text=JSON.stringify({autosize:true,symbol:$("tradingViewSymbol")?.value||"OANDA:XAUUSD",interval:s.chart,timezone:"Etc/UTC",theme:"dark",style:"1",locale:"en",allow_symbol_change:true,calendar:false,support_host:"https://www.tradingview.com"});
     host.append(script);$("timeframeStatus").textContent="TradingView XAUUSD chart changed to "+tfNames[s.chart]+".";
   }
   $("saveTimeframes").addEventListener("click",saveSettings);
@@ -148,8 +148,8 @@
     if(!token||!chat){$("telegramStatus").textContent="Enter your BotFather token and private chat ID or channel username.";return;}
     button.disabled=true;button.textContent="Connecting…";
     try{
-      const data=await apiRequest("/api/v1/telegram/connect",{method:"POST",body:JSON.stringify({bot_token:token,chat_id:chat})});
-      $("telegramStatus").textContent="Connected to @"+(data.bot_username||"your bot")+". Commands enabled: /help, /timeframes, /settf, /settrend, /setanalysis, /scan, /status.";
+      const data=await apiRequest("/api/v1/telegram/connect",{method:"POST",body:JSON.stringify({bot_token:token,chat_id:chat,display_name:$("tgBotDisplayName").value.trim()})});
+      $("telegramStatus").textContent="Connected to "+($("tgBotDisplayName").value.trim()||"@"+(data.bot_username||"your bot"))+" (@"+(data.bot_username||"bot")+"). Commands enabled: /help, /timeframes, /settf, /settrend, /setanalysis, /scan, /status.";
       $("tgBotToken").value="";
     }catch(e){$("telegramStatus").textContent=e.message;}
     finally{button.disabled=false;button.textContent="Connect bot & enable commands";}

@@ -5,12 +5,12 @@ import logging
 from datetime import datetime, timezone
 from sqlalchemy import select
 from .database import SessionLocal
-from .models import AuditEvent, PaperTrade, User
+from .models import AuditEvent, PaperTrade
 from .phase07_engine import get_quote
 
 logger=logging.getLogger("quantnex.paper")
 
-def exit_reason(trade: PaperTrade, price: float) -> str | None:
+def exit_reason(trade, price: float) -> str | None:
     if trade.side=="BUY":
         if price<=trade.stop_loss: return "STOP_LOSS"
         if price>=trade.take_profit: return "TAKE_PROFIT"
@@ -23,17 +23,21 @@ async def paper_trade_monitor() -> None:
     while True:
         try:
             with SessionLocal() as db:
-                owner=db.scalar(select(User).order_by(User.id))
-                open_trades=list(db.scalars(select(PaperTrade).where(PaperTrade.status=="OPEN")))
-                if owner and open_trades:
-                    symbols=sorted({trade.symbol for trade in open_trades})
-                    quotes=await asyncio.gather(*(get_quote(symbol) for symbol in symbols),return_exceptions=True)
-                    prices={symbol:result["price"] for symbol,result in zip(symbols,quotes) if isinstance(result,dict)}
-                    for trade in open_trades:
-                        if trade.symbol not in prices: continue
-                        price=float(prices[trade.symbol])
-                        reason=exit_reason(trade,price)
+                snapshot=[{"id":x.id,"symbol":x.symbol,"side":x.side,"quantity":x.quantity,
+                           "entry_price":x.entry_price,"stop_loss":x.stop_loss,"take_profit":x.take_profit}
+                          for x in db.scalars(select(PaperTrade).where(PaperTrade.status=="OPEN"))]
+            if snapshot:
+                symbols=sorted({x["symbol"] for x in snapshot})
+                quotes=await asyncio.gather(*(get_quote(symbol) for symbol in symbols),return_exceptions=True)
+                prices={symbol:float(result["price"]) for symbol,result in zip(symbols,quotes) if isinstance(result,dict)}
+                with SessionLocal() as db:
+                    for row in snapshot:
+                        if row["symbol"] not in prices: continue
+                        price=prices[row["symbol"]]
+                        reason=exit_reason(row,price)
                         if not reason: continue
+                        trade=db.scalar(select(PaperTrade).where(PaperTrade.id==row["id"],PaperTrade.status=="OPEN"))
+                        if trade is None: continue
                         pnl=(price-trade.entry_price)*trade.quantity*(1 if trade.side=="BUY" else -1)
                         trade.exit_price=price
                         trade.realized_pnl=round(pnl,8)

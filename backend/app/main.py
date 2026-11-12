@@ -436,12 +436,14 @@ async def stop_telegram_background_worker():
 
 @app.get("/api/v1/telegram/auto-signals")
 def get_auto_signal_settings(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
-    raw=_preference(db,user.id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180}')
+    raw=_preference(db,user.id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}')
     try: settings=json.loads(raw)
-    except ValueError: settings={"enabled":False,"interval_seconds":180}
+    except ValueError: settings={"enabled":False,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}
+    settings.setdefault("symbols",["BTCUSDT","ETHUSDT","SOLUSDT"])
     settings["telegram_connected"]=bool(_preference(db,user.id,"telegram_bot_token_enc") and _preference(db,user.id,"telegram_chat_id"))
     from .config import TWELVE_DATA_API_KEY
-    settings["market_feed_configured"]=bool(TWELVE_DATA_API_KEY)
+    settings["crypto_feed_configured"]=True
+    settings["gold_feed_configured"]=bool(TWELVE_DATA_API_KEY)
     return settings
 
 @app.put("/api/v1/telegram/auto-signals")
@@ -450,14 +452,14 @@ def set_auto_signal_settings(payload: AutoSignalSettingsRequest, user: User = De
     if payload.enabled and not connected:
         raise HTTPException(status_code=409,detail="Connect and test your personal Telegram bot before enabling Auto Signals.")
     from .config import TWELVE_DATA_API_KEY
-    if payload.enabled and not TWELVE_DATA_API_KEY:
-        raise HTTPException(status_code=503,detail="Add TWELVE_DATA_API_KEY to backend/.env and restart the QUANTNEX API before enabling Auto Signals.")
+    if payload.enabled and "XAUUSD" in payload.symbols and not TWELVE_DATA_API_KEY:
+        raise HTTPException(status_code=503,detail="XAUUSD is selected but TWELVE_DATA_API_KEY is not configured. Remove Gold from selected markets or configure the provider.")
     settings=payload.model_dump()
     _save_preference(db,user.id,"auto_signal_settings",json.dumps(settings))
-    record_audit_event(db, "signals.auto_settings_updated", {"enabled": settings["enabled"], "interval_seconds": settings["interval_seconds"]})
+    record_audit_event(db, "signals.auto_settings_updated", {"enabled": settings["enabled"], "interval_seconds": settings["interval_seconds"], "symbols": settings["symbols"]})
     db.commit()
-    event_hub.publish("preferences.changed", "signals", "auto_settings_updated", {"key": "auto_signal_settings", "enabled": settings["enabled"]})
-    return {**settings,"telegram_connected":connected,"note":"Automatic XAUUSD alerts run only while this computer's QUANTNEX API process is running."}
+    event_hub.publish("preferences.changed", "signals", "auto_settings_updated", {"key": "auto_signal_settings", "enabled": settings["enabled"], "symbols": settings["symbols"]})
+    return {**settings,"telegram_connected":connected,"note":"Automatic crypto signal alerts run while this computer's QUANTNEX API and Telegram worker are running."}
 
 @app.post("/api/v1/telegram/notify")
 async def notify_connected_telegram(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):

@@ -16,7 +16,7 @@ from .database import Base, engine, get_db, SessionLocal
 from .models import AuditEvent, Preference, Trade, User, WalletTransaction
 from .schemas import AIChatRequest, AIChatResponse, PreferenceResponse, PreferenceWrite, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TradeCreate, TradeResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
 from .security import decrypt_secret, encrypt_secret
-from .maintenance import record_audit_event
+from .maintenance import daily_backup_worker, record_audit_event
 from .system_security import router as system_security_router
 
 Base.metadata.create_all(bind=engine)
@@ -443,3 +443,19 @@ async def notify_connected_telegram(payload: dict, user: User = Depends(local_wo
         return {"ok":True,"message_id":data.get("result",{}).get("message_id")}
     except httpx.HTTPError:
         raise HTTPException(status_code=502,detail="Could not reach Telegram.")
+
+
+@app.on_event("startup")
+async def start_daily_backup_worker():
+    app.state.daily_backup_task = asyncio.create_task(daily_backup_worker())
+
+
+@app.on_event("shutdown")
+async def stop_daily_backup_worker():
+    task = getattr(app.state, "daily_backup_task", None)
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass

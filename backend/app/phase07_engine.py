@@ -69,7 +69,7 @@ async def get_market_board() -> dict:
     for symbol,result in zip(symbols,results):
         if isinstance(result,Exception):
             items.append({"symbol":symbol,"label":MARKETS[symbol]["label"],"kind":MARKETS[symbol]["kind"],
-                          "status":"unavailable","reason":str(result)})
+                          "status":"unavailable","reason":"Provider request failed; check the API key, provider quota or network connection."})
         else:
             items.append({"status":"ok",**result})
     return {"items":items,"timestamp":datetime.now(timezone.utc).isoformat(),

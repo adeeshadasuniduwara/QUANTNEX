@@ -5,6 +5,7 @@ on:
     paths:
       - "apps/windows/**"
       - ".github/workflows/windows-build.yml"
+      - ".github/workflows/release.yml"
       - "run_quantnex.bat"
   push:
     branches: [main]

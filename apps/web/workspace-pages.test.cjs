@@ -2,7 +2,7 @@ const fs = require("node:fs");
 const assert = require("node:assert/strict");
 
 const html = fs.readFileSync("apps/web/index.html", "utf8");
-const sectionIds = [...html.matchAll(/<section\\b[^>]*\\bid="([^"]+)"/g)].map(match => match[1]);
+const sectionIds = [...html.matchAll(/<section\b[^>]*\bid="([^"]+)"/g)].map(match => match[1]);
 const navTargets = [...html.matchAll(/class="nav-link[^"]*" href="#([^"]+)"/g)].map(match => match[1]);
 
 assert.equal(new Set(sectionIds).size, sectionIds.length, "Section IDs must be unique");

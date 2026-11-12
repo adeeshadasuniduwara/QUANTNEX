@@ -12,6 +12,7 @@ CORS_ORIGINS = [x.strip() for x in os.getenv("CORS_ORIGINS", "http://localhost:3
 AI_BASE_URL = os.getenv("AI_BASE_URL", "").rstrip("/")
 AI_API_KEY = os.getenv("AI_API_KEY", "")
 AI_MODEL = os.getenv("AI_MODEL", "")
+TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "").strip()
 
 if not 5 <= TOKEN_MINUTES <= 1440:
     raise ValueError("ACCESS_TOKEN_MINUTES must be between 5 and 1440.")

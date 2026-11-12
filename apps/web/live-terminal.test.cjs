@@ -18,7 +18,7 @@ assert.doesNotMatch(html, /id="refreshSystemHealth"/, "System health must not re
 assert.match(app, /@depth20@100ms/, "Bookmap must retain the 100ms Binance depth feed");
 assert.match(app, /bookHistory\.length>120/, "Bookmap history must remain bounded");
 assert.match(app, /setTimeout\(drawBookmap,90\)/, "Bookmap drawing must be throttled");
-assert.match(app, /setInterval\(refresh,25000\)/, "Provider quotes must refresh at the cache-aware interval");
+assert.match(app, /setInterval\(refresh,30000\)/, "Provider quotes must refresh at the cache-aware interval");
 assert.match(app, /quantnex:market-tick/, "Live market events must feed the P&L calculator");
 assert.match(app, /apiRequest\("\/api\/v1\/system\/metrics"\)/, "System health must use lightweight host telemetry");
 assert.match(app, /setInterval\(update,1000\)/, "System health must refresh automatically once per second");

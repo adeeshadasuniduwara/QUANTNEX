@@ -135,3 +135,14 @@
 @media(max-width:1100px){.p9-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:720px){.p9-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:420px){.p9-grid{grid-template-columns:1fr}}
+
+/* Phase 10 — Market Data Reliability */
+.phase10-panel{margin-bottom:24px}
+.p10-detail{margin-top:22px;padding-top:18px;border-top:1px solid #292929}
+.p10-detail-result{margin-top:14px;padding:14px;border:1px solid #292929;border-radius:9px;background:#0b0b0b}
+.p10-detail-heading{font-size:14px;font-weight:850;letter-spacing:.08em;margin-bottom:12px}
+.p10-detail-heading.safe,.p10-health-good{color:#9ddbb2}
+.p10-detail-heading.unsafe,.p10-health-bad{color:#ff9292}
+.p10-health-warn{color:#f0cb82}
+.p10-health-good,.p10-health-warn,.p10-health-bad{font-weight:800}
+@media(max-width:720px){.phase10-panel{padding:15px}.p10-detail .p7-form-row{align-items:stretch;flex-wrap:wrap}.p10-detail .p7-form-row label{min-width:130px;flex:1}}

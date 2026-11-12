@@ -10,6 +10,7 @@ assert.match(html, /id="p7BookmapCanvas"/, "Bookmap must render through a canvas
 assert.match(html, /id="livePnlSymbol"/, "BTC/XAUUSD live P&L market selector is missing");
 assert.match(html, /id="livePnlEntry"/, "Live P&L entry input is missing");
 assert.match(html, /id="livePnlQuantity"/, "Live P&L quantity input is missing");
+assert.match(html, /id="livePnlContractSize"/, "Gold broker contract-size input is missing");
 assert.match(html, /id="integrationConnectBot"/, "Integrations must offer a bot connection shortcut");
 assert.match(html, /id="telegram-bot-connect"/, "Telegram connection panel anchor is missing");
 assert.doesNotMatch(html, /<\/?(?:code|pre)\b/i, "User-facing HTML must not expose code snippets");

@@ -954,7 +954,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
 
 // One-second local CPU/RAM telemetry. Poll only while the health panel is visible.
 (function initLiveSystemMeters(){
-  const panel=$("system-security");
+  const panel=document.querySelector(".system-security-panel");
   if(!panel||!$("systemCpu"))return;
   let busy=false,panelVisible=false;
   const update=async()=>{
@@ -982,4 +982,4 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   }else panelVisible=true;
   document.addEventListener("visibilitychange",()=>{if(!document.hidden&&panelVisible)update();});
   update();window.setInterval(update,1000);
-})();;
+})();

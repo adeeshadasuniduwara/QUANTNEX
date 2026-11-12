@@ -1,5 +1,5 @@
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 import sqlite3
@@ -115,6 +115,11 @@ def test_legacy_accounts_are_consolidated_without_losing_local_data():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+
+    @event.listens_for(test_engine, "connect")
+    def enable_test_foreign_keys(connection, _record):
+        connection.execute("PRAGMA foreign_keys=ON")
+
     Base.metadata.create_all(test_engine)
     with Session(test_engine) as db:
         owner = User(email="first@example.com", password_hash="legacy-password-hash")

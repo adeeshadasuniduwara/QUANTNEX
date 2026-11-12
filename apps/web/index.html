@@ -235,12 +235,12 @@
           <label>Risk per signal (%)<input id="signalRiskPct" type="number" min="0.1" max="5" step="0.1" value="1"></label>
         </div>
         <div class="signal-actions"><button class="primary-btn" id="saveTimeframes">Save signal settings</button><button class="secondary-btn" id="syncTimeframes">Load settings from Telegram</button><button class="secondary-btn" id="applyChartTf">Apply to QUANTNEX VIEW</button><button class="secondary-btn" id="runSignalScan">Run market signal scan</button></div>
-        <p class="telegram-status" id="timeframeStatus" aria-live="polite">Connect your QUANTNEX account to save shared settings and run live analysis. M50 is aggregated from 1-minute candles and has shorter indicator history.</p>
+        <p class="telegram-status" id="timeframeStatus" aria-live="polite">Connect your Telegram bot to receive generated signals. Crypto analysis uses Binance public data; Gold needs a configured local provider. M50 is aggregated from 1-minute candles.</p>
         <div class="signal-warning">Gold and Forex analysis require a supported market-data provider configured on this computer. Keep provider credentials private; QUANTNEX never displays secret values in the website. Provider plan limits and market-data entitlements apply.</div>
       </section>
       <section class="panel signal-panel signal-results-panel">
         <div class="signal-intro"><div><strong>Live signal analysis</strong><p>EMA 20/50/200 · MACD · RSI · ADX · ATR · Structure · Liquidity · OB / Breaker / FVG / iFVG</p></div><span class="signal-pill" id="signalEngineState">NOT SCANNED</span></div>
-        <div id="signalResult" class="signal-result-empty">Configure a market-data key on the local API, then run a scan. No live signal is assumed until the feed responds.</div>
+        <div id="signalResult" class="signal-result-empty">Select BTC, ETH, SOL or XAUUSD and run a scan. Crypto uses Binance public candles; XAUUSD requires the configured local provider.</div>
         <div id="indicatorReadout" class="indicator-readout"></div>
         <p class="signal-feed-note">The 0–10 score counts matching rules; it is not a measured win rate or probability. Reaper is a named third-party/custom indicator with no confirmed formula in this project, so it is not represented as a working confirmation. The engine uses its own documented rule-based approximations for market structure and zones.</p>
       </section>

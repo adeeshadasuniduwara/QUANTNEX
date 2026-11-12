@@ -45,3 +45,25 @@ class WalletTransaction(Base):
     amount: Mapped[float] = mapped_column(Float)
     description: Mapped[str] = mapped_column(String(240), default="")
     trade_id: Mapped[int | None] = mapped_column(Integer, nullable=True, unique=True, index=True)
+
+
+class PasskeyCredential(Base):
+    __tablename__ = "passkey_credentials"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    credential_id: Mapped[str] = mapped_column(String(1024), unique=True, index=True)
+    public_key: Mapped[str] = mapped_column(Text)
+    sign_count: Mapped[int] = mapped_column(Integer, default=0)
+    transports: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class WebAuthnChallenge(Base):
+    __tablename__ = "webauthn_challenges"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    purpose: Mapped[str] = mapped_column(String(24), index=True)
+    challenge: Mapped[str] = mapped_column(String(512))
+    expected_origin: Mapped[str] = mapped_column(String(512))
+    expected_rp_id: Mapped[str] = mapped_column(String(253))
+    expires_at: Mapped[float] = mapped_column(Float, index=True)

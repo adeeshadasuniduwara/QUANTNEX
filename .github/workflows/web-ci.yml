@@ -4,11 +4,15 @@ on:
   pull_request:
     paths:
       - "apps/web/**"
+      - "tests/test_telegram_release_workflow.py"
+      - ".github/workflows/telegram-release-notify.yml"
       - ".github/workflows/web-ci.yml"
   push:
     branches: [main]
     paths:
       - "apps/web/**"
+      - "tests/test_telegram_release_workflow.py"
+      - ".github/workflows/telegram-release-notify.yml"
       - ".github/workflows/web-ci.yml"
 
 permissions:

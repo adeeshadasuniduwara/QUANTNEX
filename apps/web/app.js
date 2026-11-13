@@ -296,11 +296,54 @@ async function apiRequest(path, options={}){
   if(!response.ok) throw new Error(payload?.detail||("API request failed ("+response.status+")."));
   return payload;
 }
+async function syncJournal(){
+  try{
+    if(localStorage.getItem(journalMigrationKey)!=="1"){
+      const legacy=loadTrades().filter(row=>!row.id);
+      if(legacy.length){
+        if(!localStorage.getItem(journalLegacyBackupKey))
+          localStorage.setItem(journalLegacyBackupKey,JSON.stringify(legacy));
+        let sourceId=localStorage.getItem(journalSourceKey);
+        if(!sourceId){
+          sourceId=window.crypto?.randomUUID?.()||("qnx-"+Date.now()+"-"+Math.random().toString(16).slice(2));
+          localStorage.setItem(journalSourceKey,sourceId);
+        }
+        const normalized=legacy.map(row=>{
+          const parsed=row.date?new Date(row.date):null;
+          return {
+            date:parsed&&!Number.isNaN(parsed.getTime())?parsed.toISOString().slice(0,10):"",
+            symbol:String(row.symbol||"").trim().toUpperCase().slice(0,20),
+            direction:["buy","sell"].includes(String(row.direction||"").toLowerCase())?String(row.direction).toLowerCase():"buy",
+            outcome:["win","loss","breakeven"].includes(String(row.outcome||"").toLowerCase())?String(row.outcome).toLowerCase():"breakeven",
+            pnl:Number.isFinite(Number(row.pnl))?Number(row.pnl):0,
+            notes:String(row.notes||"").slice(0,2000)
+          };
+        });
+        for(let offset=0;offset<normalized.length;offset+=500){
+          await apiRequest("/api/v1/journal/import",{method:"POST",body:JSON.stringify({
+            source_id:sourceId,source_index_start:offset,rows:normalized.slice(offset,offset+500)
+          })});
+        }
+      }
+      localStorage.setItem(journalMigrationKey,"1");
+    }
+    const remote=await apiRequest("/api/v1/journal?limit=500");
+    journalRowsCache=remote.slice().reverse().map(mapServerTrade);
+    saveTrades(journalRowsCache);renderJournal();
+    setJournalStatus("Journal synced with the local QUANTNEX database. A browser recovery copy is retained.");
+  }catch(error){
+    renderJournal();
+    setJournalStatus("Showing the browser recovery copy. Database sync failed: "+error.message,true);
+  }
+}
 function renderWalletTransactions(rows){
   const body=$("walletRows");body.replaceChildren();
   if(!rows.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=4;td.className="empty-row";td.textContent="No wallet transactions yet.";tr.append(td);body.append(tr);return;}
   rows.forEach(item=>{const tr=document.createElement("tr");const date=new Date(item.created_at).toLocaleString();const amount=Number(item.amount);[date,item.transaction_type.replaceAll("_"," "),item.description||"—",money(amount)].forEach((value,index)=>{const td=document.createElement("td");td.textContent=value;if(index===3)td.className=amount<0?"negative":"positive";tr.append(td);});body.append(tr);});
 }
+syncJournal();
+window.addEventListener("online",()=>syncJournal());
+window.addEventListener("quantnex:workspace-resync",()=>syncJournal());
 async function refreshWallet(){
   const [summary,transactions]=await Promise.all([apiRequest("/api/v1/wallet/summary"),apiRequest("/api/v1/wallet/transactions?limit=100")]);
   $("walletBalance").textContent=money(summary.balance);$("walletDeposits").textContent=money(summary.deposits);$("walletWithdrawals").textContent=money(summary.withdrawals);$("walletPnl").textContent=money(summary.trading_pnl);renderWalletTransactions(transactions);

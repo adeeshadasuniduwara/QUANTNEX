@@ -151,6 +151,7 @@ private fun QuantnexApp(
     var active by remember { mutableStateOf("overview") }
     var error by remember { mutableStateOf("") }
     var showUpdatePopup by remember { mutableStateOf(false) }
+    var dashboardRefresh by remember { mutableIntStateOf(0) }
     var notifiedTag by remember { mutableStateOf(lastNotifiedTag) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -202,18 +203,18 @@ private fun QuantnexApp(
             }
         }
         if (url.isBlank()) {
-            Column(Modifier.weight(1f).padding(24.dp), verticalArrangement=Arrangement.Center) {
-                Text("YOUR TRADING WORKSPACE, ON ANDROID.", color=Color.White, fontSize=27.sp, fontWeight=FontWeight.ExtraBold)
-                Spacer(Modifier.height(12.dp))
-                Text("Connect the same QUANTNEX Web workspace to use its charts, trading room, market feeds, journal and tools.", color=Muted)
-                Spacer(Modifier.height(18.dp))
-                OutlinedTextField(editUrl, { editUrl=it }, modifier=Modifier.fillMaxWidth(), singleLine=true, label={ Text("HTTPS workspace URL") })
-                Spacer(Modifier.height(12.dp))
-                Button(onClick={
-                    val v=editUrl.trim().trimEnd('/')
-                    if(v.startsWith("https://")) { url=v; onSaveUrl(v); showSettings=false }
-                }, modifier=Modifier.fillMaxWidth(), colors=ButtonDefaults.buttonColors(containerColor=Accent, contentColor=Bg)) { Text("CONNECT WORKSPACE") }
-                Text("Your PC's localhost address cannot be opened from a phone. Host the Web workspace on a reachable HTTPS server first.", color=Muted, fontSize=11.sp)
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                when (active) {
+                    "overview" -> NativeDashboardScreen(
+                        refreshKey = dashboardRefresh,
+                        onRefresh = { dashboardRefresh++ },
+                        onOpenSettings = { editUrl=url; showSettings=true }
+                    )
+                    "tradingview" -> NativeFeaturePlaceholder("QUANTNEX VIEW", "A native multi-market chart workspace with candles, timeframes, indicators and drawing tools is the next development phase.")
+                    "trading-room" -> NativeFeaturePlaceholder("TRADING ROOM", "Live market discussion, market context and trading-room tools will be integrated in a later native phase.")
+                    "journal" -> NativeFeaturePlaceholder("TRADE JOURNAL", "Your local trade journal and wallet tools will be connected after the secure data-sync architecture is ready.")
+                    else -> NativeFeaturePlaceholder("MORE TOOLS", "Updates, settings, prop-firm challenges and the remaining QUANTNEX toolkit will be added progressively.")
+                }
             }
         } else {
             Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -245,15 +246,15 @@ private fun QuantnexApp(
                     TextButton(onClick=onReload) { Text("RETRY", color=Accent) }
                 }
             }
-            NavigationBar(containerColor=Panel) {
-                val items=listOf(Triple("Home","overview",Icons.Default.Dashboard),Triple("Chart","tradingview",Icons.Default.ShowChart),Triple("Room","trading-room",Icons.Default.Groups),Triple("Journal","journal",Icons.Default.MenuBook),Triple("More","updates",Icons.Default.MoreHoriz))
-                items.forEach { item -> NavigationBarItem(
-                    selected=active==item.second,
-                    onClick={ active=item.second; onNavigate(item.second) },
-                    icon={ Icon(item.third, item.first) }, label={ Text(item.first, fontSize=10.sp) },
-                    colors=NavigationBarItemDefaults.colors(selectedIconColor=Accent, selectedTextColor=Accent, indicatorColor=Color(0xFF20382F), unselectedIconColor=Muted, unselectedTextColor=Muted)
-                ) }
-            }
+        }
+        NavigationBar(containerColor=Panel) {
+            val items=listOf(Triple("Home","overview",Icons.Default.Dashboard),Triple("Chart","tradingview",Icons.Default.ShowChart),Triple("Room","trading-room",Icons.Default.Groups),Triple("Journal","journal",Icons.Default.MenuBook),Triple("More","updates",Icons.Default.MoreHoriz))
+            items.forEach { item -> NavigationBarItem(
+                selected=active==item.second,
+                onClick={ active=item.second; if(url.isNotBlank()) onNavigate(item.second) },
+                icon={ Icon(item.third, item.first) }, label={ Text(item.first, fontSize=10.sp) },
+                colors=NavigationBarItemDefaults.colors(selectedIconColor=Accent, selectedTextColor=Accent, indicatorColor=Color(0xFF20382F), unselectedIconColor=Muted, unselectedTextColor=Muted)
+            ) }
         }
     }
     if (showUpdatePopup && release != null) {
@@ -271,7 +272,7 @@ private fun QuantnexApp(
             dismissButton = { TextButton(onClick = { showUpdatePopup = false }) { Text("LATER", color = Muted) } }
         )
     }
-    if(showSettings && url.isNotBlank()) AlertDialog(
+    if(showSettings) AlertDialog(
         onDismissRequest={ showSettings=false }, containerColor=Panel,
         title={ Text("Workspace settings", color=Color.White) },
         text={ OutlinedTextField(editUrl, { editUrl=it }, singleLine=true, label={ Text("HTTPS workspace URL") }) },

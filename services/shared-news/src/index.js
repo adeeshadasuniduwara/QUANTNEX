@@ -41,6 +41,12 @@ export default {
     if (url.pathname !== "/api/economic-calendar") {
       return json({ detail: "Not found." }, 404);
     }
+    const clientIp = request.headers.get("CF-Connecting-IP") || "unknown";
+    const rate = await env.RATE_LIMITER.limit({ key: clientIp });
+    if (!rate.success) {
+      return json({ detail: "Too many requests. Please wait before refreshing the economic calendar." }, 429,
+        { "retry-after": "60", "cache-control": "no-store" });
+    }
     if (!env.FINNHUB_API_KEY) {
       return json({ configured: false, provider: "Finnhub", events: [],
         note: "Shared Finnhub service is missing its server-side API secret." }, 503);

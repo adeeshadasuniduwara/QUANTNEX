@@ -271,14 +271,13 @@ def import_legacy_journal(payload: LegacyJournalImportRequest,
                           db: Session = Depends(get_db)):
     """Import legacy browser journal rows without replaying historical P&L into the wallet.
 
-    source_id + source_index makes retries safe if the browser loses its response
+    source_ref makes retries safe if the browser loses its response
     after the database commit or the import is split into multiple batches.
     """
     imported = 0
     for row in payload.rows:
         exists = db.scalar(select(JournalImport.id).where(
             JournalImport.user_id == user.id,
-            JournalImport.source_id == payload.source_id,
             JournalImport.source_ref == row.source_ref,
         ))
         if exists is not None:
@@ -311,8 +310,7 @@ def import_legacy_journal(payload: LegacyJournalImportRequest,
             # Another browser tab may have imported the same source row first.
             if db.scalar(select(JournalImport.id).where(
                 JournalImport.user_id == user.id,
-                JournalImport.source_id == payload.source_id,
-                JournalImport.source_ref == row.source_ref,
+                    JournalImport.source_ref == row.source_ref,
             )) is None:
                 raise
     if imported:

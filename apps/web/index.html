@@ -190,7 +190,7 @@
       <section class="panel chart-panel qx-chart-panel" aria-label="QUANTNEX VIEW live chart">
         <div class="qx-chart-topbar">
           <div class="qx-chart-market">
-            <label>Market<select id="qxSymbol"><option value="BTCUSDT">BTC / USDT</option><option value="ETHUSDT">ETH / USDT</option><option value="SOLUSDT">SOL / USDT</option><option value="XAUUSD">Gold / XAUUSD</option></select></label>
+            <label>Market<select id="qxSymbol"><option value="BTCUSDT">BTC / USDT</option><option value="ETHUSDT">ETH / USDT</option><option value="BNBUSDT">BNB / USDT</option><option value="XRPUSDT">XRP / USDT</option><option value="SOLUSDT">SOL / USDT</option><option value="ADAUSDT">ADA / USDT</option><option value="DOGEUSDT">DOGE / USDT</option><option value="AVAXUSDT">AVAX / USDT</option><option value="LINKUSDT">LINK / USDT</option><option value="LTCUSDT">LTC / USDT</option><option value="BCHUSDT">BCH / USDT</option><option value="DOTUSDT">DOT / USDT</option><option value="TRXUSDT">TRX / USDT</option><option value="TONUSDT">TON / USDT</option><option value="SUIUSDT">SUI / USDT</option><option value="NEARUSDT">NEAR / USDT</option><option value="UNIUSDT">UNI / USDT</option><option value="AAVEUSDT">AAVE / USDT</option><option value="SHIBUSDT">SHIB / USDT</option><option value="PEPEUSDT">PEPE / USDT</option><option value="XAUUSD">Gold / XAUUSD</option></select></label>
             <div><strong id="qxChartLastPrice">—</strong><small id="qxChartChange">Waiting for market data</small></div>
           </div>
           <div class="qx-chart-toolbar">
@@ -220,11 +220,11 @@
           <span class="qx-chart-status" id="qxChartStatus" role="status">Connecting to local market data…</span>
         </div>
         <div id="qxChartHost" class="qx-chart-host"><div class="qx-chart-loading">Loading live candles…</div></div>
-        <div class="qx-chart-footer"><span id="qxChartProvider">Market feed: waiting</span><span>Live updates · local chart settings · Chart engine by <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">TradingView Lightweight Charts™</a></span></div>
+        <div class="qx-chart-footer"><span id="qxChartProvider">Market feed: waiting</span><span>Native QUANTNEX canvas engine · Binance live WebSocket for crypto · local chart settings</span></div>
       </section>
       <section class="qx-chart-intelligence" aria-live="polite" aria-label="Live chart intelligence">
         <div><div class="qx-chart-intelligence-head"><strong>LIVE STRUCTURE &amp; CONFIRMATIONS</strong><small id="qxChartIntelState">SCANNING</small></div>
-          <p class="qx-chart-intel-summary" id="qxChartIntelSummary">Waiting for market confirmation…</p>
+          <p class="qx-chart-intel-summary" id="qxChartIntelSummary">Waiting for market confirmation…</p><div class="qx-confidence" id="qxConfidenceMeter" aria-label="Rule confluence meter"><div class="qx-confidence-track"><span id="qxConfidenceFill"></span></div><small id="qxConfidenceLabel">0 / 20 rule matches · not a win probability</small></div>
           <div class="qx-chart-overlay-options">
             <label><input type="checkbox" id="qxOverlayStructure" checked> Structure &amp; sweeps</label>
             <label><input type="checkbox" id="qxOverlayZones" checked> OB / BB / FVG zones</label>

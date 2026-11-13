@@ -7,7 +7,7 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Any
 import httpx
-from .config import TWELVE_DATA_API_KEY
+from .config import TWELVE_DATA_API_KEY, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
 
 BASE = "https://api.twelvedata.com/time_series"
 INTERVALS = {"1": "1min", "5": "5min", "15": "15min", "30": "30min", "60": "1h", "240": "4h"}
@@ -56,8 +56,14 @@ async def fetch_candles(interval: str, outputsize: int = 320, symbol: str = "XAU
         return candles
     if symbol != "XAUUSD":
         raise MarketDataError("Supported markets are BTCUSDT, ETHUSDT, SOLUSDT and XAUUSD.")
+    if QUANTNEX_MT5_ENABLED:
+        from .mt5_feed import get_candles as get_mt5_candles, MT5FeedError
+        try:
+            return await get_mt5_candles(QUANTNEX_MT5_GOLD_SYMBOL, interval.replace("min", "m"), min(max(outputsize, 210), 1000))
+        except MT5FeedError as exc:
+            raise MarketDataError(str(exc)) from exc
     if not TWELVE_DATA_API_KEY:
-        raise MarketDataError("Gold market data is not configured. Add TWELVE_DATA_API_KEY to backend/.env.")
+        raise MarketDataError("Gold market data is not configured. Enable QUANTNEX_MT5_ENABLED or add TWELVE_DATA_API_KEY to backend/.env.")
     async with httpx.AsyncClient(timeout=18) as client:
         response = await client.get(BASE, params={"symbol":"XAU/USD","interval":interval,
             "outputsize":min(outputsize, 5000),"timezone":"UTC","apikey":TWELVE_DATA_API_KEY})

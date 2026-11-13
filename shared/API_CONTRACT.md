@@ -111,6 +111,26 @@ Paper trading is simulated and local. Backtests and confluence scores are not
 verified win rates or guarantees. No broker order, live execution, or automatic
 broker stop modification is exposed by these routes.
 
+## Prop Firm Challenge Simulator
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/prop-challenge/state` | Read the local challenge and optional MT5 DEMO connection state |
+| POST | `/api/v1/prop-challenge/challenge` | Create a virtual or MT5 DEMO challenge with explicit rules |
+| POST | `/api/v1/prop-challenge/virtual-trades` | Record a closed practice result in virtual mode |
+| POST | `/api/v1/prop-challenge/mt5/connect` | Connect an installed Windows MT5 terminal, DEMO accounts only |
+| POST | `/api/v1/prop-challenge/mt5/disconnect` | Disconnect the local MT5 bridge |
+| GET | `/api/v1/prop-challenge/mt5/status` | Read MT5 bridge status |
+| POST | `/api/v1/prop-challenge/reset` | Reset the local challenge and its virtual practice history |
+
+Challenge rules use the existing local preferences store. MT5 credentials are used
+only for the local in-memory DEMO connection and are not persisted. REAL and CONTEST
+accounts are rejected. On a DEMO challenge breach, the local guardian attempts to
+close open positions and locks the challenge; broker rejection, terminal/network
+failure, or a stopped backend can prevent closure. This is not a broker-guaranteed
+loss limit. Virtual mode records manually entered closed P&L only and does not send
+market orders or track floating equity.
+
 ## Local system maintenance
 
 | Method | Path | Purpose |
@@ -139,5 +159,5 @@ verified local backup. PostgreSQL backup/restore is not implemented.
 
 - No `/api/v1/auth/*`, login, registration, password reset, or cloud identity.
 - No public cloud relay or multi-user remote API.
-- No broker account connection, live broker order placement, or auto execution.
+- No live broker account connection, live order placement, or real-money execution. The optional Prop Firm MT5 bridge is restricted to DEMO accounts and close-only guardian actions.
 - Android is currently a starter UI and is not connected to this local backend.

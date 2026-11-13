@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP = (ROOT / "apps" / "web" / "app.js").read_text(encoding="utf-8")
 UPDATER = (ROOT / "apps" / "web" / "quantnex_local_server.py").read_text(encoding="utf-8")
+LAUNCHER = (ROOT / "run_quantnex_services.py").read_text(encoding="utf-8")
 
 
 class AutomaticUpdateTests(unittest.TestCase):
@@ -19,6 +20,13 @@ class AutomaticUpdateTests(unittest.TestCase):
         self.assertIn('apiRequest("/api/v1/telegram/notify"', APP)
         self.assertIn("quantnex.webUpdateComplete", APP)
         self.assertIn("127.0.0.1", UPDATER)
+
+    def test_supervisor_uses_one_full_source_updater(self):
+        self.assertIn('web_env["QUANTNEX_SUPERVISED"] = "1"', LAUNCHER)
+        self.assertIn("managed_by_supervisor", UPDATER)
+        self.assertIn("supervisor_managed()", UPDATER)
+        self.assertIn("managed_by_supervisor", APP)
+        self.assertIn("Full source updates are handled by the QUANTNEX supervisor.", UPDATER)
 
     def test_updater_still_pins_and_validates_the_github_archive(self):
         self.assertIn("codeload.github.com/{REPO}/zip/{sha}", UPDATER)

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import tempfile
@@ -194,6 +195,10 @@ def install_worker(commit: dict) -> None:
             STATE.update(status="error", message=str(exc))
 
 
+def supervisor_managed() -> bool:
+    return os.getenv("QUANTNEX_SUPERVISED", "").strip() == "1"
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(WEB), **kwargs)
@@ -216,6 +221,11 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/__quantnex/check":
+            if supervisor_managed():
+                self.send_json(200, {"installed": "Supervisor managed", "latest": "Automatic source updates",
+                                     "update_available": False, "managed_by_supervisor": True,
+                                     "message": "Full source updates are handled by the QUANTNEX supervisor."})
+                return
             try:
                 latest = latest_commit()
                 installed = installed_revision()
@@ -244,6 +254,9 @@ class Handler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self):
+        if supervisor_managed():
+            self.send_json(409, {"error": "Full source updates are handled by the QUANTNEX supervisor."})
+            return
         if urlparse(self.path).path != "/__quantnex/install":
             self.send_json(404, {"error": "Not found"})
             return

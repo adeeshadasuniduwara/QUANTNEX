@@ -44,9 +44,9 @@ def stream_output(name: str, process: subprocess.Popen) -> None:
     process.stdout.close()
 
 
-def start_process(name: str, command: list[str], cwd: Path) -> subprocess.Popen:
+def start_process(name: str, command: list[str], cwd: Path, env: dict[str, str] | None = None) -> subprocess.Popen:
     process = subprocess.Popen(
-        command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        command, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, encoding="utf-8", errors="replace", bufsize=1,
         creationflags=CREATE_NO_WINDOW,
     )
@@ -124,7 +124,9 @@ def main() -> int:
 
         python = prepare_backend()
         api = start_process("API", [str(python), "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000", "--log-level", "info"], BACKEND)
-        web = start_process("WEB", [sys.executable, str(WEB_SERVER)], ROOT)
+        web_env = os.environ.copy()
+        web_env["QUANTNEX_SUPERVISED"] = "1"
+        web = start_process("WEB", [sys.executable, str(WEB_SERVER)], ROOT, env=web_env)
         if args.desktop:
             start_process("DESKTOP", [str(python), str(ROOT / "apps" / "windows" / "quantnex_desktop.py")], ROOT)
 

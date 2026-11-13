@@ -1,6 +1,5 @@
 const $ = (id) => document.getElementById(id);
 const storageKey = "quantnex.journal.v2";
-const journalMigrationKey = "quantnex.journal.backend_migrated.v1";
 const journalSourceKey = "quantnex.journal.import_source.v1";
 const journalLegacyBackupKey = "quantnex.journal.legacy_backup.v1";
 function loadTrades(){
@@ -60,16 +59,22 @@ $("calculate").addEventListener("click",()=>{
 $("saveTrade").addEventListener("click",async()=>{
   const symbol=$("symbol").value.trim().toUpperCase(),pnl=Number($("pnl").value);
   if(!symbol||symbol.length>20||$("pnl").value.trim()===""||!Number.isFinite(pnl)){window.alert("Enter a valid symbol and P&L amount.");return;}
-  const trade={date:new Date().toLocaleDateString("en-CA"),symbol,direction:$("direction").value,outcome:$("outcome").value,pnl,notes:$("notes").value.trim()};
+  const trade={client_ref:newJournalRef(),date:new Date().toLocaleDateString("en-CA"),symbol,direction:$("direction").value,outcome:$("outcome").value,pnl,notes:$("notes").value.trim()};
+  let saved;
   try{
-    const saved=await apiRequest("/api/v1/journal",{method:"POST",body:JSON.stringify({
+    saved=await apiRequest("/api/v1/journal",{method:"POST",body:JSON.stringify({
       symbol:trade.symbol,direction:trade.direction.toLowerCase(),outcome:trade.outcome.toLowerCase(),pnl:trade.pnl,notes:trade.notes
     })});
-    journalRowsCache.push(mapServerTrade(saved));saveTrades(journalRowsCache);renderJournal();setJournalStatus("Trade saved to the local QUANTNEX database.");
   }catch(error){
-    journalRowsCache.push(trade);saveTrades(journalRowsCache);renderJournal();
-    setJournalStatus("Backend unavailable. Trade saved in this browser and will sync when the workspace reconnects.",true);
+    journalRowsCache.push(trade);
+    try{saveTrades(journalRowsCache);}catch{}
+    renderJournal();setJournalStatus("Backend unavailable. Trade is safely queued in the browser recovery copy for later sync.",true);
+    $("symbol").value="";$("pnl").value="";$("notes").value="";
+    return;
   }
+  journalRowsCache.push(mapServerTrade(saved));
+  try{saveTrades(journalRowsCache);}catch{}
+  renderJournal();setJournalStatus("Trade saved to the local QUANTNEX database.");
   $("symbol").value="";$("pnl").value="";$("notes").value="";
 });
 $("exportJournal").addEventListener("click",()=>{
@@ -296,36 +301,39 @@ async function apiRequest(path, options={}){
   if(!response.ok) throw new Error(payload?.detail||("API request failed ("+response.status+")."));
   return payload;
 }
+function newJournalRef(){
+  return window.crypto?.randomUUID?.()||("qnx-row-"+Date.now()+"-"+Math.random().toString(16).slice(2));
+}
 async function syncJournal(){
   try{
-    if(localStorage.getItem(journalMigrationKey)!=="1"){
-      const legacy=loadTrades().filter(row=>!row.id);
-      if(legacy.length){
-        if(!localStorage.getItem(journalLegacyBackupKey))
-          localStorage.setItem(journalLegacyBackupKey,JSON.stringify(legacy));
-        let sourceId=localStorage.getItem(journalSourceKey);
-        if(!sourceId){
-          sourceId=window.crypto?.randomUUID?.()||("qnx-"+Date.now()+"-"+Math.random().toString(16).slice(2));
-          localStorage.setItem(journalSourceKey,sourceId);
-        }
-        const normalized=legacy.map(row=>{
-          const parsed=row.date?new Date(row.date):null;
-          return {
-            date:parsed&&!Number.isNaN(parsed.getTime())?parsed.toISOString().slice(0,10):"",
-            symbol:String(row.symbol||"").trim().toUpperCase().slice(0,20),
-            direction:["buy","sell"].includes(String(row.direction||"").toLowerCase())?String(row.direction).toLowerCase():"buy",
-            outcome:["win","loss","breakeven"].includes(String(row.outcome||"").toLowerCase())?String(row.outcome).toLowerCase():"breakeven",
-            pnl:Number.isFinite(Number(row.pnl))?Number(row.pnl):0,
-            notes:String(row.notes||"").slice(0,2000)
-          };
-        });
-        for(let offset=0;offset<normalized.length;offset+=500){
-          await apiRequest("/api/v1/journal/import",{method:"POST",body:JSON.stringify({
-            source_id:sourceId,source_index_start:offset,rows:normalized.slice(offset,offset+500)
-          })});
-        }
+    const pending=journalRowsCache.filter(row=>!row.id);
+    if(pending.length){
+      if(!localStorage.getItem(journalLegacyBackupKey))
+        localStorage.setItem(journalLegacyBackupKey,JSON.stringify(journalRowsCache));
+      let sourceId=localStorage.getItem(journalSourceKey);
+      if(!sourceId){
+        sourceId=window.crypto?.randomUUID?.()||("qnx-"+Date.now()+"-"+Math.random().toString(16).slice(2));
+        localStorage.setItem(journalSourceKey,sourceId);
       }
-      localStorage.setItem(journalMigrationKey,"1");
+      pending.forEach(row=>{if(!row.client_ref)row.client_ref=newJournalRef();});
+      try{saveTrades(journalRowsCache);}catch{}
+      const normalized=pending.map(row=>{
+        const parsed=row.date?new Date(row.date):null;
+        return {
+          source_ref:row.client_ref,
+          date:parsed&&!Number.isNaN(parsed.getTime())?parsed.toISOString().slice(0,10):"",
+          symbol:String(row.symbol||"").trim().toUpperCase().slice(0,20),
+          direction:["buy","sell"].includes(String(row.direction||"").toLowerCase())?String(row.direction).toLowerCase():"buy",
+          outcome:["win","loss","breakeven"].includes(String(row.outcome||"").toLowerCase())?String(row.outcome).toLowerCase():"breakeven",
+          pnl:Number.isFinite(Number(row.pnl))?Number(row.pnl):0,
+          notes:String(row.notes||"").slice(0,2000)
+        };
+      });
+      for(let offset=0;offset<normalized.length;offset+=500){
+        await apiRequest("/api/v1/journal/import",{method:"POST",body:JSON.stringify({
+          source_id:sourceId,rows:normalized.slice(offset,offset+500)
+        })});
+      }
     }
     const remote=await apiRequest("/api/v1/journal?limit=500");
     journalRowsCache=remote.slice().reverse().map(mapServerTrade);
@@ -336,12 +344,6 @@ async function syncJournal(){
     setJournalStatus("Showing the browser recovery copy. Database sync failed: "+error.message,true);
   }
 }
-function renderWalletTransactions(rows){
-  const body=$("walletRows");body.replaceChildren();
-  if(!rows.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=4;td.className="empty-row";td.textContent="No wallet transactions yet.";tr.append(td);body.append(tr);return;}
-  rows.forEach(item=>{const tr=document.createElement("tr");const date=new Date(item.created_at).toLocaleString();const amount=Number(item.amount);[date,item.transaction_type.replaceAll("_"," "),item.description||"—",money(amount)].forEach((value,index)=>{const td=document.createElement("td");td.textContent=value;if(index===3)td.className=amount<0?"negative":"positive";tr.append(td);});body.append(tr);});
-}
-syncJournal();
 window.addEventListener("online",()=>syncJournal());
 window.addEventListener("quantnex:workspace-resync",()=>syncJournal());
 async function refreshWallet(){

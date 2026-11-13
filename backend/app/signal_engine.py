@@ -15,7 +15,7 @@ INTERVALS = {"1": "1min", "5": "5min", "15": "15min", "30": "30min", "60": "1h",
 class MarketDataError(RuntimeError):
     pass
 
-CRYPTO_SYMBOLS = {"BTCUSDT", "ETHUSDT", "SOLUSDT"}
+CRYPTO_SYMBOLS = {"BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "LTCUSDT", "BCHUSDT", "DOTUSDT", "TRXUSDT", "TONUSDT", "SUIUSDT", "NEARUSDT", "UNIUSDT", "AAVEUSDT", "SHIBUSDT", "PEPEUSDT"}
 BINANCE_INTERVALS = {"1min":"1m", "5min":"5m", "15min":"15m", "30min":"30m", "1h":"1h", "4h":"4h"}
 
 async def fetch_candles(interval: str, outputsize: int = 320, symbol: str = "XAUUSD") -> list[dict[str, Any]]:

@@ -72,11 +72,15 @@ def test_database_restore_pauses_and_restarts_database_workers(monkeypatch):
     monkeypatch.setattr(system_security.Base.metadata, "create_all", lambda **_kwargs: None)
     monkeypatch.setattr(system_security, "SessionLocal", lambda: _FakeSession())
     monkeypatch.setattr(system_security, "record_audit_event", lambda *_args, **_kwargs: None)
+    guardian_waited = []
+    from app import prop_challenge
+    monkeypatch.setattr(prop_challenge, "wait_for_mt5_guardian_idle", lambda: guardian_waited.append(True))
 
     result = asyncio.run(system_security.restore_database("backup.sqlite3", request))
 
     assert result["ok"] is True
     assert all(task.cancelled for task in tasks.values())
     assert len(scheduled) == 4
+    assert guardian_waited == [True]
     assert request.app.state.paper_autopilot_task is scheduled[2]
     assert request.app.state.prop_challenge_guardian_task is scheduled[3]

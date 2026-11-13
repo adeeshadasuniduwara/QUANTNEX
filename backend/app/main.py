@@ -315,7 +315,7 @@ def import_legacy_journal(payload: LegacyJournalImportRequest,
             # Another browser tab may have imported the same source row first.
             if db.scalar(select(JournalImport.id).where(
                 JournalImport.user_id == user.id,
-                    JournalImport.source_ref == row.source_ref,
+                JournalImport.source_ref == row.source_ref,
             )) is None:
                 raise
     if imported:

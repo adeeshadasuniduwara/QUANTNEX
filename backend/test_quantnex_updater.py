@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from quantnex_updater import _safe_relative, _valid_sha
+from quantnex_updater import UpdateError, _safe_destination, _safe_relative, _valid_sha
 
 
 def test_sha_validation():
@@ -16,6 +16,7 @@ def test_safe_source_paths():
     assert _safe_relative("backend/app/main.py") == Path("backend/app/main.py")
     assert _safe_relative("apps/web/app.js") == Path("apps/web/app.js")
     assert _safe_relative("run_quantnex_services.py") == Path("run_quantnex_services.py")
+    assert _safe_relative("quantnex_updater.py") == Path("quantnex_updater.py")
 
 
 def test_user_data_and_secrets_are_never_updated():
@@ -35,3 +36,31 @@ def test_user_data_and_secrets_are_never_updated():
 def test_update_path_rejects_traversal_and_vendor_components():
     assert _safe_relative("apps/web/../backend/app/main.py") is None
     assert _safe_relative("apps/web/node_modules/pkg/index.js") is None
+
+def test_safe_relative_rejects_windows_path_and_ads_syntax():
+    assert _safe_relative(r"apps\\web\\..\\..\\outside.py") is None
+    assert _safe_relative("apps/web/file.txt:secret") is None
+    assert _safe_relative("apps/web/file\x00.txt") is None
+
+
+def test_safe_destination_rejects_parent_traversal(tmp_path):
+    import pytest
+
+    with pytest.raises(UpdateError, match="outside"):
+        _safe_destination(tmp_path, Path("../outside.py"))
+
+
+def test_safe_destination_rejects_existing_symlink_escape(tmp_path):
+    import pytest
+
+    root = tmp_path / "workspace"
+    outside = tmp_path / "outside"
+    root.mkdir()
+    outside.mkdir()
+    try:
+        (root / "backend").symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("Symlink creation is unavailable in this test environment.")
+
+    with pytest.raises(UpdateError, match="outside"):
+        _safe_destination(root, Path("backend/app/main.py"))

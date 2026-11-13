@@ -112,3 +112,8 @@ html{transition:zoom 180ms cubic-bezier(.2,.75,.25,1)}
 
 .goal-achievement-text{margin:8px 0 4px;color:#d9c58d;font-size:12px;line-height:1.55}
 .goal-card small{display:block;color:#9c927b;margin-top:5px}
+
+.goal-demo-certificate-fields{display:grid;gap:10px;padding:13px;border:1px dashed rgba(201,162,39,.42);border-radius:10px;background:rgba(181,138,40,.055)}
+.goal-demo-certificate-fields>p{margin:0;color:#b9aa84;font-size:12px;line-height:1.5}
+.goal-demo-certificate-fields label{display:grid;gap:6px;color:#aaa;font-size:12px}
+.goal-demo-certificate-fields input{width:100%;min-height:39px;padding:9px;border:1px solid #343434;border-radius:8px;background:#111;color:#eee}

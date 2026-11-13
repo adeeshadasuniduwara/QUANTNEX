@@ -130,12 +130,14 @@
   $("goalDemoCertificate")?.addEventListener("click",async()=>{
     const button=$("goalDemoCertificate");button.disabled=true;button.textContent="Preparing preview…";
     try{
-      const display_name=$("goalCertificateName")?.value.trim()||"QUANTNEX Demo User";
-      const goal_title=$("goalTitle")?.value.trim()||"Sample Personal Goal";
-      const achievement_text=$("goalDescription")?.value.trim()||"I just achieved gold";
-      const target_amount=Number($("goalTarget")?.value)||1000;
-      const currency=$("goalCurrency")?.value||"USD";
-      const image_url=$("goalImage")?.value.trim()||"";
+      const display_name=$("goalCertificateName")?.value.trim()||"";
+      const goal_title=$("goalDemoTitle")?.value.trim()||"";
+      const achievement_text=$("goalDemoMessage")?.value.trim()||"";
+      if(!display_name){status("goalCertificateStatus","Enter your display name first. You do not need to choose an achieved goal for a demo preview.",true);return;}
+      if(!goal_title||!achievement_text){status("goalCertificateStatus","Enter a demo goal title and achievement message.",true);return;}
+      const target_amount=1000;
+      const currency="USD";
+      const image_url="";
       const blob=await api("/api/v1/goals/demo-certificate",{method:"POST",body:JSON.stringify({display_name,goal_title,achievement_text,target_amount,currency,image_url})});
       showCertificatePreview(blob,"QUANTNEX demo certificate — NOT VALID");
       status("goalCertificateStatus","Demo preview ready for "+display_name+". This sample is permanently marked DEMO ONLY — NOT VALID and cannot be used as a real achievement certificate.");

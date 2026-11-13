@@ -660,9 +660,14 @@
         <div class="goal-certificate-panel">
           <h3>Achievement certificate</h3>
           <label>Achieved goal<select id="goalCertificateSelect"><option value="">Choose an achieved goal</option></select></label>
-          <label>Display name<input id="goalCertificateName" maxlength="80" placeholder="Name to print on certificate" value=""></label>
+          <label>Display name<input id="goalCertificateName" maxlength="80" placeholder="Enter the name to print on the certificate" value=""></label>
           <button class="primary-btn" id="goalGenerateCertificate">Generate A4 certificate</button>
-           <button class="secondary-btn" type="button" id="goalDemoCertificate">Preview demo certificate · NOT VALID</button>
+          <div class="goal-demo-certificate-fields">
+            <p class="p7-note">Demo preview is independent of achieved goals. Enter a display name, then preview a sample design. It is permanently marked NOT VALID.</p>
+            <label>Demo goal title<input id="goalDemoTitle" maxlength="120" value="My Trading Journey"></label>
+            <label>Achievement message<input id="goalDemoMessage" maxlength="240" value="Built through patience, consistency and discipline."></label>
+            <button class="secondary-btn" type="button" id="goalDemoCertificate">Preview demo certificate · NOT VALID</button>
+          </div>
           <p class="p7-note" id="goalCertificateStatus">Certificates unlock only after validated personal-goal progress reaches 100%. Local integrity verification is not a remote authority signature.</p>
           <div class="goal-certificate-preview-wrap" id="goalCertificatePreviewWrap" hidden>
             <div class="goal-certificate-preview-heading"><strong>Certificate preview</strong><span>Gold A4 design · PDF</span></div>

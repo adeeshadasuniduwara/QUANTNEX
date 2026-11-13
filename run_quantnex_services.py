@@ -1,7 +1,8 @@
-"""Run QUANTNEX API and Web updater under one visible Windows CMD window."""
+"""Run QUANTNEX services and supervise safe automatic GitHub source updates."""
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -17,6 +18,7 @@ WEB_SERVER = ROOT / "apps" / "web" / "quantnex_local_server.py"
 VENV_PYTHON = BACKEND / ".venv" / "Scripts" / "python.exe"
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 PROCESSES: list[tuple[str, subprocess.Popen]] = []
+UPDATE_INTERVAL_SECONDS = 300
 
 
 def run_checked(command: list[str], cwd: Path, label: str) -> None:
@@ -29,10 +31,7 @@ def run_checked(command: list[str], cwd: Path, label: str) -> None:
 def prepare_backend() -> Path:
     if not VENV_PYTHON.exists():
         run_checked([sys.executable, "-m", "venv", str(BACKEND / ".venv")], BACKEND, "Create backend virtual environment")
-    print("\n[SETUP] Update pip (optional)", flush=True)
-    pip_update = subprocess.run([str(VENV_PYTHON), "-m", "pip", "install", "--upgrade", "pip"], cwd=BACKEND)
-    if pip_update.returncode:
-        print("[WARNING] pip could not update; continuing with the installed pip version.", flush=True)
+    print("\n[SETUP] Check backend dependencies", flush=True)
     run_checked([str(VENV_PYTHON), "-m", "pip", "install", "-r", "requirements.txt"], BACKEND, "Install/check backend dependencies")
     run_checked([str(VENV_PYTHON), "bootstrap.py"], BACKEND, "Run automatic configuration and startup diagnostics")
     return VENV_PYTHON
@@ -47,14 +46,8 @@ def stream_output(name: str, process: subprocess.Popen) -> None:
 
 def start_process(name: str, command: list[str], cwd: Path) -> subprocess.Popen:
     process = subprocess.Popen(
-        command,
-        cwd=cwd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        bufsize=1,
+        command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, encoding="utf-8", errors="replace", bufsize=1,
         creationflags=CREATE_NO_WINDOW,
     )
     PROCESSES.append((name, process))
@@ -62,7 +55,7 @@ def start_process(name: str, command: list[str], cwd: Path) -> subprocess.Popen:
     return process
 
 
-def wait_for_url(url: str, label: str, process: subprocess.Popen, timeout: float = 35.0) -> None:
+def wait_for_url(url: str, label: str, process: subprocess.Popen, timeout: float = 45.0) -> None:
     deadline = time.monotonic() + timeout
     last_error = "not ready"
     while time.monotonic() < deadline:
@@ -86,9 +79,34 @@ def stop_all() -> None:
     for _, process in reversed(PROCESSES):
         if process.poll() is None:
             try:
-                process.wait(timeout=5)
+                process.wait(timeout=8)
             except subprocess.TimeoutExpired:
                 process.kill()
+    PROCESSES.clear()
+
+
+def check_for_automatic_update() -> bool:
+    try:
+        from quantnex_updater import check_and_apply
+        result = check_and_apply(ROOT)
+        if result["status"] == "updated":
+            print("\n[AUTO UPDATE] " + result["message"], flush=True)
+            print("[AUTO UPDATE] Installed " + result["version"], flush=True)
+            for path in result["changed_files"][:20]:
+                print("[AUTO UPDATE] " + path, flush=True)
+            return bool(result.get("restart_required"))
+        if result["status"] == "baseline":
+            print("[AUTO UPDATE] Installed source baseline recorded: " + result["version"], flush=True)
+        elif result["status"] == "current":
+            print("[AUTO UPDATE] QUANTNEX is up to date: " + result["version"], flush=True)
+        return False
+    except Exception as exc:
+        print(f"[AUTO UPDATE] Check deferred; existing QUANTNEX will keep running: {exc}", flush=True)
+        return False
+
+
+def restart_launcher() -> None:
+    os.execv(sys.executable, [sys.executable, str(Path(__file__).resolve()), *sys.argv[1:]])
 
 
 def main() -> int:
@@ -99,24 +117,36 @@ def main() -> int:
         print("==============================================", flush=True)
         print("             QUANTNEX WORKSPACE", flush=True)
         print("==============================================", flush=True)
-        python = prepare_backend()
 
+        if check_for_automatic_update():
+            print("[AUTO UPDATE] Restarting launcher with the new source…", flush=True)
+            restart_launcher()
+
+        python = prepare_backend()
         api = start_process("API", [str(python), "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000", "--log-level", "info"], BACKEND)
         web = start_process("WEB", [sys.executable, str(WEB_SERVER)], ROOT)
         if args.desktop:
-            start_process("DESKTOP", [sys.executable, str(ROOT / "apps" / "windows" / "quantnex_desktop.py")], ROOT)
+            start_process("DESKTOP", [str(python), str(ROOT / "apps" / "windows" / "quantnex_desktop.py")], ROOT)
 
         wait_for_url("http://127.0.0.1:8000/health", "Backend API · http://127.0.0.1:8000", api)
         wait_for_url("http://127.0.0.1:5500/", "Web workspace · http://127.0.0.1:5500", web)
         webbrowser.open("http://127.0.0.1:5500/")
         print("\nQUANTNEX is running. Keep this single CMD window open.", flush=True)
+        print("Automatic GitHub update checks run every 5 minutes. Updated source restarts services automatically.", flush=True)
         print("Press CTRL+C once to stop the API, Web server and optional Desktop app.", flush=True)
 
+        next_update_check = time.monotonic() + UPDATE_INTERVAL_SECONDS
         while True:
             for name, process in PROCESSES:
                 code = process.poll()
                 if code is not None:
                     raise RuntimeError(f"{name} stopped unexpectedly (exit code {code}). See its output above.")
+            if time.monotonic() >= next_update_check:
+                if check_for_automatic_update():
+                    print("\n[AUTO UPDATE] Stopping services safely before restart…", flush=True)
+                    stop_all()
+                    restart_launcher()
+                next_update_check = time.monotonic() + UPDATE_INTERVAL_SECONDS
             time.sleep(1)
     except KeyboardInterrupt:
         print("\nStopping QUANTNEX services…", flush=True)

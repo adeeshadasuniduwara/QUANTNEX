@@ -129,3 +129,13 @@ assert.match(app, /function stopBookFeed\(/, "Order-book sockets and timers must
 console.log("QUANTNEX active-workspace polling and cleanup checks passed.");
 
 assert.match(html, /app\.js\?v=20261113-active-workspace-polling1/, "Workspace polling fixes must invalidate the cached app.js asset.");
+
+
+assert.match(chart, /isChartViewActive/, "QUANTNEX VIEW history, analysis and live ticks must be scoped to the visible chart workspace.");
+assert.match(chart, /quantnex:view-changed/, "Chart feed must start on chart navigation and stop when leaving the chart.");
+assert.match(chart, /if\(!isChartViewActive\(\)\|\|selected\(\)\.symbol!==pick\.symbol/, "Late chart history responses must not update a hidden or stale chart.");
+assert.match(intel, /isTradingViewActive/, "Chart intelligence analysis and backtests must pause outside QUANTNEX VIEW.");
+assert.match(intel, /backtestBusy/, "Chart intelligence must prevent overlapping backtest requests.");
+assert.match(html, /quantnex-view-chart\.js\?v=20261113-visible-chart1/, "Chart lifecycle fix must invalidate the cached chart bundle.");
+assert.match(html, /quantnex-view-intelligence\.js\?v=20261113-visible-intel1/, "Chart intelligence fix must invalidate the cached intelligence bundle.");
+console.log("QUANTNEX VIEW active-page lifecycle checks passed.");

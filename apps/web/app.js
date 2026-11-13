@@ -20,7 +20,8 @@ function setJournalStatus(message,error=false){
   if(status){status.textContent=message;status.dataset.state=error?"error":"ok";}
 }
 function mapServerTrade(item){
-  const date=new Date(item.created_at);
+  const rawDate=String(item.created_at||"");
+  const date=new Date(/[zZ]|[+-]\\d{2}:\\d{2}$/.test(rawDate)?rawDate:rawDate+"Z");
   const title=value=>String(value||"").charAt(0).toUpperCase()+String(value||"").slice(1).toLowerCase();
   return {id:item.id,date:Number.isNaN(date.getTime())?"":date.toLocaleDateString("en-CA"),
     symbol:String(item.symbol||""),direction:title(item.direction),outcome:title(item.outcome),
@@ -67,7 +68,8 @@ $("saveTrade").addEventListener("click",async()=>{
   let saved;
   try{
     saved=await apiRequest("/api/v1/journal",{method:"POST",body:JSON.stringify({
-      symbol:trade.symbol,direction:trade.direction.toLowerCase(),outcome:trade.outcome.toLowerCase(),pnl:trade.pnl,notes:trade.notes
+      symbol:trade.symbol,direction:trade.direction.toLowerCase(),outcome:trade.outcome.toLowerCase(),pnl:trade.pnl,notes:trade.notes,
+      created_at:new Date(trade.date+"T12:00:00").toISOString()
     })});
   }catch(error){
     journalRowsCache.push(trade);
@@ -324,10 +326,11 @@ async function syncJournal(){
       pending.forEach((row,index)=>{if(!row.client_ref)row.client_ref="legacy-row-"+String(index).padStart(8,"0");});
       try{saveTrades(journalRowsCache);}catch{}
       const normalized=pending.map(row=>{
-        const parsed=row.date?new Date(row.date):null;
+        const dateText=String(row.date||"").slice(0,10);
+        const parsed=dateText?new Date(dateText+"T12:00:00"):null;
         return {
           source_ref:row.client_ref,
-          date:parsed&&!Number.isNaN(parsed.getTime())?parsed.toISOString().slice(0,10):"",
+          date:parsed&&!Number.isNaN(parsed.getTime())?parsed.toISOString():"",
           symbol:String(row.symbol||"").trim().toUpperCase().slice(0,20),
           direction:["buy","sell"].includes(String(row.direction||"").toLowerCase())?String(row.direction).toLowerCase():"buy",
           outcome:["win","loss","breakeven"].includes(String(row.outcome||"").toLowerCase())?String(row.outcome).toLowerCase():"breakeven",

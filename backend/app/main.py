@@ -1080,7 +1080,7 @@ def download_demo_goal_certificate(payload: dict | None = None, user: User = Dep
     created = datetime.fromtimestamp(achieved.timestamp() - 21 * 86400 - 5 * 3600, tz=timezone.utc)
     pdf = build_goal_certificate_pdf(
         display_name=display_name, goal_title=goal_title, achievement_text=achievement_text,
-        created_at=created, achieved_at=achieved, elapsed_days=21,
+        created_at=created, achieved_at=achieved, elapsed_days=21, elapsed_hours=509,
         certificate_id="DEMO-NOT-VALID", integrity_fingerprint="0" * 64,
         target_amount=target_amount, saved_amount=target_amount, currency=currency,
         goal_image_url=str(payload.get("image_url") or ""), demo_only=True,

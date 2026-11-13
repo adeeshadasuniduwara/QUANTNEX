@@ -222,6 +222,34 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
     # Release the SQLite read snapshot before any provider/Telegram network wait.
     db.commit()
     names={"1":"M1","5":"M5","15":"M15","30":"M30","50":"M50","60":"H1","240":"H4"}
+    if command == "/hidden_tools":
+        # Private catalogue: deliberately omitted from /start, /help and all normal menus.
+        categories = [
+            ("Images", "Image inspection, photo-to-PDF, resize, crop, rotate, format conversion and compression"),
+            ("PDF", "Extract embedded images, render pages, extract text, merge, split, rotate and compress"),
+            ("Documents", "DOCX, TXT and Markdown conversion and extraction"),
+            ("Spreadsheets", "XLSX/CSV preview, conversion, filtering, cleanup and summaries"),
+            ("Files & Archives", "ZIP, safe extraction, checksums, duplicate detection and inventory"),
+            ("Text & OCR", "OCR, encoding, cleanup, search, comparison and reports"),
+            ("Audio", "Metadata, conversion, trim, normalize and transcription"),
+            ("Video", "Metadata, thumbnails, frame extraction, trim and conversion"),
+            ("Trading Utilities", "Position sizing, pip/tick value, risk/reward and journal reports"),
+            ("System", "Health, version, redacted logs, backups and diagnostics"),
+        ]
+        if len(parts) > 1:
+            requested = " ".join(parts[1:]).strip().lower()
+            matches = [item for item in categories if requested in item[0].lower()]
+            if not matches:
+                return "Hidden Tools categories: " + ", ".join(item[0] for item in categories) + "\nUse /hidden_tools <category>."
+            return ("🔐 HIDDEN TOOLS · " + matches[0][0].upper() + "\n" + matches[0][1]
+                + "\n\n100-tool roadmap. First implementation targets: Photo → PDF and PDF → Images."
+                + "\nCatalogue entries will be marked usable only after implementation and testing.")
+        lines = ["🔐 HIDDEN TOOLS · PRIVATE CATALOGUE", "Private command accepted. This catalogue is not shown in the normal bot menus.", ""]
+        lines.extend("• " + name + " — " + description for name, description in categories)
+        lines.extend(["", "100 capability targets across 10 categories.", "First implementation targets: Photo → PDF and PDF → Images.",
+                      "Use /hidden_tools <category> to inspect a category.",
+                      "Note: this is the roadmap catalogue; tools are enabled only after implementation and testing."])
+        return "\n".join(lines)
     if command in {"/start","/help"}:
         return (
             "QUANTNEX · YOUR SMART TRADING COMPANION\n"

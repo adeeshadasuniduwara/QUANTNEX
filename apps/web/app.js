@@ -120,7 +120,19 @@ window.addEventListener("keydown",event=>{if(event.key==="Escape"&&updateModal&&
 
 if(sessionStorage.getItem("quantnex.webUpdateComplete")==="1"){
   sessionStorage.removeItem("quantnex.webUpdateComplete");
-  window.addEventListener("load",()=>showUpdateToast("✓ QUANTNEX has been updated successfully."));
+  const installedVersion=sessionStorage.getItem("quantnex.webUpdateVersion")||"latest";
+  const installedHeadline=sessionStorage.getItem("quantnex.webUpdateHeadline")||"QUANTNEX Web update";
+  sessionStorage.removeItem("quantnex.webUpdateVersion");
+  sessionStorage.removeItem("quantnex.webUpdateHeadline");
+  const announceInstalledUpdate=()=>{
+    showUpdateToast("✓ QUANTNEX has been updated successfully.");
+    const message="QUANTNEX — UPDATE INSTALLED\\n\\nVersion: "+installedVersion+"\\nUpdate: "+installedHeadline+"\\n\\nYour QUANTNEX Web workspace was updated successfully. Your local wallet, journal and settings were kept separate.";
+    // The local API uses the user's existing encrypted bot credentials. A missing
+    // Telegram connection is an intentional opt-out and does not affect the update.
+    apiRequest("/api/v1/telegram/notify",{method:"POST",body:JSON.stringify({message})}).catch(()=>{});
+  };
+  if(document.readyState==="complete")announceInstalledUpdate();
+  else window.addEventListener("load",announceInstalledUpdate,{once:true});
 }
 
 async function watchUpdateInstall(){
@@ -140,6 +152,8 @@ async function watchUpdateInstall(){
       if(state.status==="complete"){
         status.textContent=state.message||"Update installed. Refreshing workspace…";
         sessionStorage.setItem("quantnex.webUpdateComplete","1");
+        sessionStorage.setItem("quantnex.webUpdateVersion",latestUpdateCommit||"");
+        sessionStorage.setItem("quantnex.webUpdateHeadline",$("webUpdateSummary")?.textContent||"QUANTNEX Web update");
         window.setTimeout(()=>window.location.replace(window.location.pathname+"?updated="+Date.now()),900);
         return;
       }

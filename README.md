@@ -6,13 +6,11 @@ QUANTNEX brings trading utilities, trade records and secure integrations togethe
 
 ## Download QUANTNEX
 
-### Windows
+### Windows EXE automatic updates
 
-[Download QUANTNEX for Windows (.EXE)](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/43185371316)
+The packaged Windows desktop app checks the official GitHub Releases channel at startup and every five minutes while it remains open. When a newer release is available, it downloads the published `QUANTNEX.exe` and verifies its SHA256 checksum before enabling **Install & restart**. The external Windows updater waits for QUANTNEX to close, backs up the currently installed EXE, replaces it, and relaunches the app. If replacement or launch fails, it attempts to restore the previous EXE. The local journal, device ID, wallet and settings are stored separately under `%LOCALAPPDATA%\QUANTNEX` and are not overwritten by the EXE update. Updates require a published GitHub Release containing `QUANTNEX.exe` and `SHA256SUMS.txt`; a source commit or CI artifact alone is not a published EXE update.
 
-Download QUANTNEX.exe from the Artifacts section of the build page.
-
-### Android
+## Android
 
 [Download QUANTNEX for Android (.APK)](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/43185377710)
 

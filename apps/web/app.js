@@ -1133,8 +1133,8 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   }
   async function refresh(){
     if(busy)return;busy=true;const button=$id("calendarRefresh");button.disabled=true;status.textContent="Fetching Finnhub economic events…";
+    const sharedBase=String(window.QUANTNEX_SHARED_NEWS_API_URL||"").trim().replace(/\/+$/,"");
     try{
-      const sharedBase=String(window.QUANTNEX_SHARED_NEWS_API_URL||"").trim().replace(/\\/+$/,"");
       let data;
       if(sharedBase){
         const response=await fetch(sharedBase+"/api/economic-calendar?days="+encodeURIComponent($id("calendarDays").value),{headers:{"Accept":"application/json"},cache:"no-store"});
@@ -1147,7 +1147,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
       events=Array.isArray(data.events)?data.events:[];lastLoadedAt=new Date();render();
       if(sharedBase)status.textContent="Shared Finnhub feed · "+events.length+" events · Times: Sri Lanka (UTC+5:30) · Updated "+lastLoadedAt.toLocaleTimeString("en-LK")+".";
 
-    }catch(error){status.textContent="Calendar unavailable: "+error.message;rows.replaceChildren();const tr=make("tr"),td=make("td","Could not load Finnhub events. Check your local API key, internet connection and provider quota.","empty-row");td.colSpan=7;tr.append(td);rows.append(tr);}
+    }catch(error){status.textContent="Calendar unavailable: "+error.message;rows.replaceChildren();const tr=make("tr"),td=make("td",sharedBase?"Could not load the shared Finnhub feed. Check the shared service URL, deployment status and provider quota.":"Could not load Finnhub events. Check your local API key, internet connection and provider quota.","empty-row");td.colSpan=7;tr.append(td);rows.append(tr);}
     finally{busy=false;button.disabled=false;}
   }
   $id("calendarRefresh").addEventListener("click",refresh);

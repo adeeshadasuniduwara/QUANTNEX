@@ -141,6 +141,6 @@ document.addEventListener("visibilitychange",()=>{if(document.hidden){stopFeed()
 setupCanvas();
 const historyTimer=setInterval(()=>{if(!isChartViewActive()||selected().symbol==="XAUUSD")return;loadHistory();},60000);
 // Gold price ticks arrive through the shared local market-tick event. Do not
-// refetch 1,000 candles every five seconds or call the removed legacy scan().
+// refetch 1,000 candles every five seconds or invoke the removed legacy scanner.
 window.addEventListener("beforeunload",()=>{clearInterval(historyTimer);stopFeed();window.removeEventListener("quantnex:market-tick",onTradingRoomTick);resize?.disconnect();});
 })();

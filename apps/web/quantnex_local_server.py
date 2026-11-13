@@ -93,6 +93,30 @@ def update_summary(installed: str, latest: dict) -> dict:
     }
 
 
+def _safe_web_relative(raw_parts: tuple[str, ...]) -> PurePosixPath | None:
+    """Validate archive-relative names before creating Windows-native Paths."""
+    raw = "/".join(raw_parts)
+    if not raw or any(char in raw for char in ("\\", ":", "\x00")):
+        return None
+    relative = PurePosixPath(raw)
+    if relative.is_absolute() or not relative.parts or any(part in ("", ".", "..") for part in relative.parts):
+        return None
+    return relative
+
+
+def _safe_web_destination(relative: PurePosixPath) -> Path:
+    """Resolve a Web update target and reject existing symlink escapes."""
+    base = WEB.resolve()
+    try:
+        destination = (base / Path(*relative.parts)).resolve()
+        destination.relative_to(base)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise RuntimeError("The Web update destination escapes the workspace.") from exc
+    if destination == base:
+        raise RuntimeError("The Web update cannot replace the workspace root.")
+    return destination
+
+
 def install_commit(commit: dict) -> None:
     sha = str(commit.get("sha", ""))
     archive_url = str(commit.get("archive_url", ""))
@@ -121,8 +145,8 @@ def install_commit(commit: dict) -> None:
                     continue
                 if app_index + 1 >= len(parts) or parts[app_index + 1] != "web":
                     continue
-                relative = PurePosixPath(*parts[app_index + 2:])
-                if not relative.parts or any(part in ("", ".", "..") for part in relative.parts):
+                relative = _safe_web_relative(parts[app_index + 2:])
+                if relative is None:
                     continue
                 mode = (info.external_attr >> 16) & 0o170000
                 if mode == 0o120000 or "__pycache__" in relative.parts or relative.suffix == ".pyc":
@@ -147,7 +171,7 @@ def install_commit(commit: dict) -> None:
                 if not source_file.is_file():
                     continue
                 relative = source_file.relative_to(staged)
-                destination = WEB / relative
+                destination = _safe_web_destination(relative)
                 if destination.is_file():
                     backup_file = backup / relative
                     backup_file.parent.mkdir(parents=True, exist_ok=True)

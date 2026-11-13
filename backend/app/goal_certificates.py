@@ -28,7 +28,7 @@ def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
                                integrity_fingerprint: str, target_amount: float,
                                saved_amount: float, currency: str, demo_only: bool = False,
                                achievement_text: str = "A meaningful result built through patience, consistency and self-discipline.",
-                               goal_image_url: str = "") -> bytes:
+                               goal_image_url: str = "", elapsed_hours: int | None = None) -> bytes:
     """Build a self-contained PDF; demo certificates are prominently non-valid."""
     buffer = BytesIO()
     page_w, page_h = A4
@@ -124,7 +124,7 @@ def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
         Spacer(1, 2*mm),
         Paragraph(f"ACHIEVED  ·  {achieved_at.strftime('%d %B %Y')}", small),
         Spacer(1, 2*mm),
-        Paragraph(f"TIME INVESTED  ·  {elapsed_days} days", small),
+        Paragraph(f"TIME INVESTED  ·  {elapsed_days} days · {elapsed_hours if elapsed_hours is not None else elapsed_days * 24} hours", small),
         Spacer(1, 11*mm),
         Paragraph("Presented by the QUANTNEX Support Team", lead),
         Spacer(1, 3*mm),

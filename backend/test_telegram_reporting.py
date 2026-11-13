@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from io import BytesIO
 
 from sqlalchemy import create_engine
@@ -33,7 +33,7 @@ def test_daily_pdf_contains_only_paper_ledger_and_computes_win_rate():
                        created_at=datetime(2026, 11, 13, 2, 0, tzinfo=timezone.utc)),
         ])
         db.commit()
-        pdf, stats = build_daily_paper_pdf(db, user.id)
+        pdf, stats = build_daily_paper_pdf(db, user.id, report_day=date(2026, 11, 13))
         assert pdf.startswith(b"%PDF")
         assert stats["opened"] == 3
         assert stats["closed"] == 2

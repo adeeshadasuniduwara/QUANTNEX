@@ -157,3 +157,5 @@ assert.doesNotMatch(chartIntel, /setInterval\(\(\)=>\{if\(isTradingViewActive\(\
 assert.match(chartIntel, /current\.symbol===s\.symbol&&current\.interval===s\.interval/, "Late backtest responses must not overwrite a newly selected market or timeframe.");
 assert.match(chartIntel, /current\.symbol!==s\.symbol\|\|current\.interval!==s\.interval/, "Late analysis responses must be discarded after a market/timeframe change.");
 console.log("QUANTNEX backtest load and stale-response checks passed.");
+
+assert.doesNotMatch(nativeChart, /goldTimer|scan\(\)/, "The native chart must not reference the removed scan function.");

@@ -48,7 +48,7 @@ assert.ok(html.includes("quantnex-view-chart.js?v=20261113-analysis-dedupe1"), "
 assert.match(js, /quantnex:market-tick/, "Gold chart must consume the shared market tick feed.");
 assert.doesNotMatch(js, /goldTimer|scan\(\)/, "The chart must not call the removed scan function or poll full Gold history every five seconds.");
 
-assert.match(js, /apiRequest\("\/api\/v1\/charts\/quote\?symbol=XAUUSD"\)/, "Gold chart must request a quote from the configured chart-history provider.");
+assert.match(js, /apiRequest\("\/api\/v1\/charts\/quote\?symbol=XAUUSD&interval="\+encodeURIComponent\(pick\.interval\)\+""\)/, "Gold chart must request a timeframe-matched quote from the configured chart-history provider.");
 assert.match(js, /startsWith\("QUANTNEX VIEW · "\)/, "Gold chart must reject overview ticks from a different provider.");
 assert.match(js, /goldQuoteTimer=setInterval\(\(\)=>\{if\(!document\.hidden&&isChartViewActive\(\)&&selected\(\)\.symbol==="XAUUSD"\)loadGoldQuote\(\);\},30000\)/, "Gold quote polling must be scoped to the visible active chart and rate limited.");
 

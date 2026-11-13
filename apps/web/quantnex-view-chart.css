@@ -23,3 +23,5 @@
 .qx-indicator-card-head span{font-variant-numeric:tabular-nums;color:var(--text,#e8edf5)}
 .qx-indicator-chart{height:142px;width:100%;margin-top:5px}
 @media(max-width:900px){.qx-indicator-grid{grid-template-columns:1fr}.qx-indicator-chart{height:128px}}
+
+.qx-native-chart-canvas{display:block;width:100%;height:100%;min-height:420px;touch-action:pan-y;cursor:crosshair}.qx-indicator-native-canvas{display:block;width:100%;height:100%}.qx-confidence{margin-top:12px;max-width:520px}.qx-confidence-track{height:7px;border-radius:99px;background:rgba(130,150,175,.18);overflow:hidden}.qx-confidence-track span{display:block;height:100%;width:0;background:linear-gradient(90deg,#d8a84e,#22c997);transition:width .25s ease}.qx-confidence small{display:block;margin-top:5px;color:var(--muted,#9299a5);font-size:10px}.qx-chart-host{min-height:420px}.qx-chart-host canvas{user-select:none}

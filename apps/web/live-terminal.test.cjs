@@ -107,3 +107,13 @@ assert.match(app, /Asia\/Colombo/, "Calendar event times must display in Sri Lan
 assert.match(app, /15\*60\*1000/, "Calendar must refresh automatically every 15 minutes while visible");
 assert.match(workspaceCss, /calendar-impact\.impact-high/, "High-impact events must be visually distinguished");
 console.log("QUANTNEX Finnhub economic calendar workspace checks passed.");
+
+assert.match(app, /function scheduleTickerReconnect\(/, "Trading Room ticker must use a dedicated bounded reconnect scheduler.");
+assert.match(app, /function scheduleBookReconnect\(/, "Trading Room depth must use a dedicated bounded reconnect scheduler.");
+assert.match(app, /Math\.min\(30000,1000\*Math\.pow\(2,Math\.min\(/, "Trading Room retries must use capped exponential backoff.");
+assert.match(app, /Date\.now\(\)-tickerLastMessageAt>30000/, "A silent crypto ticker socket must be detected as stale.");
+assert.match(app, /Date\.now\(\)-bookLastMessageAt>30000/, "A silent order-book socket must be detected as stale.");
+assert.match(app, /feed:"crypto",status:"stale"/, "Ticker staleness must be exposed through the workspace stream-status event.");
+assert.match(app, /Depth feed stale · reconnecting/, "Order-book staleness must be visible to the user.");
+assert.match(app, /retry_in_ms:delay/, "Ticker reconnect status must expose its retry delay.");
+console.log("Trading Room ticker and order-book recovery checks passed.");

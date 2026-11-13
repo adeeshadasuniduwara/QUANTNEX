@@ -492,13 +492,23 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
       $("p7MarketNote").textContent=data.note+" Crypto prices update from Binance WebSocket; Gold/Forex refresh according to provider availability.";
     }catch(error){if(!root.children.length)root.replaceChildren(node("div","Market feed unavailable: "+error.message,"p7-empty"));}
   }
-  let tickerSocket=null,tickerRetry=null,bookSocket=null,bookRetry=null,bookGeneration=0,bookHistory=[],latestBookData=null,bookRenderTimer=null,lastBookTableAt=0;
+  let tickerSocket=null,tickerRetry=null,tickerReconnectAttempts=0,tickerLastMessageAt=0,tickerWatchdog=null;
+  let bookSocket=null,bookRetry=null,bookReconnectAttempts=0,bookLastMessageAt=0,bookWatchdog=null;
+  let bookGeneration=0,bookHistory=[],latestBookData=null,bookRenderTimer=null,lastBookTableAt=0;
+  function scheduleTickerReconnect(){
+    if(tickerRetry||document.hidden)return;
+    const delay=Math.min(30000,1000*Math.pow(2,Math.min(tickerReconnectAttempts,5)));
+    tickerReconnectAttempts=Math.min(tickerReconnectAttempts+1,6);
+    window.dispatchEvent(new CustomEvent("quantnex:stream-status",{detail:{feed:"crypto",status:"reconnecting",retry_in_ms:delay,attempt:tickerReconnectAttempts}}));
+    tickerRetry=setTimeout(()=>{tickerRetry=null;connectCryptoTicker();},delay);
+  }
   function connectCryptoTicker(){
     if(document.hidden||tickerSocket||!window.WebSocket)return;
     try{
       tickerSocket=new WebSocket("wss://stream.binance.com:9443/stream?streams=btcusdt@trade/ethusdt@trade/solusdt@trade/btcusdt@ticker/ethusdt@ticker/solusdt@ticker");
-      tickerSocket.onopen=()=>window.dispatchEvent(new CustomEvent("quantnex:stream-status",{detail:{feed:"crypto",status:"connected"}}));
+      tickerSocket.onopen=()=>{tickerReconnectAttempts=0;tickerLastMessageAt=Date.now();window.dispatchEvent(new CustomEvent("quantnex:stream-status",{detail:{feed:"crypto",status:"connected"}}));};
       tickerSocket.onmessage=event=>{
+        tickerLastMessageAt=Date.now();
         try{
           const packet=JSON.parse(event.data),data=packet.data||packet;
           const symbol=String(data.s||"").toUpperCase(),refs=marketCards.get(symbol);
@@ -521,11 +531,16 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
           window.dispatchEvent(new CustomEvent("quantnex:market-tick",{detail:{symbol,price,eventTime,kind:isTrade?"trade":"ticker",volume:isTrade?Number(data.q||0):0,source:"Binance WebSocket"}}));
         }catch{}
       };
-      tickerSocket.onclose=()=>{tickerSocket=null;window.dispatchEvent(new CustomEvent("quantnex:stream-status",{detail:{feed:"crypto",status:"reconnecting"}}));if(!document.hidden){clearTimeout(tickerRetry);tickerRetry=setTimeout(connectCryptoTicker,2500);}};
-      tickerSocket.onerror=()=>{try{tickerSocket.close();}catch{}};
-    }catch{tickerSocket=null;}
+      tickerSocket.onclose=()=>{if(tickerWatchdog){clearInterval(tickerWatchdog);tickerWatchdog=null;}tickerSocket=null;if(!document.hidden)scheduleTickerReconnect();};
+      tickerSocket.onerror=()=>{try{tickerSocket?.close();}catch{}};
+      tickerWatchdog=setInterval(()=>{if(!document.hidden&&tickerSocket&&tickerSocket.readyState===WebSocket.OPEN&&tickerLastMessageAt&&Date.now()-tickerLastMessageAt>30000){window.dispatchEvent(new CustomEvent("quantnex:stream-status",{detail:{feed:"crypto",status:"stale"}}));try{tickerSocket.close();}catch{}}},10000);
+    }catch{tickerSocket=null;scheduleTickerReconnect();}
   }
-  function stopCryptoTicker(){clearTimeout(tickerRetry);tickerRetry=null;if(tickerSocket){tickerSocket.onclose=null;tickerSocket.close();tickerSocket=null;}}
+  function stopCryptoTicker(){
+    clearTimeout(tickerRetry);tickerRetry=null;
+    if(tickerWatchdog){clearInterval(tickerWatchdog);tickerWatchdog=null;}
+    if(tickerSocket){tickerSocket.onclose=null;tickerSocket.close();tickerSocket=null;}
+  }
   function renderBookmap(symbol,bids,asks){
     latestBookData={symbol,bids:bids.slice(0,20).map(row=>[Number(row[0]),Number(row[1])]),asks:asks.slice(0,20).map(row=>[Number(row[0]),Number(row[1])]),receivedAt:Date.now()};
     bookHistory.push(latestBookData);
@@ -589,10 +604,19 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
       $("p7BookNote").textContent="Rolling 12-second liquidity history from Binance Spot top-20 partial-depth snapshots. Resting orders only; not executed volume or guaranteed liquidity.";
     }
   }
-  function loadBook(){
+  function scheduleBookReconnect(generation){
+    if(bookRetry||document.hidden||generation!==bookGeneration)return;
+    const delay=Math.min(30000,1000*Math.pow(2,Math.min(bookReconnectAttempts,5)));
+    bookReconnectAttempts=Math.min(bookReconnectAttempts+1,6);
+    $("p7BookLiveStatus").textContent="Depth reconnecting in "+Math.ceil(delay/1000)+"s · attempt "+bookReconnectAttempts;
+    bookRetry=setTimeout(()=>{bookRetry=null;if(!document.hidden&&generation===bookGeneration)loadBook(true);},delay);
+  }
+  function loadBook(reconnect=false){
     const symbol=$("p7BookSymbol").value.toLowerCase();
+    if(!reconnect)bookReconnectAttempts=0;
     const generation=++bookGeneration;
     clearTimeout(bookRetry);bookRetry=null;
+    if(bookWatchdog){clearInterval(bookWatchdog);bookWatchdog=null;}
     if(bookRenderTimer!==null){clearTimeout(bookRenderTimer);bookRenderTimer=null;}
     bookHistory=[];latestBookData=null;lastBookTableAt=0;
     if(bookSocket){bookSocket.onclose=null;bookSocket.close();bookSocket=null;}
@@ -602,14 +626,16 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     if(!window.WebSocket||document.hidden)return;
     try{
       bookSocket=new WebSocket("wss://stream.binance.com:9443/ws/"+symbol+"@depth20@100ms");
-      bookSocket.onopen=()=>{if(generation==bookGeneration){$("p7BookLiveStatus").textContent="Connected · waiting for depth";}};
+      bookSocket.onopen=()=>{if(generation===bookGeneration){bookReconnectAttempts=0;bookLastMessageAt=Date.now();$("p7BookLiveStatus").textContent="Connected · waiting for depth";}};
       bookSocket.onmessage=event=>{
         if(generation!==bookGeneration)return;
+        bookLastMessageAt=Date.now();
         try{const data=JSON.parse(event.data);renderBookmap(symbol.toUpperCase(),data.bids||[],data.asks||[]);}catch{}
       };
-      bookSocket.onerror=()=>{try{bookSocket.close();}catch{}};
-      bookSocket.onclose=()=>{if(generation===bookGeneration&&!document.hidden){$("p7BookLiveStatus").textContent="Stream disconnected · reconnecting…";bookRetry=setTimeout(loadBook,2500);}};
-    }catch(error){$("p7BookLiveStatus").textContent="Live depth unavailable: "+error.message;}
+      bookSocket.onerror=()=>{try{bookSocket?.close();}catch{}};
+      bookSocket.onclose=()=>{if(generation!==bookGeneration)return;if(bookWatchdog){clearInterval(bookWatchdog);bookWatchdog=null;}bookSocket=null;if(!document.hidden){$("p7BookLiveStatus").textContent="Stream disconnected · reconnecting…";scheduleBookReconnect(generation);}};
+      bookWatchdog=setInterval(()=>{if(!document.hidden&&generation===bookGeneration&&bookSocket&&bookSocket.readyState===WebSocket.OPEN&&bookLastMessageAt&&Date.now()-bookLastMessageAt>30000){$("p7BookLiveStatus").textContent="Depth feed stale · reconnecting…";try{bookSocket.close();}catch{}}},10000);
+    }catch(error){bookSocket=null;$("p7BookLiveStatus").textContent="Live depth unavailable: "+error.message;scheduleBookReconnect(generation);}
   }
   window.addEventListener("resize",()=>{if(latestBookData)drawBookmap();});
   function renderSignal(data){
@@ -770,8 +796,12 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   });
   $("p7BookSymbol").addEventListener("change",loadBook);
   document.addEventListener("visibilitychange",()=>{
-    if(document.hidden){stopCryptoTicker();if(bookSocket){bookSocket.onclose=null;bookSocket.close();bookSocket=null;}}
-    else{connectCryptoTicker();loadBook();loadMarkets();}
+    if(document.hidden){
+      stopCryptoTicker();clearTimeout(bookRetry);bookRetry=null;
+      if(bookWatchdog){clearInterval(bookWatchdog);bookWatchdog=null;}
+      bookGeneration++;
+      if(bookSocket){bookSocket.onclose=null;bookSocket.close();bookSocket=null;}
+    }else{connectCryptoTicker();loadBook();loadMarkets();}
   });
   loadMarkets();connectCryptoTicker();loadBook();refreshAnalytics();
   // Provider-aware background refresh: FX/Gold REST is kept conservative; crypto is streamed.

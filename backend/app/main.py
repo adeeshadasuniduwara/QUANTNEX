@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 import json
 import math
 import re
@@ -25,7 +26,28 @@ from .events import event_hub, router as events_router
 from .prop_challenge import router as prop_challenge_router, mt5_guardian_worker
 
 Base.metadata.create_all(bind=engine)
-app = FastAPI(title="QUANTNEX Local API", description="Loopback-only local workspace API. No user login or remote account system.", version="0.8.0")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Own all local background workers in one explicit application lifecycle."""
+    await prepare_local_workspace()
+    try:
+        await start_telegram_background_worker()
+        await start_prop_challenge_guardian()
+        await start_daily_backup_worker()
+        await start_paper_autopilot_worker()
+        yield
+    finally:
+        await stop_paper_autopilot_worker()
+        await stop_daily_backup_worker()
+        await stop_prop_challenge_guardian()
+        await stop_telegram_background_worker()
+
+
+app = FastAPI(title="QUANTNEX Local API",
+              description="Loopback-only local workspace API. No user login or remote account system.",
+              version="0.8.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials=False,
                    allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Content-Type"])
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
@@ -627,7 +649,6 @@ def backup_legacy_database(db: Session) -> None:
     print(f"[QUANTNEX] Legacy database backup created: {backup_path}", flush=True)
 
 
-@app.on_event("startup")
 async def prepare_local_workspace():
     """Back up and migrate legacy accounts before the Telegram worker starts."""
     db = SessionLocal()
@@ -638,12 +659,10 @@ async def prepare_local_workspace():
         db.close()
 
 
-@app.on_event("startup")
 async def start_telegram_background_worker():
     from .telegram_worker import telegram_worker
     app.state.telegram_worker_task=asyncio.create_task(telegram_worker())
 
-@app.on_event("shutdown")
 async def stop_telegram_background_worker():
     task=getattr(app.state,"telegram_worker_task",None)
     if task:
@@ -651,12 +670,10 @@ async def stop_telegram_background_worker():
         try:await task
         except asyncio.CancelledError:pass
 
-@app.on_event("startup")
 async def start_prop_challenge_guardian():
     app.state.prop_challenge_guardian_task = asyncio.create_task(mt5_guardian_worker())
 
 
-@app.on_event("shutdown")
 async def stop_prop_challenge_guardian():
     task = getattr(app.state, "prop_challenge_guardian_task", None)
     if task:
@@ -735,12 +752,10 @@ async def notify_connected_telegram(payload: dict, user: User = Depends(local_wo
         raise HTTPException(status_code=502,detail="Could not reach Telegram.")
 
 
-@app.on_event("startup")
 async def start_daily_backup_worker():
     app.state.daily_backup_task = asyncio.create_task(daily_backup_worker())
 
 
-@app.on_event("shutdown")
 async def stop_daily_backup_worker():
     task = getattr(app.state, "daily_backup_task", None)
     if task:
@@ -1582,13 +1597,11 @@ def import_goal_journal_records(goal_id: int, payload: dict, user: User = Depend
             "achieved": bool(goal.achieved_at), "currency": "USD"}
 
 
-@app.on_event("startup")
 async def start_paper_autopilot_worker():
     from .phase12_20_engine import paper_autopilot_worker
     app.state.paper_autopilot_task = asyncio.create_task(paper_autopilot_worker())
 
 
-@app.on_event("shutdown")
 async def stop_paper_autopilot_worker():
     task = getattr(app.state, "paper_autopilot_task", None)
     if task:

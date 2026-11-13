@@ -148,6 +148,38 @@ async def chart_candles(symbol: str = "BTCUSDT", interval: str = "15m", limit: i
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="Chart market-data provider is temporarily unavailable.")
 
+@app.get("/api/v1/charts/quote")
+async def chart_quote(symbol: str = "XAUUSD"):
+    """A live XAUUSD quote from the same configured provider as chart history."""
+    symbol = symbol.upper()
+    if symbol != "XAUUSD":
+        raise HTTPException(status_code=422, detail="The chart quote endpoint currently supports XAUUSD only.")
+    from .phase07_engine import get_quote as get_twelve_data_quote, IntelligenceDataError
+    from .mt5_feed import get_quote as get_mt5_quote, MT5FeedError
+    try:
+        if QUANTNEX_MT5_ENABLED:
+            quote = await get_mt5_quote(QUANTNEX_MT5_GOLD_SYMBOL)
+            bid, ask = float(quote["bid"]), float(quote["ask"])
+            price = float(quote["last"]) if quote.get("last") else (bid + ask) / 2
+            return {"symbol": "XAUUSD", "price": price, "provider": quote["provider"],
+                    "source_timestamp": quote.get("source_timestamp"),
+                    "timestamp": quote.get("fetch_timestamp") or datetime.now(timezone.utc).isoformat(),
+                    "stale": bool(quote.get("stale")), "spread": quote.get("spread")}
+        quote = await get_twelve_data_quote("XAUUSD")
+        from .phase10_engine import assess_quote
+        health = assess_quote(quote)
+        return {"symbol": "XAUUSD", "price": quote["price"], "provider": quote["provider"],
+                "source_timestamp": quote.get("source_timestamp"),
+                "timestamp": quote.get("timestamp") or datetime.now(timezone.utc).isoformat(),
+                "stale": not health["trading_safe"], "data_health": health}
+    except (MT5FeedError, IntelligenceDataError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=503, detail="The configured Gold quote is invalid.") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="The configured Gold quote provider is unavailable.") from exc
+
+
 @app.get("/api/v1/quantnex-view/strategies")
 def quantnex_view_strategies():
     from .quantnex_view_intelligence import STRATEGY_CATALOG

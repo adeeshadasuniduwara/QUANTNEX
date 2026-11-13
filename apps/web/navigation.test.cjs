@@ -14,3 +14,14 @@ assert.match(css, /qnx-view-fade-in/);
 assert.match(css, /qnx-view-fade-out/);
 assert.match(html, /href="#prop-challenge"/);
 console.log("Navigation checks passed: single-view routing, fade transitions and reduced-motion support.");
+
+const polish = fs.readFileSync("apps/web/workspace-polish.js", "utf8");
+const polishCss = fs.readFileSync("apps/web/workspace-polish.css", "utf8");
+assert.match(polish, /qx-sidebar-toggle/, "Workspace must provide a sidebar collapse control.");
+assert.match(polish, /quantnex\.sidebar\.collapsed/, "Sidebar collapse state must persist locally.");
+assert.match(polish, /sidebar\.classList\.toggle\("is-collapsed"/, "Sidebar control must toggle compact mode.");
+assert.match(polish, /a\.replaceChildren\(icon,text\)/, "Each navigation item must contain exactly one icon and one label.");
+assert.match(polishCss, /\.sidebar\.is-collapsed~\.main/, "Collapsed sidebar must expand the main workspace width.");
+assert.match(polishCss, /max-width:none/, "Collapsed workspace must use the available full width.");
+assert.match(html, /workspace-polish\.js\?v=20261113-sidebar1/, "Navigation script cache must refresh for the new sidebar.");
+console.log("QUANTNEX collapsible sidebar and full-width workspace checks passed.");

@@ -1,8 +1,11 @@
 (()=>{"use strict";
 const nav=document.querySelector(".sidebar-nav"),sidebar=document.querySelector(".sidebar");
 if(!nav||!sidebar)return;
+if(sidebar.dataset.qxReady==="true")return;
+sidebar.dataset.qxReady="true";
+
 const icons={
- overview:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/>',
+ overview:'<path d="M4 10.5 12 4l8 6.5V20H4z"/><path d="M9 20v-6h6v6"/>',
  tradingview:'<path d="M3 18V6m0 12h18"/><path d="m6 14 4-4 3 2 5-6"/><path d="M15 6h3v3"/>',
  tools:'<circle cx="9" cy="9" r="5"/><path d="m13 13 7 7M7 9h4M9 7v4"/>',
  journal:'<path d="M6 3h12a2 2 0 0 1 2 2v16H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Z"/><path d="M7 3v18M11 8h5M11 12h5"/>',
@@ -58,6 +61,21 @@ const input=searchWrap.querySelector("input");
 input.addEventListener("input",()=>{const q=input.value.trim().toLowerCase();nav.querySelectorAll(".qx-nav-group").forEach(group=>{let shown=0;group.querySelectorAll(".nav-link").forEach(a=>{const match=!q||a.dataset.search.includes(q);a.hidden=!match;if(match)shown++;});group.hidden=shown===0;});});
 document.addEventListener("keydown",e=>{if(e.key==="/"&&!/input|textarea|select/i.test(document.activeElement?.tagName||"")){e.preventDefault();input.focus();}});
 const brand=sidebar.querySelector(".brand");if(brand&&!sidebar.querySelector(".qx-sidebar-caption")){const cap=document.createElement("div");cap.className="qx-sidebar-caption";cap.textContent="TRADING WORKSPACE";brand.after(cap);}
+const toggle=document.createElement("button");
+toggle.type="button";toggle.className="qx-sidebar-toggle";
+toggle.setAttribute("aria-label","Collapse sidebar");toggle.setAttribute("aria-expanded","true");
+toggle.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM9 5v14m4-7h6m-3-3 3 3-3 3"/></svg><span>Collapse menu</span>';
+toggle.addEventListener("click",()=>{
+ const collapsed=!sidebar.classList.contains("is-collapsed");
+ sidebar.classList.toggle("is-collapsed",collapsed);
+ toggle.setAttribute("aria-expanded",String(!collapsed));
+ toggle.setAttribute("aria-label",collapsed?"Expand sidebar":"Collapse sidebar");
+ toggle.querySelector("span").textContent=collapsed?"Expand menu":"Collapse menu";
+ try{localStorage.setItem("quantnex.sidebar.collapsed",collapsed?"1":"0");}catch{}
+ window.dispatchEvent(new CustomEvent("quantnex:sidebar-changed",{detail:{collapsed}}));
+});
+nav.before(toggle);
+try{if(localStorage.getItem("quantnex.sidebar.collapsed")==="1"){sidebar.classList.add("is-collapsed");toggle.setAttribute("aria-expanded","false");toggle.setAttribute("aria-label","Expand sidebar");toggle.querySelector("span").textContent="Expand menu";}}catch{}
 const bottom=sidebar.querySelector(".sidebar-bottom");if(bottom)bottom.innerHTML='<span class="live-dot"></span><span>LOCAL WORKSPACE</span>';
 const active=()=>{const hash=location.hash.slice(1)||"overview";nav.querySelectorAll(".nav-link").forEach(a=>{const yes=a.getAttribute("href")==="#"+hash;a.classList.toggle("active",yes);if(yes){a.closest(".qx-nav-group")?.querySelector(".qx-nav-items").removeAttribute("hidden");a.closest(".qx-nav-group")?.querySelector(".qx-nav-heading")?.setAttribute("aria-expanded","true");}});};
 window.addEventListener("hashchange",active);active();

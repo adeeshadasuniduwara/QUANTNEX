@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const assert = require("node:assert/strict");
 const html = fs.readFileSync("apps/web/index.html", "utf8");
 const js = fs.readFileSync("apps/web/quantnex-view-chart.js", "utf8");
+const intel = fs.readFileSync("apps/web/quantnex-view-intelligence.js", "utf8");
 const css = fs.readFileSync("apps/web/quantnex-view-chart.css", "utf8");
 for (const id of ["qxRsiChart", "qxMacdChart", "qxAdxChart", "qxAtrChart", "qxStochChart", "qxCciChart", "qxRsiValue", "qxMacdValue", "qxAdxValue", "qxAtrValue", "qxStochValue", "qxCciValue", "qxConfidenceMeter", "qxConfidenceFill"]) assert.ok(html.includes(`id="${id}"`), `Missing chart element: ${id}`);
 for (const token of ["function rsiSeries", "function adxSeries", "function atrSeries", "function stochSeries", "function cciSeries", "function renderIndicatorPanels", "new WebSocket", "kline_", "function pointerDown", "function wheel", "function mergeCandle", "window.quantnexViewSetAnalysis"]) assert.ok(js.includes(token), `Native chart/live path missing: ${token}`);
@@ -10,7 +11,7 @@ assert.ok(!html.includes("lightweight-charts@"), "No external Lightweight Charts
 assert.ok(!html.includes("TradingView Lightweight Charts"), "Chart footer must not credit the removed chart runtime.");
 assert.ok(!fs.readFileSync("apps/web/signal-tool.js", "utf8").includes("window.LightweightCharts"), "Legacy TradingView chart controller must be removed.");
 assert.ok(js.includes("quantnex:market-tick"), "Native chart must subscribe to the shared Trading Room market feed.");
-assert.ok(js.includes("ANALYSIS ERROR · "), "Analysis errors must expose their actual cause.");
+assert.ok(intel.includes("Signal analysis unavailable: "), "Analysis errors must expose their actual cause in Chart Intelligence.");
 assert.ok(js.includes("historyRequests=new Map()"), "History requests must be isolated by symbol/timeframe to avoid selection races.");
 assert.ok(js.includes("if(historyRequests.has(key))return historyRequests.get(key)"), "Repeated history requests for one market/timeframe must be deduplicated.");
 assert.ok(!js.includes("candles.length<210)throw Error"), "A valid short history must still render instead of blanking the chart.");

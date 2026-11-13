@@ -97,23 +97,24 @@ async def _telegram_post(client, token: str, method: str, payload: dict):
     raise RuntimeError("Telegram retry limit reached.")
 
 def _format_telegram_message(message: str) -> str:
-    """Apply a consistent Telegram HTML design system to every outgoing text."""
+    """Apply a consistent branded Telegram HTML design system to every outgoing text."""
     import html
-    content = str(message or "").replace("\r\n", "\n").strip()
-    if not content:
-        content = "No message content."
+    content = str(message or "").replace("\\r\\n", "\\n").strip() or "No message content."
+    lines = content.splitlines()
     rendered = []
-    for index, line in enumerate(content.splitlines()):
+    if "QUANTNEX" not in lines[0].upper():
+        rendered.extend(["<b>✨ QUANTNEX</b>", ""])
+    for index, line in enumerate(lines):
         safe = html.escape(line, quote=False)
         if not safe.strip():
             rendered.append("")
         elif index == 0:
-            rendered.append("<b>✨ " + safe + "</b>")
+            rendered.append("<b>✨ " + safe + "</b>" if "QUANTNEX" in line.upper() else "<b>" + safe + "</b>")
         elif (line.strip().isupper() and len(line.strip()) > 3) or line.strip().startswith(("📈", "🧠", "🛡", "🎯", "📊", "⚙", "🚀", "🏅", "🔒")):
             rendered.append("<b>" + safe + "</b>")
         else:
             rendered.append(safe)
-    return "\n".join(rendered)[:3900]
+    return "\\n".join(rendered)[:3900]
 
 
 async def _send(client, token: str, chat_id: str, text: str, reply_markup: dict | None = None):

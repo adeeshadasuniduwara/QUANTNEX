@@ -323,7 +323,7 @@ async function syncJournal(){
         sourceId=window.crypto?.randomUUID?.()||("qnx-"+Date.now()+"-"+Math.random().toString(16).slice(2));
         localStorage.setItem(journalSourceKey,sourceId);
       }
-      pending.forEach((row,index)=>{if(!row.client_ref)row.client_ref="legacy-row-"+String(index).padStart(8,"0");});
+      pending.forEach((row,index)=>{if(!row.client_ref)row.client_ref="legacy-"+sourceId+"-"+String(index).padStart(6,"0");});
       try{saveTrades(journalRowsCache);}catch{}
       const normalized=pending.map(row=>{
         const dateText=String(row.date||"").slice(0,10);

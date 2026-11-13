@@ -115,7 +115,7 @@ async def chart_candles(symbol: str = "BTCUSDT", interval: str = "15m", limit: i
     allowed_intervals = {"1m":"1min","5m":"5min","15m":"15min","30m":"30min","1h":"1h","4h":"4h"}
     symbol = symbol.upper()
     if symbol not in CRYPTO_SYMBOLS and symbol != "XAUUSD":
-        raise HTTPException(status_code=422, detail="Supported chart markets: BTCUSDT, ETHUSDT, SOLUSDT and XAUUSD.")
+        raise HTTPException(status_code=422, detail="Supported chart markets: "+", ".join(sorted(CRYPTO_SYMBOLS))+" and XAUUSD.")
     if interval not in allowed_intervals or not 210 <= limit <= 1000:
         raise HTTPException(status_code=422, detail="Choose a supported interval and 210–1000 candles.")
     try:

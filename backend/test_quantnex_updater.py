@@ -65,7 +65,7 @@ def test_safe_destination_rejects_existing_symlink_escape(tmp_path):
     with pytest.raises(UpdateError, match="outside"):
         _safe_destination(root, Path("backend/app/main.py"))
 
-def test_web_archive_path_validation_rejects_windows_traversal():
+def test_web_archive_path_validation_rejects_windows_traversal(monkeypatch, tmp_path):
     import importlib.util
     from pathlib import PurePosixPath
 
@@ -78,3 +78,15 @@ def test_web_archive_path_validation_rejects_windows_traversal():
     assert module._safe_web_relative(("index.html",)) == PurePosixPath("index.html")
     assert module._safe_web_relative((r"folder\\..\\..\\outside.txt",)) is None
     assert module._safe_web_relative(("file.txt:secret",)) is None
+
+    web_root = tmp_path / "web"
+    outside = tmp_path / "outside"
+    web_root.mkdir()
+    outside.mkdir()
+    monkeypatch.setattr(module, "WEB", web_root)
+    try:
+        (web_root / "assets").symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("Symlink creation is unavailable in this test environment.")
+    with pytest.raises(RuntimeError, match="escapes"):
+        module._safe_web_destination(PurePosixPath("assets/evil.js"))

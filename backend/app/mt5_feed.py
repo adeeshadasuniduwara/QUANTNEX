@@ -66,7 +66,10 @@ def _feed_session():
         except Exception:
             already_initialized = False
         try:
-            _initialize(mt5)
+            # Reuse an existing terminal session as-is; initialize only when
+            # the read-only feed is the first QUANTNEX component to connect.
+            if not already_initialized:
+                _initialize(mt5)
             yield mt5
         finally:
             # Do not shut down a terminal connection established by the

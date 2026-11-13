@@ -548,6 +548,7 @@ class App(tk.Tk):
         }),encoding="utf-8")
         helper.write_text(r"""
 $ErrorActionPreference = "Stop"
+try {
 $config = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "apply_update.json") | ConvertFrom-Json
 $target = [IO.Path]::GetFullPath([string]$config.target)
 $staged = [IO.Path]::GetFullPath([string]$config.staged)
@@ -580,6 +581,12 @@ try {
     throw
 } finally {
     Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+}
+} catch {
+    $message = "QUANTNEX update failed: " + $_.Exception.Message
+    $message | Out-File -LiteralPath (Join-Path $PSScriptRoot "apply_update.log") -Append -Encoding utf8
+    Add-Type -AssemblyName PresentationFramework
+    [System.Windows.MessageBox]::Show($message + "`nYour existing EXE was preserved or restored when possible.", "QUANTNEX Update", "OK", "Warning") | Out-Null
 }
 """,encoding="utf-8")
         subprocess.Popen(["powershell.exe","-NoProfile","-ExecutionPolicy","Bypass","-File",str(helper)],

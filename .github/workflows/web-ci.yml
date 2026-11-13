@@ -39,6 +39,7 @@ jobs:
           node --check apps/web/quantnex-view-chart.js
           node --check apps/web/workspace-pages.js
           node apps/web/workspace-pages.test.cjs
+          node apps/web/goals.test.cjs
           node apps/web/quantnex-view-chart.test.cjs
           node apps/web/live-terminal.test.cjs
           node apps/web/sidebar-scroll.test.cjs

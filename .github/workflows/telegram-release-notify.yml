@@ -2,6 +2,18 @@ name: QUANTNEX Telegram Release Announcements
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/index.html"
+      - "apps/web/goals.js"
+      - "apps/web/goals.test.cjs"
+      - "backend/app/main.py"
+      - "backend/app/goal_certificates.py"
+      - "backend/app/telegram_worker.py"
+      - "backend/test_goal_certificates.py"
+      - ".github/workflows/web-ci.yml"
+      - ".github/workflows/telegram-release-notify.yml"
 
 permissions:
   contents: read
@@ -19,6 +31,7 @@ jobs:
           RELEASE_NAME: ${{ github.event.release.name }}
           RELEASE_URL: ${{ github.event.release.html_url }}
           REPO: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
           if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
             echo "Telegram secrets are not configured. Skipping announcement."
@@ -36,6 +49,16 @@ jobs:
               tag = "Configuration test"
               release_url = "https://github.com/" + repo
               intro = "The QUANTNEX Telegram release notification is connected."
+          elif os.environ["EVENT_NAME"] == "push":
+              title = "Goals, demo certificate & Telegram message polish"
+              tag = "Workspace update"
+              release_url = "https://github.com/" + repo + "/commit/" + os.environ.get("COMMIT_SHA", "")
+              intro = (
+                  "🎯 Personal goals creation and progress experience improved.\n"
+                  "🏅 A sample achievement certificate is now available, prominently marked DEMO ONLY — NOT VALID.\n"
+                  "💬 Telegram messages now use clearer branded formatting and helpful emojis.\n"
+                  "🔒 Your local wallet, journal, settings and credentials remain on your device."
+              )
           else:
               title = html.escape(os.environ.get("RELEASE_NAME") or os.environ.get("RELEASE_TAG") or "New release")
               tag = html.escape(os.environ.get("RELEASE_TAG") or "Release")

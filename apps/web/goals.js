@@ -40,7 +40,7 @@
     if([...select.options].some(o=>o.value===previous))select.value=previous;
   }
   function render(){
-    const host=$("goalCards");host.replaceChildren();
+    const host=$("goalCards");if(!host)return;host.replaceChildren();
     if(!goals.length){const empty=document.createElement("article");empty.className="workspace-page-card";empty.textContent="No personal goals yet. Create your first goal above.";host.append(empty);}
     goals.forEach(goal=>{
       const card=document.createElement("article");card.className="goal-card";
@@ -83,6 +83,7 @@
   $("goalCreateForm")?.addEventListener("submit",async event=>{
     event.preventDefault();
     const title=$("goalTitle").value.trim(),target_amount=Number($("goalTarget").value),image_url=$("goalImage").value.trim();
+    if(!title||!Number.isFinite(target_amount)||target_amount<=0){status("goalsStatus","Enter a goal name and a target amount greater than zero.",true);return;}
     if(image_url&&!safeImageUrl(image_url)){status("goalsStatus","Please use a valid direct HTTPS image URL.",true);return;}
     const button=$("goalCreateButton");button.disabled=true;button.textContent="Creating…";
     try{
@@ -110,13 +111,27 @@
     }catch(error){status("goalContributionStatus",error.message,true);}
     finally{button.disabled=false;}
   });
+
+  $("goalDemoCertificate")?.addEventListener("click",async()=>{
+    const button=$("goalDemoCertificate");button.disabled=true;button.textContent="Preparing demo…";
+    try{
+      const blob=await api("/api/v1/goals/demo-certificate");
+      const url=URL.createObjectURL(blob),link=document.createElement("a");
+      link.href=url;link.download="QUANTNEX-DEMO-CERTIFICATE-NOT-VALID.pdf";
+      document.body.append(link);link.click();link.remove();
+      window.setTimeout(()=>URL.revokeObjectURL(url),30000);
+      status("goalCertificateStatus","Demo certificate downloaded. It is watermarked DEMO ONLY — NOT VALID and is for display purposes only.");
+    }catch(error){status("goalCertificateStatus","Demo certificate preview failed: "+error.message,true);}
+    finally{button.disabled=false;button.textContent="Preview demo certificate · NOT VALID";}
+  });
+
   $("goalGenerateCertificate")?.addEventListener("click",async()=>{
     const id=$("goalCertificateSelect").value,display_name=$("goalCertificateName").value.trim();
     if(!id||!display_name){status("goalCertificateStatus","Choose an achieved goal and enter the display name for the certificate.",true);return;}
     const button=$("goalGenerateCertificate");button.disabled=true;button.textContent="Generating…";
     try{
       const blob=await api("/api/v1/goals/"+id+"/certificate",{method:"POST",body:JSON.stringify({display_name})});
-      const url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="QUANTNEX-Achievement.pdf";document.body.append(link);link.click();link.remove();URL.revokeObjectURL(url);
+      const url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="QUANTNEX-Achievement.pdf";document.body.append(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(url),30000);
       status("goalCertificateStatus","A4 achievement certificate generated. Verification is local-workspace integrity only.");
     }catch(error){status("goalCertificateStatus",error.message,true);}
     finally{button.disabled=false;button.textContent="Generate A4 certificate";}

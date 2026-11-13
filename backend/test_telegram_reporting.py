@@ -42,3 +42,11 @@ def test_daily_pdf_contains_only_paper_ledger_and_computes_win_rate():
         assert stats["losses"] == 1
         assert stats["win_rate"] == 50.0
         assert stats["net"] == 0.0
+
+
+
+def test_telegram_text_messages_get_branded_emoji_headers():
+    from app.telegram_worker import _format_telegram_message
+
+    assert _format_telegram_message("Status: connected") == "✨ QUANTNEX\n\nStatus: connected"
+    assert _format_telegram_message("QUANTNEX status: connected") == "✨ QUANTNEX status: connected"

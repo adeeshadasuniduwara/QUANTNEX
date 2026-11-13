@@ -16,12 +16,12 @@ def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
                                created_at: datetime, achieved_at: datetime,
                                elapsed_days: int, certificate_id: str,
                                integrity_fingerprint: str, target_amount: float,
-                               saved_amount: float, currency: str) -> bytes:
+                               saved_amount: float, currency: str, demo_only: bool = False) -> bytes:
     buffer = BytesIO()
     page_w, page_h = A4
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=24*mm, leftMargin=24*mm,
                             topMargin=36*mm, bottomMargin=32*mm,
-                            title="QUANTNEX Achievement Certificate")
+                            title=("QUANTNEX Demo Certificate — NOT VALID" if demo_only else "QUANTNEX Achievement Certificate"))
 
     def decorate(canvas, _doc):
         canvas.saveState()
@@ -31,12 +31,23 @@ def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
         canvas.setLineWidth(0.45)
         canvas.rect(13*mm, 13*mm, page_w-26*mm, page_h-26*mm)
         draw_quantnex_mark(canvas,page_w/2-7.5*mm,page_h-33*mm,15*mm)
+        if demo_only:
+            canvas.saveState()
+            canvas.translate(page_w/2, page_h/2)
+            canvas.rotate(35)
+            canvas.setFillColor(colors.HexColor("#D5D5D5"))
+            canvas.setFont("Helvetica-Bold", 34)
+            canvas.drawCentredString(0, 0, "DEMO ONLY — NOT VALID")
+            canvas.setFont("Helvetica-Bold", 13)
+            canvas.drawCentredString(0, -14*mm, "FOR DISPLAY PURPOSES ONLY")
+            canvas.restoreState()
         canvas.setFillColor(colors.black)
         canvas.setFont("Helvetica-Bold", 9)
         canvas.drawCentredString(page_w/2, 20*mm, "QUANTNEX  ·  PERSONAL DISCIPLINE SERIES")
         canvas.setFont("Helvetica", 6.5)
         canvas.setFillColor(colors.HexColor("#555555"))
-        canvas.drawCentredString(page_w/2, 16*mm, "LOCAL CERTIFICATE · NOT A FINANCIAL LICENSE OR TRADING PERFORMANCE GUARANTEE")
+        footer = ("DEMO SAMPLE · NOT VALID · FOR DISPLAY PURPOSES ONLY" if demo_only else "LOCAL CERTIFICATE · NOT A FINANCIAL LICENSE OR TRADING PERFORMANCE GUARANTEE")
+        canvas.drawCentredString(page_w/2, 16*mm, footer)
         canvas.restoreState()
 
     styles = getSampleStyleSheet()
@@ -58,8 +69,8 @@ def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
     story = [
         Paragraph("Q U A N T N E X", brand),
         Spacer(1, 10*mm),
-        Paragraph("CERTIFICATE OF ACHIEVEMENT", title),
-        Paragraph("PROUDLY PRESENTED TO", lead),
+        Paragraph("DEMO CERTIFICATE PREVIEW" if demo_only else "CERTIFICATE OF ACHIEVEMENT", title),
+        Paragraph("SAMPLE ONLY · NOT VALID" if demo_only else "PROUDLY PRESENTED TO", lead),
         Paragraph(display_name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"), name),
         Paragraph("For achieving the personal goal", lead),
         Paragraph(goal_title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"), goal),
@@ -84,6 +95,9 @@ def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
         Paragraph(f"Certificate ID: {certificate_id}", small),
         Paragraph(f"Local integrity fingerprint: {integrity_fingerprint[:24]}", small),
     ]
+    if demo_only:
+        story.insert(0, Paragraph("DEMO ONLY — NOT VALID · FOR DISPLAY PURPOSES ONLY", small))
+        story.insert(1, Spacer(1, 3*mm))
     doc.build(story, onFirstPage=decorate, onLaterPages=decorate)
     return buffer.getvalue()
 

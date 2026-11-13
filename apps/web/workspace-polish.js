@@ -5,7 +5,7 @@ if(sidebar.dataset.qxReady==="true")return;
 sidebar.dataset.qxReady="true";
 
 const icons={
- overview:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/>',
+ overview:'<path d="M4 10.5 12 4l8 6.5V20H4z"/><path d="M9 20v-6h6v6"/>',
  tradingview:'<path d="M3 18V6m0 12h18"/><path d="m6 14 4-4 3 2 5-6"/><path d="M15 6h3v3"/>',
  tools:'<circle cx="9" cy="9" r="5"/><path d="m13 13 7 7M7 9h4M9 7v4"/>',
  journal:'<path d="M6 3h12a2 2 0 0 1 2 2v16H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Z"/><path d="M7 3v18M11 8h5M11 12h5"/>',

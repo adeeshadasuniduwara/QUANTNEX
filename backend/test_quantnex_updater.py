@@ -64,3 +64,17 @@ def test_safe_destination_rejects_existing_symlink_escape(tmp_path):
 
     with pytest.raises(UpdateError, match="outside"):
         _safe_destination(root, Path("backend/app/main.py"))
+
+def test_web_archive_path_validation_rejects_windows_traversal():
+    import importlib.util
+    from pathlib import PurePosixPath
+
+    web_path = Path(__file__).resolve().parents[1] / "apps" / "web" / "quantnex_local_server.py"
+    spec = importlib.util.spec_from_file_location("quantnex_web_updater_test", web_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    assert module._safe_web_relative(("index.html",)) == PurePosixPath("index.html")
+    assert module._safe_web_relative((r"folder\\..\\..\\outside.txt",)) is None
+    assert module._safe_web_relative(("file.txt:secret",)) is None

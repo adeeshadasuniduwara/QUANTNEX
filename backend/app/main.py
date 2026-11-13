@@ -304,6 +304,11 @@ def import_legacy_journal(payload: LegacyJournalImportRequest,
                 db.flush()
                 db.add(JournalImport(user_id=user.id, source_id=payload.source_id,
                                      source_ref=row.source_ref, trade_id=trade.id))
+                if row.record_wallet:
+                    db.add(WalletTransaction(user_id=user.id, transaction_type="trade_pnl",
+                                             amount=row.pnl,
+                                             description=f"{row.symbol} {row.direction.upper()} journal P&L",
+                                             trade_id=trade.id))
                 db.flush()
                 imported += 1
         except IntegrityError:

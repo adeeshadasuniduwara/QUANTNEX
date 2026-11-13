@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="styles.css?v=20261112-quantnex-view3">
   <link rel="stylesheet" href="signal-tool.css">
   <link rel="stylesheet" href="quantnex-view-intelligence.css">
-  <link rel="stylesheet" href="quantnex-view-chart.css">
+  <link rel="stylesheet" href="quantnex-view-chart.css?v=0.6.0">
   <link rel="stylesheet" href="workspace-pages.css?v=20261113-goalscomplete2">
   <link rel="stylesheet" href="workspace-polish.css?v=20261113-1">
   <link rel="stylesheet" href="welcome-whats-new.css?v=20261113-1">
@@ -190,7 +190,7 @@
       <section class="panel chart-panel qx-chart-panel" aria-label="QUANTNEX VIEW live chart">
         <div class="qx-chart-topbar">
           <div class="qx-chart-market">
-            <label>Market<select id="qxSymbol"><option value="BTCUSDT">BTC / USDT</option><option value="ETHUSDT">ETH / USDT</option><option value="SOLUSDT">SOL / USDT</option><option value="XAUUSD">Gold / XAUUSD</option></select></label>
+            <label>Market<select id="qxSymbol"><option value="BTCUSDT">BTC / USDT</option><option value="ETHUSDT">ETH / USDT</option><option value="BNBUSDT">BNB / USDT</option><option value="XRPUSDT">XRP / USDT</option><option value="SOLUSDT">SOL / USDT</option><option value="ADAUSDT">ADA / USDT</option><option value="DOGEUSDT">DOGE / USDT</option><option value="AVAXUSDT">AVAX / USDT</option><option value="LINKUSDT">LINK / USDT</option><option value="LTCUSDT">LTC / USDT</option><option value="BCHUSDT">BCH / USDT</option><option value="DOTUSDT">DOT / USDT</option><option value="TRXUSDT">TRX / USDT</option><option value="TONUSDT">TON / USDT</option><option value="SUIUSDT">SUI / USDT</option><option value="NEARUSDT">NEAR / USDT</option><option value="UNIUSDT">UNI / USDT</option><option value="AAVEUSDT">AAVE / USDT</option><option value="SHIBUSDT">SHIB / USDT</option><option value="PEPEUSDT">PEPE / USDT</option><option value="XAUUSD">Gold / XAUUSD</option></select></label>
             <div><strong id="qxChartLastPrice">—</strong><small id="qxChartChange">Waiting for market data</small></div>
           </div>
           <div class="qx-chart-toolbar">
@@ -206,6 +206,9 @@
           <label><input type="checkbox" id="qxEma20" checked> EMA 20</label>
           <label><input type="checkbox" id="qxEma50" checked> EMA 50</label>
           <label><input type="checkbox" id="qxEma200" checked> EMA 200</label>
+          <label><input type="checkbox" id="qxSma20"> SMA 20</label>
+          <label><input type="checkbox" id="qxBollinger"> Bollinger Bands</label>
+          <label><input type="checkbox" id="qxVwap"> VWAP</label>
           <label><input type="checkbox" id="qxLogScale"> Log scale</label>
           <label><input type="checkbox" id="qxGrid" checked> Grid</label>
           <label>Up candle <input type="color" id="qxUpColor" value="#20c997"></label>
@@ -220,11 +223,11 @@
           <span class="qx-chart-status" id="qxChartStatus" role="status">Connecting to local market data…</span>
         </div>
         <div id="qxChartHost" class="qx-chart-host"><div class="qx-chart-loading">Loading live candles…</div></div>
-        <div class="qx-chart-footer"><span id="qxChartProvider">Market feed: waiting</span><span>Live updates · local chart settings · Chart engine by <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">TradingView Lightweight Charts™</a></span></div>
+        <div class="qx-chart-footer"><span id="qxChartProvider">Market feed: waiting</span><span>Native QUANTNEX canvas engine · Binance live WebSocket for crypto · local chart settings</span></div>
       </section>
       <section class="qx-chart-intelligence" aria-live="polite" aria-label="Live chart intelligence">
         <div><div class="qx-chart-intelligence-head"><strong>LIVE STRUCTURE &amp; CONFIRMATIONS</strong><small id="qxChartIntelState">SCANNING</small></div>
-          <p class="qx-chart-intel-summary" id="qxChartIntelSummary">Waiting for market confirmation…</p>
+          <p class="qx-chart-intel-summary" id="qxChartIntelSummary">Waiting for market confirmation…</p><div class="qx-confidence" id="qxConfidenceMeter" aria-label="Rule confluence meter"><div class="qx-confidence-track"><span id="qxConfidenceFill"></span></div><small id="qxConfidenceLabel">0 / 20 rule matches · not a win probability</small></div>
           <div class="qx-chart-overlay-options">
             <label><input type="checkbox" id="qxOverlayStructure" checked> Structure &amp; sweeps</label>
             <label><input type="checkbox" id="qxOverlayZones" checked> OB / BB / FVG zones</label>
@@ -243,6 +246,9 @@
           <article class="qx-indicator-card"><div class="qx-indicator-card-head"><strong>RSI · 14</strong><span id="qxRsiValue">—</span></div><div id="qxRsiChart" class="qx-indicator-chart"></div><small>Momentum · 70 overbought / 30 oversold reference levels</small></article>
           <article class="qx-indicator-card"><div class="qx-indicator-card-head"><strong>MACD · 12 / 26 / 9</strong><span id="qxMacdValue">—</span></div><div id="qxMacdChart" class="qx-indicator-chart"></div><small>MACD line · signal line · histogram</small></article>
           <article class="qx-indicator-card"><div class="qx-indicator-card-head"><strong>ADX · 14</strong><span id="qxAdxValue">—</span></div><div id="qxAdxChart" class="qx-indicator-chart"></div><small>Trend strength · +DI / −DI directional lines</small></article>
+          <article class="qx-indicator-card"><div class="qx-indicator-card-head"><strong>ATR · 14</strong><span id="qxAtrValue">—</span></div><div id="qxAtrChart" class="qx-indicator-chart"></div><small>Average true range · volatility</small></article>
+          <article class="qx-indicator-card"><div class="qx-indicator-card-head"><strong>Stochastic · 14 / 3</strong><span id="qxStochValue">—</span></div><div id="qxStochChart" class="qx-indicator-chart"></div><small>%K and %D · momentum</small></article>
+          <article class="qx-indicator-card"><div class="qx-indicator-card-head"><strong>CCI · 20</strong><span id="qxCciValue">—</span></div><div id="qxCciChart" class="qx-indicator-chart"></div><small>Commodity channel index</small></article>
         </div>
       </section>
       <section class="panel live-pnl-panel" aria-label="Live trade result calculator">
@@ -757,7 +763,7 @@
   <script src="goals.js?v=20261113-goalscomplete2"></script>
   <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.0.8/dist/lightweight-charts.standalone.production.js" onerror="this.onerror=null;this.src='https://unpkg.com/lightweight-charts@5.0.8/dist/lightweight-charts.standalone.production.js';"></script>
   <script src="signal-tool.js"></script>
-  <script src="quantnex-view-chart.js"></script>
+  <script src="quantnex-view-chart.js?v=0.6.0"></script>
   <script src="quantnex-view-intelligence.js"></script>
   <script src="workspace-polish.js?v=20261113-1"></script>
   <script src="welcome-whats-new.js?v=20261113-1"></script>

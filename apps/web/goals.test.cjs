@@ -6,7 +6,7 @@ assert.match(html, /id="goalCreateForm"/, "Goals must expose the create form");
 assert.match(html, /id="goalTitle"[^>]*required/, "Goal name must be required");
 assert.match(html, /id="goalTarget"[^>]*required/, "Target amount must be required");
 assert.match(html, /id="goalCurrency"/, "Goal currency must be selectable");
-assert.ok(html.includes("Image URL (optional)"), "Goal image must remain optional");
+assert.ok(html.includes("Goal photo URL (optional)"), "Goal image must remain optional");
 assert.match(html, /id="goalCards"/, "Goals must expose the saved-goals list");
 assert.match(html, /id="goalDemoCertificate"/, "A demo certificate preview must be available without achieving a goal");
 assert.match(js, /\/api\/v1\/goals\/demo-certificate/, "Demo certificate must use the dedicated sample endpoint");

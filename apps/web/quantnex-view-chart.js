@@ -27,7 +27,8 @@ function makeChart(){
  [["20","qxEma20","#f3c969"],["50","qxEma50","#67a7ff"],["200","qxEma200","#c18cff"]].forEach(([p,id,color])=>{if($(id)?.checked)emaLines[p]=chart.addSeries(L.LineSeries,{color,lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});});
  overlay=document.createElement("canvas");overlay.className="qx-intelligence-overlay";overlay.setAttribute("aria-hidden","true");host.append(overlay);ctx=overlay.getContext("2d");
  chart.timeScale().subscribeVisibleLogicalRangeChange(drawOverlay);chart.timeScale().subscribeVisibleTimeRangeChange(drawOverlay);
- observer?.disconnect();observer=new ResizeObserver(entries=>{entries.forEach(entry=>{const w=Math.max(260,Math.floor(entry.contentRect.width));if(entry.target===host&&chart){chart.applyOptions({width:w,height:Math.max(320,Math.floor(entry.contentRect.height))});drawOverlay();}else{const id=entry.target.id,ic=indicatorCharts[id];if(ic)ic.applyOptions({width:w});}});});observer.observe(host);\n ["qxRsiChart","qxMacdChart","qxAdxChart"].forEach(id=>{const el=$(id);if(el)observer.observe(el);});
+ observer?.disconnect();observer=new ResizeObserver(entries=>{entries.forEach(entry=>{const w=Math.max(260,Math.floor(entry.contentRect.width));if(entry.target===host&&chart){chart.applyOptions({width:w,height:Math.max(320,Math.floor(entry.contentRect.height))});drawOverlay();}else{const id=entry.target.id,ic=indicatorCharts[id];if(ic)ic.applyOptions({width:w});}});});observer.observe(host);
+ ["qxRsiChart","qxMacdChart","qxAdxChart"].forEach(id=>{const el=$(id);if(el)observer.observe(el);});
 }
 function applyCandles(rows){
  candles=(rows||[]).map(r=>({...r,time:stamp(r.time)})).filter(r=>r.time!==null).sort((a,b)=>a.time-b.time).filter((r,i,a)=>i===0||r.time>a[i-1].time);

@@ -7,7 +7,7 @@ echo  =========================================
 echo             QUANTNEX WORKSPACE
 echo  =========================================
 echo.
-echo  [1] Start Windows Desktop
+echo  [1] Start Windows Desktop + Auto Updates
 echo  [2] Start Web + Backend (ONE CMD)
 echo  [3] Start Desktop + Web + Backend (ONE CMD)
 echo  [4] Start Local Backend API only
@@ -25,10 +25,10 @@ if errorlevel 1 goto desktop
 :desktop
 where py >nul 2>nul
 if not errorlevel 1 (
-  py apps\windows\quantnex_desktop.py
+  py run_quantnex_services.py --desktop
   goto end
 )
-python apps\windows\quantnex_desktop.py
+python run_quantnex_services.py --desktop
 goto end
 
 :packaged

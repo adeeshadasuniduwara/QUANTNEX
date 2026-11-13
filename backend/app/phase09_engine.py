@@ -53,7 +53,14 @@ def drawdown_guard(trades, equity, daily_loss_limit_percent=3.0, max_drawdown_pe
     today=datetime.now(timezone.utc).date()
     todays=[t for t in closed if (t.closed_at or t.created_at).date()==today]
     daily_loss=sum(min(0.0,float(t.realized_pnl)) for t in todays)
-    peak=equity; curve=equity; worst=0.0; streak=0; max_streak=0
+    # The UI supplies current account equity (also used for position sizing).
+    # Reconstruct the historical starting balance by reversing all recorded
+    # closed-trade P&L before walking the curve forward. Starting the curve at
+    # current equity and adding historical P&L double-counted past gains/losses.
+    starting_equity = equity - sum(float(t.realized_pnl) for t in closed)
+    if not isfinite(starting_equity) or starting_equity <= 0:
+        raise ValueError("Recorded trade history cannot be reconciled with the supplied current equity.")
+    peak=starting_equity; curve=starting_equity; worst=0.0; streak=0; max_streak=0
     for t in closed:
         pnl=float(t.realized_pnl); curve+=pnl; peak=max(peak,curve)
         if peak>0: worst=max(worst,(peak-curve)/peak*100)
@@ -67,7 +74,7 @@ def drawdown_guard(trades, equity, daily_loss_limit_percent=3.0, max_drawdown_pe
             "daily_realized_loss":round(daily_loss,6),"daily_loss_limit_amount":round(equity*daily/100,6),
             "historical_max_drawdown_percent":round(worst,4),"max_drawdown_limit_percent":maxdd,
             "current_loss_streak":streak,"max_consecutive_losses":max_consecutive_losses,
-            "note":"UTC calendar-day realized losses and closed-paper-trade equity curve only. Equity is user-supplied; open P&L and deposits/withdrawals are excluded."}
+            "note":"UTC calendar-day realized losses and closed-paper-trade equity curve only. Equity is current user-supplied account equity; starting equity is reconstructed by reversing recorded closed-trade P&L. Open P&L and deposits/withdrawals are excluded."}
 
 def stress_test(trades, shocks=None):
     shocks=shocks or {"risk_off":-0.05,"risk_on":0.05,"volatility_spike":-0.10}

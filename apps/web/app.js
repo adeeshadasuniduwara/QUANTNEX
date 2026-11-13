@@ -315,7 +315,7 @@ async function syncJournal(){
         sourceId=window.crypto?.randomUUID?.()||("qnx-"+Date.now()+"-"+Math.random().toString(16).slice(2));
         localStorage.setItem(journalSourceKey,sourceId);
       }
-      pending.forEach(row=>{if(!row.client_ref)row.client_ref=newJournalRef();});
+      pending.forEach((row,index)=>{if(!row.client_ref)row.client_ref="legacy-row-"+String(index).padStart(8,"0");});
       try{saveTrades(journalRowsCache);}catch{}
       const normalized=pending.map(row=>{
         const parsed=row.date?new Date(row.date):null;

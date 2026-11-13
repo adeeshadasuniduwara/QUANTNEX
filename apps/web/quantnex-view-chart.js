@@ -96,7 +96,7 @@ async function loadGoldQuote(){
  if(document.hidden||!isChartViewActive()||selected().symbol!=="XAUUSD")return;
  const pick=selected();
  try{
-  const quote=await apiRequest("/api/v1/charts/quote?symbol=XAUUSD");
+  const quote=await apiRequest("/api/v1/charts/quote?symbol=XAUUSD&interval="+encodeURIComponent(pick.interval)+"");
   if(!isChartViewActive()||selected().symbol!==pick.symbol||selected().interval!==pick.interval)return;
   if(quote.stale){setStatus("GOLD FEED STALE · CHECK MT5 / TWELVE DATA","error");return;}
   onTradingRoomTick({detail:{symbol:"XAUUSD",price:Number(quote.price),eventTime:Date.now(),kind:"provider_quote",source:"QUANTNEX VIEW · "+quote.provider}});

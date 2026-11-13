@@ -3,7 +3,8 @@
   const money = n => "$" + Number(n || 0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
   const price = n => Number(n).toLocaleString(undefined,{maximumFractionDigits:8});
   let lastAnalysis = null;
-  let busy = false;
+  let busy = false, analyzeQueued = false, backtestBusy = false, backtestQueued = false;
+  const isTradingViewActive=()=>!document.hidden&&document.querySelector(".workspace-view:not([hidden])")?.dataset.workspaceView==="tradingview";
 
   function setText(id,value){const el=$(id);if(el)el.textContent=value;}
   function selected(){return {symbol:$("qxSymbol")?.value||"BTCUSDT",interval:$("qxInterval")?.value||"15m",min:Number($("qxIntelMinScore")?.value||6)};}
@@ -53,10 +54,12 @@
     setText("qxBacktestStatus","COMPLETED · "+data.interval);
   }
   async function analyze(){
-    if(busy)return;busy=true;setStatus("ANALYSING");
+    if(!isTradingViewActive())return;
+    if(busy){analyzeQueued=true;return;}busy=true;setStatus("ANALYSING");
     try{
       const s=selected();
       const data=await apiRequest("/api/v1/quantnex-view/analyze?symbol="+encodeURIComponent(s.symbol)+"&interval="+encodeURIComponent(s.interval)+"&min_score="+s.min);
+      if(!isTradingViewActive())return;
       lastAnalysis=data;renderFeatures(data.features);renderSignal(data);
       setStatus(data.status+" · "+data.eligible_setups+" ELIGIBLE / 100");
       const list=$("qxStrategyList");
@@ -72,24 +75,26 @@
         list.append(table);
       }
     }catch(error){setStatus("FEED ERROR");const host=$("qxMainSignal");if(host)host.textContent="Signal analysis unavailable: "+error.message;}
-    finally{busy=false;}
+    finally{busy=false;if(analyzeQueued&&isTradingViewActive()){analyzeQueued=false;analyze();}else if(!isTradingViewActive())analyzeQueued=false;}
   }
   async function backtest(){
+    if(!isTradingViewActive())return;
+    if(backtestBusy){backtestQueued=true;return;}backtestBusy=true;
     const button=$("qxRunBacktest");if(button)button.disabled=true;setText("qxBacktestStatus","RUNNING");
     try{
       const s=selected(),balance=Number($("qxBacktestBalance").value),risk=Number($("qxBacktestRisk").value);
       const url="/api/v1/quantnex-view/backtest?symbol="+encodeURIComponent(s.symbol)+"&interval="+encodeURIComponent(s.interval)+
         "&initial_balance="+encodeURIComponent(balance)+"&risk_percent="+encodeURIComponent(risk)+"&min_score="+s.min;
-      const data=await apiRequest(url);renderBacktest(data);
-    }catch(error){setText("qxBacktestStatus","ERROR");const host=$("qxBacktestMetrics");host.textContent="Backtest unavailable: "+error.message;}
-    finally{if(button)button.disabled=false;}
+      const data=await apiRequest(url);if(isTradingViewActive())renderBacktest(data);
+    }catch(error){if(isTradingViewActive()){setText("qxBacktestStatus","ERROR");const host=$("qxBacktestMetrics");host.textContent="Backtest unavailable: "+error.message;}}
+    finally{backtestBusy=false;if(button)button.disabled=false;if(backtestQueued&&isTradingViewActive()){backtestQueued=false;backtest();}else if(!isTradingViewActive())backtestQueued=false;}
   }
   $("qxRunBacktest")?.addEventListener("click",backtest);
   ["qxSymbol","qxInterval","qxIntelMinScore"].forEach(id=>$(id)?.addEventListener("change",()=>{analyze();backtest();}));
   ["qxStopColor","qxTargetColor","qxEntryColor"].forEach(id=>$(id)?.addEventListener("input",()=>{if(lastAnalysis)renderSignal(lastAnalysis);}));
-  analyze();
-  // Local-only research refresh. It does not submit broker orders or alter the wallet.
-  setInterval(analyze,60000);
-  setTimeout(backtest,2500);
-  setInterval(backtest,30*60*1000);
+  window.addEventListener("quantnex:view-changed",event=>{if(event.detail?.view==="tradingview"){analyze();backtest();}});
+  document.addEventListener("visibilitychange",()=>{if(isTradingViewActive()){analyze();backtest();}});
+  // Local-only research refresh. Hidden workspaces do not issue API requests.
+  setInterval(()=>{if(isTradingViewActive())analyze();},60000);
+  setInterval(()=>{if(isTradingViewActive())backtest();},30*60*1000);
 })();

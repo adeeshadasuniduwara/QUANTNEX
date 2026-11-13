@@ -80,3 +80,21 @@ def test_backup_overview_is_lightweight_for_health_polling(tmp_path, monkeypatch
     assert overview["latest_verified"] is True
     assert "full verification" in overview["verification_note"]
     assert overview["count"] == 1
+
+def test_system_health_uses_lightweight_backup_overview(monkeypatch):
+    from app import system_security
+
+    overview = {
+        "count": 2, "latest": "2026-11-14T00:00:00+00:00",
+        "latest_verified": True,
+        "verification_note": "Manifest present; full verification is on demand.",
+    }
+    monkeypatch.setattr(system_security, "backup_overview", lambda: overview)
+    monkeypatch.setattr(
+        system_security, "list_backups",
+        lambda: (_ for _ in ()).throw(AssertionError("health polling must not verify every retained backup")),
+    )
+
+    result = system_security.detailed_system_health()
+    assert result["status"] == "ok"
+    assert result["backups"] == overview

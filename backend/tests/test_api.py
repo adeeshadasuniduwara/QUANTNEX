@@ -366,3 +366,15 @@ def test_smart_open_gold_blocks_stale_chart_provider_quote(monkeypatch):
         assert exc.status_code == 503
     else:
         raise AssertionError("Stale Gold quote must block paper entry.")
+
+def test_strategy_research_uses_only_fully_closed_candles():
+    now = datetime.now(timezone.utc)
+    rows = []
+    for index in range(210):
+        stamp = now - timedelta(minutes=15 * (211 - index))
+        rows.append({"time": stamp.isoformat(), "close": 100 + index})
+    rows.append({"time": (now - timedelta(minutes=5)).isoformat(), "close": 999})
+
+    result = main_module._closed_strategy_candles(rows, "15m")
+    assert len(result) == 210
+    assert result[-1]["close"] == 309

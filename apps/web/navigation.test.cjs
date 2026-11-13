@@ -1,0 +1,16 @@
+const fs = require("node:fs");
+const assert = require("node:assert/strict");
+const html = fs.readFileSync("apps/web/index.html", "utf8");
+const nav = fs.readFileSync("apps/web/navigation.js", "utf8");
+const css = fs.readFileSync("apps/web/navigation.css", "utf8");
+const targets = [...html.matchAll(/class="nav-link[^"]*" href="#([^"]+)"/g)].map(match => match[1]);
+const ids = [...html.matchAll(/<section\b[^>]*\bid="([^"]+)"/g)].map(match => match[1]);
+const missing = targets.filter(target => target !== "overview" && !ids.includes(target));
+assert.deepEqual(missing, [], "Every sidebar navigation target must have a page marker");
+assert.match(nav, /workspaceView/);
+assert.match(nav, /quantnex:view-changed/);
+assert.match(nav, /prefers-reduced-motion/);
+assert.match(css, /qnx-view-fade-in/);
+assert.match(css, /qnx-view-fade-out/);
+assert.match(html, /href="#prop-challenge"/);
+console.log("Navigation checks passed: single-view routing, fade transitions and reduced-motion support.");

@@ -127,7 +127,7 @@ if(sessionStorage.getItem("quantnex.webUpdateComplete")==="1"){
   const announceInstalledUpdate=()=>{
     showUpdateToast("✓ QUANTNEX has been updated successfully.");
     const safeVersion=String(installedVersion||"latest").slice(0,80);
-    const safeHeadline=String(installedHeadline||"Workspace improvements").replace(/\\s+/g," ").slice(0,120);
+    const safeHeadline=String(installedHeadline||"Workspace improvements").replace(/\s+/g," ").slice(0,120);
     const message=[
       "✦ QUANTNEX",
       "WEB UPDATE INSTALLED",
@@ -139,7 +139,7 @@ if(sessionStorage.getItem("quantnex.webUpdateComplete")==="1"){
       "✓ Wallet, journal and settings preserved",
       "",
       "You're all set. Trade responsibly."
-    ].join("\\n");
+    ].join("\n");
     // The local API uses the user's existing encrypted bot credentials. A missing
     // Telegram connection is an intentional opt-out and does not affect the update.
     apiRequest("/api/v1/telegram/notify",{method:"POST",body:JSON.stringify({message})}).catch(()=>{});

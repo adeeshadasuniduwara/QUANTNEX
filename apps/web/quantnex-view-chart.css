@@ -13,3 +13,13 @@
 .qx-intelligence-overlay{position:absolute;inset:0;z-index:3;pointer-events:none}
 .qx-chart-host{position:relative}
 @media(max-width:760px){.qx-chart-intelligence{grid-template-columns:1fr}.qx-chart-intel-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.qx-indicator-panels{margin:12px 0;padding:13px;border:1px solid var(--border,#30343c);border-radius:12px;background:var(--panel,#101318)}
+.qx-indicator-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.qx-indicator-head strong{display:block;font-size:12px;letter-spacing:.04em}
+.qx-indicator-head small,.qx-indicator-card small{display:block;color:var(--muted,#9299a5);font-size:10px;margin-top:4px}
+.qx-indicator-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.qx-indicator-card{min-width:0;padding:10px;border:1px solid var(--border,#30343c);border-radius:9px;background:rgba(0,0,0,.12)}
+.qx-indicator-card-head{display:flex;justify-content:space-between;align-items:center;font-size:11px}
+.qx-indicator-card-head span{font-variant-numeric:tabular-nums;color:var(--text,#e8edf5)}
+.qx-indicator-chart{height:142px;width:100%;margin-top:5px}
+@media(max-width:900px){.qx-indicator-grid{grid-template-columns:1fr}.qx-indicator-chart{height:128px}}

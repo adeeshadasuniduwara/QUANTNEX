@@ -5,7 +5,7 @@ class TradeCreate(BaseModel):
     symbol: str = Field(min_length=1, max_length=20)
     direction: str
     outcome: str
-    pnl: float
+    pnl: float = Field(allow_inf_nan=False)
     notes: str = Field(default="", max_length=2000)
     @field_validator("symbol")
     @classmethod

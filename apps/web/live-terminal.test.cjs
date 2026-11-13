@@ -88,7 +88,7 @@ console.log("Signal Lab local event integration checks passed.");
 
 assert.match(app, /WEB UPDATE INSTALLED/, "Telegram update receipt must use the branded message layout");
 assert.match(app, /Wallet, journal and settings preserved/, "Telegram update receipt must reassure users their local data is preserved");
-assert.ok(app.includes('].join("\n")'), "Telegram update receipt must use real newline separators");
+assert.ok(app.includes('].join("\\n")'), "Telegram update receipt must use real newline separators");
 assert.match(app, /initQuantnexSmoothZoom/, "Ctrl + mouse wheel workspace zoom must be available");
 assert.match(app, /event\.ctrlKey/, "Workspace zoom must respond to Ctrl + mouse wheel");
 assert.match(app, /passive:false/, "Ctrl + wheel must be cancellable to prevent abrupt browser zoom");

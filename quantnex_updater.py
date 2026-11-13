@@ -171,12 +171,9 @@ def _bootstrap_snapshot(root: Path, latest_sha: str) -> dict:
         raise
     finally:
         shutil.rmtree(staged_root, ignore_errors=True)
-    changed = [str(path.relative_to(staged_root)).replace("\\", "/")
-              for path in []]
+    changed = [str(path).replace("\\", "/") for path in touched]
     return {"status": "updated", "version": "main@" + latest_sha[:7],
-            "changed_files": [str(p.relative_to(root)).replace("\\", "/")
-                              for p in root.rglob("*")
-                              if p.is_file() and "data/updates" not in str(p).replace("\\", "/")][:count],
+            "changed_files": changed,
             "restart_required": True,
             "message": f"Installed the initial official source snapshot ({count} files)."}
 

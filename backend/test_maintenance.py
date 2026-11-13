@@ -58,3 +58,25 @@ def test_latest_backup_freshness_avoids_full_backup_verification(tmp_path, monke
 
     manifest.unlink()
     assert maintenance._latest_backup_is_fresh(backup_dir, now=now) is False
+
+def test_backup_overview_is_lightweight_for_health_polling(tmp_path, monkeypatch):
+    import sqlite3
+
+    source = tmp_path / "workspace.sqlite3"
+    with sqlite3.connect(source) as connection:
+        connection.execute("CREATE TABLE sample (value TEXT)")
+        connection.execute("INSERT INTO sample VALUES ('health check')")
+
+    backup_dir = tmp_path / "backups"
+    backup = maintenance.create_backup("sqlite:///" + str(source), backup_dir, prune=False)
+    monkeypatch.setattr(
+        maintenance, "verify_backup",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("health polling must not run full verification")),
+    )
+
+    overview = maintenance.backup_overview(backup_dir)
+    assert overview["count"] == 1
+    assert overview["latest"] is not None
+    assert overview["latest_verified"] is True
+    assert "full verification" in overview["verification_note"]
+    assert overview["count"] == 1

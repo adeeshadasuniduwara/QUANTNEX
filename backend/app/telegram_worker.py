@@ -240,16 +240,16 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
             requested = " ".join(parts[1:]).strip().lower()
             matches = [item for item in categories if requested in item[0].lower()]
             if not matches:
-                return "Hidden Tools categories: " + ", ".join(item[0] for item in categories) + "\\nUse /hidden_tools <category>."
-            return ("🔐 HIDDEN TOOLS · " + matches[0][0].upper() + "\\n" + matches[0][1]
-                + "\\n\\n100-tool roadmap. First implementation targets: Photo → PDF and PDF → Images."
-                + "\\nCatalogue entries will be marked usable only after implementation and testing.")
+                return "Hidden Tools categories: " + ", ".join(item[0] for item in categories) + "\nUse /hidden_tools <category>."
+            return ("🔐 HIDDEN TOOLS · " + matches[0][0].upper() + "\n" + matches[0][1]
+                + "\n\n100-tool roadmap. First implementation targets: Photo → PDF and PDF → Images."
+                + "\nCatalogue entries will be marked usable only after implementation and testing.")
         lines = ["🔐 HIDDEN TOOLS · PRIVATE CATALOGUE", "Private command accepted. This catalogue is not shown in the normal bot menus.", ""]
         lines.extend("• " + name + " — " + description for name, description in categories)
         lines.extend(["", "100 capability targets across 10 categories.", "First implementation targets: Photo → PDF and PDF → Images.",
                       "Use /hidden_tools <category> to inspect a category.",
                       "Note: this is the roadmap catalogue; tools are enabled only after implementation and testing."])
-        return "\\n".join(lines)
+        return "\n".join(lines)
     if command in {"/start","/help"}:
         return (
             "QUANTNEX · YOUR SMART TRADING COMPANION\n"

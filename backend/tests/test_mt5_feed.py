@@ -106,13 +106,16 @@ def test_signal_engine_uses_mt5_when_explicitly_enabled(monkeypatch):
         assert symbol == "XAUUSD.a"
         assert interval == "15m"
         assert limit == 250
-        return [{"time": "2026-01-01T00:00:00+00:00", "open": 1, "high": 2,
-                 "low": 0.5, "close": 1.5, "volume": 12}]
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        return [{"time": (start + __import__("datetime").timedelta(minutes=15 * i)).isoformat(),
+                 "open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 12}
+                for i in range(210)]
 
     monkeypatch.setattr(signal_engine, "QUANTNEX_MT5_ENABLED", True)
     monkeypatch.setattr(signal_engine, "QUANTNEX_MT5_GOLD_SYMBOL", "XAUUSD.a")
     monkeypatch.setattr(mt5_feed, "get_candles", fake_candles)
     rows = asyncio.run(signal_engine.fetch_candles("15min", 250, "XAUUSD"))
+    assert len(rows) == 210
     assert rows[0]["close"] == 1.5
 
 

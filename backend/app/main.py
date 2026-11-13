@@ -1057,14 +1057,22 @@ async def smart_open_paper_trade(payload: dict, user: User = Depends(local_works
 
 
 @app.get("/api/v1/goals/demo-certificate")
-def download_demo_goal_certificate(user: User = Depends(local_workspace)):
-    """Return a clearly watermarked sample certificate; it is never a real achievement record."""
+@app.post("/api/v1/goals/demo-certificate")
+def download_demo_goal_certificate(payload: dict | None = None, user: User = Depends(local_workspace)):
+    """Render a personalized sample only; this never creates or unlocks a real certificate."""
     from .goal_certificates import build_goal_certificate_pdf
+    payload = payload or {}
+    display_name = str(payload.get("display_name") or "QUANTNEX Demo User").strip()
+    goal_title = str(payload.get("goal_title") or "Sample Personal Goal").strip()
+    if not display_name or len(display_name) > 80:
+        raise HTTPException(status_code=422, detail="Enter a display name between 1 and 80 characters.")
+    if not goal_title or len(goal_title) > 120:
+        raise HTTPException(status_code=422, detail="Enter a sample achievement between 1 and 120 characters.")
     achieved = datetime.now(timezone.utc)
     created = datetime.fromtimestamp(achieved.timestamp() - 21 * 86400, tz=timezone.utc)
     pdf = build_goal_certificate_pdf(
-        display_name="QUANTNEX Demo User",
-        goal_title="Sample Personal Goal",
+        display_name=display_name,
+        goal_title=goal_title,
         created_at=created,
         achieved_at=achieved,
         elapsed_days=21,
@@ -1076,7 +1084,8 @@ def download_demo_goal_certificate(user: User = Depends(local_workspace)):
         demo_only=True,
     )
     return Response(content=pdf, media_type="application/pdf",
-        headers={"Content-Disposition": 'attachment; filename="QUANTNEX-DEMO-CERTIFICATE-NOT-VALID.pdf"'})
+        headers={"Content-Disposition": 'inline; filename="QUANTNEX-DEMO-CERTIFICATE-NOT-VALID.pdf"',
+                 "Cache-Control": "no-store"})
 
 
 @app.get("/api/v1/goals")

@@ -1117,6 +1117,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     const currencies=new Set(events.map(eventCurrency).filter(x=>x!=="OTHER"));
     const kpis=$id("calendarKpis");kpis.replaceChildren();
     [["Total events",events.length],["High impact",high],["Currencies",currencies.size]].forEach(([label,value])=>{const card=make("article");card.append(make("span",label),make("strong",String(value)));kpis.append(card);});
+    status.textContent="Finnhub · "+filtered.length+" shown / "+events.length+" events · Times: Sri Lanka (UTC+5:30) · Updated "+(lastLoadedAt?lastLoadedAt.toLocaleTimeString("en-LK"):"—")+".";
     rows.replaceChildren();
     if(!filtered.length){const tr=make("tr"),td=make("td",events.length?"No events match the selected filters.":"No events returned by Finnhub for this date range.","empty-row");td.colSpan=7;tr.append(td);rows.append(tr);return;}
     filtered.sort((a,b)=>eventDate(a)-eventDate(b));
@@ -1129,7 +1130,6 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
       if(level==="high")tr.classList.add("calendar-high-row");
       rows.append(tr);
     });
-    status.textContent="Finnhub · "+filtered.length+" shown / "+events.length+" events · Times: Sri Lanka (UTC+5:30) · Updated "+(lastLoadedAt?lastLoadedAt.toLocaleTimeString("en-LK"):"—")+".";
   }
   async function refresh(){
     if(busy)return;busy=true;const button=$id("calendarRefresh");button.disabled=true;status.textContent="Fetching Finnhub economic events…";

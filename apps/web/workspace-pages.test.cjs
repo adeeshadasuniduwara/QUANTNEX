@@ -23,7 +23,8 @@ for (const asset of ["apps/web/workspace-pages.js", "apps/web/workspace-pages.cs
   assert.ok(fs.existsSync(asset), "Missing workspace page asset: " + asset);
 }
 assert.ok(html.indexOf('src="realtime-events.js"') > html.indexOf('src="app.js"'), "Realtime event client must load after the main app");
-assert.ok(!html.includes("\\n"), "HTML must not contain literal escaped newline text");
+assert.ok(!html.includes("\
+"), "HTML must not contain literal escaped newline text");
 assert.ok(html.includes('id="goalImagePreview"'), "Personal goals must expose an inline image preview");
 assert.ok(html.includes('id="goalImage"'), "Personal goals must accept an image URL");
 assert.ok(!html.includes('id="goalDescription"'), "Personal goal creation should keep optional details minimal");
@@ -53,7 +54,8 @@ assert.match(polishCss, /\.qx-nav-search/, "Sidebar search must be styled");
 assert.match(polishCss, /\.qx-nav-icon svg/, "Sidebar SVG icons must share a consistent size and stroke");
 console.log("Professional workspace navigation checks passed.");
 
-const app = fs.readFileSync("apps/web/app.js", "utf8");\nconst welcomeJs = fs.readFileSync("apps/web/welcome-whats-new.js", "utf8");
+const app = fs.readFileSync("apps/web/app.js", "utf8");
+const welcomeJs = fs.readFileSync("apps/web/welcome-whats-new.js", "utf8");
 const welcomeCss = fs.readFileSync("apps/web/welcome-whats-new.css", "utf8");
 assert.ok(html.includes('href="welcome-whats-new.css?v=20261113-1"'), "Welcome stylesheet must load");
 assert.ok(html.includes('src="welcome-whats-new.js?v=20261113-1"'), "Welcome script must load");

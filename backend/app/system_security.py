@@ -92,6 +92,9 @@ async def restore_database(filename: str, request: Request):
                 pass
             setattr(request.app.state, attribute, None)
     try:
+        if paused_guardian:
+            from .prop_challenge import wait_for_mt5_guardian_idle
+            await asyncio.to_thread(wait_for_mt5_guardian_idle)
         result = await asyncio.to_thread(restore_backup, filename, DATABASE_URL, engine)
         # Restore switches SQLite back to DELETE mode while replacing the file.
         # Re-enable WAL, then recreate additive Phase 07/08 tables if this is an

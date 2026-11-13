@@ -53,7 +53,7 @@ assert.match(polishCss, /\.qx-nav-search/, "Sidebar search must be styled");
 assert.match(polishCss, /\.qx-nav-icon svg/, "Sidebar SVG icons must share a consistent size and stroke");
 console.log("Professional workspace navigation checks passed.");
 
-const welcomeJs = fs.readFileSync("apps/web/welcome-whats-new.js", "utf8");
+const app = fs.readFileSync("apps/web/app.js", "utf8");\nconst welcomeJs = fs.readFileSync("apps/web/welcome-whats-new.js", "utf8");
 const welcomeCss = fs.readFileSync("apps/web/welcome-whats-new.css", "utf8");
 assert.ok(html.includes('href="welcome-whats-new.css?v=20261113-1"'), "Welcome stylesheet must load");
 assert.ok(html.includes('src="welcome-whats-new.js?v=20261113-1"'), "Welcome script must load");

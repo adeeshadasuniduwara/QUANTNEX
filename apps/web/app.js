@@ -41,8 +41,13 @@ function renderJournal(){
         try{await apiRequest("/api/v1/journal/"+target.id,{method:"DELETE"});}
         catch(error){setJournalStatus("Could not delete journal record: "+error.message,true);return;}
       }
-      const current=journalRowsCache.slice();current.splice(current.length-1-index,1);
-      journalRowsCache=current;saveTrades(current);renderJournal();setJournalStatus("Journal record deleted.");
+      if(target?.id){
+        journalRowsCache=journalRowsCache.filter(row=>row.id!==target.id);
+      }else{
+        const current=journalRowsCache.slice();current.splice(current.length-1-index,1);journalRowsCache=current;
+      }
+      try{saveTrades(journalRowsCache);}catch{}
+      renderJournal();setJournalStatus("Journal record deleted.");
     });
     action.append(button);tr.append(action);
   });
@@ -71,7 +76,8 @@ $("saveTrade").addEventListener("click",async()=>{
     $("symbol").value="";$("pnl").value="";$("notes").value="";
     return;
   }
-  journalRowsCache.push(mapServerTrade(saved));
+  const savedRow=mapServerTrade(saved);
+  if(!journalRowsCache.some(row=>row.id===savedRow.id))journalRowsCache.push(savedRow);
   try{saveTrades(journalRowsCache);}catch{}
   renderJournal();setJournalStatus("Trade saved to the local QUANTNEX database.");
   $("symbol").value="";$("pnl").value="";$("notes").value="";

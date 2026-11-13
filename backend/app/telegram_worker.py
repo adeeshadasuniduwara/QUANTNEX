@@ -223,28 +223,28 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
     names={"1":"M1","5":"M5","15":"M15","30":"M30","50":"M50","60":"H1","240":"H4"}
     if command in {"/start","/help"}:
         return (
-            "QUANTNEX · YOUR SMART TRADING COMPANION\\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━\\n"
-            "🌍 ENGLISH\\n"
-            "Welcome to QUANTNEX — a trading intelligence workspace built to help you study markets, analyse setups and manage your trading routine.\\n\\n"
-            "✨ WHAT YOU CAN DO\\n"
-            "📈 Scan supported crypto markets and Gold (when its local data feed is configured).\\n"
-            "🧠 Review multi-timeframe signals, confirmations and Entry / SL / TP plans.\\n"
-            "🛡 Manage alert settings and monitor your paper-trading workspace.\\n"
-            "📊 View your paper ledger, daily PDF reports and personal goals.\\n"
-            "🔐 Your workspace settings and personal records remain in your local QUANTNEX environment.\\n\\n"
-            "🇱🇰 සිංහල\\n"
-            "QUANTNEX වෙත සාදරයෙන් පිළිගනිමු! මෙය වෙළඳපොළ අධ්‍යයනය, trade setups විශ්ලේෂණය සහ ඔබගේ trading routine එක කළමනාකරණය සඳහා නිර්මාණය කළ intelligent workspace එකකි.\\n\\n"
-            "✨ ඔබට මෙයින් කළ හැක්කේ\\n"
-            "📈 සහාය දක්වන Crypto markets සහ Gold market scan කිරීම.\\n"
-            "🧠 Multi-timeframe signals, confirmations, Entry / SL / TP සැලසුම් බැලීම.\\n"
-            "🛡 Alerts සහ Paper Trading පාලනය කිරීම.\\n"
-            "📊 Paper ledger, Daily PDF reports සහ Personal Goals පරීක්ෂා කිරීම.\\n"
-            "🔐 ඔබගේ පුද්ගලික දත්ත සහ settings ඔබගේ local QUANTNEX workspace එකේම පවතී.\\n\\n"
-            "⚠️ IMPORTANT · ආරක්ෂාව\\n"
-            "Signals are analysis only. Paper mode is simulated. No live broker orders are placed by this Telegram assistant. Always verify market data, spread and risk yourself.\\n"
-            "Signals යනු විශ්ලේෂණ තොරතුරු පමණයි. මෙය profit හෝ win-rate සහතිකයක් නොවේ.\\n\\n"
-            "👇 TAP A BUTTON BELOW TO OPEN YOUR WORKSPACE\\n"
+            "QUANTNEX · YOUR SMART TRADING COMPANION\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "🌍 ENGLISH\n"
+            "Welcome to QUANTNEX — a trading intelligence workspace built to help you study markets, analyse setups and manage your trading routine.\n\n"
+            "✨ WHAT YOU CAN DO\n"
+            "📈 Scan supported crypto markets and Gold (when its local data feed is configured).\n"
+            "🧠 Review multi-timeframe signals, confirmations and Entry / SL / TP plans.\n"
+            "🛡 Manage alert settings and monitor your paper-trading workspace.\n"
+            "📊 View your paper ledger, daily PDF reports and personal goals.\n"
+            "🔐 Your workspace settings and personal records remain in your local QUANTNEX environment.\n\n"
+            "🇱🇰 සිංහල\n"
+            "QUANTNEX වෙත සාදරයෙන් පිළිගනිමු! මෙය වෙළඳපොළ අධ්‍යයනය, trade setups විශ්ලේෂණය සහ ඔබගේ trading routine එක කළමනාකරණය සඳහා නිර්මාණය කළ intelligent workspace එකකි.\n\n"
+            "✨ ඔබට මෙයින් කළ හැක්කේ\n"
+            "📈 සහාය දක්වන Crypto markets සහ Gold market scan කිරීම.\n"
+            "🧠 Multi-timeframe signals, confirmations, Entry / SL / TP සැලසුම් බැලීම.\n"
+            "🛡 Alerts සහ Paper Trading පාලනය කිරීම.\n"
+            "📊 Paper ledger, Daily PDF reports සහ Personal Goals පරීක්ෂා කිරීම.\n"
+            "🔐 ඔබගේ පුද්ගලික දත්ත සහ settings ඔබගේ local QUANTNEX workspace එකේම පවතී.\n\n"
+            "⚠️ IMPORTANT · ආරක්ෂාව\n"
+            "Signals are analysis only. Paper mode is simulated. No live broker orders are placed by this Telegram assistant. Always verify market data, spread and risk yourself.\n"
+            "Signals යනු විශ්ලේෂණ තොරතුරු පමණයි. මෙය profit හෝ win-rate සහතිකයක් නොවේ.\n\n"
+            "👇 TAP A BUTTON BELOW TO OPEN YOUR WORKSPACE\n"
             "👇 පහත Button එකක් තෝරාගෙන ආරම්භ කරන්න."
         )
     if command=="/timeframes":
@@ -285,7 +285,7 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
                 "\nSignal only. Verify spread, fees and execution. No broker order is placed.")
         except MarketDataError as exc:return "Signal scan unavailable: "+str(exc)
         except Exception:return "Signal scan failed. Check the local API logs and market-data provider configuration."
-    return "Unknown command. Send /help."
+    return "Please use the buttons below to explore QUANTNEX. Tap Help & guide if you need an overview."
 
 async def telegram_worker() -> None:
     """Poll connected user bots, respond to commands and monitor active TP1 levels."""
@@ -324,12 +324,16 @@ async def telegram_worker() -> None:
                                         action=str(callback.get("data",""))
                                         keyboard=MENU
                                         if action=="qx:menu:home":
-                                            answer="QUANTNEX · MAIN WORKSPACE\\nChoose a section below. Select a button to continue — no commands needed."
+                                            answer="QUANTNEX · MAIN WORKSPACE\nChoose a section below. Select a button to continue — no commands needed."
                                             keyboard=MENU
                                         elif action in SUBMENUS:
                                             keyboard=SUBMENUS[action]
-                                            answer=MENU_TITLES[action]+"\\nChoose an action below. No command typing required."
+                                            answer=MENU_TITLES[action]+"\nChoose an action below. No command typing required."
                                         elif action.startswith("qx:settf:"):
+                                            raw_settings=_get(db,user_id,"signal_settings",'{"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":7}')
+                                            try: settings=json.loads(raw_settings)
+                                            except ValueError: settings={"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":7}
+                                            names={"1":"M1","5":"M5","15":"M15","30":"M30","50":"M50","60":"H1","240":"H4"}
                                             value=action.split(":")[-1]
                                             if value in {"1","5","15","30","50","60"}:
                                                 settings["primary"]=value
@@ -339,6 +343,10 @@ async def telegram_worker() -> None:
                                             else:
                                                 answer="⚠️ Unsupported timeframe.";keyboard=SUBMENUS["qx:menu:signals"]
                                         elif action.startswith("qx:settrend:"):
+                                            raw_settings=_get(db,user_id,"signal_settings",'{"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":7}')
+                                            try: settings=json.loads(raw_settings)
+                                            except ValueError: settings={"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":7}
+                                            names={"1":"M1","5":"M5","15":"M15","30":"M30","50":"M50","60":"H1","240":"H4"}
                                             value=action.split(":")[-1]
                                             if value in {"15","30","60","240"}:
                                                 settings["trend"]=value
@@ -408,7 +416,8 @@ async def telegram_worker() -> None:
                                     answer=await _handle_command(client,db,user_id,token,chat_id,command)
                                     if answer:
                                         is_start=command.strip().split(" ")[0].split("@")[0].lower() in {"/start","/help"}
-                                        await _send(client,token,chat_id,answer,MENU if is_start else None)
+                                        is_plain_text=bool(command.strip()) and not command.strip().startswith("/")
+                                        await _send(client,token,chat_id,answer,MENU if (is_start or is_plain_text) else None)
                                 _set(db,user_id,"telegram_update_offset",str(offset));db.commit()
                         except (httpx.HTTPError,ValueError) as exc:
                             logger.warning("Telegram polling failed for local user %s: %s",user_id,type(exc).__name__)

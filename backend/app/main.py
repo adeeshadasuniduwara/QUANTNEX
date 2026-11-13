@@ -13,7 +13,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
-from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, DATABASE_URL
+from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, DATABASE_URL, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
 from .database import Base, engine, get_db, SessionLocal
 from .models import AuditEvent, GoalContribution, PaperTrade, PaperTradeEvent, PersonalGoal, Preference, StrategyLabRun, Trade, User, WalletTransaction
 from .schemas import AIChatRequest, AIChatResponse, PreferenceResponse, PreferenceWrite, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TradeCreate, TradeResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
@@ -118,7 +118,8 @@ async def chart_candles(symbol: str = "BTCUSDT", interval: str = "15m", limit: i
         raise HTTPException(status_code=422, detail="Choose a supported interval and 210–1000 candles.")
     try:
         candles = await fetch_candles(allowed_intervals[interval], limit, symbol)
-        return {"symbol":symbol,"interval":interval,"provider":"Binance Spot" if symbol in CRYPTO_SYMBOLS else "Twelve Data",
+        provider = "Binance Spot" if symbol in CRYPTO_SYMBOLS else ("MetaTrader 5 local terminal" if QUANTNEX_MT5_ENABLED else "Twelve Data")
+        return {"symbol":symbol,"interval":interval,"provider":provider,
                 "candles":candles[-limit:],"count":min(limit,len(candles)),
                 "timestamp":datetime.now(timezone.utc).isoformat()}
     except MarketDataError as exc:
@@ -1413,3 +1414,38 @@ async def paper_engine_monitor(user: User = Depends(local_workspace), db: Sessio
                 "timestamp": None})
     return {"positions": output, "count": len(output),
             "note": "Indicative provider marks only. Stale/unavailable quotes are not treated as current prices or broker-executable values."}
+
+
+@app.get("/api/v1/market/mt5/status")
+async def mt5_market_status():
+    """Connection health for the local, read-only MT5 market-data bridge."""
+    from .mt5_feed import get_status, MT5FeedError
+    try:
+        result = await get_status()
+        result["configured_for_gold_candles"] = QUANTNEX_MT5_ENABLED
+        return result
+    except MT5FeedError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+
+@app.get("/api/v1/market/mt5/quote")
+async def mt5_market_quote(symbol: str = QUANTNEX_MT5_GOLD_SYMBOL):
+    """Return a local MT5 bid/ask quote; this endpoint cannot place orders."""
+    from .mt5_feed import get_quote, MT5FeedError
+    try:
+        return await get_quote(symbol)
+    except MT5FeedError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+
+@app.get("/api/v1/market/mt5/candles")
+async def mt5_market_candles(symbol: str = QUANTNEX_MT5_GOLD_SYMBOL, interval: str = "15m", limit: int = 500):
+    """Return normalized, read-only OHLC candles from the connected local MT5 terminal."""
+    from .mt5_feed import get_candles, MT5FeedError
+    try:
+        rows = await get_candles(symbol, interval, limit)
+        return {"symbol": symbol.upper(), "interval": interval, "provider": "MetaTrader 5 local terminal",
+                "candles": rows, "count": len(rows), "mode": "read_only_market_data",
+                "orders_enabled": False, "timestamp": datetime.now(timezone.utc).isoformat()}
+    except MT5FeedError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))

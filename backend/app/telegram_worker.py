@@ -28,16 +28,43 @@ def _publish_signal_settings_changed() -> None:
     event_hub.publish("preferences.changed","preferences","updated",{"key":"signal_settings"})
 
 MENU = {"inline_keyboard": [
-    [{"text":"📊 Dashboard","callback_data":"qx:home"},{"text":"🤖 AI Paper Desk","callback_data":"qx:paper"}],
-    [{"text":"🔎 Market Scan","callback_data":"qx:market"},{"text":"📄 Today's PDF","callback_data":"qx:daily"}],
-    [{"text":"₿ BTC","callback_data":"qx:scan:BTCUSDT"},{"text":"Ξ ETH","callback_data":"qx:scan:ETHUSDT"},
-     {"text":"◎ SOL","callback_data":"qx:scan:SOLUSDT"},{"text":"🥇 Gold","callback_data":"qx:scan:XAUUSD"}],
-    [{"text":"🎯 My Goals","callback_data":"qx:goals"},{"text":"🛡 Risk Settings","callback_data":"qx:risk"}],
-    [{"text":"⏸ Pause Alerts","callback_data":"qx:pause"},{"text":"▶ Resume Alerts","callback_data":"qx:resume"}],
-    [{"text":"📋 Timeframes","callback_data":"qx:timeframes"},{"text":"🔌 Status","callback_data":"qx:status"}],
-    [{"text":"▶ Start Paper","callback_data":"qx:paper_start"},{"text":"⏸ Pause Paper","callback_data":"qx:paper_pause"}],
-    [{"text":"🕗 Daily PDF 8 PM ON/OFF","callback_data":"qx:daily_toggle"},{"text":"❔ Help","callback_data":"qx:help"}]
+    [{"text":"📈 Markets & scans","callback_data":"qx:menu:markets"},{"text":"🧠 Signals","callback_data":"qx:menu:signals"}],
+    [{"text":"🤖 Paper desk","callback_data":"qx:menu:paper"},{"text":"📊 Reports & goals","callback_data":"qx:menu:reports"}],
+    [{"text":"⚙ Settings & status","callback_data":"qx:menu:settings"}]
 ]}
+
+SUBMENUS = {
+    "qx:menu:markets": {"inline_keyboard": [
+        [{"text":"₿ BTCUSDT","callback_data":"qx:scan:BTCUSDT"},{"text":"Ξ ETHUSDT","callback_data":"qx:scan:ETHUSDT"}],
+        [{"text":"◎ SOLUSDT","callback_data":"qx:scan:SOLUSDT"},{"text":"🥇 XAUUSD","callback_data":"qx:scan:XAUUSD"}],
+        [{"text":"🔎 Scan BTC","callback_data":"qx:market"}],
+        [{"text":"⬅ Main menu","callback_data":"qx:menu:home"}]
+    ]},
+    "qx:menu:signals": {"inline_keyboard": [
+        [{"text":"⏱ Timeframes","callback_data":"qx:timeframes"},{"text":"🔌 Feed status","callback_data":"qx:status"}],
+        [{"text":"▶ Resume alerts","callback_data":"qx:resume"},{"text":"⏸ Pause alerts","callback_data":"qx:pause"}],
+        [{"text":"🎯 Risk & filters","callback_data":"qx:risk"}],
+        [{"text":"⬅ Main menu","callback_data":"qx:menu:home"}]
+    ]},
+    "qx:menu:paper": {"inline_keyboard": [
+        [{"text":"📊 Paper ledger","callback_data":"qx:home"}],
+        [{"text":"▶ Start paper","callback_data":"qx:paper_start"},{"text":"⏸ Pause paper","callback_data":"qx:paper_pause"}],
+        [{"text":"🤖 Paper status","callback_data":"qx:paper"}],
+        [{"text":"⬅ Main menu","callback_data":"qx:menu:home"}]
+    ]},
+    "qx:menu:reports": {"inline_keyboard": [
+        [{"text":"📄 Today's PDF","callback_data":"qx:daily"}],
+        [{"text":"🕗 Daily PDF 20:00 ON/OFF","callback_data":"qx:daily_toggle"}],
+        [{"text":"🎯 Personal goals","callback_data":"qx:goals"}],
+        [{"text":"⬅ Main menu","callback_data":"qx:menu:home"}]
+    ]},
+    "qx:menu:settings": {"inline_keyboard": [
+        [{"text":"⏱ Timeframes","callback_data":"qx:timeframes"},{"text":"🛡 Risk settings","callback_data":"qx:risk"}],
+        [{"text":"🔌 Connection status","callback_data":"qx:status"}],
+        [{"text":"❔ Help","callback_data":"qx:help"}],
+        [{"text":"⬅ Main menu","callback_data":"qx:menu:home"}]
+    ]}
+}
 
 async def _telegram_post(client, token: str, method: str, payload: dict):
     url=f"https://api.telegram.org/bot{token}/{method}"
@@ -81,8 +108,10 @@ async def _send_pdf(client, token: str, chat_id: str, pdf: bytes, filename: str,
         return data.get("result",{})
     raise RuntimeError("Telegram PDF retry limit reached.")
 
-async def _edit_message(client, token: str, chat_id: str, message_id: int, text: str):
-    return await _telegram_post(client,token,"editMessageText",{"chat_id":chat_id,"message_id":message_id,"text":text[:4000],"reply_markup":MENU})
+async def _edit_message(client, token: str, chat_id: str, message_id: int, text: str, reply_markup: dict | None = None):
+    payload={"chat_id":chat_id,"message_id":message_id,"text":text[:4000]}
+    if reply_markup is not None: payload["reply_markup"]=reply_markup
+    return await _telegram_post(client,token,"editMessageText",payload)
 
 async def _deliver_daily_pdf(client, db, user_id: int, token: str, chat_id: str, report_day=None):
     from .telegram_reporting import build_daily_paper_pdf
@@ -238,7 +267,14 @@ async def telegram_worker() -> None:
                                         except Exception:
                                             pass
                                         action=str(callback.get("data",""))
-                                        if action=="qx:daily_toggle":
+                                        keyboard=MENU
+                                        if action=="qx:menu:home":
+                                            answer="◈ QUANTNEX  |  TRADING COMMAND CENTER\\nChoose a workspace below."
+                                        elif action in SUBMENUS:
+                                            keyboard=SUBMENUS[action]
+                                            titles={"qx:menu:markets":"📈 MARKET SCANNER\\nChoose a market to analyse.","qx:menu:signals":"🧠 SIGNAL CONTROLS\\nManage timeframes, alert state and filters.","qx:menu:paper":"🤖 PAPER TRADING DESK\\nLocal simulation controls and ledger.","qx:menu:reports":"📊 REPORTS & GOALS\\nReview your reports and progress.","qx:menu:settings":"⚙ SETTINGS & SYSTEM STATUS\\nReview connection and analysis settings."}
+                                            answer=titles[action]
+                                        elif action=="qx:daily_toggle":
                                             enabled=_get(db,user_id,"telegram_daily_report_enabled","false")=="true"
                                             _set(db,user_id,"telegram_daily_report_enabled","false" if enabled else "true")
                                             db.commit()
@@ -287,7 +323,7 @@ async def telegram_worker() -> None:
                                             answer="Telegram Auto Signals "+("RESUMED" if auto_settings["enabled"] else "PAUSED")+". This controls alerts only, not trading execution."
                                         elif action=="qx:help": answer="QUANTNEX menu · Buttons provide scans, ledger summary, goals, alert settings and daily PDF. Use /scan SYMBOL as a command fallback."
                                         else: answer="📊 QUANTNEX local workspace · Signal alerts only. Paper simulation and broker execution are separate."
-                                        try: await _edit_message(client,token,chat_id,int(message.get("message_id")),answer)
+                                        try: await _edit_message(client,token,chat_id,int(message.get("message_id")),answer,keyboard)
                                         except Exception: await _send(client,token,chat_id,answer,MENU)
                                         continue
                                     message=update.get("message") or update.get("channel_post") or {}

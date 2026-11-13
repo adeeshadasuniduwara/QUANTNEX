@@ -41,3 +41,16 @@ assert.match(realtime, /connectedOnce&&current!==lastEventId/, "A restarted even
 assert.match(realtime, /event_stream_restarted/, "A lower sequence after reconnect must be identified as an event-service restart");
 assert.match(realtime, /lastEventId=current/, "The event cursor must reset to the new process sequence after a restart");
 console.log("Realtime event restart-resync checks passed.");
+
+const chartClient = fs.readFileSync("apps/web/quantnex-view-chart.js", "utf8");
+assert.ok(html.includes('src="quantnex-view-chart.js"'), "Live chart controller must load");
+assert.ok(html.includes('id="qxChartIntelMetrics"'), "Chart must expose indicator readouts");
+assert.ok(html.includes('id="qxOverlayZones"'), "Chart must expose zone visibility control");
+for (const feature of ["bullish_fvg", "bearish_fvg", "bullish_order_block", "bearish_order_block",
+  "bullish_breaker_block", "bearish_breaker_block", "bullish_ifvg", "bearish_ifvg",
+  "swing_high", "swing_low", "equilibrium", "liquidity_sweep", "quantnexViewSetTradePlan"]) {
+  assert.ok(chartClient.includes(feature), "Chart intelligence renderer is missing: " + feature);
+}
+assert.match(chartClient, /api\/v1\/charts\/candles/, "Chart must use the local historical candle API");
+assert.match(chartClient, /api\/v1\/quantnex-view\/analyze/, "Chart must use the QUANTNEX VIEW analysis API");
+console.log("QUANTNEX VIEW checks passed: local candles, signal plan levels, structure, liquidity and OB/BB/FVG/SR overlays.");

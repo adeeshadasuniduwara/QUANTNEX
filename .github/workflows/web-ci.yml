@@ -32,8 +32,10 @@ jobs:
           node --check apps/web/goals.js
           node --check apps/web/phase12-20.js
           node --check apps/web/quantnex-view-intelligence.js
+          node --check apps/web/quantnex-view-chart.js
           node --check apps/web/workspace-pages.js
           node apps/web/workspace-pages.test.cjs
+          node apps/web/quantnex-view-chart.test.cjs
           node apps/web/live-terminal.test.cjs
           node apps/web/sidebar-scroll.test.cjs
       - name: Validate local updater Python syntax
@@ -43,6 +45,10 @@ jobs:
           grep -q 'id="qxSignalIntelligence"' apps/web/index.html
           grep -q 'quantnex-view-intelligence.js' apps/web/index.html
           grep -q 'quantnex-view-intelligence.css' apps/web/index.html
+          grep -q 'quantnex-view-chart.js' apps/web/index.html
+          grep -q 'quantnex-view-chart.css' apps/web/index.html
+          grep -q 'id="qxChartIntelSummary"' apps/web/index.html
+          grep -q 'id="qxOverlayZones"' apps/web/index.html
           grep -q 'id="account"' apps/web/index.html
           grep -q 'id="walletDeposit"' apps/web/index.html
           grep -q 'id="walletWithdraw"' apps/web/index.html

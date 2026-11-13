@@ -36,6 +36,11 @@ def test_analysis_returns_indicators_and_never_labels_score_as_win_probability()
     assert result["features"]["ema200"] > 0
     assert result["features"]["rsi"] >= 0
     assert result["features"]["adx"] >= 0
+    structure = result["features"]["structure"]
+    assert structure["structure_event"] in {"NONE", "BULLISH_BOS", "BEARISH_BOS", "BULLISH_MSS", "BEARISH_MSS"}
+    assert structure["structure_trend"] in {"BULLISH", "BEARISH", "NEUTRAL"}
+    assert structure["support_zone"]["low"] < structure["support_zone"]["high"]
+    assert structure["resistance_zone"]["low"] < structure["resistance_zone"]["high"]
     assert "not a measured win probability" in result["score_note"]
 
 

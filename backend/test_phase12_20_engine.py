@@ -82,8 +82,8 @@ def test_daily_pdf_includes_paper_event_ledger_section():
 
 
 def test_telegram_menu_has_explicit_paper_engine_start_and_pause_controls():
-    from app.telegram_worker import MENU
+    from app.telegram_worker import SUBMENUS
 
-    callbacks = [button["callback_data"] for row in MENU["inline_keyboard"] for button in row]
+    callbacks = [button["callback_data"] for row in SUBMENUS["qx:menu:paper"]["inline_keyboard"] for button in row]
     assert "qx:paper_start" in callbacks
     assert "qx:paper_pause" in callbacks

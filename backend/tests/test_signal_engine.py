@@ -116,3 +116,17 @@ def test_telegram_scan_command_defaults_to_bitcoin(monkeypatch):
     response = asyncio.run(telegram_worker._handle_command(None, FakeDB(), 1, "token", "chat", "/scan"))
     assert calls == ["BTCUSDT"]
     assert "BTCUSDT" in response
+
+
+def test_structure_exposes_confirmed_event_trend_and_atr_support_resistance_zones():
+    from app.signal_engine import structure
+
+    result = structure(candles(320))
+    assert result["structure_event"] in {
+        "NONE", "BULLISH_BOS", "BEARISH_BOS", "BULLISH_MSS", "BEARISH_MSS"
+    }
+    assert result["structure_trend"] in {"BULLISH", "BEARISH", "NEUTRAL"}
+    assert result["support_zone"]["low"] < result["support_zone"]["high"]
+    assert result["resistance_zone"]["low"] < result["resistance_zone"]["high"]
+    assert result["support_zone"]["low"] <= result["swing_low"] <= result["support_zone"]["high"]
+    assert result["resistance_zone"]["low"] <= result["swing_high"] <= result["resistance_zone"]["high"]

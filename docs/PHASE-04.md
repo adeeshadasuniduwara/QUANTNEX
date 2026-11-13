@@ -1,30 +1,50 @@
-# QUANTNEX Phase 04 — Shared Backend & Connectivity
+# QUANTNEX Phase 04 — Local MT5 Gold Feed Bridge
 
-## Implemented foundation
+## Scope
 
-1. FastAPI service with health endpoint and OpenAPI docs.
-2. Registration, login and authenticated user profile.
-3. Argon2 password hashing and expiring JWT access tokens.
-4. User-isolated trade journal list/create/delete APIs.
-5. User-isolated preferences synchronization APIs.
-6. Optional OpenAI-compatible AI gateway configured only on the server.
-7. SQLite local development and PostgreSQL driver support.
-8. Dockerfile, environment template, setup guide and schema tests.
+Connect the local QUANTNEX backend to an already installed and running MetaTrader 5 terminal for **read-only market data**. The adapter is optional and disabled by default. QUANTNEX remains local-only and login-free.
 
-## Local start
+## Implemented in this phase
 
-```powershell
-cd backend
-py -m venv .venv
-.venv\Scripts\Activate.ps1
-py -m pip install -r requirements.txt
-Copy-Item .env.example .env
-# Set a unique QUANTNEX_SECRET_KEY in .env before using accounts.
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
+- Lazy, optional MetaTrader5 Python package import; missing package or terminal connection returns a clear actionable error.
+- Local terminal connection using the terminal's existing session. QUANTNEX does not request, store, or transmit broker passwords, investor passwords, or account credentials.
+- Read-only terminal status, XAUUSD bid/ask quote, and normalized OHLC candle endpoints.
+- Supported timeframes: 1m, 5m, 15m, 30m, 1h and 4h.
+- Candle validation, UTC timestamps, ascending order, duplicate removal, and a 210–1000 candle limit.
+- Opt-in integration into the existing XAUUSD candle analysis path using QUANTNEX_MT5_ENABLED=true; Twelve Data remains the default when the flag is off.
+- No order placement, position management, account mutation, or trade execution methods are included.
 
-Open /docs for interactive API docs and /health for database status.
+## Local setup (Windows)
 
-## Not yet completed
+1. Install MetaTrader 5 from your broker and sign in to the broker terminal yourself.
+2. Start QUANTNEX once so its backend environment and backend/.env are prepared.
+3. Install the optional Python package in the QUANTNEX backend environment if it was not installed automatically:
 
-Windows, Android and Web clients are not yet connected to this API. Cloud deployment, domain/HTTPS, database migrations, rate limiting, backups, monitoring and security review are follow-up tasks. AI remains disabled until the server is configured. No live market feeds, broker connections, bot execution or order placement are included.
+   ```powershell
+   cd backend
+   .venv\Scripts\python.exe -m pip install MetaTrader5
+   ```
+
+4. In backend/.env, set:
+
+   ```dotenv
+   QUANTNEX_MT5_ENABLED=true
+   QUANTNEX_MT5_GOLD_SYMBOL=XAUUSD
+   ```
+
+   If your broker uses a suffix (for example XAUUSD.a), set that exact Market Watch symbol instead. An optional QUANTNEX_MT5_TERMINAL_PATH can point to terminal64.exe.
+
+5. Restart QUANTNEX and check:
+   - http://127.0.0.1:8000/api/v1/market/mt5/status
+   - http://127.0.0.1:8000/api/v1/market/mt5/quote?symbol=XAUUSD
+   - http://127.0.0.1:8000/api/v1/market/mt5/candles?symbol=XAUUSD&interval=15m&limit=500
+
+## Safety and limitations
+
+- The bridge uses the local terminal's existing connection and does not log in to a trading account.
+- Endpoints are served by QUANTNEX's loopback-only API. Do not expose the backend port to a LAN or public network.
+- The MT5 terminal must be running, connected, and have sufficient symbol history loaded.
+- Broker symbol names differ; use the exact Market Watch symbol.
+- Quotes are indicative broker feed data and may be stale when the market is closed or the terminal loses connection.
+- The integration is read-only by design. It does not send, modify, or close orders.
+- A GitHub CI pass cannot verify a real broker terminal. A local Windows MT5 smoke test remains required.

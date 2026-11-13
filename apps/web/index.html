@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="styles.css?v=20261112-quantnex-view3">
   <link rel="stylesheet" href="signal-tool.css">
   <link rel="stylesheet" href="quantnex-view-intelligence.css">
+  <link rel="stylesheet" href="quantnex-view-chart.css">
   <link rel="stylesheet" href="workspace-pages.css?v=20261112-pages10">
 </head>
 <body>
@@ -212,6 +213,29 @@
         </div>
         <div id="qxChartHost" class="qx-chart-host"><div class="qx-chart-loading">Loading live candles…</div></div>
         <div class="qx-chart-footer"><span id="qxChartProvider">Market feed: waiting</span><span>Live updates · local chart settings · Chart engine by <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">TradingView Lightweight Charts™</a></span></div>
+      </section>
+      <section class="qx-chart-intelligence" aria-live="polite" aria-label="Live chart intelligence">
+        <div><div class="qx-chart-intelligence-head"><strong>LIVE STRUCTURE &amp; CONFIRMATIONS</strong><small id="qxChartIntelState">SCANNING</small></div>
+          <p class="qx-chart-intel-summary" id="qxChartIntelSummary">Waiting for market confirmation…</p>
+          <div class="qx-chart-overlay-options">
+            <label><input type="checkbox" id="qxOverlayStructure" checked> Structure &amp; sweeps</label>
+            <label><input type="checkbox" id="qxOverlayZones" checked> OB / BB / FVG zones</label>
+            <label><input type="checkbox" id="qxOverlaySR" checked> Support / resistance</label>
+          </div>
+        </div>
+        <div class="qx-chart-intel-metrics" id="qxChartIntelMetrics">
+          <div class="qx-chart-intel-metric"><span>RSI</span><strong>—</strong></div><div class="qx-chart-intel-metric"><span>ADX</span><strong>—</strong></div>
+          <div class="qx-chart-intel-metric"><span>Structure</span><strong>—</strong></div><div class="qx-chart-intel-metric"><span>Liquidity</span><strong>—</strong></div>
+        </div>
+      </section>
+
+      <section class="qx-indicator-panels" aria-label="Technical indicator panels">
+        <div class="qx-indicator-head"><div><strong>TECHNICAL INDICATORS</strong><small>Calculated from the same chart candles · 14-period RSI / ADX · MACD 12,26,9</small></div><span class="pill">LIVE INDICATORS</span></div>
+        <div class="qx-indicator-grid">
+          <article class="qx-indicator-card"><div class="qx-indicator-card-head"><strong>RSI · 14</strong><span id="qxRsiValue">—</span></div><div id="qxRsiChart" class="qx-indicator-chart"></div><small>Momentum · 70 overbought / 30 oversold reference levels</small></article>
+          <article class="qx-indicator-card"><div class="qx-indicator-card-head"><strong>MACD · 12 / 26 / 9</strong><span id="qxMacdValue">—</span></div><div id="qxMacdChart" class="qx-indicator-chart"></div><small>MACD line · signal line · histogram</small></article>
+          <article class="qx-indicator-card"><div class="qx-indicator-card-head"><strong>ADX · 14</strong><span id="qxAdxValue">—</span></div><div id="qxAdxChart" class="qx-indicator-chart"></div><small>Trend strength · +DI / −DI directional lines</small></article>
+        </div>
       </section>
       <section class="panel live-pnl-panel" aria-label="Live trade result calculator">
         <div class="signal-intro"><div><strong>Live trade result calculator</strong><p>Estimate unrealized P&amp;L using the latest BTC or XAUUSD market quote. No broker order is placed.</p></div><span class="signal-pill">LIVE PRICE</span></div>
@@ -650,6 +674,7 @@
   <script src="goals.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.0.8/dist/lightweight-charts.standalone.production.js" onerror="this.onerror=null;this.src='https://unpkg.com/lightweight-charts@5.0.8/dist/lightweight-charts.standalone.production.js';"></script>
   <script src="signal-tool.js"></script>
+  <script src="quantnex-view-chart.js"></script>
   <script src="quantnex-view-intelligence.js"></script>
 </body>
 </html>

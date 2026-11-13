@@ -56,6 +56,7 @@ class App(tk.Tk):
         self.iconphoto(True, self._app_icon)
         self.journal = TradeJournal()
         self.update_check_running = False
+        self.update_timer_id = None
         self.staged_update = None
         self.style = ttk.Style(self)
         try: self.style.theme_use("clam")
@@ -405,6 +406,15 @@ class App(tk.Tk):
         ttk.Label(self.updates,text="SOURCE MODE: GIT SYNC  •  EXE MODE: RELEASE DOWNLOAD + SHA256 VERIFICATION",style="Muted.TLabel").pack(anchor="w",pady=(8,4))
         self.install_button=ttk.Button(self.updates,text="Download & install update",command=self._install_update)
 
+    def _schedule_update_check(self):
+        # Keep exactly one periodic updater timer, even after manual checks.
+        if self.update_timer_id is not None:
+            try:
+                self.after_cancel(self.update_timer_id)
+            except Exception:
+                pass
+        self.update_timer_id = self.after(300000, self._check_background)
+
     def _set_update_status(self, message):
         def finish():
             self.update_status.configure(text=message)
@@ -412,10 +422,16 @@ class App(tk.Tk):
             self.update_progress.pack_forget()
             self.update_check_running = False
             self.check_button.configure(state="normal")
-            self.after(300000, self._check_background)
+            self._schedule_update_check()
         self.after(0, finish)
 
     def _check_background(self):
+        if self.update_timer_id is not None:
+            try:
+                self.after_cancel(self.update_timer_id)
+            except Exception:
+                pass
+            self.update_timer_id = None
         if self.update_check_running:
             return
         self.update_check_running = True

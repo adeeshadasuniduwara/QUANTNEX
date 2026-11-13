@@ -20,12 +20,12 @@ This is a separate, read-only Cloudflare Worker. It lets every QUANTNEX installa
 2. Set `window.QUANTNEX_SHARED_NEWS_API_URL` to the Worker URL (without a trailing slash).
 3. Commit and publish that small Web update. All users who receive the updated Web client will use the same shared Finnhub endpoint.
 
-The API key remains a Cloudflare Worker secret. Only the public Worker URL is placed in the Web client. The endpoint supports read-only GET requests, validates the requested horizon (1–30 days), caps responses at 500 events, and uses Cloudflare edge caching to reduce repeated Finnhub requests. It never accepts arbitrary upstream URLs or returns the secret.
+The API key remains a Cloudflare Worker secret. Only the public Worker URL is placed in the Web client. The endpoint supports read-only GET requests, validates the requested horizon (1–30 days), caps responses at 500 events, and uses five-minute Cloudflare edge caching and a per-IP rate limit (60 requests per minute) to reduce repeated Finnhub requests and protect the provider quota. It never accepts arbitrary upstream URLs or returns the secret.
 
 ## Important limits and operations
 
 - This service is not live until it is deployed and the public Worker URL is configured in `shared-news-config.js`.
-- Finnhub plan quotas still apply. Edge caching is per Cloudflare cache location and uses the Worker response cache headers; it reduces but does not eliminate provider calls.
+- Finnhub plan quotas still apply. Edge caching is per Cloudflare cache location; the Worker also applies a 60-requests-per-minute per-IP rate-limit binding. These controls reduce but do not eliminate provider calls.
 - The public endpoint serves economic calendar data only. Do not add wallet, journal, credentials, broker, or other personal data to this service.
 - Rotate the Finnhub key in the Cloudflare dashboard if it is ever exposed. Update the Worker secret with `npx wrangler secret put FINNHUB_API_KEY` and redeploy.
 - If the Worker URL changes, update the Web config and publish a new Web update.

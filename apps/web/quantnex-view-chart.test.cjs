@@ -4,7 +4,7 @@ const html = fs.readFileSync("apps/web/index.html", "utf8");
 const js = fs.readFileSync("apps/web/quantnex-view-chart.js", "utf8");
 const css = fs.readFileSync("apps/web/quantnex-view-chart.css", "utf8");
 for (const id of ["qxRsiChart", "qxMacdChart", "qxAdxChart", "qxAtrChart", "qxStochChart", "qxCciChart", "qxRsiValue", "qxMacdValue", "qxAdxValue", "qxAtrValue", "qxStochValue", "qxCciValue", "qxConfidenceMeter", "qxConfidenceFill"]) assert.ok(html.includes(`id="${id}"`), `Missing chart element: ${id}`);
-for (const token of ["function rsiSeries", "function adxSeries", "function atrSeries", "function stochSeries", "function cciSeries", "function renderIndicatorPanels", "new WebSocket", "kline_", "function pointerDown", "function wheel", "function mergeCandle", "quantnex-view/analyze"]) assert.ok(js.includes(token), `Native chart/live path missing: ${token}`);
+for (const token of ["function rsiSeries", "function adxSeries", "function atrSeries", "function stochSeries", "function cciSeries", "function renderIndicatorPanels", "new WebSocket", "kline_", "function pointerDown", "function wheel", "function mergeCandle", "window.quantnexViewSetAnalysis"]) assert.ok(js.includes(token), `Native chart/live path missing: ${token}`);
 assert.ok(!js.includes("window.LightweightCharts"), "Chart must not depend on the TradingView Lightweight Charts runtime.");
 assert.ok(!html.includes("lightweight-charts@"), "No external Lightweight Charts runtime may be loaded.");
 assert.ok(!html.includes("TradingView Lightweight Charts"), "Chart footer must not credit the removed chart runtime.");
@@ -41,3 +41,5 @@ assert.match(js, /cancelAnimationFrame\(drawFrame\)/, "Pending chart redraws mus
 console.log("QUANTNEX chart redraw performance regression checks passed.");
 
 assert.ok(html.includes("quantnex-view-chart.js?v=20261113-chart-redraw2"), "Chart redraw performance fix must invalidate the cached chart asset.");
+
+assert.ok(html.includes("quantnex-view-chart.js?v=20261113-analysis-dedupe1"), "Shared chart analysis must invalidate the chart bundle cache.");

@@ -5,6 +5,8 @@ Scores are rule-based confluence counts, never estimated win probabilities.
 from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
+import math
+import time
 from typing import Any
 import httpx
 from .config import TWELVE_DATA_API_KEY, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
@@ -17,6 +19,36 @@ class MarketDataError(RuntimeError):
 
 CRYPTO_SYMBOLS = {"BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "LTCUSDT", "BCHUSDT", "DOTUSDT", "TRXUSDT", "TONUSDT", "SUIUSDT", "NEARUSDT", "UNIUSDT", "AAVEUSDT", "SHIBUSDT", "PEPEUSDT"}
 BINANCE_INTERVALS = {"1min":"1m", "5min":"5m", "15min":"15m", "30min":"30m", "1h":"1h", "4h":"4h"}
+_GOLD_CANDLE_CACHE: dict[tuple[str, str, int], tuple[float, list[dict[str, Any]]]] = {}
+_GOLD_CANDLE_CACHE_TTL = 15.0
+
+
+def _normalize_gold_candles(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Validate and normalize provider OHLC rows into unique ascending UTC candles."""
+    normalized: dict[int, dict[str, Any]] = {}
+    for row in values:
+        try:
+            raw_time = str(row["datetime"]).replace("Z", "+00:00")
+            stamp = datetime.fromisoformat(raw_time)
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=timezone.utc)
+            stamp = stamp.astimezone(timezone.utc)
+            prices = [float(row[key]) for key in ("open", "high", "low", "close")]
+            if not all(math.isfinite(value) and value > 0 for value in prices):
+                continue
+            op, high, low, close = prices
+            if high < max(op, close, low) or low > min(op, close, high):
+                continue
+            volume = float(row.get("volume", 0.0) or 0.0)
+            if not math.isfinite(volume) or volume < 0:
+                volume = 0.0
+            normalized[int(stamp.timestamp())] = {
+                "time": stamp.isoformat(), "open": op, "high": high,
+                "low": low, "close": close, "volume": volume,
+            }
+        except (KeyError, TypeError, ValueError, OverflowError):
+            continue
+    return [normalized[key] for key in sorted(normalized)]
 
 async def fetch_candles(interval: str, outputsize: int = 320, symbol: str = "XAUUSD") -> list[dict[str, Any]]:
     symbol = str(symbol).upper()
@@ -64,23 +96,24 @@ async def fetch_candles(interval: str, outputsize: int = 320, symbol: str = "XAU
             raise MarketDataError(str(exc)) from exc
     if not TWELVE_DATA_API_KEY:
         raise MarketDataError("Gold market data is not configured. Enable QUANTNEX_MT5_ENABLED or add TWELVE_DATA_API_KEY to backend/.env.")
+    requested = min(max(int(outputsize), 210), 5000)
+    cache_key = (symbol, interval, requested)
+    cached = _GOLD_CANDLE_CACHE.get(cache_key)
+    if cached and time.monotonic() - cached[0] < _GOLD_CANDLE_CACHE_TTL:
+        return [dict(row) for row in cached[1]]
     async with httpx.AsyncClient(timeout=18) as client:
         response = await client.get(BASE, params={"symbol":"XAU/USD","interval":interval,
-            "outputsize":min(outputsize, 5000),"timezone":"UTC","apikey":TWELVE_DATA_API_KEY})
+            "outputsize":requested,"timezone":"UTC","apikey":TWELVE_DATA_API_KEY})
         response.raise_for_status()
         payload = response.json()
     if payload.get("status") == "error" or not isinstance(payload.get("values"), list):
         raise MarketDataError(str(payload.get("message") or payload.get("code") or "Provider returned no candle data."))
-    candles=[]
-    for row in reversed(payload["values"]):
-        try:
-            candles.append({"time":row["datetime"],"open":float(row["open"]),"high":float(row["high"]),
-                            "low":float(row["low"]),"close":float(row["close"])})
-        except (KeyError,TypeError,ValueError):
-            continue
+    candles = _normalize_gold_candles(payload["values"])
     if len(candles) < 210:
-        raise MarketDataError(f"Not enough {interval} candles for stable indicator calculations ({len(candles)} received).")
-    return candles
+        raise MarketDataError(f"Not enough valid {interval} XAUUSD candles for stable indicator calculations ({len(candles)} received).")
+    candles = candles[-requested:]
+    _GOLD_CANDLE_CACHE[cache_key] = (time.monotonic(), candles)
+    return [dict(row) for row in candles]
 
 def aggregate_minutes(candles: list[dict[str, Any]], minutes: int) -> list[dict[str, Any]]:
     """Aggregate 1-minute UTC candles into fixed minute bars."""

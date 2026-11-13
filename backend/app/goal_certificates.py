@@ -3,13 +3,18 @@ from __future__ import annotations
 
 from datetime import datetime
 from io import BytesIO
+from urllib.parse import urlsplit
+import ipaddress
+import socket
+
+import httpx
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer
 
 
 GOLD = colors.HexColor("#B58A28")
@@ -21,7 +26,9 @@ def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
                                created_at: datetime, achieved_at: datetime,
                                elapsed_days: int, certificate_id: str,
                                integrity_fingerprint: str, target_amount: float,
-                               saved_amount: float, currency: str, demo_only: bool = False) -> bytes:
+                               saved_amount: float, currency: str, demo_only: bool = False,
+                               achievement_text: str = "A meaningful result built through patience, consistency and self-discipline.",
+                               goal_image_url: str = "") -> bytes:
     """Build a self-contained PDF; demo certificates are prominently non-valid."""
     buffer = BytesIO()
     page_w, page_h = A4
@@ -106,11 +113,11 @@ def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
         Paragraph("DEMO CERTIFICATE PREVIEW" if demo_only else "CERTIFICATE OF ACHIEVEMENT", title),
         Paragraph("SAMPLE ONLY · NOT VALID" if demo_only else "PROUDLY PRESENTED TO", lead),
         Paragraph(_escape(display_name), name),
-        Paragraph("For achieving the personal goal", lead),
+        Paragraph("PROUDLY PRESENTED TO" if not demo_only else "SAMPLE RECIPIENT", lead),
         Paragraph(_escape(goal_title), goal),
-        Spacer(1, 4*mm),
-        Paragraph("A meaningful result built through patience, consistency and self-discipline.", lead),
-        Spacer(1, 5*mm),
+        Spacer(1, 3*mm),
+        Paragraph(_escape(achievement_text), lead),
+        Spacer(1, 3*mm),
         Paragraph(f"GOAL VALUE  ·  {currency} {target_amount:,.2f}  ·  RECORDED SAVINGS {currency} {saved_amount:,.2f}", small),
         Spacer(1, 7*mm),
         Paragraph(f"GOAL STARTED  ·  {created_at.strftime('%d %B %Y')}", small),
@@ -129,6 +136,16 @@ def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
         Paragraph(f"Certificate ID: {certificate_id}", small),
         Paragraph(f"Local integrity fingerprint: {integrity_fingerprint[:24]}", small),
     ]
+    if goal_image_url:
+        image_data = _fetch_public_goal_image(goal_image_url)
+        if image_data:
+            try:
+                photo = Image(BytesIO(image_data), width=88*mm, height=52*mm, kind="proportional")
+                photo.hAlign = "CENTER"
+                story.insert(6, photo)
+                story.insert(7, Spacer(1, 3*mm))
+            except Exception:
+                pass
     if demo_only:
         story.insert(0, Paragraph("DEMO ONLY — NOT VALID · FOR DISPLAY PURPOSES ONLY", small))
         story.insert(1, Spacer(1, 3*mm))
@@ -159,3 +176,33 @@ def draw_quantnex_mark(canvas, x: float, y: float, size: float, gold: bool = Fal
     canvas.setFillColor(colors.HexColor("#FFFEFA"))
     canvas.circle(50.5,13.5,5.5,fill=1,stroke=0)
     canvas.restoreState()
+
+
+def _fetch_public_goal_image(url: str) -> bytes | None:
+    """Fetch only small public HTTPS JPEG/PNG images; reject local/private hosts and redirects."""
+    try:
+        parsed = urlsplit(str(url))
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            return None
+        host = parsed.hostname
+        addresses = {item[4][0] for item in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)}
+        if not addresses or any(not ipaddress.ip_address(addr).is_global for addr in addresses):
+            return None
+        with httpx.Client(timeout=4.0, follow_redirects=False, trust_env=False) as client:
+            with client.stream("GET", url, headers={"Accept": "image/png,image/jpeg"}) as response:
+                if response.status_code != 200:
+                    return None
+                media_type = response.headers.get("content-type", "").split(";")[0].lower()
+                if media_type not in {"image/png", "image/jpeg"}:
+                    return None
+                length = int(response.headers.get("content-length", "0") or 0)
+                if length > 3 * 1024 * 1024:
+                    return None
+                chunks = bytearray()
+                for chunk in response.iter_bytes():
+                    chunks.extend(chunk)
+                    if len(chunks) > 3 * 1024 * 1024:
+                        return None
+                return bytes(chunks) if chunks else None
+    except Exception:
+        return None

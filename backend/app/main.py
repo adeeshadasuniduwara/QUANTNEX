@@ -1108,6 +1108,9 @@ def create_personal_goal(payload: dict, user: User = Depends(local_workspace), d
         initial=float(payload.get("initial_amount",0) or 0)
     except (TypeError,ValueError):
         raise HTTPException(status_code=422,detail="Target and starting amount must be valid numbers.")
+    import math
+    if not math.isfinite(target) or not math.isfinite(initial):
+        raise HTTPException(status_code=422,detail="Target and starting amount must be finite numbers.")
     if not title or len(title)>120 or len(description)>2000:
         raise HTTPException(status_code=422,detail="Enter a goal title (1–120 characters) and a description up to 2,000 characters.")
     if currency not in {"USD","LKR","EUR","GBP","AUD","CAD"}:

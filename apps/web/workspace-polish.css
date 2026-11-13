@@ -64,3 +64,51 @@ td{font-size:10px}
  .hero{padding:22px;min-height:145px}
 }
 @media(prefers-reduced-motion:reduce){.qx-nav-heading svg{transition:none}}
+
+
+/* QUANTNEX compact, single-icon workspace navigation */
+.qx-sidebar-toggle{
+ display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+ min-height:34px;margin:10px 0 8px;padding:7px 9px;
+ border:1px solid #293441;border-radius:7px;background:#111820;color:#aeb9c7;
+ font:600 10px/1.2 inherit;cursor:pointer;transition:background .16s,border-color .16s,color .16s
+}
+.qx-sidebar-toggle:hover{background:#1b2632;border-color:#46576a;color:#f2f6fa}
+.qx-sidebar-toggle svg{width:15px;height:15px;flex:0 0 15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.sidebar.is-collapsed{width:68px!important;padding:16px 7px!important}
+.sidebar.is-collapsed .brand{justify-content:center;padding:0}
+.sidebar.is-collapsed .brand>span:last-child,
+.sidebar.is-collapsed .qx-sidebar-caption,
+.sidebar.is-collapsed .qx-nav-search,
+.sidebar.is-collapsed .qx-nav-heading,
+.sidebar.is-collapsed .qx-nav-label,
+.sidebar.is-collapsed .sidebar-bottom>span:last-child,
+.sidebar.is-collapsed .qx-sidebar-toggle>span{display:none!important}
+.sidebar.is-collapsed .qx-sidebar-toggle{padding:8px 0;margin:10px 0}
+.sidebar.is-collapsed .qx-sidebar-toggle svg{transform:rotate(180deg)}
+.sidebar.is-collapsed .sidebar-nav{gap:5px}
+.sidebar.is-collapsed .qx-nav-group{gap:3px}
+.sidebar.is-collapsed .qx-nav-items{gap:3px}
+.sidebar.is-collapsed .nav-link,
+.sidebar.is-collapsed .nav-link:not(.active){
+ display:flex!important;justify-content:center;align-items:center;
+ min-height:39px;padding:8px 0;font-size:0;gap:0
+}
+.sidebar.is-collapsed .qx-nav-icon{flex:0 0 19px;width:19px;height:19px}
+.sidebar.is-collapsed .qx-nav-icon svg{width:17px;height:17px}
+.sidebar.is-collapsed .sidebar-bottom{justify-content:center;padding:10px 0}
+.sidebar.is-collapsed .live-dot{margin:0}
+.main{transition:margin-left .2s ease,max-width .2s ease,width .2s ease}
+.sidebar.is-collapsed~.main{width:calc(100% - 68px);max-width:none;margin-left:68px;padding-left:clamp(18px,2.4vw,38px);padding-right:clamp(18px,2.4vw,38px)}
+.nav-link{font-size:10.5px;gap:8px}
+.qx-nav-icon{flex-basis:17px;width:17px;height:17px}
+.qx-nav-icon svg{width:15px;height:15px;stroke-width:1.55}
+.qx-nav-label{font-size:10.5px;line-height:1.25}
+@media(max-width:720px){
+ .sidebar:not(.is-collapsed){width:238px!important;z-index:20;box-shadow:12px 0 35px #0009}
+ .sidebar:not(.is-collapsed)~.main{margin-left:68px;width:calc(100% - 68px)}
+ .sidebar.is-collapsed{width:60px!important;padding:14px 5px!important}
+ .sidebar.is-collapsed~.main{width:calc(100% - 60px);margin-left:60px;padding:16px 12px}
+ .sidebar.is-collapsed .nav-link{min-height:38px}
+}
+@media(prefers-reduced-motion:reduce){.main,.qx-sidebar-toggle{transition:none!important}}

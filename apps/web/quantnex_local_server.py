@@ -104,6 +104,19 @@ def _safe_web_relative(raw_parts: tuple[str, ...]) -> PurePosixPath | None:
     return relative
 
 
+def _safe_web_destination(relative: PurePosixPath) -> Path:
+    """Resolve a Web update target and reject existing symlink escapes."""
+    base = WEB.resolve()
+    try:
+        destination = (base / Path(*relative.parts)).resolve()
+        destination.relative_to(base)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise RuntimeError("The Web update destination escapes the workspace.") from exc
+    if destination == base:
+        raise RuntimeError("The Web update cannot replace the workspace root.")
+    return destination
+
+
 def install_commit(commit: dict) -> None:
     sha = str(commit.get("sha", ""))
     archive_url = str(commit.get("archive_url", ""))
@@ -158,7 +171,7 @@ def install_commit(commit: dict) -> None:
                 if not source_file.is_file():
                     continue
                 relative = source_file.relative_to(staged)
-                destination = WEB / relative
+                destination = _safe_web_destination(relative)
                 if destination.is_file():
                     backup_file = backup / relative
                     backup_file.parent.mkdir(parents=True, exist_ok=True)

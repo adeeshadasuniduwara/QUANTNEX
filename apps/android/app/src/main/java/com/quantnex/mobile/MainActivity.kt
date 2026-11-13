@@ -202,7 +202,7 @@ private fun QuantnexApp(
                 TextButton(onClick={ onUpdate(apk) }) { Text("UPDATE", color=Accent) }
             }
         }
-        if (url.isBlank() || active == "overview") {
+        if (url.isBlank() || active == "overview" || active == "tradingview") {
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (active) {
                     "overview" -> NativeDashboardScreen(
@@ -210,7 +210,7 @@ private fun QuantnexApp(
                         onRefresh = { dashboardRefresh++ },
                         onOpenSettings = { editUrl=url; showSettings=true }
                     )
-                    "tradingview" -> NativeFeaturePlaceholder("QUANTNEX VIEW", "A native multi-market chart workspace with candles, timeframes, indicators and drawing tools is the next development phase.")
+                    "tradingview" -> NativeChartScreen()
                     "trading-room" -> NativeFeaturePlaceholder("TRADING ROOM", "Live market discussion, market context and trading-room tools will be integrated in a later native phase.")
                     "journal" -> NativeFeaturePlaceholder("TRADE JOURNAL", "Your local trade journal and wallet tools will be connected after the secure data-sync architecture is ready.")
                     else -> NativeFeaturePlaceholder("MORE TOOLS", "Updates, settings, prop-firm challenges and the remaining QUANTNEX toolkit will be added progressively.")

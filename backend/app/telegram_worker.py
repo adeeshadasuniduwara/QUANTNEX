@@ -84,8 +84,21 @@ async def _telegram_post(client, token: str, method: str, payload: dict):
         return data.get("result",{})
     raise RuntimeError("Telegram retry limit reached.")
 
+def _format_telegram_message(message: str) -> str:
+    """Keep Telegram text messages warm, branded and easy to scan."""
+    content = str(message or "").replace("\\r\\n", "\\n").strip()
+    if not content:
+        return "✨ QUANTNEX\\n\\nNo message content."
+    first_line = content.splitlines()[0]
+    if "QUANTNEX" in first_line.upper():
+        content = "✨ " + content
+    else:
+        content = "✨ QUANTNEX\\n\\n" + content
+    return content[:4000]
+
+
 async def _send(client, token: str, chat_id: str, text: str, reply_markup: dict | None = None):
-    payload={"chat_id":chat_id,"text":text[:4000],"disable_web_page_preview":True}
+    payload={"chat_id":chat_id,"text":_format_telegram_message(text),"disable_web_page_preview":True}
     if reply_markup: payload["reply_markup"]=reply_markup
     return await _telegram_post(client,token,"sendMessage",payload)
 

@@ -54,8 +54,8 @@ def test_database_restore_pauses_and_restarts_database_workers(monkeypatch):
     request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(**tasks)))
     scheduled = []
 
-    async def fake_to_thread(function, *args):
-        return function(*args)
+    async def fake_to_thread(function, *args, **kwargs):
+        return function(*args, **kwargs)
 
     def fake_create_task(coroutine):
         coroutine.close()

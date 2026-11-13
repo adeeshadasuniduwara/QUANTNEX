@@ -21,6 +21,7 @@ from .security import decrypt_secret, encrypt_secret
 from .maintenance import daily_backup_worker, record_audit_event
 from .system_security import router as system_security_router
 from .events import event_hub, router as events_router
+from .prop_challenge import router as prop_challenge_router, mt5_guardian_worker
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="QUANTNEX Local API", description="Loopback-only local workspace API. No user login or remote account system.", version="0.8.0")
@@ -29,6 +30,7 @@ app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
 app.include_router(system_security_router)
 app.include_router(events_router)
+app.include_router(prop_challenge_router)
 
 
 @app.middleware("http")
@@ -510,6 +512,21 @@ async def stop_telegram_background_worker():
         task.cancel()
         try:await task
         except asyncio.CancelledError:pass
+
+@app.on_event("startup")
+async def start_prop_challenge_guardian():
+    app.state.prop_challenge_guardian_task = asyncio.create_task(mt5_guardian_worker())
+
+
+@app.on_event("shutdown")
+async def stop_prop_challenge_guardian():
+    task = getattr(app.state, "prop_challenge_guardian_task", None)
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 @app.get("/api/v1/telegram/auto-signals")
 def get_auto_signal_settings(user: User = Depends(local_workspace), db: Session = Depends(get_db)):

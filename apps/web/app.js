@@ -21,7 +21,7 @@ function setJournalStatus(message,error=false){
 }
 function mapServerTrade(item){
   const rawDate=String(item.created_at||"");
-  const date=new Date(/[zZ]|[+-]\\d{2}:\\d{2}$/.test(rawDate)?rawDate:rawDate+"Z");
+  const date=new Date(/[zZ]|[+-]\d{2}:\d{2}$/.test(rawDate)?rawDate:rawDate+"Z");
   const title=value=>String(value||"").charAt(0).toUpperCase()+String(value||"").slice(1).toLowerCase();
   return {id:item.id,date:Number.isNaN(date.getTime())?"":date.toLocaleDateString("en-CA"),
     symbol:String(item.symbol||""),direction:title(item.direction),outcome:title(item.outcome),

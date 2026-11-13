@@ -282,3 +282,53 @@ def test_demo_certificate_preview_uses_safe_defaults_when_payload_is_empty():
     assert response.status_code == 200
     assert response.content.startswith(b"%PDF")
     assert "NOT-VALID" in response.headers["content-disposition"]
+
+def test_chart_quote_uses_mt5_provider_when_mt5_chart_history_is_enabled(monkeypatch):
+    from datetime import datetime, timezone
+    from app import mt5_feed
+
+    async def fake_quote(_symbol):
+        stamp = datetime.now(timezone.utc).isoformat()
+        return {"bid": 2345.0, "ask": 2345.2, "last": None, "spread": 0.2,
+                "provider": "MetaTrader 5 local terminal", "stale": False,
+                "source_timestamp": stamp, "fetch_timestamp": stamp}
+
+    monkeypatch.setattr(main_module, "QUANTNEX_MT5_ENABLED", True)
+    monkeypatch.setattr(mt5_feed, "get_quote", fake_quote)
+    response = TestClient(app).get("/api/v1/charts/quote?symbol=XAUUSD")
+    assert response.status_code == 200
+    assert response.json()["price"] == 2345.1
+    assert response.json()["provider"] == "MetaTrader 5 local terminal"
+
+
+def test_chart_quote_uses_twelve_data_provider_when_mt5_is_disabled(monkeypatch):
+    from datetime import datetime, timezone
+    from app import phase07_engine
+
+    async def fake_quote(_symbol):
+        stamp = datetime.now(timezone.utc).isoformat()
+        return {"symbol": "XAUUSD", "kind": "gold", "price": 2345.6,
+                "provider": "Twelve Data", "source_timestamp": stamp, "timestamp": stamp}
+
+    monkeypatch.setattr(main_module, "QUANTNEX_MT5_ENABLED", False)
+    monkeypatch.setattr(phase07_engine, "get_quote", fake_quote)
+    response = TestClient(app).get("/api/v1/charts/quote?symbol=XAUUSD")
+    assert response.status_code == 200
+    assert response.json()["price"] == 2345.6
+    assert response.json()["provider"] == "Twelve Data"
+
+def test_chart_quote_marks_twelve_data_price_stale_for_short_timeframes(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from app import phase07_engine
+
+    async def fake_quote(_symbol):
+        stamp = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        return {"symbol": "XAUUSD", "kind": "gold", "price": 2345.6,
+                "provider": "Twelve Data", "source_timestamp": stamp, "timestamp": datetime.now(timezone.utc).isoformat()}
+
+    monkeypatch.setattr(main_module, "QUANTNEX_MT5_ENABLED", False)
+    monkeypatch.setattr(phase07_engine, "get_quote", fake_quote)
+    response = TestClient(app).get("/api/v1/charts/quote?symbol=XAUUSD&interval=1m")
+    assert response.status_code == 200
+    assert response.json()["stale"] is True
+    assert response.json()["stale_after_seconds"] == 120

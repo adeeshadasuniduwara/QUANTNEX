@@ -258,3 +258,27 @@ def test_chart_candle_endpoint_reports_source_freshness(monkeypatch):
     assert stale.status_code == 200
     assert stale.json()["data_health"] == "stale"
     assert stale.json()["stale"] is True
+
+
+
+def test_demo_certificate_preview_does_not_require_an_achieved_goal():
+    client = TestClient(app)
+    response = client.post("/api/v1/goals/demo-certificate", json={
+        "display_name": "Preview Name",
+        "goal_title": "My Trading Journey",
+        "achievement_text": "Built through patience, consistency and discipline.",
+        "target_amount": 1000,
+        "currency": "USD",
+    })
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/pdf")
+    assert "QUANTNEX-DEMO-CERTIFICATE-NOT-VALID.pdf" in response.headers["content-disposition"]
+    assert response.content.startswith(b"%PDF")
+
+
+def test_demo_certificate_preview_uses_safe_defaults_when_payload_is_empty():
+    client = TestClient(app)
+    response = client.post("/api/v1/goals/demo-certificate", json={})
+    assert response.status_code == 200
+    assert response.content.startswith(b"%PDF")
+    assert "NOT-VALID" in response.headers["content-disposition"]

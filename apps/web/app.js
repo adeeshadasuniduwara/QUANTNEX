@@ -469,6 +469,8 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   const priceDigits=symbol=>symbol==="XAUUSD"?2:["EURUSD","GBPUSD","USDJPY"].includes(symbol)?5:symbol==="BTCUSDT"?2:4;
   const node=(tag,text,className)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;if(className)el.className=className;return el;};
   const setMessage=(id,message,error=false)=>{const el=$(id);if(!el)return;el.textContent=message;el.className=error?"p7-note p7-status-error":"p7-note p7-status-ok";};
+  const activeWorkspaceView=()=>document.querySelector(".workspace-view:not([hidden])")?.dataset.workspaceView||"overview";
+  const isWorkspaceViewActive=(...views)=>!document.hidden&&views.includes(activeWorkspaceView());
   const addCell=(row,text)=>row.append(node("td",text));
   let lastSignal=null;
   const marketCards=new Map();
@@ -750,7 +752,12 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
         " · Gross profit $"+fmt(data.gross_profit,2)+" · Gross loss $"+fmt(data.gross_loss,2)+". "+data.note;
     }catch(error){$("p7PerformanceNote").textContent="Performance data unavailable: "+error.message;}
   }
-  async function refreshAnalytics(){await Promise.all([loadPaper(),loadPerformance()]);}
+  async function refreshAnalytics(){
+    const tasks=[];
+    if(isWorkspaceViewActive("paper-trading"))tasks.push(loadPaper());
+    if(isWorkspaceViewActive("performance-lab"))tasks.push(loadPerformance());
+    await Promise.all(tasks);
+  }
   window.addEventListener("quantnex:workspace-event",event=>{if(event.detail?.type==="paper_trade.changed")refreshAnalytics();});
   window.addEventListener("quantnex:workspace-resync",refreshAnalytics);
   async function openPaper(){
@@ -795,20 +802,32 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     $("p7PaperQty").focus();
   });
   $("p7BookSymbol").addEventListener("change",loadBook);
+  function stopBookFeed(){
+    clearTimeout(bookRetry);bookRetry=null;
+    if(bookWatchdog){clearInterval(bookWatchdog);bookWatchdog=null;}
+    if(bookRenderTimer!==null){clearTimeout(bookRenderTimer);bookRenderTimer=null;}
+    bookGeneration++;
+    if(bookSocket){bookSocket.onclose=null;bookSocket.close();bookSocket=null;}
+  }
+  function syncWorkspaceView(){
+    if(isWorkspaceViewActive("market-intelligence")){loadMarkets();connectCryptoTicker();}
+    else stopCryptoTicker();
+    if(isWorkspaceViewActive("orderflow-liquidity"))loadBook();
+    else stopBookFeed();
+    if(isWorkspaceViewActive("paper-trading"))refreshAnalytics();
+    if(isWorkspaceViewActive("performance-lab"))loadPerformance();
+    if(isWorkspaceViewActive("news-intelligence"))loadNews();
+  }
+  window.addEventListener("quantnex:view-changed",syncWorkspaceView);
   document.addEventListener("visibilitychange",()=>{
-    if(document.hidden){
-      stopCryptoTicker();clearTimeout(bookRetry);bookRetry=null;
-      if(bookWatchdog){clearInterval(bookWatchdog);bookWatchdog=null;}
-      bookGeneration++;
-      if(bookSocket){bookSocket.onclose=null;bookSocket.close();bookSocket=null;}
-    }else{connectCryptoTicker();loadBook();loadMarkets();}
+    if(document.hidden){stopCryptoTicker();stopBookFeed();}
+    else syncWorkspaceView();
   });
-  loadMarkets();connectCryptoTicker();loadBook();refreshAnalytics();
-  // Provider-aware background refresh: FX/Gold REST is kept conservative; crypto is streamed.
-  setInterval(()=>{if(!document.hidden)loadMarkets();},60000);
-  setInterval(()=>{if(!document.hidden)loadPaper();},10000);
-  setInterval(()=>{if(!document.hidden)loadPerformance();},30000);
-  setInterval(()=>{if(!document.hidden)loadNews();},900000);
+  // Keep network work scoped to the visible workspace. Hidden panels stay idle.
+  setInterval(()=>{if(isWorkspaceViewActive("market-intelligence"))loadMarkets();},60000);
+  setInterval(()=>{if(isWorkspaceViewActive("paper-trading"))loadPaper();},20000);
+  setInterval(()=>{if(isWorkspaceViewActive("performance-lab"))loadPerformance();},30000);
+  setInterval(()=>{if(isWorkspaceViewActive("news-intelligence"))loadNews();},900000);
 })();
 
 

@@ -6,8 +6,6 @@ import re
 import shutil
 import tempfile
 import threading
-import time
-import urllib.error
 import urllib.request
 import zipfile
 from datetime import datetime, timezone
@@ -183,57 +181,11 @@ def install_commit(commit: dict) -> None:
             raise
 
 
-def notify_connected_telegram(commit: dict) -> bool:
-    """Send an update receipt through this workspace's already-connected private bot.
-
-    The bot token stays encrypted in the local API database; this updater never
-    reads or stores Telegram credentials. A missing bot is a normal opt-out.
-    """
-    sha = str(commit.get("sha", ""))
-    if not re.fullmatch(r"[0-9a-f]{40}", sha):
-        return False
-    headline = str(commit.get("message", "QUANTNEX update"))[:180]
-    message = (
-        "QUANTNEX — UPDATE INSTALLED\\n\\n"
-        + "Version: main@" + sha[:7] + "\\n"
-        + "Update: " + headline + "\\n\\n"
-        + "Your QUANTNEX Web workspace was updated successfully.\\n"
-        + "Your local wallet, journal and settings were kept separate."
-    )
-    payload = json.dumps({"message": message}).encode("utf-8")
-    request = urllib.request.Request(
-        "http://127.0.0.1:8000/api/v1/telegram/notify",
-        data=payload,
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
-        method="POST",
-    )
-    for attempt in range(10):
-        try:
-            with urllib.request.urlopen(request, timeout=8) as response:
-                result = json.loads(response.read().decode("utf-8"))
-            sent = bool(result.get("ok"))
-            if sent:
-                print("[QUANTNEX updater] Update notification sent to the connected Telegram bot.", flush=True)
-            return sent
-        except urllib.error.HTTPError as exc:
-            # 409 means no bot is connected; do not keep retrying an intentional opt-out.
-            if exc.code == 409 or exc.code < 500:
-                print("[QUANTNEX updater] Telegram update notice skipped (no connected bot or rejected request).", flush=True)
-                return False
-        except (OSError, urllib.error.URLError, ValueError):
-            pass
-        if attempt < 9:
-            time.sleep(1.5)
-    print("[QUANTNEX updater] Update installed; Telegram notification could not be delivered.", flush=True)
-    return False
-
-
 def install_worker(commit: dict) -> None:
     with LOCK:
         STATE.update(status="installing", message="Downloading and verifying the pinned GitHub source commit…")
     try:
         install_commit(commit)
-        notify_connected_telegram(commit)
         with LOCK:
             STATE.update(status="complete", message=f"QUANTNEX Web updated to main@{commit['sha'][:7]}. Refreshing the workspace…")
     except Exception as exc:

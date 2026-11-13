@@ -129,7 +129,7 @@ assert.match(app, /setInterval\(\(\)=>\{if\(isWorkspaceViewActive\("paper-tradin
 assert.match(app, /function stopBookFeed\(/, "Order-book sockets and timers must be cleaned up when leaving their workspace.");
 console.log("QUANTNEX active-workspace polling and cleanup checks passed.");
 
-assert.match(html, /app\.js\?v=20261113-active-workspace-polling1/, "Workspace polling fixes must invalidate the cached app.js asset.");
+assert.match(html, /app\.js\?v=20261114-journal-db1/, "Workspace polling fixes must invalidate the cached app.js asset.");
 
 
 assert.match(nativeChart, /isChartViewActive/, "QUANTNEX VIEW history, analysis and live ticks must be scoped to the visible chart workspace.");

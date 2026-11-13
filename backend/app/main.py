@@ -1242,11 +1242,15 @@ def generate_goal_certificate(goal_id: int, payload: dict, user: User = Depends(
     if achieved.tzinfo is None: achieved=achieved.replace(tzinfo=timezone.utc)
     created=goal.created_at
     if created.tzinfo is None: created=created.replace(tzinfo=timezone.utc)
-    elapsed=max(0,(achieved-created).days)
+    elapsed_seconds=max(0,int((achieved-created).total_seconds()))
+    elapsed=elapsed_seconds//86400
+    elapsed_hours=elapsed_seconds//3600
     pdf=build_goal_certificate_pdf(display_name=display_name,goal_title=goal.title,
-        created_at=created,achieved_at=achieved,elapsed_days=elapsed,
+        created_at=created,achieved_at=achieved,elapsed_days=elapsed,elapsed_hours=elapsed_hours,
         certificate_id=certificate_id,integrity_fingerprint=digest,
-        target_amount=goal.target_amount,saved_amount=saved,currency=goal.currency)
+        target_amount=goal.target_amount,saved_amount=saved,currency=goal.currency,
+        achievement_text=goal.description or "A meaningful result built through patience, consistency and self-discipline.",
+        goal_image_url=goal.image_url or "")
     safe_name="".join(ch for ch in display_name if ch.isalnum() or ch in "-_")[:32] or "Trader"
     return Response(content=pdf,media_type="application/pdf",
         headers={"Content-Disposition":f'attachment; filename="QUANTNEX-Achievement-{safe_name}.pdf"'})

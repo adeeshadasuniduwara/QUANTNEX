@@ -41,3 +41,14 @@ assert.match(realtime, /connectedOnce&&current!==lastEventId/, "A restarted even
 assert.match(realtime, /event_stream_restarted/, "A lower sequence after reconnect must be identified as an event-service restart");
 assert.match(realtime, /lastEventId=current/, "The event cursor must reset to the new process sequence after a restart");
 console.log("Realtime event restart-resync checks passed.");
+
+const polish = fs.readFileSync("apps/web/workspace-polish.js", "utf8");
+const polishCss = fs.readFileSync("apps/web/workspace-polish.css", "utf8");
+assert.ok(html.includes('href="workspace-polish.css?v=20261113-1"'), "Professional workspace stylesheet must load");
+assert.ok(html.includes('src="workspace-polish.js?v=20261113-1"'), "Professional navigation script must load");
+assert.match(polish, /qxNavSearch/, "Sidebar tool search must be available");
+assert.match(polish, /aria-expanded/, "Sidebar groups must be keyboard-accessible toggles");
+assert.match(polish, /createElementNS/, "Navigation icons must use consistent SVG artwork");
+assert.match(polishCss, /\.qx-nav-search/, "Sidebar search must be styled");
+assert.match(polishCss, /\.qx-nav-icon svg/, "Sidebar SVG icons must share a consistent size and stroke");
+console.log("Professional workspace navigation checks passed.");

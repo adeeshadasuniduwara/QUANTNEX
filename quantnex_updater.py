@@ -23,8 +23,8 @@ SKIP_PARTS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_c
 SKIP_NAMES = {".env", ".env.local", ".env.production"}
 SAFE_ROOTS = {".github", "apps", "backend", "docs", "shared", "services", "tests"}
 SAFE_ROOT_FILES = {"README.md", "README_SI.md", "TODO.md", "FEATURE_STATUS_SI.md",
-                   "requirements.txt", "pyproject.toml", "run_quantnex.bat",
-                   "run_quantnex_services.py", "run_backend.bat"}
+                   "requirements.txt", "pyproject.toml", "quantnex_updater.py",
+                   "run_quantnex.bat", "run_quantnex_services.py", "run_backend.bat"}
 
 
 class UpdateError(RuntimeError):
@@ -49,6 +49,11 @@ def _valid_sha(value: object) -> bool:
 
 
 def _safe_relative(raw: str) -> Path | None:
+    # Git paths use POSIX separators, but Path() is Windows-native on the
+    # target platform. Reject Windows separators, drive/ADS syntax and NULs
+    # before converting to Path so a crafted filename cannot escape the root.
+    if not isinstance(raw, str) or not raw or any(char in raw for char in ("\\", ":", "\x00")):
+        return None
     posix = PurePosixPath(raw)
     parts = posix.parts
     if not parts or posix.is_absolute() or any(part in ("", ".", "..") for part in parts):
@@ -63,6 +68,19 @@ def _safe_relative(raw: str) -> Path | None:
     if any(token in lower for token in ("credential", "private_key", "wallet_backup")):
         return None
     return Path(*parts)
+
+
+def _safe_destination(root: Path, relative: Path) -> Path:
+    """Resolve an update target and refuse symlink/path traversal outside root."""
+    base = root.resolve()
+    try:
+        destination = (base / relative).resolve()
+        destination.relative_to(base)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise UpdateError("An update destination resolves outside the QUANTNEX workspace.") from exc
+    if destination == base:
+        raise UpdateError("An update destination cannot replace the QUANTNEX workspace root.")
+    return destination
 
 
 def _load_state(root: Path) -> dict:
@@ -147,7 +165,7 @@ def _bootstrap_snapshot(root: Path, latest_sha: str) -> dict:
             if not source.is_file():
                 continue
             relative = source.relative_to(staged_root)
-            destination = root / relative
+            destination = _safe_destination(root, relative)
             if destination.is_file():
                 backup = backup_root / relative
                 backup.parent.mkdir(parents=True, exist_ok=True)
@@ -251,7 +269,7 @@ def check_and_apply(root: Path) -> dict:
             if status == "renamed" and previous_relative and previous_relative != relative:
                 targets.append(previous_relative)
             for rel in targets:
-                destination = root / rel
+                destination = _safe_destination(root, rel)
                 backup = backup_root / rel
                 if destination.is_file():
                     backup.parent.mkdir(parents=True, exist_ok=True)

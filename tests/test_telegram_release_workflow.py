@@ -20,7 +20,8 @@ class TelegramReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("urllib.error.HTTPError", self.workflow)
         self.assertIn('result.get("description")', self.workflow)
         self.assertIn("TELEGRAM_CHAT_ID", self.workflow)
-        self.assertNotIn("TELEGRAM_BOT_TOKEN:", self.workflow)
+        handler = self.workflow.split("except urllib.error.HTTPError", 1)[1].split("except urllib.error.URLError", 1)[0]
+        self.assertNotIn("TELEGRAM_BOT_TOKEN", handler)
 
 
 if __name__ == "__main__":

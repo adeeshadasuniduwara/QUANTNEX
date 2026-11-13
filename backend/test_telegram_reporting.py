@@ -50,3 +50,19 @@ def test_telegram_text_messages_get_branded_emoji_headers():
 
     assert _format_telegram_message("Status: connected") == "✨ QUANTNEX\n\nStatus: connected"
     assert _format_telegram_message("QUANTNEX status: connected") == "✨ QUANTNEX status: connected"
+
+
+
+def test_telegram_menu_is_button_first_and_has_all_primary_sections():
+    from app.telegram_worker import MENU, SUBMENUS
+
+    buttons = [button for row in MENU["inline_keyboard"] for button in row]
+    labels = {button["text"] for button in buttons}
+    assert {"📈 Markets & scans", "🧠 Signal controls", "🤖 Paper trading",
+            "📊 Reports & goals", "⚙ Settings & status", "❔ Help & guide"} <= labels
+    assert {"qx:menu:markets", "qx:menu:signals", "qx:menu:paper",
+            "qx:menu:reports", "qx:menu:settings"} <= set(SUBMENUS)
+    assert any(button["callback_data"] == "qx:settf:5"
+               for row in SUBMENUS["qx:menu:signals"]["inline_keyboard"] for button in row)
+    assert any(button["callback_data"] == "qx:scan:XAUUSD"
+               for row in SUBMENUS["qx:menu:markets"]["inline_keyboard"] for button in row)

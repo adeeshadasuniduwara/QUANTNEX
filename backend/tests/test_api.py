@@ -415,6 +415,9 @@ def test_legacy_journal_import_is_idempotent_and_preserves_wallet_balance():
     assert retry.status_code == 200
     assert retry.json() == {"imported": 0, "total": 2}
 
+    retry_from_new_source = {**payload, "source_id": "second-browser-source-test-2026"}
+    assert client.post("/api/v1/journal/import", json=retry_from_new_source).json()["imported"] == 0
+
     after = client.get("/api/v1/wallet/summary").json()
     assert after == before
 

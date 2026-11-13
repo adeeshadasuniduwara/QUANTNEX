@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="welcome-whats-new.css?v=20261113-1">
   <link rel="stylesheet" href="navigation.css?v=20261112-fade1">
   <link rel="stylesheet" href="prop-challenge.css?v=20261112-challenge1">
+  <link rel="stylesheet" href="donation.css?v=20261113-bep20">
 </head>
 <body>
   <div class="layout">
@@ -59,6 +60,8 @@
         <div class="side-caption">WORKSPACE TOOLS</div>
         <a class="nav-link" href="#prop-challenge"><span>▣</span>Prop Firm Challenge</a>
         <a class="nav-link" href="#system-security"><span>⚙</span>System security</a>
+        <div class="side-caption">COMMUNITY</div>
+        <a class="nav-link" href="#support-quantnex"><span>♥</span>Support QUANTNEX</a>
       </nav>
       <div class="sidebar-bottom"><span class="live-dot"></span>Local workspace</div>
     </aside>
@@ -725,6 +728,17 @@
         <div class="pc-footer-actions"><p class="p7-note" id="pcGuardianNote">MT5 Guardian runs in the local backend while it is connected. On a DEMO-only breach it attempts to close open positions and locks the challenge. Broker rejection, terminal shutdown or network loss can prevent closure; this is not a guaranteed broker-side risk limit.</p><button class="secondary-btn" type="button" id="pcReset" hidden>Reset challenge</button></div>
       </section>
 
+      <section class="section-heading" id="support-quantnex"><div><div class="overline">COMMUNITY · OPEN-SOURCE SPIRIT</div><h2>Support QUANTNEX</h2><p>Help us keep building useful tools for traders around the world.</p></div><span class="pill">VOLUNTARY SUPPORT</span></section>
+      <section class="panel donation-panel" aria-labelledby="donationTitle">
+        <div class="donation-hero"><div class="donation-heart" aria-hidden="true">♥</div><div class="donation-eyebrow">A LITTLE SUPPORT GOES A LONG WAY</div><h3 id="donationTitle">Every Little Contribution Makes a Difference.</h3><p>QUANTNEX is being built with the goal of giving traders practical tools and a better workspace. Your support helps us continue developing, improving and maintaining the project.</p><p class="donation-thanks">Whether it is <strong>$0.01</strong> or more, every contribution is welcomed with genuine gratitude. The amount does not matter — your kindness and encouragement mean a lot to us.</p><div class="donation-signoff">Thank you for being part of the QUANTNEX journey. <span>♥</span></div></div>
+        <div class="donation-method"><div class="donation-method-heading"><div><span class="donation-network-tag">BEP20 · BNB SMART CHAIN</span><h4>Donate with USDT</h4><p>Send USDT using the BNB Smart Chain (BEP20) network only.</p></div><div class="donation-coin">₮</div></div>
+          <div class="donation-address-label">USDT DEPOSIT ADDRESS</div><div class="donation-address-row"><code id="donationAddress">0x9c723c28859175bb6c496b96c84b1d30af1281d8</code><button type="button" class="primary-btn donation-copy" id="donationCopy">Copy address</button></div><p class="donation-copy-status" id="donationCopyStatus" role="status" aria-live="polite">Use this address only for USDT on BEP20.</p>
+          <div class="donation-facts"><div><span>Network</span><strong>BNB Smart Chain (BEP20)</strong></div><div><span>Minimum deposit shown by Binance</span><strong>More than 0.01 USDT</strong></div><div><span>Confirmation shown by Binance</span><strong>1 confirmation</strong></div></div>
+          <div class="donation-warning"><strong>Important — please check before sending</strong><p>Select <b>USDT</b> and the <b>BEP20 / BNB Smart Chain</b> network on the sending platform. Do not send USDT through TRC20, ERC20 or another network to this address. The sender's exchange or wallet may charge a network withdrawal fee; check it before confirming. A wrong-network transfer may be lost.</p></div>
+        </div>
+        <p class="donation-disclaimer">Donations are voluntary and do not purchase trading returns, investment advice or guaranteed features. This address is a Binance Spot Wallet deposit address; confirm it is still active in Binance before sharing or sending.</p>
+      </section>
+
       <footer><span>QUANTNEX</span><span>Build carefully. Trade responsibly.</span></footer>
     </main>
   </div>
@@ -741,6 +755,7 @@
   <script src="workspace-polish.js?v=20261113-1"></script>
   <script src="welcome-whats-new.js?v=20261113-1"></script>
   <script src="prop-challenge.js"></script>
+  <script src="donation.js?v=20261113-bep20"></script>
   <script src="navigation.js"></script>
 </body>
 </html>

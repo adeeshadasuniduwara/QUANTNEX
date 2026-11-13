@@ -1134,9 +1134,19 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   async function refresh(){
     if(busy)return;busy=true;const button=$id("calendarRefresh");button.disabled=true;status.textContent="Fetching Finnhub economic events…";
     try{
-      const data=await apiRequest("/api/v1/intelligence/news?days="+encodeURIComponent($id("calendarDays").value));
-      if(!data.configured){events=[];rows.replaceChildren();const tr=make("tr"),td=make("td","Finnhub is not configured. Add FINNHUB_API_KEY=your_key to backend/.env on this computer, then restart QUANTNEX Backend.","empty-row");td.colSpan=7;tr.append(td);rows.append(tr);$id("calendarKpis").replaceChildren();status.textContent=data.note||"Finnhub API key is not configured.";return;}
+      const sharedBase=String(window.QUANTNEX_SHARED_NEWS_API_URL||"").trim().replace(/\\/+$/,"");
+      let data;
+      if(sharedBase){
+        const response=await fetch(sharedBase+"/api/economic-calendar?days="+encodeURIComponent($id("calendarDays").value),{headers:{"Accept":"application/json"},cache:"no-store"});
+        data=await response.json().catch(()=>null);
+        if(!response.ok)throw new Error(data?.detail||("Shared news service returned "+response.status+"."));
+      }else{
+        data=await apiRequest("/api/v1/intelligence/news?days="+encodeURIComponent($id("calendarDays").value));
+      }
+      if(!data?.configured){events=[];rows.replaceChildren();const tr=make("tr"),td=make("td",data?.note||"Finnhub news service is not configured yet. See docs/SHARED-NEWS-SERVICE.md for setup.","empty-row");td.colSpan=7;tr.append(td);rows.append(tr);$id("calendarKpis").replaceChildren();status.textContent=data?.note||"Finnhub API key is not configured.";return;}
       events=Array.isArray(data.events)?data.events:[];lastLoadedAt=new Date();render();
+      if(sharedBase)status.textContent="Shared Finnhub feed · "+events.length+" events · Times: Sri Lanka (UTC+5:30) · Updated "+lastLoadedAt.toLocaleTimeString("en-LK")+".";
+
     }catch(error){status.textContent="Calendar unavailable: "+error.message;rows.replaceChildren();const tr=make("tr"),td=make("td","Could not load Finnhub events. Check your local API key, internet connection and provider quota.","empty-row");td.colSpan=7;tr.append(td);rows.append(tr);}
     finally{busy=false;button.disabled=false;}
   }

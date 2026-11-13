@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="signal-tool.css">
   <link rel="stylesheet" href="quantnex-view-intelligence.css">
   <link rel="stylesheet" href="quantnex-view-chart.css">
-  <link rel="stylesheet" href="workspace-pages.css?v=20261113-compact1">
+  <link rel="stylesheet" href="workspace-pages.css?v=20261113-finnhub1">
   <link rel="stylesheet" href="workspace-polish.css?v=20261113-1">
   <link rel="stylesheet" href="welcome-whats-new.css?v=20261113-1">
   <link rel="stylesheet" href="navigation.css?v=20261112-fade1">
@@ -594,10 +594,17 @@
         <div class="p7-table-wrap"><table><thead><tr><th>Market</th><th>Condition</th><th>Target</th><th>Status</th><th>Action</th></tr></thead><tbody id="alertRows"><tr><td colspan="5" class="empty-row">No local alerts created.</td></tr></tbody></table></div>
       </section>
 
-      <section class="section-heading" id="economic-calendar"><div><div class="overline">MACRO DESK · ECONOMIC EVENTS</div><h2>Economic Calendar</h2><p>Upcoming events from the configured calendar provider. Empty results are not replaced with sample events.</p></div><span class="pill">FINNHUB OPTIONAL</span></section>
-      <section class="panel workspace-page-panel">
-        <div class="workspace-page-toolbar"><div><strong>Upcoming macro events</strong><p id="calendarStatus" role="status">Calendar not loaded.</p></div><div class="workspace-page-form compact"><label>Horizon <select id="calendarDays"><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option></select></label><button class="secondary-btn" id="calendarRefresh">Load events</button></div></div>
-        <div class="p7-table-wrap"><table><thead><tr><th>Date / Time</th><th>Country</th><th>Event</th><th>Impact</th><th>Actual</th><th>Forecast</th><th>Previous</th></tr></thead><tbody id="calendarRows"><tr><td colspan="7" class="empty-row">Load the calendar to view provider events.</td></tr></tbody></table></div>
+      <section class="section-heading" id="economic-calendar"><div><div class="overline">MACRO DESK · FINNHUB LIVE DATA</div><h2>Economic Calendar</h2><p>Plan around scheduled macro releases. Event times are displayed in Sri Lanka time (Asia/Colombo).</p></div><span class="pill">FINNHUB FEED</span></section>
+      <section class="panel workspace-page-panel calendar-workspace">
+        <div class="workspace-page-toolbar"><div><strong>Upcoming macro events</strong><p id="calendarStatus" role="status">Calendar not loaded.</p></div><div class="workspace-page-form compact"><label>Horizon <select id="calendarDays"><option value="7">Next 7 days</option><option value="14">Next 14 days</option><option value="30">Next 30 days</option></select></label><button class="secondary-btn" id="calendarRefresh">↻ Refresh calendar</button></div></div>
+        <div class="calendar-kpis" id="calendarKpis"><article><span>Total events</span><strong>—</strong></article><article><span>High impact</span><strong>—</strong></article><article><span>Currencies</span><strong>—</strong></article></div>
+        <div class="calendar-filters">
+          <label>Currency <select id="calendarCurrency"><option value="ALL">All currencies</option><option>USD</option><option>EUR</option><option>GBP</option><option>JPY</option><option>AUD</option><option>CAD</option><option>NZD</option><option>CHF</option><option>CNY</option><option>OTHER</option></select></label>
+          <label>Impact <select id="calendarImpact"><option value="ALL">All impact levels</option><option value="high">High impact</option><option value="medium">Medium impact</option><option value="low">Low impact</option><option value="unknown">Unspecified</option></select></label>
+          <label class="calendar-search">Search event <input id="calendarSearch" type="search" placeholder="e.g. CPI, Nonfarm, FOMC"></label>
+        </div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Date / Time · SL</th><th>Currency</th><th>Event</th><th>Impact</th><th>Actual</th><th>Forecast</th><th>Previous</th></tr></thead><tbody id="calendarRows"><tr><td colspan="7" class="empty-row">Loading Finnhub calendar…</td></tr></tbody></table></div>
+        <p class="p7-note">Actual, forecast and previous values are supplied by Finnhub and may be blank before release. High-impact events can cause volatility and slippage; this calendar is informational, not a trade signal.</p>
       </section>
 
       <section class="section-heading" id="trade-history"><div><div class="overline">RECORDS · PAPER &amp; JOURNAL</div><h2>Trade History</h2><p>Review completed journal entries separately from the QUANTNEX virtual paper ledger.</p></div><span class="pill">LOCAL RECORDS</span></section>
@@ -721,7 +728,7 @@
       <footer><span>QUANTNEX</span><span>Build carefully. Trade responsibly.</span></footer>
     </main>
   </div>
-  <script src="app.js"></script>
+  <script src="app.js?v=20261113-finnhub1"></script>
   <script src="realtime-events.js"></script>
   <script src="workspace-pages.js"></script>
   <script src="phase12-20.js"></script>

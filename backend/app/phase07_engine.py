@@ -187,16 +187,30 @@ async def get_order_book(symbol: str, limit: int=20) -> dict:
             "note":"Snapshot depth only; not full exchange-wide liquidity or executed volume."}
 
 async def get_economic_calendar(days: int=7) -> dict:
+    """Fetch real Finnhub macro events; never substitute synthetic calendar rows."""
     if not FINNHUB_API_KEY:
         return {"configured":False,"provider":"Finnhub","events":[],
-                "note":"Add FINNHUB_API_KEY to backend/.env to enable the economic calendar. No events are fabricated."}
-    today=date.today()
+                "note":"Finnhub is not configured. Add FINNHUB_API_KEY to backend/.env and restart the local QUANTNEX backend."}
+    try:
+        horizon=max(1,min(int(days),30))
+    except (TypeError,ValueError):
+        horizon=7
+    today=datetime.now(timezone.utc).date()
+    start=today.isoformat()
+    end=(today+timedelta(days=horizon)).isoformat()
     async with httpx.AsyncClient(timeout=15) as client:
         data=await _get_json(client,"https://finnhub.io/api/v1/calendar/economic",
-            {"from":today.isoformat(),"to":(today+timedelta(days=max(1,min(days,30)))).isoformat(),"token":FINNHUB_API_KEY})
-    events=data.get("economicCalendar",[]) if isinstance(data,dict) else []
-    return {"configured":True,"provider":"Finnhub","events":events[:500],
-            "timestamp":datetime.now(timezone.utc).isoformat(),"note":"Provider calendar data; verify event time and impact before trading."}
+            {"from":start,"to":end,"token":FINNHUB_API_KEY})
+    if not isinstance(data,dict):
+        raise httpx.HTTPError("Finnhub returned an unexpected calendar response.")
+    events=data.get("economicCalendar",[])
+    if not isinstance(events,list):
+        events=[]
+    events=sorted(events,key=lambda item:str(item.get("time") or item.get("date") or ""))
+    return {"configured":True,"provider":"Finnhub","from":start,"to":end,"events":events[:500],
+            "timestamp":datetime.now(timezone.utc).isoformat(),
+            "timezone":"UTC provider timestamps; QUANTNEX displays Asia/Colombo local time",
+            "note":"Live Finnhub economic calendar. Event times are converted to Sri Lanka time; confirm the release details before trading."}
 
 def calculate_risk(equity: float, risk_percent: float, entry: float, stop_loss: float) -> dict:
     if not all(math.isfinite(x) for x in (equity,risk_percent,entry,stop_loss)) or equity<=0 or not 0<risk_percent<=5 or entry<=0 or stop_loss<=0 or entry==stop_loss:

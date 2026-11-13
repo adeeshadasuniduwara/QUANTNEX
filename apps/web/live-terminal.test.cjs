@@ -96,3 +96,12 @@ assert.match(app, /passive:false/, "Ctrl + wheel must be cancellable to prevent 
 assert.match(workspaceCss, /\.workspace-page-card strong\{font-size:18px/, "Extended workspace metric typography must be more compact");
 assert.match(workspaceCss, /transition:zoom 180ms/, "Workspace zoom must animate smoothly");
 console.log("QUANTNEX Telegram receipt, compact typography and smooth zoom checks passed.");
+
+assert.match(html, /id="economic-calendar"/, "Economic calendar workspace must be present");
+assert.match(html, /id="calendarCurrency"/, "Economic calendar must include currency filtering");
+assert.match(html, /id="calendarImpact"/, "Economic calendar must include impact filtering");
+assert.match(app, /initFinnhubEconomicCalendar/, "Economic calendar workspace must load Finnhub data");
+assert.match(app, /Asia\/Colombo/, "Calendar event times must display in Sri Lanka time");
+assert.match(app, /15\*60\*1000/, "Calendar must refresh automatically every 15 minutes while visible");
+assert.match(workspaceCss, /calendar-impact\.impact-high/, "High-impact events must be visually distinguished");
+console.log("QUANTNEX Finnhub economic calendar workspace checks passed.");

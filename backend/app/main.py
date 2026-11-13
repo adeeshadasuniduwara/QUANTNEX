@@ -252,7 +252,12 @@ def list_journal(limit: int = 100, user: User = Depends(local_workspace), db: Se
 
 @app.post("/api/v1/journal", response_model=TradeResponse, status_code=201)
 def create_journal(payload: TradeCreate, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
-    item = Trade(user_id=user.id, symbol=payload.symbol, direction=payload.direction,
+    created_at = payload.created_at
+    if created_at is not None:
+        created_at = (created_at.replace(tzinfo=timezone.utc) if created_at.tzinfo is None
+                      else created_at.astimezone(timezone.utc))
+    item = Trade(user_id=user.id, created_at=created_at or datetime.now(timezone.utc),
+                 symbol=payload.symbol, direction=payload.direction,
                  outcome=payload.outcome, pnl=payload.pnl, notes=payload.notes)
     db.add(item)
     db.flush()

@@ -8,7 +8,7 @@ QUANTNEX brings trading utilities, trade records and secure integrations togethe
 
 ### Windows EXE automatic updates
 
-The packaged Windows desktop app checks the official GitHub Releases channel at startup and every five minutes while it remains open. When a newer release is available, it downloads the published `QUANTNEX.exe` and verifies its SHA256 checksum before enabling **Install & restart**. The external Windows updater waits for QUANTNEX to close, backs up the currently installed EXE, replaces it, and relaunches the app. If replacement or launch fails, it attempts to restore the previous EXE. The local journal, device ID, wallet and settings are stored separately under `%LOCALAPPDATA%\QUANTNEX` and are not overwritten by the EXE update. Updates require a published GitHub Release containing `QUANTNEX.exe` and `SHA256SUMS.txt`; a source commit or CI artifact alone is not a published EXE update.
+Download the latest packaged build from [GitHub Releases](https://github.com/adeeshadasuniduwara/QUANTNEX/releases). The packaged Windows desktop app checks the official GitHub Releases channel at startup and every five minutes while it remains open. When a newer release is available, it downloads the published `QUANTNEX.exe` and verifies its SHA256 checksum before enabling **Install & restart**. The external Windows updater waits for QUANTNEX to close, backs up the currently installed EXE, replaces it, and relaunches the app. If replacement or launch fails, it attempts to restore the previous EXE. The local journal, device ID, wallet and settings are stored separately under `%LOCALAPPDATA%\QUANTNEX` and are not overwritten by the EXE update. Updates require a published GitHub Release containing `QUANTNEX.exe` and `SHA256SUMS.txt`; a source commit or CI artifact alone is not a published EXE update.
 
 ## Android
 
@@ -16,7 +16,7 @@ The packaged Windows desktop app checks the official GitHub Releases channel at 
 
 Download app-debug.apk from the Artifacts section. This is an early Android starter build, not yet feature-complete.
 
-Build artifacts are temporary and retained for 30 days. The Web Updates panel also links to the current source ZIP; the Updates panel checks the latest main branch commit directly.
+CI build artifacts are temporary and retained for 30 days. Use GitHub Releases for stable public downloads.
 
 ## Applications
 

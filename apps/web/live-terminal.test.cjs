@@ -94,5 +94,5 @@ assert.match(app, /initQuantnexSmoothZoom/, "Ctrl + mouse wheel workspace zoom m
 assert.match(app, /event\.ctrlKey/, "Workspace zoom must respond to Ctrl + mouse wheel");
 assert.match(app, /passive:false/, "Ctrl + wheel must be cancellable to prevent abrupt browser zoom");
 assert.match(workspaceCss, /\.workspace-page-card strong\{font-size:18px/, "Extended workspace metric typography must be more compact");
-assert.match(css, /transition:zoom 180ms/, "Workspace zoom must animate smoothly");
+assert.match(workspaceCss, /transition:zoom 180ms/, "Workspace zoom must animate smoothly");
 console.log("QUANTNEX Telegram receipt, compact typography and smooth zoom checks passed.");

@@ -69,7 +69,7 @@ $("saveTrade").addEventListener("click",async()=>{
   try{
     saved=await apiRequest("/api/v1/journal",{method:"POST",body:JSON.stringify({
       symbol:trade.symbol,direction:trade.direction.toLowerCase(),outcome:trade.outcome.toLowerCase(),pnl:trade.pnl,notes:trade.notes,
-      created_at:new Date(trade.date+"T12:00:00").toISOString()
+      created_at:new Date(trade.date+"T12:00:00").toISOString(),client_ref:trade.client_ref
     })});
   }catch(error){
     journalRowsCache.push(trade);

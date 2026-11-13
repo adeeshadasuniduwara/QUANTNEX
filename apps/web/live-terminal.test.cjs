@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const html = fs.readFileSync("apps/web/index.html", "utf8");
 const app = fs.readFileSync("apps/web/app.js", "utf8");
 const css = fs.readFileSync("apps/web/styles.css", "utf8");
+const workspaceCss = fs.readFileSync("apps/web/workspace-pages.css", "utf8");
 const workspace = fs.readFileSync("apps/web/workspace-pages.js", "utf8");
 const signal = fs.readFileSync("apps/web/signal-tool.js", "utf8");
 const updater = fs.readFileSync("apps/web/quantnex_local_server.py", "utf8");
@@ -92,6 +93,6 @@ assert.ok(app.includes('].join("\\n")'), "Telegram update receipt must use real 
 assert.match(app, /initQuantnexSmoothZoom/, "Ctrl + mouse wheel workspace zoom must be available");
 assert.match(app, /event\.ctrlKey/, "Workspace zoom must respond to Ctrl + mouse wheel");
 assert.match(app, /passive:false/, "Ctrl + wheel must be cancellable to prevent abrupt browser zoom");
-assert.match(css, /\.workspace-page-card strong\{font-size:18px/, "Extended workspace metric typography must be more compact");
+assert.match(workspaceCss, /\.workspace-page-card strong\{font-size:18px/, "Extended workspace metric typography must be more compact");
 assert.match(css, /transition:zoom 180ms/, "Workspace zoom must animate smoothly");
 console.log("QUANTNEX Telegram receipt, compact typography and smooth zoom checks passed.");

@@ -21,7 +21,7 @@ def test_hidden_tools_command_returns_private_catalogue():
 def test_hidden_tools_category_filter_is_private_and_scoped():
     db = MagicMock()
     with patch.object(telegram_worker, "_get", return_value='{"primary":"5","trend":"60","enabled":["5"]}'):
-        result = await telegram_worker._handle_command(
+        result = asyncio.run(telegram_worker._handle_command(
             MagicMock(), db, 1, "token", "12345", "/hidden_tools pdf"
         ))
 
@@ -33,7 +33,7 @@ def test_hidden_tools_category_filter_is_private_and_scoped():
 def test_normal_help_does_not_disclose_hidden_tools():
     db = MagicMock()
     with patch.object(telegram_worker, "_get", return_value='{"primary":"5","trend":"60","enabled":["5"]}'):
-        result = await telegram_worker._handle_command(
+        result = asyncio.run(telegram_worker._handle_command(
             MagicMock(), db, 1, "token", "12345", "/help"
         ))
 

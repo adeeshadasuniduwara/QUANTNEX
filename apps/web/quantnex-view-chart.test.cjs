@@ -31,3 +31,13 @@ assert.match(js, /readyState===WebSocket\.OPEN&&lastFeedMessageAt&&Date\.now\(\)
 console.log("QUANTNEX market-switch and resume recovery checks passed.");
 
 assert.ok(js.includes('bars.stale?" · STALE DATA":" · FRESH"'), "Chart must visibly distinguish stale market candles from fresh data.");
+
+
+assert.match(js, /indicatorCacheRevision===candleRevision/, "Indicator arrays must be reused between redraws when candle data is unchanged.");
+assert.match(js, /canvas\.width!==width/, "Canvas backing-store dimensions must only change when the actual size changes.");
+assert.match(js, /function scheduleDraw\(\).*requestAnimationFrame/, "High-frequency market ticks must coalesce chart redraws to animation frames.");
+assert.match(js, /candleRevision\+\+/, "New or updated candles must invalidate the indicator cache.");
+assert.match(js, /cancelAnimationFrame\(drawFrame\)/, "Pending chart redraws must be cancelled when leaving the chart.");
+console.log("QUANTNEX chart redraw performance regression checks passed.");
+
+assert.ok(html.includes("quantnex-view-chart.js?v=20261113-chart-redraw2"), "Chart redraw performance fix must invalidate the cached chart asset.");

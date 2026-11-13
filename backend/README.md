@@ -143,3 +143,12 @@ Phase 07 adds a multi-market intelligence layer while preserving the local-only,
 - Forward evaluation records a live candle observation only; it does not open paper or broker positions. The Research page aggregates these records and closed paper-trade statistics.
 - The new strategy_lab_runs table is additive. Existing Wallet, Journal, preferences, Telegram settings and paper-trade data are preserved.
 - No automatic machine-learning training, broker integration, login flow or real-money execution is added. See docs/PHASE_08_STRATEGY_LAB.md.
+
+## Prop Firm Challenge Simulator
+
+- Challenge configuration and virtual practice results use the existing local preferences store; no cloud account or new database table is introduced.
+- Virtual mode records manually entered closed-trade P&L and applies configured daily loss, maximum loss, profit target, minimum trading days, timezone and static/trailing drawdown rules. It does not model floating P&L.
+- Optional MT5 mode is Windows-only and requires the installed MetaTrader 5 terminal and optional MetaTrader5 Python package.
+- Only DEMO accounts are accepted. REAL and CONTEST accounts are rejected. MT5 credentials are used only for the local in-memory connection and are not written to the database or browser storage.
+- The local guardian polls while the backend is running. On a daily or overall loss breach it locks the challenge and attempts to close open DEMO positions; broker rejection, terminal/network failure or backend shutdown can prevent closure.
+- No order-opening endpoint or live account execution path is exposed.

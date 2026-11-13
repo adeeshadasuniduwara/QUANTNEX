@@ -103,7 +103,7 @@ private fun QuantnexApp(
 ) {
     var url by remember { mutableStateOf(savedUrl) }
     var editUrl by remember { mutableStateOf(savedUrl) }
-    var settings by remember { mutableStateOf(savedUrl.isBlank()) }
+    var showSettings by remember { mutableStateOf(savedUrl.isBlank()) }
     var release by remember { mutableStateOf<JSONObject?>(null) }
     var active by remember { mutableStateOf("overview") }
     var error by remember { mutableStateOf("") }
@@ -117,7 +117,7 @@ private fun QuantnexApp(
                 Text("TRADING WORKSPACE", color=Muted, fontSize=9.sp, letterSpacing=1.4.sp)
             }
             IconButton(onClick=onReload) { Icon(Icons.Default.Refresh, "Refresh", tint=Accent) }
-            IconButton(onClick={ editUrl=url; settings=true }) { Icon(Icons.Default.Settings, "Workspace settings", tint=Color.White) }
+            IconButton(onClick={ editUrl=url; showSettings=true }) { Icon(Icons.Default.Settings, "Workspace settings", tint=Color.White) }
         }
         release?.let { data ->
             val apk = apkUrl(data)
@@ -139,7 +139,7 @@ private fun QuantnexApp(
                 Spacer(Modifier.height(12.dp))
                 Button(onClick={
                     val v=editUrl.trim().trimEnd('/')
-                    if(v.startsWith("https://")) { url=v; onSaveUrl(v); settings=false }
+                    if(v.startsWith("https://")) { url=v; onSaveUrl(v); showSettings=false }
                 }, modifier=Modifier.fillMaxWidth(), colors=ButtonDefaults.buttonColors(containerColor=Accent, contentColor=Bg)) { Text("CONNECT WORKSPACE") }
                 Text("Your PC's localhost address cannot be opened from a phone. Host the Web workspace on a reachable HTTPS server first.", color=Muted, fontSize=11.sp)
             }
@@ -184,12 +184,12 @@ private fun QuantnexApp(
             }
         }
     }
-    if(settings && url.isNotBlank()) AlertDialog(
-        onDismissRequest={ settings=false }, containerColor=Panel,
+    if(showSettings && url.isNotBlank()) AlertDialog(
+        onDismissRequest={ showSettings=false }, containerColor=Panel,
         title={ Text("Workspace settings", color=Color.White) },
         text={ OutlinedTextField(editUrl, { editUrl=it }, singleLine=true, label={ Text("HTTPS workspace URL") }) },
-        confirmButton={ TextButton(onClick={ val v=editUrl.trim().trimEnd('/'); if(v.startsWith("https://")) { url=v; onSaveUrl(v); settings=false } }) { Text("SAVE", color=Accent) } },
-        dismissButton={ TextButton(onClick={ settings=false }) { Text("CANCEL", color=Muted) } }
+        confirmButton={ TextButton(onClick={ val v=editUrl.trim().trimEnd('/'); if(v.startsWith("https://")) { url=v; onSaveUrl(v); showSettings=false } }) { Text("SAVE", color=Accent) } },
+        dismissButton={ TextButton(onClick={ showSettings=false }) { Text("CANCEL", color=Muted) } }
     )
 }
 

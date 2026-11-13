@@ -127,3 +127,5 @@ assert.match(app, /isWorkspaceViewActive\("news-intelligence"\)\)loadNews\(\)/, 
 assert.match(app, /setInterval\(\(\)=>\{if\(isWorkspaceViewActive\("paper-trading"\)\)loadPaper\(\);\},20000\)/, "Paper polling must use a lower-frequency 20-second cadence.");
 assert.match(app, /function stopBookFeed\(/, "Order-book sockets and timers must be cleaned up when leaving their workspace.");
 console.log("QUANTNEX active-workspace polling and cleanup checks passed.");
+
+assert.match(html, /app\.js\?v=20261113-active-workspace-polling1/, "Workspace polling fixes must invalidate the cached app.js asset.");

@@ -20,3 +20,7 @@ assert.match(js, /Date\.now\(\)-lastFeedMessageAt>30000/, "Stale WebSocket feeds
 assert.match(js, /LIVE FEED STALE · RECONNECTING/, "Stale feed recovery must be visible to users.");
 assert.match(js, /document\.addEventListener\("visibilitychange"/, "Live feed must recover when the workspace becomes visible again.");
 console.log("QUANTNEX VIEW feed recovery checks passed.");
+
+assert.match(js, /reconnectAttempts=0;stopFeed\(\);feedState=/, "Changing markets must reset the prior market retry backoff.");
+assert.match(js, /readyState===WebSocket\.OPEN&&lastFeedMessageAt&&Date\.now\(\)-lastFeedMessageAt>30000/, "A stale open feed must be checked immediately when the workspace becomes visible.");
+console.log("QUANTNEX market-switch and resume recovery checks passed.");

@@ -403,7 +403,7 @@ class App(tk.Tk):
         self.update_status.pack(anchor="w",pady=14)
         self.update_progress=ttk.Progressbar(self.updates,mode="indeterminate",length=420,style="Horizontal.TProgressbar")
         ttk.Label(self.updates,text="SOURCE MODE: GIT SYNC  •  EXE MODE: RELEASE DOWNLOAD + SHA256 VERIFICATION",style="Muted.TLabel").pack(anchor="w",pady=(8,4))
-        self.install_button=ttk.Button(self.updates,text="Install verified update and restart",command=self._install_update)
+        self.install_button=ttk.Button(self.updates,text="Download & install update",command=self._install_update)
 
     def _set_update_status(self, message):
         def finish():
@@ -412,6 +412,7 @@ class App(tk.Tk):
             self.update_progress.pack_forget()
             self.update_check_running = False
             self.check_button.configure(state="normal")
+            self.after(300000, self._check_background)
         self.after(0, finish)
 
     def _check_background(self):
@@ -508,8 +509,9 @@ class App(tk.Tk):
                 staged.unlink(missing_ok=True)
                 raise ValueError("Update SHA256 verification failed. The downloaded file was rejected.")
             self.staged_update=staged
+            self.after(0,lambda:self.install_button.configure(text="Install "+latest+" & restart"))
             self.after(0,lambda:self.install_button.pack(anchor="w",pady=(10,0)))
-            self._set_update_status("Version "+latest+" downloaded. Review release notes, then choose Install and restart.")
+            self._set_update_status("New QUANTNEX version "+latest+" detected and downloaded. SHA256 verification passed. Select Install & restart to apply it safely. Your local journal and settings remain in AppData.")
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
                 self._set_update_status("No official QUANTNEX release has been published yet. Your app is not broken. Source mode can update through Git; packaged EXE updates will become available after the first GitHub Release is published.")
@@ -535,19 +537,51 @@ class App(tk.Tk):
             return
         target=Path(sys.executable).resolve()
         staged=self.staged_update.resolve()
-        backup=target.with_name(target.stem+".previous.exe")
-        helper=app_data()/"updates"/"apply_update.cmd"
-        helper.write_text(
-            "@echo off\r\nsetlocal EnableDelayedExpansion\r\n"
-            "set \"TARGET="+str(target)+"\"\r\n"
-            "set \"STAGED="+str(staged)+"\"\r\n"
-            "set \"BACKUP="+str(backup)+"\"\r\n"
-            "timeout /t 2 /nobreak >nul\r\ncopy /y \"%TARGET%\" \"%BACKUP%\" >nul\r\n"
-            "set TRY=0\r\n:retry\r\ncopy /y \"%STAGED%\" \"%TARGET%\" >nul\r\n"
-            "if errorlevel 1 (set /a TRY+=1 & if !TRY! LSS 20 (timeout /t 1 /nobreak >nul & goto retry) else (exit /b 1))\r\n"
-            "start \"\" \"%TARGET%\"\r\ndel \"%STAGED%\"\r\nendlocal\r\n",
-            encoding="utf-8")
-        subprocess.Popen(["cmd.exe","/c",str(helper)],creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
+        update_dir=app_data()/"updates"
+        update_dir.mkdir(parents=True,exist_ok=True)
+        helper=update_dir/"apply_update.ps1"
+        config=update_dir/"apply_update.json"
+        config.write_text(json.dumps({
+            "target":str(target),
+            "staged":str(staged),
+            "pid":os.getpid()
+        }),encoding="utf-8")
+        helper.write_text(r"""
+$ErrorActionPreference = "Stop"
+$config = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "apply_update.json") | ConvertFrom-Json
+$target = [IO.Path]::GetFullPath([string]$config.target)
+$staged = [IO.Path]::GetFullPath([string]$config.staged)
+$backup = $target + ".previous.exe"
+$temp = $target + ".new"
+$processId = [int]$config.pid
+# Wait until the current app has fully exited before touching the running EXE.
+for ($i = 0; $i -lt 180; $i++) {
+    if (-not (Get-Process -Id $processId -ErrorAction SilentlyContinue)) { break }
+    Start-Sleep -Milliseconds 500
+}
+if (Get-Process -Id $processId -ErrorAction SilentlyContinue) { throw "QUANTNEX did not close in time." }
+if (-not (Test-Path -LiteralPath $staged -PathType Leaf)) { throw "Verified update file is missing." }
+Copy-Item -LiteralPath $staged -Destination $temp -Force
+if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Force }
+$hadOriginal = Test-Path -LiteralPath $target -PathType Leaf
+try {
+    if ($hadOriginal) { Move-Item -LiteralPath $target -Destination $backup -Force }
+    Move-Item -LiteralPath $temp -Destination $target -Force
+    Start-Process -FilePath $target
+    Remove-Item -LiteralPath $staged -Force -ErrorAction SilentlyContinue
+} catch {
+    if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue }
+    if ($hadOriginal -and (Test-Path -LiteralPath $backup)) {
+        Move-Item -LiteralPath $backup -Destination $target -Force
+        Start-Process -FilePath $target
+    }
+    throw
+} finally {
+    Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+}
+""",encoding="utf-8")
+        subprocess.Popen(["powershell.exe","-NoProfile","-ExecutionPolicy","Bypass","-File",str(helper)],
+            creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
         self.destroy()
 
 if __name__ == "__main__":

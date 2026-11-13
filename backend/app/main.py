@@ -974,7 +974,7 @@ async def strategy_lab_optimize(payload: dict, user: User = Depends(local_worksp
         info=market_info(payload.get("symbol","BTCUSDT"))
         timeframe=payload.get("timeframe","15m")
         if timeframe not in {"5m","15m","1h","4h"}: raise ValueError("Unsupported timeframe. Choose 5m, 15m, 1h or 4h.")
-        candles=await get_candles(info["symbol"],timeframe,500)
+        candles=_closed_strategy_candles(await get_candles(info["symbol"],timeframe,500),timeframe)
         result=optimize(candles)
     except (ValueError,TypeError) as exc:
         raise HTTPException(status_code=422,detail=str(exc))
@@ -996,7 +996,7 @@ async def strategy_lab_forward_evaluate(payload: dict, user: User = Depends(loca
         timeframe=payload.get("timeframe","15m")
         if timeframe not in {"5m","15m","1h","4h"}: raise ValueError("Unsupported timeframe. Choose 5m, 15m, 1h or 4h.")
         strategy=validate_strategy(payload.get("strategy") or {})
-        candles=await get_candles(info["symbol"],timeframe,250)
+        candles=_closed_strategy_candles(await get_candles(info["symbol"],timeframe,250),timeframe)
     except (ValueError,TypeError) as exc:
         raise HTTPException(status_code=422,detail=str(exc))
     except Exception as exc:

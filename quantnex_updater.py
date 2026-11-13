@@ -200,7 +200,7 @@ def check_and_apply(root: Path) -> dict:
     if comparison.get("status") not in ("ahead", "identical") or comparison.get("too_large"):
         raise UpdateError("The update history is not a safe incremental patch; existing files were left unchanged.")
     changes = comparison.get("files") or []
-    if len(changes) > MAX_FILES:
+    if len(changes) >= MAX_FILES:
         raise UpdateError("The update exceeds the incremental file-count safety limit.")
 
     planned = []

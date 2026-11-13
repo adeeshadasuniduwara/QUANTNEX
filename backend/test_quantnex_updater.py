@@ -67,6 +67,7 @@ def test_safe_destination_rejects_existing_symlink_escape(tmp_path):
 
 def test_web_archive_path_validation_rejects_windows_traversal(monkeypatch, tmp_path):
     import importlib.util
+    import pytest
     from pathlib import PurePosixPath
 
     web_path = Path(__file__).resolve().parents[1] / "apps" / "web" / "quantnex_local_server.py"

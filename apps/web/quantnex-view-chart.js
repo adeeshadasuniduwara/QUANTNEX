@@ -2,7 +2,7 @@
 "use strict";
 const $=id=>document.getElementById(id),host=$("qxChartHost");
 if(!host||typeof apiRequest!=="function")return;
-let chart=null,series=null,volume=null,emaLines={},overlay=null,ctx=null,candles=[],analysis=null,busy=false,observer=null;
+let chart=null,series=null,volume=null,emaLines={},overlay=null,ctx=null,candles=[],analysis=null,busy=false,observer=null,tradeLines=[];
 const palette={bull:"#22c997",bear:"#f05d68",fvg:"#4a9cff",ob:"#c18cff",breaker:"#f4b860",sr:"#e6c85c"};
 const stamp=v=>{let s=String(v||"");if(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?$/.test(s))s+="Z";let n=Date.parse(s);return Number.isFinite(n)?Math.floor(n/1000):null;};
 const fmt=v=>Number(v).toLocaleString(undefined,{maximumFractionDigits:8});
@@ -51,6 +51,23 @@ function drawOverlay(){
  if($("qxOverlaySR")?.checked!==false){line("RESISTANCE",st.swing_high,palette.sr);line("SUPPORT",st.swing_low,palette.sr);line("EQUILIBRIUM",st.equilibrium,"rgba(190,198,210,.7)");}
  if($("qxOverlayStructure")?.checked!==false){const last=candles.at(-1),x=ts.timeToCoordinate(last.time),y=series.priceToCoordinate(last.close),labels=[st.bos_mss!=="NONE"?"BOS "+st.bos_mss:"",st.liquidity_sweep!=="NONE"?"LIQUIDITY SWEEP "+st.liquidity_sweep:""].filter(Boolean).join(" · ");if(labels&&x!==null&&y!==null){ctx.fillStyle="#e9edf5";ctx.font="600 10px Inter,system-ui,sans-serif";ctx.fillText(labels,Math.max(6,x-155),Math.max(14,y-17));}}
 }
+window.quantnexViewSetTradePlan=function(plan){
+ if(!series)return;
+ tradeLines.forEach(line=>{try{series.removePriceLine(line);}catch{}});
+ tradeLines=[];
+ if(!plan)return;
+ const levels=[
+  ["ENTRY",plan.entry,"#e6c85c"],
+  ["STOP LOSS",plan.stop_loss,"#f05d68"],
+  ["TP1",plan.tp1,"#22c997"],["TP2",plan.tp2,"#22c997"],["TP3",plan.tp3,"#22c997"]
+ ];
+ levels.forEach(([title,value,color])=>{
+  if(!Number.isFinite(Number(value)))return;
+  tradeLines.push(series.createPriceLine({price:Number(value),color,lineWidth:title==="ENTRY"?2:1,
+   lineStyle:title==="ENTRY"?0:2,axisLabelVisible:true,title}));
+ });
+ drawOverlay();
+};
 function renderAnalysis(data){
  analysis=data;const f=data.features||{},st=f.structure||{},summary=$("qxChartIntelSummary");
  if(summary){const s=data.signal;summary.textContent=s?s.side+" · Entry "+fmt(s.entry)+" · SL "+fmt(s.stop_loss)+" · TP1 "+fmt(s.tp1)+" / TP2 "+fmt(s.tp2)+" / TP3 "+fmt(s.tp3):"WAITING FOR CONFIRMATION · "+data.confluence_score+"/"+data.score_out_of+" confluence. No trade plan is active.";}

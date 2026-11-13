@@ -126,7 +126,20 @@ if(sessionStorage.getItem("quantnex.webUpdateComplete")==="1"){
   sessionStorage.removeItem("quantnex.webUpdateHeadline");
   const announceInstalledUpdate=()=>{
     showUpdateToast("✓ QUANTNEX has been updated successfully.");
-    const message="QUANTNEX — UPDATE INSTALLED\\n\\nVersion: "+installedVersion+"\\nUpdate: "+installedHeadline+"\\n\\nYour QUANTNEX Web workspace was updated successfully. Your local wallet, journal and settings were kept separate.";
+    const safeVersion=String(installedVersion||"latest").slice(0,80);
+    const safeHeadline=String(installedHeadline||"Workspace improvements").replace(/\\s+/g," ").slice(0,120);
+    const message=[
+      "✦ QUANTNEX",
+      "WEB UPDATE INSTALLED",
+      "",
+      "Version: "+safeVersion,
+      "Update: "+safeHeadline,
+      "",
+      "✓ Workspace updated successfully",
+      "✓ Wallet, journal and settings preserved",
+      "",
+      "You're all set. Trade responsibly."
+    ].join("\\n");
     // The local API uses the user's existing encrypted bot credentials. A missing
     // Telegram connection is an intentional opt-out and does not affect the update.
     apiRequest("/api/v1/telegram/notify",{method:"POST",body:JSON.stringify({message})}).catch(()=>{});
@@ -1081,4 +1094,29 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   }else panelVisible=true;
   document.addEventListener("visibilitychange",()=>{if(!document.hidden&&panelVisible)update();});
   update();window.setInterval(update,1000);
+})();
+
+// Smooth workspace zoom: Ctrl + mouse wheel (kept local to this browser).
+(function initQuantnexSmoothZoom(){
+  const key="quantnex.uiZoom";
+  const min=0.8,max=1.2,step=0.05;
+  let zoom=1;
+  try{
+    const saved=Number(localStorage.getItem(key));
+    if(Number.isFinite(saved)&&saved>=min&&saved<=max)zoom=saved;
+  }catch{}
+  const apply=()=>{
+    document.documentElement.style.zoom=String(zoom);
+    try{localStorage.setItem(key,String(zoom));}catch{}
+  };
+  apply();
+  window.addEventListener("wheel",event=>{
+    if(!event.ctrlKey)return;
+    event.preventDefault();
+    const direction=event.deltaY<0?1:-1;
+    const next=Math.max(min,Math.min(max,Math.round((zoom+direction*step)*100)/100));
+    if(next===zoom)return;
+    zoom=next;
+    apply();
+  },{passive:false});
 })();

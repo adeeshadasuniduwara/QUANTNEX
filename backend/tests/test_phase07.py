@@ -38,3 +38,14 @@ def test_paper_sell_trade_closes_at_stop_or_target():
     assert exit_reason(trade,106)=="STOP_LOSS"
     assert exit_reason(trade,89)=="TAKE_PROFIT"
     assert exit_reason(trade,100) is None
+
+import asyncio
+import app.phase07_engine as phase07_engine
+
+def test_economic_calendar_does_not_fabricate_events_without_api_key(monkeypatch):
+    monkeypatch.setattr(phase07_engine, "FINNHUB_API_KEY", "")
+    result = asyncio.run(phase07_engine.get_economic_calendar(7))
+    assert result["configured"] is False
+    assert result["provider"] == "Finnhub"
+    assert result["events"] == []
+    assert "backend/.env" in result["note"]

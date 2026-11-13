@@ -26,7 +26,10 @@ def advanced_performance(trades, period_days=0, now=None):
         if getattr(trade,"status",None)!="CLOSED" or getattr(trade,"realized_pnl",None) is None:
             continue
         stamp=_time(getattr(trade,"closed_at",None) or getattr(trade,"created_at",None))
-        if stamp is None: continue
+        # A close time in the future is invalid ledger data, not a recent trade.
+        # Exclude it for every period, including all-history, so clock/import
+        # mistakes cannot inflate the user's performance statistics.
+        if stamp is None or stamp > now: continue
         if period_days and (now-stamp).total_seconds()>period_days*86400: continue
         pnl=_value(trade.realized_pnl)
         risk=abs(_value(trade.entry_price)-_value(trade.stop_loss))*_value(trade.quantity)

@@ -27,7 +27,7 @@ function eventDay(event) {
   const raw = event?.time ?? event?.date;
   if (typeof raw === "number" || /^\d{10,13}$/.test(String(raw || ""))) {
     const numeric = Number(raw);
-    return new Date(numeric * (String(raw).length === 13 ? 0.001 : 1)).toISOString().slice(0, 10);
+    return new Date(numeric * (String(raw).length === 13 ? 1 : 1000)).toISOString().slice(0, 10);
   }
   return String(raw || "").slice(0, 10);
 }

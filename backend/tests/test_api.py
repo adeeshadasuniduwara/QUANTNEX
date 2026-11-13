@@ -332,3 +332,37 @@ def test_chart_quote_marks_twelve_data_price_stale_for_short_timeframes(monkeypa
     assert response.status_code == 200
     assert response.json()["stale"] is True
     assert response.json()["stale_after_seconds"] == 120
+
+def test_smart_open_gold_quote_uses_chart_provider(monkeypatch):
+    import asyncio
+    from datetime import datetime, timezone
+
+    calls = []
+    async def fake_chart_quote(symbol, interval):
+        calls.append((symbol, interval))
+        stamp = datetime.now(timezone.utc).isoformat()
+        return {"symbol": symbol, "price": 2345.6, "provider": "MetaTrader 5 local terminal",
+                "source_timestamp": stamp, "timestamp": stamp, "stale": False}
+
+    monkeypatch.setattr(main_module, "chart_quote", fake_chart_quote)
+    quote = asyncio.run(main_module._smart_open_quote({"symbol": "XAUUSD", "kind": "gold"}))
+    assert calls == [("XAUUSD", "15m")]
+    assert quote["price"] == 2345.6
+    assert quote["provider"] == "MetaTrader 5 local terminal"
+    assert quote["kind"] == "gold"
+
+
+def test_smart_open_gold_blocks_stale_chart_provider_quote(monkeypatch):
+    import asyncio
+    from fastapi import HTTPException
+
+    async def fake_chart_quote(_symbol, _interval):
+        return {"symbol": "XAUUSD", "price": 2345.6, "provider": "MetaTrader 5 local terminal", "stale": True}
+
+    monkeypatch.setattr(main_module, "chart_quote", fake_chart_quote)
+    try:
+        asyncio.run(main_module._smart_open_quote({"symbol": "XAUUSD", "kind": "gold"}))
+    except HTTPException as exc:
+        assert exc.status_code == 503
+    else:
+        raise AssertionError("Stale Gold quote must block paper entry.")

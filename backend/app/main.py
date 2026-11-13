@@ -1055,10 +1055,21 @@ def risk_stress(payload: dict, user: User = Depends(local_workspace), db: Sessio
     except (ValueError,TypeError) as exc:
         raise HTTPException(status_code=422,detail=str(exc))
 
+async def _smart_open_quote(info: dict) -> dict:
+    """Use the same configured XAUUSD provider as chart history for paper entries."""
+    from .phase07_engine import get_quote
+    if info["symbol"] == "XAUUSD":
+        quote = await chart_quote("XAUUSD", "15m")
+        if quote.get("stale"):
+            raise HTTPException(status_code=503, detail="The configured Gold quote is stale; paper entry is blocked.")
+        return {**quote, "kind": info["kind"]}
+    return await get_quote(info["symbol"])
+
+
 @app.post("/api/v1/paper-trading/smart-open",status_code=201)
 async def smart_open_paper_trade(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     """Risk-checked paper entry; explicit multiplier required; never sends broker orders."""
-    from .phase07_engine import get_quote, market_info, IntelligenceDataError
+    from .phase07_engine import market_info, IntelligenceDataError
     from .phase09_engine import calculate_position_size, drawdown_guard
     try:
         info=market_info(str(payload.get("symbol","")))
@@ -1071,7 +1082,7 @@ async def smart_open_paper_trade(payload: dict, user: User = Depends(local_works
             payload.get("max_drawdown_percent",8),payload.get("max_consecutive_losses",4))
         if not guard["trading_allowed"]:
             raise HTTPException(status_code=409,detail={"message":"Risk Guardian blocked this paper entry.","guardian":guard})
-        quote=await get_quote(info["symbol"])
+        quote=await _smart_open_quote(info)
         from .phase10_engine import execution_gate
         data_gate=execution_gate(quote)
         if not data_gate["allowed"]:
@@ -1088,7 +1099,7 @@ async def smart_open_paper_trade(payload: dict, user: User = Depends(local_works
             entry_price=entry,stop_loss=stop,take_profit=target,status="OPEN")
         db.add(item); db.flush()
         record_audit_event(db,"phase09.smart_paper_trade.opened",{"trade_id":item.id,"symbol":item.symbol,
-            "side":side,"quantity":quantity,"risk_amount":sizing["risk_amount"],"mode":"paper"})
+            "side":side,"quantity":quantity,"risk_amount":sizing["risk_amount"],"provider":quote.get("provider"),"mode":"paper"})
         db.commit(); db.refresh(item)
         event_hub.publish("paper_trade.changed", "paper_trade", "opened", {"trade_id": item.id, "symbol": item.symbol, "side": item.side, "status": item.status, "source": "risk_guardian"})
         return {"id":item.id,"symbol":item.symbol,"side":side,"quantity":quantity,"entry_price":entry,

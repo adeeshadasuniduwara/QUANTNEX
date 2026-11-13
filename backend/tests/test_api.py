@@ -475,3 +475,48 @@ def test_journal_creation_normalizes_timezone_aware_local_dates():
     assert created.status_code == 201
     assert created.json()["created_at"].startswith("2026-11-14T04:00:00")
     assert client.delete(f"/api/v1/journal/{created.json()['id']}").status_code == 204
+
+def test_journal_create_is_idempotent_when_http_response_is_lost():
+    client = TestClient(app)
+    before = client.get("/api/v1/wallet/summary").json()
+    client_ref = "web-create-idempotency-ref-2026"
+    payload = {
+        "symbol": "XAUUSD",
+        "direction": "buy",
+        "outcome": "win",
+        "pnl": 12.50,
+        "created_at": "2026-11-14T12:00:00+08:00",
+        "client_ref": client_ref,
+        "notes": "idempotent online create",
+    }
+
+    first = client.post("/api/v1/journal", json=payload)
+    second = client.post("/api/v1/journal", json=payload)
+    assert first.status_code == 201 and second.status_code == 201
+    assert first.json()["id"] == second.json()["id"]
+
+    after_create = client.get("/api/v1/wallet/summary").json()
+    assert round(after_create["balance"] - before["balance"], 2) == 12.50
+
+    imported = client.post("/api/v1/journal/import", json={
+        "source_id": "web-offline-retry-source-2026",
+        "rows": [{
+            "source_ref": client_ref,
+            "date": "2026-11-14T12:00:00+08:00",
+            "symbol": "XAUUSD",
+            "direction": "buy",
+            "outcome": "win",
+            "pnl": 12.50,
+            "record_wallet": True,
+            "notes": "idempotent online create",
+        }],
+    })
+    assert imported.status_code == 200 and imported.json()["imported"] == 0
+
+    trade_id = first.json()["id"]
+    assert client.delete(f"/api/v1/journal/{trade_id}").status_code == 204
+    assert client.get("/api/v1/wallet/summary").json() == before
+
+    replay_after_delete = client.post("/api/v1/journal", json=payload)
+    assert replay_after_delete.status_code == 409
+    assert client.get("/api/v1/wallet/summary").json() == before

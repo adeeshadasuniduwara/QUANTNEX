@@ -55,3 +55,9 @@ assert.match(js, /goldQuoteTimer=setInterval\(\(\)=>\{if\(!document\.hidden&&isC
 assert.match(js, /document\.hidden\|\|!isChartViewActive\(\)\|\|selected\(\)\.symbol!=="XAUUSD"/, "Gold quote requests must stop while the browser tab is hidden.");
 
 assert.match(js, /charts\/quote\?symbol=XAUUSD&interval=\"\+encodeURIComponent\(pick\.interval\)/, "Gold quote freshness must use the selected chart timeframe.");
+
+assert.match(js, /recovering=reconnectAttempts>0/, "The chart must distinguish first connect from WebSocket recovery.");
+assert.match(js, /if\(recovering\)loadHistory\(\)/, "A reconnect must backfill candles missed while the WebSocket was offline.");
+assert.match(js, /const liveTail=candles\.filter\(c=>c\.time>=unique\.at\(-1\)\.time\)/, "REST backfill must preserve newer live candle updates.");
+assert.doesNotMatch(js, /historyTimer=setInterval/, "The chart must not download 1,000 historical candles every minute while a live WebSocket is active.");
+console.log("QUANTNEX chart reconnect backfill and low-polling checks passed.");

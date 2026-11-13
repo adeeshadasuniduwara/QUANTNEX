@@ -12,7 +12,7 @@ A Windows PC localhost URL is not reachable from an Android phone. The web works
 ## Updates
 The app checks GitHub's latest release on launch. If that release contains an APK asset, the app downloads it and opens Android's package installer. Android requires the user to approve installation; silent self-install is not available to ordinary apps.
 
-All production APK versions must use the same private signing key. Keep the key outside GitHub and configure secure release signing before publishing production updates. CI debug APKs are for testing and are not guaranteed to be update-compatible across different CI builds.
+All production APK versions must use the same private PKCS#12 signing keystore. Never commit the keystore. Configure these GitHub Actions repository secrets before publishing a release: `ANDROID_KEYSTORE_BASE64` (base64-encoded `.p12` file), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD`. The release workflow builds and attaches `QUANTNEX-Android.apk` to the GitHub Release. The current CI debug APK uses a different debug signature; uninstall that test APK before installing the first production-signed APK. Later signed releases will be update-compatible as long as the same keystore is retained.
 
 ## Build
 JDK 17, Android SDK 35, Android Gradle Plugin 8.7.3. From this directory run `gradle --no-daemon assembleDebug`.

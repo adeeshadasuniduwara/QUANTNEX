@@ -1,6 +1,7 @@
 """Local-only database backup, integrity verification and audit helpers."""
 from __future__ import annotations
 import asyncio, hashlib, hmac, json, logging, os, re, sqlite3, tempfile, time
+from threading import RLock
 from datetime import datetime, timezone
 from pathlib import Path
 from contextlib import closing
@@ -10,6 +11,7 @@ from .config import DATABASE_URL
 from .database import SessionLocal
 
 BACKUP_RETENTION = 14
+DATABASE_MAINTENANCE_LOCK = RLock()
 BACKUP_DIR = Path(__file__).resolve().parents[2] / "data" / "backups"
 _BACKUP_NAME = re.compile(r"^quantnex-(?:pre-restore-)?[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}\.sqlite3$")
 
@@ -126,7 +128,7 @@ def _latest_backup_is_fresh(backup_dir: Path = BACKUP_DIR, now: float | None = N
         return False
 
 
-def create_backup(database_url: str, backup_dir: Path = BACKUP_DIR, prune: bool = True) -> dict:
+def _create_backup_unlocked(database_url: str, backup_dir: Path = BACKUP_DIR, prune: bool = True) -> dict:
     source_path = sqlite_database_path(database_url)
     if not source_path.is_file():
         raise FileNotFoundError("The configured SQLite database file does not exist yet.")
@@ -153,6 +155,12 @@ def create_backup(database_url: str, backup_dir: Path = BACKUP_DIR, prune: bool 
         destination.with_suffix(destination.suffix + ".sha256").unlink(missing_ok=True)
         raise
 
+def create_backup(database_url: str, backup_dir: Path = BACKUP_DIR, prune: bool = True) -> dict:
+    """Serialize backup creation with restore and other database maintenance."""
+    with DATABASE_MAINTENANCE_LOCK:
+        return _create_backup_unlocked(database_url, backup_dir, prune)
+
+
 def list_backups(backup_dir: Path = BACKUP_DIR) -> list[dict]:
     if not backup_dir.exists():
         return []
@@ -166,7 +174,7 @@ def list_backups(backup_dir: Path = BACKUP_DIR) -> list[dict]:
         result.append(item)
     return result
 
-def restore_backup(filename: str, database_url: str, engine, backup_dir: Path = BACKUP_DIR) -> dict:
+def _restore_backup_unlocked(filename: str, database_url: str, engine, backup_dir: Path = BACKUP_DIR) -> dict:
     verified = verify_backup(filename, backup_dir)
     database_path = sqlite_database_path(database_url)
     database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -194,6 +202,12 @@ def restore_backup(filename: str, database_url: str, engine, backup_dir: Path = 
     _prune_backups(backup_dir, protect={filename})
     return {"restored": filename, "verified": verified["verified"], "pre_restore_backup": safety}
 
+def restore_backup(filename: str, database_url: str, engine, backup_dir: Path = BACKUP_DIR) -> dict:
+    """Wait for any in-flight backup before replacing the SQLite database."""
+    with DATABASE_MAINTENANCE_LOCK:
+        return _restore_backup_unlocked(filename, database_url, engine, backup_dir)
+
+
 def record_audit_event(db: Session, event_type: str, details: dict | None = None, severity: str = "info") -> None:
     payload = json.dumps(details or {}, ensure_ascii=True, separators=(",", ":"))[:2000]
     db.add(AuditEvent(event_type=event_type[:80], severity=severity[:16], details=payload))
@@ -208,7 +222,7 @@ async def daily_backup_worker() -> None:
                 # Full verification happens on creation and before restore.
                 # Do not re-hash every retained database during hourly polling.
                 if not _latest_backup_is_fresh():
-                    result = create_backup(DATABASE_URL)
+                    result = await asyncio.to_thread(create_backup, DATABASE_URL)
                     with SessionLocal() as db:
                         record_audit_event(db, "backup.daily_created",
                                             {"filename": result["filename"], "size_bytes": result["size_bytes"]})

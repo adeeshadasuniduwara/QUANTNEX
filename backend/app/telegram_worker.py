@@ -27,6 +27,12 @@ def _set(db, user_id: int, key: str, value: str) -> None:
 def _publish_signal_settings_changed() -> None:
     event_hub.publish("preferences.changed","preferences","updated",{"key":"signal_settings"})
 
+
+def _persist_update_offset(db, user_id: int, offset: int) -> None:
+    """Commit the Telegram polling cursor independently of reply delivery."""
+    _set(db, user_id, "telegram_update_offset", str(offset))
+    db.commit()
+
 MENU = {"inline_keyboard": [
     [{"text":"📈 Markets & scans","callback_data":"qx:menu:markets"},{"text":"🧠 Signal controls","callback_data":"qx:menu:signals"}],
     [{"text":"🤖 Paper trading","callback_data":"qx:menu:paper"},{"text":"📊 Reports & goals","callback_data":"qx:menu:reports"}],
@@ -453,7 +459,7 @@ async def telegram_worker() -> None:
                                                        update.get("update_id"), user_id, type(update_error).__name__)
                                     finally:
                                         # Consume each update exactly once, even if its reply fails.
-                                        _set(db,user_id,"telegram_update_offset",str(offset));db.commit()
+                                        _persist_update_offset(db,user_id,offset)
                         except (httpx.HTTPError,ValueError) as exc:
                             logger.warning("Telegram polling failed for local user %s: %s",user_id,type(exc).__name__)
                         now=asyncio.get_running_loop().time()

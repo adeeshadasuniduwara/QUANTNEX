@@ -88,7 +88,7 @@ assert.ok(html.includes('id="pcCreateForm"'), "Prop Firm Challenge must expose i
 
 assert.match(app, /apiRequest\("\/api\/v1\/journal"/, "Journal entries must persist through the local database API.");
 assert.match(app, /apiRequest\("\/api\/v1\/journal\/import"/, "Legacy browser journal entries must migrate to the database.");
-assert.match(app, /journalLegacyBackupKey/, "Legacy journal data must remain recoverable in the browser.");
+assert.match(app, /saveTrades\(journalRowsCache\)/, "The browser must retain a recoverable journal cache.");
 assert.match(app, /source_ref:row\.client_ref/, "Offline journal retries must use stable idempotency references.");
 assert.match(app, /window\.addEventListener\("online"/, "Offline journal rows must sync when the browser reconnects.");
 assert.ok(html.includes('id="journalStatus"'), "The journal must expose database synchronization status.");

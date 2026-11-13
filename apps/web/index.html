@@ -624,9 +624,11 @@
         <div class="goal-create-grid">
           <form id="goalCreateForm" class="workspace-page-form goal-form">
             <label>Goal name<input id="goalTitle" maxlength="120" required placeholder="e.g. Nissan GT-R"></label>
+            <label>Achievement message<input id="goalDescription" maxlength="240" placeholder="e.g. I just achieved gold"></label>
             <label>Target amount<input id="goalTarget" type="number" min="0.01" step="0.01" required placeholder="Target amount"></label>
             <label>Currency<select id="goalCurrency"><option>USD</option><option>LKR</option><option>EUR</option><option>GBP</option><option>AUD</option><option>CAD</option></select></label>
-            <label>Image URL (optional)<input id="goalImage" type="url" placeholder="Paste a direct image URL"></label>
+            <label>Target date (optional)<input id="goalTargetDate" type="date"></label>
+            <label>Goal photo URL (optional)<input id="goalImage" type="url" placeholder="Paste a direct HTTPS image URL"></label>
             <div class="goal-image-preview goal-wide" id="goalImagePreview" aria-live="polite"><span>Image preview will appear here.</span></div>
             <button class="primary-btn" type="submit" id="goalCreateButton">Create personal goal</button>
           </form>
@@ -652,7 +654,7 @@
         <div class="goal-certificate-panel">
           <h3>Achievement certificate</h3>
           <label>Achieved goal<select id="goalCertificateSelect"><option value="">Choose an achieved goal</option></select></label>
-          <label>Display name<input id="goalCertificateName" maxlength="80" placeholder="Name to print on certificate"></label>
+          <label>Display name<input id="goalCertificateName" maxlength="80" placeholder="Name to print on certificate" value=""></label>
           <button class="primary-btn" id="goalGenerateCertificate">Generate A4 certificate</button>
            <button class="secondary-btn" type="button" id="goalDemoCertificate">Preview demo certificate · NOT VALID</button>
           <p class="p7-note" id="goalCertificateStatus">Certificates unlock only after validated personal-goal progress reaches 100%. Local integrity verification is not a remote authority signature.</p>
@@ -752,7 +754,7 @@
   <script src="realtime-events.js"></script>
   <script src="workspace-pages.js"></script>
   <script src="phase12-20.js"></script>
-  <script src="goals.js?v=20261113-goldpreview1"></script>
+  <script src="goals.js?v=20261113-goalscomplete2"></script>
   <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.0.8/dist/lightweight-charts.standalone.production.js" onerror="this.onerror=null;this.src='https://unpkg.com/lightweight-charts@5.0.8/dist/lightweight-charts.standalone.production.js';"></script>
   <script src="signal-tool.js"></script>
   <script src="quantnex-view-chart.js"></script>

@@ -85,3 +85,12 @@ console.log("Welcome and release onboarding checks passed.");
 
 assert.ok(html.includes('id="prop-challenge"'), "Prop Firm Challenge workspace section must exist");
 assert.ok(html.includes('id="pcCreateForm"'), "Prop Firm Challenge must expose its rule configuration form");
+
+assert.match(app, /apiRequest\("\/api\/v1\/journal"/, "Journal entries must persist through the local database API.");
+assert.match(app, /apiRequest\("\/api\/v1\/journal\/import"/, "Legacy browser journal entries must migrate to the database.");
+assert.match(app, /journalLegacyBackupKey/, "Legacy journal data must remain recoverable in the browser.");
+assert.match(app, /source_ref:row\.client_ref/, "Offline journal retries must use stable idempotency references.");
+assert.match(app, /window\.addEventListener\("online"/, "Offline journal rows must sync when the browser reconnects.");
+assert.ok(html.includes('id="journalStatus"'), "The journal must expose database synchronization status.");
+assert.ok(!html.includes("Records are stored in this browser only."), "Journal copy must not imply browser-only persistence.");
+console.log("Database-backed journal and legacy recovery checks passed.");

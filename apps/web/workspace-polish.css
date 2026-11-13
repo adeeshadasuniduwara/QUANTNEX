@@ -7,11 +7,11 @@
 .sidebar-nav{display:flex;flex-direction:column;gap:8px;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:#333 transparent;padding:2px 2px 14px}
 .qx-nav-search{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:9px;padding:9px 10px;margin:0 2px 7px;border:1px solid #29313b;border-radius:9px;background:#10151b;color:#778391}
 .qx-nav-search svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8}
-.qx-nav-search input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:#e7edf4;font:500 11px/1.4 inherit}
+.qx-nav-search input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:#e7edf4;font-size:11px;line-height:1.4;font-weight:500}
 .qx-nav-search input::placeholder{color:#788391}
 .qx-nav-search kbd{padding:2px 5px;border:1px solid #343d48;border-radius:4px;color:#8792a0;font:10px ui-monospace,monospace}
 .qx-nav-group{display:grid;gap:3px}
-.qx-nav-heading{display:flex;align-items:center;justify-content:space-between;width:100%;padding:10px 10px 5px;border:0;background:transparent;color:#657181;text-align:left;font:750 9px/1.4 inherit;letter-spacing:.14em;cursor:pointer}
+.qx-nav-heading{display:flex;align-items:center;justify-content:space-between;width:100%;padding:10px 10px 5px;border:0;background:transparent;color:#657181;text-align:left;font-size:9px;line-height:1.4;font-weight:750;letter-spacing:.14em;cursor:pointer}
 .qx-nav-heading svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.8;transition:transform .18s}
 .qx-nav-heading[aria-expanded="false"] svg{transform:rotate(-90deg)}
 .qx-nav-items{display:grid;gap:2px}

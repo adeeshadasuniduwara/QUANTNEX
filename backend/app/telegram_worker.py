@@ -133,7 +133,7 @@ async def _send_pdf(client, token: str, chat_id: str, pdf: bytes, filename: str,
         pass
     url=f"https://api.telegram.org/bot{token}/sendDocument"
     for attempt in range(3):
-        response=await client.post(url,data={"chat_id":chat_id,"caption":caption[:1024]},
+        response=await client.post(url,data={"chat_id":chat_id,"caption":_format_telegram_message(caption)[:1000],"parse_mode":"HTML"},
             files={"document":(filename,pdf,"application/pdf")})
         try: data=response.json()
         except ValueError: data={}

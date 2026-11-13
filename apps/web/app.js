@@ -58,7 +58,7 @@ $("calculate").addEventListener("click",()=>{
 $("saveTrade").addEventListener("click",async()=>{
   const symbol=$("symbol").value.trim().toUpperCase(),pnl=Number($("pnl").value);
   if(!symbol||symbol.length>20||$("pnl").value.trim()===""||!Number.isFinite(pnl)){window.alert("Enter a valid symbol and P&L amount.");return;}
-  const trade={client_ref:newJournalRef(),date:new Date().toLocaleDateString("en-CA"),symbol,direction:$("direction").value,outcome:$("outcome").value,pnl,notes:$("notes").value.trim()};
+  const trade={client_ref:newJournalRef(),record_wallet:true,date:new Date().toLocaleDateString("en-CA"),symbol,direction:$("direction").value,outcome:$("outcome").value,pnl,notes:$("notes").value.trim()};
   let saved;
   try{
     saved=await apiRequest("/api/v1/journal",{method:"POST",body:JSON.stringify({
@@ -326,7 +326,8 @@ async function syncJournal(){
           direction:["buy","sell"].includes(String(row.direction||"").toLowerCase())?String(row.direction).toLowerCase():"buy",
           outcome:["win","loss","breakeven"].includes(String(row.outcome||"").toLowerCase())?String(row.outcome).toLowerCase():"breakeven",
           pnl:Number.isFinite(Number(row.pnl))?Number(row.pnl):0,
-          notes:String(row.notes||"").slice(0,2000)
+          notes:String(row.notes||"").slice(0,2000),
+          record_wallet:row.record_wallet===true
         };
       });
       for(let offset=0;offset<normalized.length;offset+=500){

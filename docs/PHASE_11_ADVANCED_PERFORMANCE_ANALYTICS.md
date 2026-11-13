@@ -13,6 +13,7 @@ Descriptive analytics over closed QUANTNEX paper trades only. The existing walle
 ## Methodology and limitations
 R multiple is estimated as realized P&L divided by absolute entry-to-stop distance times quantity. It is not broker-normalized: contract multipliers, quote-currency conversion, commissions and slippage are not included.
 Drawdown is measured on the selected period's cumulative realized P&L starting at zero. Its percentage is relative to the peak positive cumulative P&L, not total account equity. It is not an account-equity drawdown.
+Rows with missing or future close timestamps are excluded from every period. Naive database timestamps are interpreted as UTC, and daily P&L buckets use UTC calendar dates.
 The ledger does not currently record strategy identifiers, so this phase does not attribute results to strategies. Browser-only journal rows and non-QUANTNEX trades are not mixed into the paper ledger metrics.
 A small sample can be misleading. Metrics are descriptive and do not predict future returns or guarantee a win rate.
 

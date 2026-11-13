@@ -53,3 +53,5 @@ assert.match(js, /startsWith\("QUANTNEX VIEW · "\)/, "Gold chart must reject ov
 assert.match(js, /goldQuoteTimer=setInterval\(\(\)=>\{if\(!document\.hidden&&isChartViewActive\(\)&&selected\(\)\.symbol==="XAUUSD"\)loadGoldQuote\(\);\},30000\)/, "Gold quote polling must be scoped to the visible active chart and rate limited.");
 
 assert.match(js, /document\.hidden\|\|!isChartViewActive\(\)\|\|selected\(\)\.symbol!=="XAUUSD"/, "Gold quote requests must stop while the browser tab is hidden.");
+
+assert.match(js, /charts\/quote\?symbol=XAUUSD&interval=\"\+encodeURIComponent\(pick\.interval\)/, "Gold quote freshness must use the selected chart timeframe.");

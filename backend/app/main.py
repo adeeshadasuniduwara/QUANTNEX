@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session
 
 from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, DATABASE_URL, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
 from .database import Base, engine, get_db, SessionLocal
-from .models import AuditEvent, GoalContribution, PaperTrade, PaperTradeEvent, PersonalGoal, Preference, StrategyLabRun, Trade, User, WalletTransaction
-from .schemas import AIChatRequest, AIChatResponse, PreferenceResponse, PreferenceWrite, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TradeCreate, TradeResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
+from .models import AuditEvent, GoalContribution, JournalImport, PaperTrade, PaperTradeEvent, PersonalGoal, Preference, StrategyLabRun, Trade, User, WalletTransaction
+from .schemas import AIChatRequest, AIChatResponse, LegacyJournalImportRequest, LegacyJournalImportResponse, PreferenceResponse, PreferenceWrite, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TradeCreate, TradeResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
 from .security import decrypt_secret, encrypt_secret
 from .maintenance import daily_backup_worker, record_audit_event
 from .system_security import router as system_security_router
@@ -263,6 +263,55 @@ def create_journal(payload: TradeCreate, user: User = Depends(local_workspace), 
     event_hub.publish("journal.changed", "journal", "created", {"trade_id": item.id, "symbol": item.symbol})
     event_hub.publish("wallet.changed", "wallet", "journal_pnl_recorded", {"trade_id": item.id})
     return item
+
+@app.post("/api/v1/journal/import", response_model=LegacyJournalImportResponse)
+def import_legacy_journal(payload: LegacyJournalImportRequest,
+                          user: User = Depends(local_workspace),
+                          db: Session = Depends(get_db)):
+    """Import legacy browser journal rows without replaying historical P&L into the wallet.
+
+    source_id + source_index makes retries safe if the browser loses its response
+    after the database commit or the import is split into multiple batches.
+    """
+    imported = 0
+    for offset, row in enumerate(payload.rows):
+        source_index = payload.source_index_start + offset
+        exists = db.scalar(select(JournalImport.id).where(
+            JournalImport.user_id == user.id,
+            JournalImport.source_id == payload.source_id,
+            JournalImport.source_index == source_index,
+        ))
+        if exists is not None:
+            continue
+        created_at = datetime.now(timezone.utc)
+        if row.date:
+            try:
+                created_at = datetime.fromisoformat(row.date.replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail="A legacy journal date is invalid.") from exc
+            if created_at.tzinfo is None:
+                if len(row.date.strip()) == 10:
+                    created_at = created_at.replace(hour=12, tzinfo=timezone.utc)
+                else:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+            else:
+                created_at = created_at.astimezone(timezone.utc)
+        trade = Trade(user_id=user.id, created_at=created_at, symbol=row.symbol,
+                      direction=row.direction, outcome=row.outcome,
+                      pnl=row.pnl, notes=row.notes)
+        db.add(trade)
+        db.flush()
+        db.add(JournalImport(user_id=user.id, source_id=payload.source_id,
+                             source_index=source_index, trade_id=trade.id))
+        imported += 1
+    if imported:
+        record_audit_event(db, "journal.legacy_imported",
+                           {"source_id": payload.source_id, "imported": imported})
+        db.commit()
+        event_hub.publish("journal.changed", "journal", "legacy_imported",
+                          {"imported": imported})
+    return {"imported": imported, "total": len(payload.rows)}
+
 
 @app.delete("/api/v1/journal/{trade_id}", status_code=204)
 def delete_journal(trade_id: int, user: User = Depends(local_workspace), db: Session = Depends(get_db)):

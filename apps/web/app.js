@@ -1096,6 +1096,60 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   update();window.setInterval(update,1000);
 })();
 
+
+/* Finnhub economic calendar workspace. API credentials stay on the local backend. */
+(function initFinnhubEconomicCalendar(){
+  const $id=id=>document.getElementById(id);
+  const rows=$id("calendarRows"),status=$id("calendarStatus"),panel=$id("economic-calendar")?.nextElementSibling;
+  if(!rows||!status||!panel)return;
+  let events=[],busy=false,loaded=false,visible=false,lastLoadedAt=null;
+  const currencyByCountry={US:"USD","UNITED STATES":"USD",EU:"EUR",EMU:"EUR",GB:"GBP",UK:"GBP","UNITED KINGDOM":"GBP",JP:"JPY",JAPAN:"JPY",AU:"AUD",AUSTRALIA:"AUD",CA:"CAD",CANADA:"CAD",NZ:"NZD",CH:"CHF",SW:"CHF",CN:"CNY",CHINA:"CNY",IN:"INR",SG:"SGD"};
+  const make=(tag,text,className)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;if(className)el.className=className;return el;};
+  const cell=(tr,value)=>tr.append(make("td",value==null||value===""?"—":String(value)));
+  const eventCurrency=e=>String(e.currency||currencyByCountry[String(e.country||"").trim().toUpperCase()]||"OTHER").toUpperCase();
+  const impactLevel=e=>{const v=String(e.impact??"").toLowerCase();if(v.includes("high")||v==="3")return"high";if(v.includes("medium")||v==="2")return"medium";if(v.includes("low")||v==="1")return"low";return"unknown";};
+  const eventDate=e=>{const raw=e.time||e.date||"";if(typeof raw==="number"||/^\d{10,13}$/.test(String(raw)))return new Date(Number(raw)*(String(raw).length===13?1:1000));const value=String(raw).trim();if(/^\d{4}-\d{2}-\d{2}$/.test(value))return new Date(value+"T00:00:00Z");if(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(value))return new Date(value.replace(" ","T")+"Z");return new Date(value);};
+  const formatTime=e=>{const raw=e.time||e.date||"";const date=eventDate(e);if(!Number.isFinite(date.getTime()))return String(raw||"—");const dateOnly=/^\d{4}-\d{2}-\d{2}$/.test(String(raw));return new Intl.DateTimeFormat("en-LK",{timeZone:"Asia/Colombo",day:"2-digit",month:"short",year:"numeric",...(dateOnly?{}:{hour:"2-digit",minute:"2-digit",hour12:true})}).format(date);};
+  function render(){
+    const currency=$id("calendarCurrency").value,impact=$id("calendarImpact").value,query=$id("calendarSearch").value.trim().toLowerCase();
+    const filtered=events.filter(e=>(currency==="ALL"||(currency==="OTHER"?eventCurrency(e)==="OTHER":eventCurrency(e)===currency))&&(impact==="ALL"||impactLevel(e)===impact)&&(!query||[e.event,e.country,eventCurrency(e)].some(v=>String(v||"").toLowerCase().includes(query))));
+    const high=events.filter(e=>impactLevel(e)==="high").length;
+    const currencies=new Set(events.map(eventCurrency).filter(x=>x!=="OTHER"));
+    const kpis=$id("calendarKpis");kpis.replaceChildren();
+    [["Total events",events.length],["High impact",high],["Currencies",currencies.size]].forEach(([label,value])=>{const card=make("article");card.append(make("span",label),make("strong",String(value)));kpis.append(card);});
+    rows.replaceChildren();
+    if(!filtered.length){const tr=make("tr"),td=make("td",events.length?"No events match the selected filters.":"No events returned by Finnhub for this date range.","empty-row");td.colSpan=7;tr.append(td);rows.append(tr);return;}
+    filtered.sort((a,b)=>eventDate(a)-eventDate(b));
+    filtered.forEach(e=>{
+      const tr=make("tr"),when=cell(tr,formatTime(e));
+      cell(tr,eventCurrency(e)==="OTHER"?String(e.country||"—"):eventCurrency(e));
+      cell(tr,e.event);
+      const impactCell=make("td"),level=impactLevel(e),badge=make("span",level==="unknown"?"N/A":level.toUpperCase(),"calendar-impact impact-"+level);impactCell.append(badge);tr.append(impactCell);
+      cell(tr,e.actual);cell(tr,e.estimate);cell(tr,e.prev);
+      if(level==="high")tr.classList.add("calendar-high-row");
+      rows.append(tr);
+    });
+    status.textContent="Finnhub · "+filtered.length+" shown / "+events.length+" events · Times: Sri Lanka (UTC+5:30) · Updated "+(lastLoadedAt?lastLoadedAt.toLocaleTimeString("en-LK"):"—")+".";
+  }
+  async function refresh(){
+    if(busy)return;busy=true;const button=$id("calendarRefresh");button.disabled=true;status.textContent="Fetching Finnhub economic events…";
+    try{
+      const data=await apiRequest("/api/v1/intelligence/news?days="+encodeURIComponent($id("calendarDays").value));
+      if(!data.configured){events=[];rows.replaceChildren();const tr=make("tr"),td=make("td","Finnhub is not configured. Add FINNHUB_API_KEY=your_key to backend/.env on this computer, then restart QUANTNEX Backend.","empty-row");td.colSpan=7;tr.append(td);rows.append(tr);$id("calendarKpis").replaceChildren();status.textContent=data.note||"Finnhub API key is not configured.";return;}
+      events=Array.isArray(data.events)?data.events:[];lastLoadedAt=new Date();render();
+    }catch(error){status.textContent="Calendar unavailable: "+error.message;rows.replaceChildren();const tr=make("tr"),td=make("td","Could not load Finnhub events. Check your local API key, internet connection and provider quota.","empty-row");td.colSpan=7;tr.append(td);rows.append(tr);}
+    finally{busy=false;button.disabled=false;}
+  }
+  $id("calendarRefresh").addEventListener("click",refresh);
+  $id("calendarDays").addEventListener("change",refresh);
+  ["calendarCurrency","calendarImpact"].forEach(id=>$id(id).addEventListener("change",render));
+  $id("calendarSearch").addEventListener("input",render);
+  const observer=("IntersectionObserver" in window)?new IntersectionObserver(entries=>{visible=entries.some(x=>x.isIntersecting);if(visible&&!loaded){loaded=true;refresh();}},{threshold:.08}):null;
+  if(observer)observer.observe(panel);else{visible=true;loaded=true;refresh();}
+  window.setInterval(()=>{if(visible&&!document.hidden)refresh();},15*60*1000);
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden&&visible&&loaded&&lastLoadedAt&&Date.now()-lastLoadedAt.getTime()>15*60*1000)refresh();});
+})();
+
 // Smooth workspace zoom: Ctrl + mouse wheel (kept local to this browser).
 (function initQuantnexSmoothZoom(){
   const key="quantnex.uiZoom";

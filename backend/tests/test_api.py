@@ -432,3 +432,29 @@ def test_legacy_journal_import_is_idempotent_and_preserves_wallet_balance():
     remaining = client.get("/api/v1/journal?limit=500").json()
     assert all(row["id"] != deleted_id for row in remaining)
     assert client.get("/api/v1/wallet/summary").json() == before
+
+    # A newly-created trade queued while the backend was offline must still
+    # create exactly one wallet P&L transaction when it later syncs.
+    offline_payload = {
+        "source_id": "offline-journal-sync-test-2026",
+        "rows": [{
+            "source_ref": "offline-new-trade-reference-0001",
+            "date": "2026-11-14",
+            "symbol": "ETHUSDT",
+            "direction": "sell",
+            "outcome": "loss",
+            "pnl": -4.25,
+            "notes": "Queued while backend was unavailable",
+            "record_wallet": True,
+        }],
+    }
+    queued = client.post("/api/v1/journal/import", json=offline_payload)
+    assert queued.status_code == 200 and queued.json()["imported"] == 1
+    wallet_after_queue = client.get("/api/v1/wallet/summary").json()
+    assert round(wallet_after_queue["balance"] - before["balance"], 2) == -4.25
+    duplicate_queue = client.post("/api/v1/journal/import", json=offline_payload)
+    assert duplicate_queue.status_code == 200 and duplicate_queue.json()["imported"] == 0
+    offline_trade = next(row for row in client.get("/api/v1/journal?limit=500").json()
+                         if row["notes"] == "Queued while backend was unavailable")
+    assert client.delete(f"/api/v1/journal/{offline_trade['id']}").status_code == 204
+    assert client.get("/api/v1/wallet/summary").json() == before

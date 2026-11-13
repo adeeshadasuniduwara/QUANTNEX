@@ -2,7 +2,8 @@
 "use strict";
 const $=id=>document.getElementById(id),host=$("qxChartHost");
 if(!host||typeof apiRequest!=="function")return;
-let chart=null,series=null,volume=null,emaLines={},overlay=null,ctx=null,candles=[],analysis=null,busy=false,observer=null,tradeLines=[],markerApi=null;\nconst indicatorCharts={};
+let chart=null,series=null,volume=null,emaLines={},overlay=null,ctx=null,candles=[],analysis=null,busy=false,observer=null,tradeLines=[],markerApi=null;
+const indicatorCharts={};
 const palette={bull:"#22c997",bear:"#f05d68",fvg:"#4a9cff",ob:"#c18cff",breaker:"#f4b860",sr:"#e6c85c"};
 const stamp=v=>{let s=String(v||"");if(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?$/.test(s))s+="Z";let n=Date.parse(s);return Number.isFinite(n)?Math.floor(n/1000):null;};
 const fmt=v=>Number(v).toLocaleString(undefined,{maximumFractionDigits:8});

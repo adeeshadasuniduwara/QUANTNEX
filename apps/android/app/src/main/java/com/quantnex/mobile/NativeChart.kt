@@ -118,10 +118,10 @@ fun NativeChartScreen() {
                     if (change != null) Text(String.format(Locale.US, "%+.2f%%", change), color = if (change >= 0) ChartGreen else ChartRed, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("O \${latest?.let { priceText(it.open) } ?: "—"}", color = ChartMuted, fontSize = 10.sp)
-                    Text("H \${latest?.let { priceText(it.high) } ?: "—"}", color = ChartGreen, fontSize = 10.sp)
-                    Text("L \${latest?.let { priceText(it.low) } ?: "—"}", color = ChartRed, fontSize = 10.sp)
-                    Text("C \${latest?.let { priceText(it.close) } ?: "—"}", color = Color.White, fontSize = 10.sp)
+                    Text("O ${latest?.let { priceText(it.open) } ?: "—"}", color = ChartMuted, fontSize = 10.sp)
+                    Text("H ${latest?.let { priceText(it.high) } ?: "—"}", color = ChartGreen, fontSize = 10.sp)
+                    Text("L ${latest?.let { priceText(it.low) } ?: "—"}", color = ChartRed, fontSize = 10.sp)
+                    Text("C ${latest?.let { priceText(it.close) } ?: "—"}", color = Color.White, fontSize = 10.sp)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("CANDLES · $interval", color = ChartMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
@@ -132,7 +132,7 @@ fun NativeChartScreen() {
                     CandlestickChart(result.candles, showEma, Modifier.fillMaxWidth().height(270.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("100 candles", color = ChartMuted, fontSize = 9.sp)
-                        Text("Volume · \${result.candles.lastOrNull()?.let { priceText(it.volume) } ?: "—"}", color = ChartMuted, fontSize = 9.sp)
+                        Text("Volume · ${result.candles.lastOrNull()?.let { priceText(it.volume) } ?: "—"}", color = ChartMuted, fontSize = 9.sp)
                     }
                 } else {
                     Box(Modifier.fillMaxWidth().height(220.dp), contentAlignment = Alignment.Center) {

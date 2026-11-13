@@ -152,7 +152,17 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
     db.commit()
     names={"1":"M1","5":"M5","15":"M15","30":"M30","50":"M50","60":"H1","240":"H4"}
     if command in {"/start","/help"}:
-        return ("🤖 QUANTNEX Trading Assistant\nUse the buttons below for market scans, dashboard, status and reports.\nMarket scans are analysis alerts only; no broker orders are placed.")
+        return (
+            "◈ QUANTNEX  |  TRADING COMMAND CENTER\n"
+            "Your market workspace is ready.\n\n"
+            "SELECT AN ACTION\n"
+            "📈  Live market scans\n"
+            "🧠  Signal & timeframe controls\n"
+            "🛡  Risk and paper-trading desk\n"
+            "📊  Performance, goals & reports\n\n"
+            "Choose a button below to continue.\n"
+            "Signals are analysis only — no broker orders are placed."
+        )
     if command=="/timeframes":
         enabled=", ".join(names.get(str(x),str(x)) for x in settings.get("enabled",[]))
         return f"Primary: {names.get(str(settings.get('primary')))}\nTrend: {names.get(str(settings.get('trend')))}\nAnalysis: {enabled}"

@@ -24,3 +24,5 @@ console.log("QUANTNEX VIEW feed recovery checks passed.");
 assert.match(js, /reconnectAttempts=0;stopFeed\(\);feedState=/, "Changing markets must reset the prior market retry backoff.");
 assert.match(js, /readyState===WebSocket\.OPEN&&lastFeedMessageAt&&Date\.now\(\)-lastFeedMessageAt>30000/, "A stale open feed must be checked immediately when the workspace becomes visible.");
 console.log("QUANTNEX market-switch and resume recovery checks passed.");
+
+assert.ok(js.includes('bars.stale?" · STALE DATA":" · FRESH"'), "Chart must visibly distinguish stale market candles from fresh data.");

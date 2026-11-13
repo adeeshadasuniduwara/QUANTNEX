@@ -1056,6 +1056,29 @@ async def smart_open_paper_trade(payload: dict, user: User = Depends(local_works
         raise HTTPException(status_code=502,detail="Market provider request failed. Check provider configuration and quota.")
 
 
+@app.get("/api/v1/goals/demo-certificate")
+def download_demo_goal_certificate(user: User = Depends(local_workspace)):
+    """Return a clearly watermarked sample certificate; it is never a real achievement record."""
+    from .goal_certificates import build_goal_certificate_pdf
+    achieved = datetime.now(timezone.utc)
+    created = datetime.fromtimestamp(achieved.timestamp() - 21 * 86400, tz=timezone.utc)
+    pdf = build_goal_certificate_pdf(
+        display_name="QUANTNEX Demo User",
+        goal_title="Sample Personal Goal",
+        created_at=created,
+        achieved_at=achieved,
+        elapsed_days=21,
+        certificate_id="DEMO-NOT-VALID",
+        integrity_fingerprint="0" * 64,
+        target_amount=1000.0,
+        saved_amount=1000.0,
+        currency="USD",
+        demo_only=True,
+    )
+    return Response(content=pdf, media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="QUANTNEX-DEMO-CERTIFICATE-NOT-VALID.pdf"'})
+
+
 @app.get("/api/v1/goals")
 def list_personal_goals(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     goals=list(db.scalars(select(PersonalGoal).where(PersonalGoal.user_id==user.id).order_by(PersonalGoal.created_at.desc())))

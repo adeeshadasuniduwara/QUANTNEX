@@ -4,16 +4,6 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths:
-      - "apps/web/index.html"
-      - "apps/web/goals.js"
-      - "apps/web/goals.test.cjs"
-      - "backend/app/main.py"
-      - "backend/app/goal_certificates.py"
-      - "backend/app/telegram_worker.py"
-      - "backend/test_goal_certificates.py"
-      - ".github/workflows/web-ci.yml"
-      - ".github/workflows/telegram-release-notify.yml"
 
 permissions:
   contents: read
@@ -32,6 +22,7 @@ jobs:
           RELEASE_URL: ${{ github.event.release.html_url }}
           REPO: ${{ github.repository }}
           COMMIT_SHA: ${{ github.sha }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
             echo "Telegram secrets are not configured. Skipping announcement."
@@ -50,14 +41,14 @@ jobs:
               release_url = "https://github.com/" + repo
               intro = "The QUANTNEX Telegram release notification is connected."
           elif os.environ["EVENT_NAME"] == "push":
-              title = "Goals, demo certificate & Telegram message polish"
-              tag = "Workspace update"
-              release_url = "https://github.com/" + repo + "/commit/" + os.environ.get("COMMIT_SHA", "")
+              sha = os.environ.get("COMMIT_SHA", "")
+              title = html.escape((os.environ.get("COMMIT_MESSAGE") or "QUANTNEX source update").splitlines()[0][:160])
+              tag = "main@" + sha[:7]
+              release_url = "https://github.com/" + repo + "/commit/" + sha
               intro = (
-                  "🎯 Personal goals creation and progress experience improved.\n"
-                  "🏅 A sample achievement certificate is now available, prominently marked DEMO ONLY — NOT VALID.\n"
-                  "💬 Telegram messages now use clearer branded formatting and helpful emojis.\n"
-                  "🔒 Your local wallet, journal, settings and credentials remain on your device."
+                  "A new QUANTNEX update has been merged into the official main branch.\\n"
+                  "The running source-based workspace will download changed files and apply the update automatically.\\n"
+                  "🔒 Local wallet, journal, settings and credentials remain on this computer."
               )
           else:
               title = html.escape(os.environ.get("RELEASE_NAME") or os.environ.get("RELEASE_TAG") or "New release")

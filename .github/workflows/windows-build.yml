@@ -8,6 +8,7 @@ on:
       - ".github/workflows/release.yml"
       - "run_quantnex.bat"
       - "run_quantnex_services.py"
+      - "quantnex_updater.py"
       - "backend/**"
       - "apps/web/**"
       - ".github/workflows/backend-web-ci.yml"
@@ -37,7 +38,7 @@ jobs:
       - name: Compile check
         run: |
           python -m py_compile apps/windows/quantnex_desktop.py
-          python -m py_compile run_quantnex_services.py backend/bootstrap.py apps/web/quantnex_local_server.py
+          python -m py_compile run_quantnex_services.py quantnex_updater.py backend/bootstrap.py apps/web/quantnex_local_server.py
       - name: Build EXE
         run: |
           python -m pip install --upgrade pip pyinstaller

@@ -1,0 +1,15 @@
+.qx-chart-intelligence{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(260px,.65fr);gap:12px;margin-top:12px;padding:13px;border:1px solid var(--border,#30343c);border-radius:12px;background:var(--panel,#101318)}
+.qx-chart-intelligence-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.qx-chart-intelligence-head strong{font-size:12px;letter-spacing:.04em}
+.qx-chart-intelligence-head small{font-size:10px;color:var(--muted,#9299a5)}
+.qx-chart-intel-summary{margin:9px 0 0;color:var(--text,#e8edf5);font-size:11px;line-height:1.55}
+.qx-chart-intel-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+.qx-chart-intel-metric{min-width:0;padding:8px;border:1px solid var(--border,#30343c);border-radius:8px;background:rgba(0,0,0,.12)}
+.qx-chart-intel-metric span{display:block;color:var(--muted,#9299a5);font-size:9px}
+.qx-chart-intel-metric strong{display:block;margin-top:5px;color:var(--text,#e8edf5);font-size:11px;overflow-wrap:anywhere}
+.qx-chart-overlay-options{display:flex;gap:12px;flex-wrap:wrap;margin:8px 0 0}
+.qx-chart-overlay-options label{display:inline-flex;align-items:center;gap:5px;color:var(--muted,#aab1bd);font-size:10px}
+.qx-chart-overlay-options input{accent-color:#63a9ff}
+.qx-intelligence-overlay{position:absolute;inset:0;z-index:3;pointer-events:none}
+.qx-chart-host{position:relative}
+@media(max-width:760px){.qx-chart-intelligence{grid-template-columns:1fr}.qx-chart-intel-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}

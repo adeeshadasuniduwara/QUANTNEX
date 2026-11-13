@@ -869,20 +869,10 @@ def advanced_paper_performance(period_days: int = 0,
     return advanced_performance(rows,period_days)
 
 
-@app.on_event("startup")
-async def start_phase07_paper_monitor():
-    from .paper_worker import paper_trade_monitor
-    app.state.paper_monitor_task=asyncio.create_task(paper_trade_monitor())
-
-@app.on_event("shutdown")
-async def stop_phase07_paper_monitor():
-    task=getattr(app.state,"paper_monitor_task",None)
-    if task:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+# Manual paper positions are deliberately user-controlled. The legacy
+# paper_trade_monitor auto-closed every open position, including manual ones,
+# and raced the opt-in autopilot worker. Automatic positions are managed only
+# by paper_autopilot_worker, which checks AUTO_OPENED ledger events.
 
 
 # ---------------------------------------------------------------------------

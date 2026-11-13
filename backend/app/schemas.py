@@ -7,6 +7,7 @@ class TradeCreate(BaseModel):
     outcome: str
     pnl: float = Field(allow_inf_nan=False)
     notes: str = Field(default="", max_length=2000)
+    created_at: datetime | None = None
     @field_validator("symbol")
     @classmethod
     def normalize_symbol(cls, value): return value.strip().upper()

@@ -108,3 +108,7 @@ html{transition:zoom 180ms cubic-bezier(.2,.75,.25,1)}
 .goal-certificate-preview-heading span{color:#a99768;font-size:11px}
 .goal-certificate-preview-wrap iframe{display:block;width:100%;height:min(78vh,820px);min-height:520px;border:1px solid #66552b;border-radius:8px;background:#fff}
 @media(max-width:700px){.goal-certificate-preview-wrap iframe{height:68vh;min-height:420px}.goal-certificate-preview-heading{align-items:flex-start;flex-direction:column;gap:3px}}
+
+
+.goal-achievement-text{margin:8px 0 4px;color:#d9c58d;font-size:12px;line-height:1.55}
+.goal-card small{display:block;color:#9c927b;margin-top:5px}

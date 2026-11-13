@@ -213,6 +213,14 @@ async function checkLocalUpdate(options={}){
     const response=await fetch("/__quantnex/check",{cache:"no-store"});
     if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||"Local updater is not running.");}
     const result=await response.json();
+    if(result.managed_by_supervisor){
+      $("webInstalledVersion").textContent=result.installed||"Supervisor managed";
+      releaseVersionLabel.textContent=result.latest||"Automatic source updates";
+      $("webUpdateDetails").hidden=true;
+      if(installButton)installButton.hidden=true;
+      status.textContent=result.message||"Full source updates are handled by the QUANTNEX supervisor.";
+      return;
+    }
     $("webInstalledVersion").textContent=result.installed||"Unknown";
     releaseVersionLabel.textContent=result.latest||"Not available";
     if(result.release_notes)releaseNotesLink.href=result.release_notes;

@@ -1,12 +1,14 @@
 """Safe, incremental QUANTNEX source updater for the Windows supervisor."""
 from __future__ import annotations
 
+import io
 import json
 import os
 import re
 import shutil
 import subprocess
 import urllib.request
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
@@ -97,6 +99,88 @@ def _save_state(root: Path, sha: str) -> None:
     os.replace(temporary, path)
 
 
+def _bootstrap_snapshot(root: Path, latest_sha: str) -> dict:
+    """One-time safe source bootstrap for ZIP installs without Git metadata."""
+    url = f"https://codeload.github.com/{REPOSITORY}/zip/{latest_sha}"
+    request = urllib.request.Request(url, headers={"User-Agent": "QUANTNEX-Automatic-Updater"})
+    with urllib.request.urlopen(request, timeout=120) as response:
+        archive_bytes = response.read(150 * 1024 * 1024 + 1)
+    if len(archive_bytes) > 150 * 1024 * 1024:
+        raise UpdateError("The one-time source bootstrap exceeds the 150 MB download safety limit.")
+
+    staged_root = root / "data" / "updates" / "bootstrap-staging"
+    if staged_root.exists():
+        shutil.rmtree(staged_root)
+    staged_root.mkdir(parents=True, exist_ok=True)
+    count = 0
+    total = 0
+    with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
+        for info in archive.infolist():
+            if info.is_dir():
+                continue
+            parts = PurePosixPath(info.filename).parts
+            if len(parts) < 2:
+                continue
+            relative = _safe_relative("/".join(parts[1:]))
+            if relative is None:
+                continue
+            mode = (info.external_attr >> 16) & 0o170000
+            if mode == 0o120000:
+                continue
+            if info.file_size > MAX_FILE_BYTES:
+                raise UpdateError("The bootstrap contains a source file above the 20 MB safety limit.")
+            count += 1
+            total += info.file_size
+            if count > 1500 or total > MAX_TOTAL_BYTES:
+                raise UpdateError("The one-time source bootstrap exceeds the extracted-file safety limits.")
+            target = staged_root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(archive.read(info))
+    if count == 0 or not (staged_root / "run_quantnex_services.py").is_file():
+        raise UpdateError("The official GitHub archive did not contain a valid QUANTNEX source workspace.")
+
+    backup_root = root / "data" / "updates" / "backups" / (
+        datetime.now().strftime("%Y%m%d-%H%M%S-%f") + "-initial-bootstrap")
+    touched = []
+    try:
+        for source in staged_root.rglob("*"):
+            if not source.is_file():
+                continue
+            relative = source.relative_to(staged_root)
+            destination = root / relative
+            if destination.is_file():
+                backup = backup_root / relative
+                backup.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(destination, backup)
+            touched.append(relative)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            temporary = destination.with_name(destination.name + ".quantnex-update-tmp")
+            shutil.copy2(source, temporary)
+            os.replace(temporary, destination)
+        _save_state(root, latest_sha)
+    except Exception:
+        for relative in reversed(touched):
+            destination, backup = root / relative, backup_root / relative
+            try:
+                if backup.is_file():
+                    shutil.copy2(backup, destination)
+                elif destination.exists():
+                    destination.unlink()
+            except OSError:
+                pass
+        raise
+    finally:
+        shutil.rmtree(staged_root, ignore_errors=True)
+    changed = [str(path.relative_to(staged_root)).replace("\\", "/")
+              for path in []]
+    return {"status": "updated", "version": "main@" + latest_sha[:7],
+            "changed_files": [str(p.relative_to(root)).replace("\\", "/")
+                              for p in root.rglob("*")
+                              if p.is_file() and "data/updates" not in str(p).replace("\\", "/")][:count],
+            "restart_required": True,
+            "message": f"Installed the initial official source snapshot ({count} files)."}
+
+
 def check_and_apply(root: Path) -> dict:
     """Apply verified changed source files; caller restarts child services if required."""
     root = root.resolve()
@@ -108,9 +192,7 @@ def check_and_apply(root: Path) -> dict:
     state = _load_state(root)
     installed_sha = state.get("commit_sha")
     if not _valid_sha(installed_sha):
-        _save_state(root, latest_sha)
-        return {"status": "baseline", "version": "main@" + latest_sha[:7],
-                "changed_files": [], "restart_required": False}
+        return _bootstrap_snapshot(root, latest_sha)
     if installed_sha == latest_sha:
         return {"status": "current", "version": "main@" + latest_sha[:7],
                 "changed_files": [], "restart_required": False}

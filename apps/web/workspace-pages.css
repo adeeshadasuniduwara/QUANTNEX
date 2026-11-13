@@ -64,3 +64,21 @@
 .paper-engine-panel{gap:20px}.paper-engine-settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px}.paper-engine-settings label{display:grid;gap:7px;color:#aaa;font-size:12px}.paper-engine-settings input,.paper-engine-settings select{width:100%;min-height:40px;padding:9px 11px;border:1px solid #343434;border-radius:8px;background:#111;color:#eee}.paper-engine-actions{display:flex;gap:8px;flex-wrap:wrap}.paper-engine-actions button{min-width:135px}@media(max-width:600px){.paper-engine-actions{display:grid;width:100%}.paper-engine-actions button{width:100%}}
 
 .goal-journal-candidates{display:grid;gap:7px;max-height:240px;overflow:auto}.goal-journal-option{display:flex;align-items:center;gap:9px;padding:9px 11px;border:1px solid #303030;border-radius:8px;background:#111;color:#ddd;font-size:12px}.goal-journal-option input{width:auto;min-width:16px;min-height:16px}
+
+
+/* Compact, consistent typography for the extended workspace pages. */
+.workspace-page-toolbar strong{font-size:12px}
+.workspace-page-toolbar p{font-size:10px;line-height:1.5}
+.workspace-page-card{gap:7px;padding:14px}
+.workspace-page-card span{font-size:9px;letter-spacing:.07em}
+.workspace-page-card strong{font-size:18px;line-height:1.25}
+.workspace-page-card small{font-size:10px;line-height:1.45}
+.workspace-page-form label{font-size:10px}
+.workspace-page-form input,.workspace-page-form select,.workspace-page-toolbar select{font-size:11px}
+.workspace-page-panel h3{font-size:12px}
+.workspace-page-panel table{font-size:10px}
+.workspace-page-panel th{font-size:8px}
+.workspace-page-panel td{font-size:10px}
+.workspace-page-panel .p7-note{font-size:9px;line-height:1.55}
+html{transition:zoom 180ms cubic-bezier(.2,.75,.25,1)}
+@media(prefers-reduced-motion:reduce){html{transition:none!important}}

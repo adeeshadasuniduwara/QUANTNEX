@@ -40,14 +40,12 @@ class FakeMT5:
         return SimpleNamespace(time=int(datetime.now(timezone.utc).timestamp()), bid=2300.1, ask=2300.3, last=2300.2)
 
     def copy_rates_from_pos(self, symbol, timeframe, start, count):
-        import numpy as np
-        dtype = [("time", "i8"), ("open", "f8"), ("high", "f8"), ("low", "f8"),
-                 ("close", "f8"), ("tick_volume", "i8")]
         now = int(datetime.now(timezone.utc).timestamp()) - count * 60
-        data = np.zeros(count, dtype=dtype)
+        data = []
         for i in range(count):
             price = 2300 + i * 0.01
-            data[i] = (now + i * 60, price, price + 0.2, price - 0.2, price + 0.05, 100)
+            data.append({"time": now + i * 60, "open": price, "high": price + 0.2,
+                         "low": price - 0.2, "close": price + 0.05, "tick_volume": 100})
         return data
 
 

@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -107,7 +107,7 @@ def test_signal_engine_uses_mt5_when_explicitly_enabled(monkeypatch):
         assert interval == "15m"
         assert limit == 250
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
-        return [{"time": (start + __import__("datetime").timedelta(minutes=15 * i)).isoformat(),
+        return [{"time": (start + timedelta(minutes=15 * i)).isoformat(),
                  "open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 12}
                 for i in range(210)]
 

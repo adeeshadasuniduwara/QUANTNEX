@@ -17,8 +17,10 @@ class FakeMT5:
 
     def __init__(self):
         self.stopped = False
+        self.initialize_calls = 0
 
     def initialize(self, **kwargs):
+        self.initialize_calls += 1
         return True
 
     def shutdown(self):
@@ -58,6 +60,7 @@ def test_mt5_status_is_explicitly_read_only(monkeypatch):
     assert result["orders_enabled"] is False
     # A feed read must not close a terminal session already owned by another service.
     assert fake.stopped is False
+    assert fake.initialize_calls == 0
 
 
 def test_mt5_quote_has_bid_ask_and_freshness(monkeypatch):
@@ -153,6 +156,7 @@ def test_mt5_feed_closes_only_a_session_it_initialized(monkeypatch):
             self.initialized = False
 
         def initialize(self, **kwargs):
+            self.initialize_calls += 1
             self.initialized = True
             return True
 
@@ -163,6 +167,7 @@ def test_mt5_feed_closes_only_a_session_it_initialized(monkeypatch):
     monkeypatch.setattr(feed, "_mt5", lambda: fake)
     asyncio.run(feed.get_status())
     assert fake.stopped is True
+    assert fake.initialize_calls == 1
 
 
 def test_mt5_feed_and_prop_guardian_share_the_same_terminal_lock():

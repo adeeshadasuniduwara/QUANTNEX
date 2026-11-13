@@ -276,23 +276,23 @@ def check_and_apply(root: Path) -> dict:
                     shutil.copy2(destination, backup)
                 touched.append(rel)
             if status == "removed":
-                destination = root / relative
+                destination = _safe_destination(root, relative)
                 if destination.exists():
                     destination.unlink()
             else:
-                source, destination = staged_root / relative, root / relative
+                source, destination = staged_root / relative, _safe_destination(root, relative)
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 temporary = destination.with_name(destination.name + ".quantnex-update-tmp")
                 shutil.copy2(source, temporary)
                 os.replace(temporary, destination)
                 if status == "renamed" and previous_relative and previous_relative != relative:
-                    old = root / previous_relative
+                    old = _safe_destination(root, previous_relative)
                     if old.exists():
                         old.unlink()
         _save_state(root, latest_sha)
     except Exception:
         for rel in reversed(touched):
-            destination, backup = root / rel, backup_root / rel
+            destination, backup = _safe_destination(root, rel), backup_root / rel
             try:
                 if backup.is_file():
                     destination.parent.mkdir(parents=True, exist_ok=True)

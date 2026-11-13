@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -12,7 +13,6 @@ from pathlib import Path, PurePosixPath
 REPOSITORY = "adeeshadasuniduwara/QUANTNEX"
 BRANCH = "main"
 STATE_RELATIVE = Path("data") / "quantnex_update_state.json"
-WEB_STATE_RELATIVE = Path("data") / "quantnex_web_version.json"
 MAX_FILES = 300
 MAX_FILE_BYTES = 20 * 1024 * 1024
 MAX_TOTAL_BYTES = 100 * 1024 * 1024
@@ -70,11 +70,17 @@ def _load_state(root: Path) -> dict:
             return state
     except (OSError, ValueError, AttributeError):
         pass
+    # The Web updater marker is deliberately not reused: historically it tracked
+    # only Web files, not the full application source revision.
     try:
-        state = json.loads((root / WEB_STATE_RELATIVE).read_text(encoding="utf-8"))
-        if _valid_sha(state.get("commit_sha")):
-            return {"commit_sha": state["commit_sha"]}
-    except (OSError, ValueError, AttributeError):
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=root, capture_output=True,
+            text=True, timeout=5, check=True,
+        )
+        revision = result.stdout.strip().lower()
+        if _valid_sha(revision):
+            return {"commit_sha": revision}
+    except (OSError, subprocess.SubprocessError):
         pass
     return {}
 

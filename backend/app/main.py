@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, DATABASE_URL
 from .database import Base, engine, get_db, SessionLocal
-from .models import AuditEvent, GoalContribution, PaperTrade, PersonalGoal, Preference, StrategyLabRun, Trade, User, WalletTransaction
+from .models import AuditEvent, GoalContribution, PaperTrade, PaperTradeEvent, PersonalGoal, Preference, StrategyLabRun, Trade, User, WalletTransaction
 from .schemas import AIChatRequest, AIChatResponse, PreferenceResponse, PreferenceWrite, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TradeCreate, TradeResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
 from .security import decrypt_secret, encrypt_secret
 from .maintenance import daily_backup_worker, record_audit_event
@@ -79,6 +79,8 @@ def local_workspace(db: Session = Depends(get_db)) -> User:
         # trades and strategy research created before local-only mode.
         for paper_trade in db.scalars(select(PaperTrade).where(PaperTrade.user_id == legacy.id)):
             paper_trade.user_id = owner.id
+        for paper_event in db.scalars(select(PaperTradeEvent).where(PaperTradeEvent.user_id == legacy.id)):
+            paper_event.user_id = owner.id
         for research_run in db.scalars(select(StrategyLabRun).where(StrategyLabRun.user_id == legacy.id)):
             research_run.user_id = owner.id
         for personal_goal in db.scalars(select(PersonalGoal).where(PersonalGoal.user_id == legacy.id)):
@@ -741,6 +743,8 @@ async def open_paper_trade(payload: dict, user: User = Depends(local_workspace),
                         entry_price=entry,stop_loss=stop,take_profit=target,status="OPEN")
         db.add(item)
         db.flush()
+        db.add(PaperTradeEvent(user_id=user.id, trade_id=item.id, event_type="MANUAL_OPENED",
+            price=entry, quantity=quantity, pnl=0.0, details_json=json.dumps({"source":"manual_ui","mode":"PAPER"})))
         record_audit_event(db,"paper_trade.opened",{"trade_id":item.id,"symbol":item.symbol,"side":side,
             "quantity":quantity,"entry":entry,"mode":"paper"})
         db.commit()
@@ -774,6 +778,9 @@ async def close_paper_trade(trade_id: int, user: User = Depends(local_workspace)
     item.realized_pnl=round(pnl,8)
     item.status="CLOSED"
     item.closed_at=datetime.now(timezone.utc)
+    db.add(PaperTradeEvent(user_id=user.id, trade_id=item.id, event_type="MANUAL_CLOSED",
+        price=exit_price, quantity=item.quantity, pnl=item.realized_pnl,
+        details_json=json.dumps({"provider":"market_quote","mode":"PAPER"})))
     record_audit_event(db,"paper_trade.closed",{"trade_id":item.id,"symbol":item.symbol,
         "exit":exit_price,"realized_pnl":item.realized_pnl,"mode":"paper"})
     db.commit()
@@ -1202,3 +1209,207 @@ def verify_goal_certificate(goal_id: int, user: User = Depends(local_workspace),
     certificate_id,digest=_goal_certificate_signature(db,user.id,goal,saved)
     return {"verified":__import__("hmac").compare_digest(goal.certificate_hash,digest),
         "certificate_id":certificate_id,"verification_scope":"local workspace integrity only"}
+
+
+# Phases 12–20 local paper platform APIs. All automated orders remain simulated.
+@app.get("/api/v1/paper-engine")
+def paper_engine_status(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .phase12_20_engine import DEFAULT_SETTINGS, normalize_settings
+    raw = _preference(db, user.id, "paper_autopilot_settings", "")
+    try:
+        settings = normalize_settings(json.loads(raw)) if raw else normalize_settings(DEFAULT_SETTINGS)
+    except (ValueError, TypeError, json.JSONDecodeError):
+        settings = normalize_settings(DEFAULT_SETTINGS)
+    trades = list(db.scalars(select(PaperTrade).where(PaperTrade.user_id == user.id)))
+    from .phase12_20_engine import risk_snapshot
+    return {"settings": settings, "risk": risk_snapshot(trades, settings),
+            "last_error": _preference(db, user.id, "paper_autopilot_last_error"),
+            "last_block": json.loads(_preference(db, user.id, "paper_autopilot_last_block", "[]") or "[]"),
+            "worker": "LOCAL_BACKGROUND_WORKER", "mode": "PAPER_ONLY",
+            "note": "Automatic mode is opt-in and runs only while this local QUANTNEX API is running. No broker orders."}
+
+
+@app.put("/api/v1/paper-engine")
+def update_paper_engine(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .phase12_20_engine import normalize_settings
+    try:
+        current_raw = _preference(db, user.id, "paper_autopilot_settings", "")
+        current = json.loads(current_raw) if current_raw else {}
+        settings = normalize_settings({**current, **payload})
+    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    _save_preference(db, user.id, "paper_autopilot_settings", json.dumps(settings))
+    _save_preference(db, user.id, "paper_autopilot_last_error", "")
+    record_audit_event(db, "paper_engine.settings_updated",
+                       {"enabled": settings["enabled"], "symbols": settings["symbols"], "mode": "PAPER"})
+    db.commit()
+    event_hub.publish("preferences.changed", "paper_engine", "settings_updated",
+                      {"enabled": settings["enabled"], "mode": "PAPER"})
+    return {"settings": settings, "mode": "PAPER_ONLY", "saved": True}
+
+
+@app.get("/api/v1/paper-engine/events")
+def paper_engine_events(limit: int = 100, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    if not 1 <= limit <= 500:
+        raise HTTPException(status_code=422, detail="Limit must be between 1 and 500.")
+    rows = list(db.scalars(select(PaperTradeEvent).where(PaperTradeEvent.user_id == user.id)
+                           .order_by(PaperTradeEvent.id.desc()).limit(limit)))
+    return [{"id": x.id, "trade_id": x.trade_id, "event_type": x.event_type,
+             "price": x.price, "quantity": x.quantity, "pnl": x.pnl,
+             "details": json.loads(x.details_json or "{}"), "created_at": x.created_at.isoformat()}
+            for x in rows]
+
+
+@app.get("/api/v1/paper-engine/performance")
+def paper_engine_performance(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .phase12_20_engine import performance_metrics, DEFAULT_SETTINGS
+    raw = _preference(db, user.id, "paper_autopilot_settings", "")
+    try:
+        settings = json.loads(raw) if raw else DEFAULT_SETTINGS
+        starting = float(settings.get("paper_equity", 10000))
+    except (ValueError, TypeError):
+        starting = 10000.0
+    trades = list(db.scalars(select(PaperTrade).where(PaperTrade.user_id == user.id)))
+    return performance_metrics(trades, starting)
+
+
+@app.get("/api/v1/market/universe")
+async def market_universe(limit: int = 1000, user: User = Depends(local_workspace)):
+    from .phase12_20_engine import discover_binance_spot_universe
+    try:
+        return await discover_binance_spot_universe(limit)
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail="Binance exchange metadata is temporarily unavailable.") from exc
+
+
+@app.post("/api/v1/strategy-lab/walk-forward")
+async def strategy_lab_walk_forward(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .phase07_engine import market_info, get_candles
+    from .phase08_engine import run_backtest, validate_strategy
+    from .phase12_20_engine import walk_forward_slices
+    try:
+        info = market_info(payload.get("symbol", "BTCUSDT"))
+        timeframe = payload.get("timeframe", "15m")
+        if timeframe not in {"5m", "15m", "1h", "4h"}:
+            raise ValueError("Choose 5m, 15m, 1h or 4h.")
+        strategy = validate_strategy(payload.get("strategy") or {})
+        candles = await get_candles(info["symbol"], timeframe, 500)
+        train, holdout = walk_forward_slices(candles, float(payload.get("train_ratio", 0.7)))
+        training = run_backtest(train, strategy)
+        validation = run_backtest(holdout, strategy)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Walk-forward market data unavailable.") from exc
+    result = {"symbol": info["symbol"], "timeframe": timeframe, "strategy": strategy,
+              "training": training, "out_of_sample": validation,
+              "method": "Chronological holdout; no parameter fitting on holdout data.",
+              "warning": "A single historical holdout is not proof of future profitability."}
+    db.add(StrategyLabRun(user_id=user.id, run_type="WALK_FORWARD", symbol=info["symbol"],
+        timeframe=timeframe, strategy_json=json.dumps(strategy), result_json=json.dumps(result)))
+    record_audit_event(db, "strategy_lab.walk_forward", {"symbol": info["symbol"], "timeframe": timeframe})
+    db.commit()
+    event_hub.publish("strategy.research.changed", "strategy", "walk_forward_saved", {"symbol": info["symbol"]})
+    return result
+
+
+@app.get("/api/v1/goals/{goal_id}/journal-preview")
+def goal_journal_import_preview(goal_id: int, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    goal = db.scalar(select(PersonalGoal).where(PersonalGoal.id == goal_id, PersonalGoal.user_id == user.id))
+    if goal is None:
+        raise HTTPException(status_code=404, detail="Goal not found.")
+    rows = list(db.scalars(select(Trade).where(Trade.user_id == user.id, Trade.pnl > 0).order_by(Trade.created_at.desc()).limit(200)))
+    already = {str(c.note).removeprefix("journal_import:") for c in db.scalars(
+        select(GoalContribution).where(GoalContribution.user_id == user.id,
+                                       GoalContribution.source == "manual_journal_import"))}
+    return {"goal_id": goal.id, "goal_currency": goal.currency,
+            "candidates": [{"trade_id": t.id, "created_at": t.created_at.isoformat(),
+                "symbol": t.symbol, "direction": t.direction, "recorded_pnl": t.pnl,
+                "eligible": str(t.id) not in already, "note": "Manual journal P&L only; confirm it is actually available real-account savings before importing."}
+                for t in rows],
+            "warning": "A journal win is not automatically cash savings. Only import amounts you have actually received and can allocate to this goal."}
+
+
+@app.post("/api/v1/goals/{goal_id}/journal-import")
+def import_goal_journal_records(goal_id: int, payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    goal = db.scalar(select(PersonalGoal).where(PersonalGoal.id == goal_id, PersonalGoal.user_id == user.id))
+    if goal is None:
+        raise HTTPException(status_code=404, detail="Goal not found.")
+    if goal.achieved_at:
+        raise HTTPException(status_code=409, detail="Achieved goals are locked.")
+    if payload.get("confirmed_available_real_funds") is not True:
+        raise HTTPException(status_code=422, detail="Confirm these selected journal profits are genuinely received and available real funds.")
+    ids = payload.get("trade_ids")
+    if not isinstance(ids, list) or not ids or len(ids) > 100 or any(not isinstance(x, int) for x in ids):
+        raise HTTPException(status_code=422, detail="Select between 1 and 100 journal entries.")
+    if len(set(ids)) != len(ids):
+        raise HTTPException(status_code=422, detail="Duplicate journal IDs were supplied.")
+    rows = list(db.scalars(select(Trade).where(Trade.user_id == user.id, Trade.id.in_(ids), Trade.pnl > 0)))
+    if len(rows) != len(ids):
+        raise HTTPException(status_code=422, detail="One or more selected journal entries are missing or have no positive recorded P&L.")
+    existing = {str(c.note).removeprefix("journal_import:") for c in db.scalars(
+        select(GoalContribution).where(GoalContribution.user_id == user.id,
+                                       GoalContribution.source == "manual_journal_import"))}
+    duplicates = [str(t.id) for t in rows if str(t.id) in existing]
+    if duplicates:
+        raise HTTPException(status_code=409, detail={"message": "Some journal entries were already imported.", "duplicate_trade_ids": duplicates})
+    # Trade.pnl has no currency field; only allow import into USD goals and clearly
+    # preserve the original amount. Never infer FX conversion.
+    if goal.currency != "USD":
+        raise HTTPException(status_code=409, detail="Journal entries have no stored currency. Import is limited to USD goals; no FX conversion is inferred.")
+    for trade in rows:
+        db.add(GoalContribution(goal_id=goal.id, user_id=user.id, amount=trade.pnl,
+            currency="USD", source="manual_journal_import", note="journal_import:" + str(trade.id)))
+    db.flush()
+    total = sum(float(t.pnl) for t in rows)
+    saved = float(goal.initial_amount or 0) + float(db.scalar(select(func.coalesce(func.sum(GoalContribution.amount), 0)).where(
+        GoalContribution.goal_id == goal.id, GoalContribution.user_id == user.id)) or 0)
+    if saved >= goal.target_amount and goal.achieved_at is None:
+        goal.achieved_at = datetime.now(timezone.utc)
+    record_audit_event(db, "goal.journal_records_imported", {"goal_id": goal.id, "trade_ids": ids, "amount": total})
+    db.commit()
+    event_hub.publish("goals.changed", "goals", "journal_imported", {"goal_id": goal.id, "amount": total})
+    return {"imported": len(rows), "amount": round(total, 2), "saved_amount": round(saved, 2),
+            "achieved": bool(goal.achieved_at), "currency": "USD"}
+
+
+@app.on_event("startup")
+async def start_paper_autopilot_worker():
+    from .phase12_20_engine import paper_autopilot_worker
+    app.state.paper_autopilot_task = asyncio.create_task(paper_autopilot_worker())
+
+
+@app.on_event("shutdown")
+async def stop_paper_autopilot_worker():
+    task = getattr(app.state, "paper_autopilot_task", None)
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+@app.get("/api/v1/paper-engine/monitor")
+async def paper_engine_monitor(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .phase07_engine import get_quote, IntelligenceDataError
+    from .phase10_engine import assess_quote
+    rows = list(db.scalars(select(PaperTrade).where(PaperTrade.user_id == user.id, PaperTrade.status == "OPEN").order_by(PaperTrade.id.desc())))
+    output = []
+    for item in rows[:50]:
+        try:
+            quote = await get_quote(item.symbol)
+            health = assess_quote(quote)
+            mark = float(quote["price"])
+            pnl = (mark - item.entry_price) * item.quantity * (1 if item.side == "BUY" else -1)
+            output.append({"trade_id": item.id, "symbol": item.symbol, "side": item.side,
+                "entry_price": item.entry_price, "mark_price": mark,
+                "unrealized_pnl_estimate": round(pnl, 8), "provider": quote["provider"],
+                "data_health": health, "timestamp": quote["timestamp"]})
+        except (IntelligenceDataError, httpx.HTTPError, ValueError, KeyError):
+            output.append({"trade_id": item.id, "symbol": item.symbol, "side": item.side,
+                "entry_price": item.entry_price, "mark_price": None,
+                "unrealized_pnl_estimate": None, "data_health": {"status":"UNAVAILABLE","trading_safe":False},
+                "timestamp": None})
+    return {"positions": output, "count": len(output),
+            "note": "Indicative provider marks only. Stale/unavailable quotes are not treated as current prices or broker-executable values."}

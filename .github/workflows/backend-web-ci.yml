@@ -57,4 +57,6 @@ jobs:
           node --check apps/web/realtime-events.js
           node --check apps/web/signal-tool.js
           node --check apps/web/workspace-pages.js
+          node --check apps/web/goals.js
+          node --check apps/web/phase12-20.js
           node apps/web/workspace-pages.test.cjs

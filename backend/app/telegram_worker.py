@@ -35,6 +35,7 @@ MENU = {"inline_keyboard": [
     [{"text":"🎯 My Goals","callback_data":"qx:goals"},{"text":"🛡 Risk Settings","callback_data":"qx:risk"}],
     [{"text":"⏸ Pause Alerts","callback_data":"qx:pause"},{"text":"▶ Resume Alerts","callback_data":"qx:resume"}],
     [{"text":"📋 Timeframes","callback_data":"qx:timeframes"},{"text":"🔌 Status","callback_data":"qx:status"}],
+    [{"text":"▶ Start Paper","callback_data":"qx:paper_start"},{"text":"⏸ Pause Paper","callback_data":"qx:paper_pause"}],
     [{"text":"🕗 Daily PDF 8 PM ON/OFF","callback_data":"qx:daily_toggle"},{"text":"❔ Help","callback_data":"qx:help"}]
 ]}
 
@@ -243,7 +244,28 @@ async def telegram_worker() -> None:
                                         elif action=="qx:status": answer=await _handle_command(client,db,user_id,token,chat_id,"/status")
                                         elif action=="qx:timeframes": answer=await _handle_command(client,db,user_id,token,chat_id,"/timeframes")
                                         elif action=="qx:home": answer=_paper_dashboard(db,user_id)
-                                        elif action=="qx:paper": answer="🤖 AI Paper Desk is not yet running autonomously in this build. This Telegram bot currently delivers market-analysis alerts and reports only. No broker orders are placed."
+                                        elif action=="qx:paper":
+                                            from .phase12_20_engine import DEFAULT_SETTINGS, normalize_settings
+                                            try:
+                                                paper_settings=normalize_settings(json.loads(_get(db,user_id,"paper_autopilot_settings","{}")))
+                                            except (ValueError,TypeError):
+                                                paper_settings=normalize_settings(DEFAULT_SETTINGS)
+                                            answer=("🤖 QUANTNEX Paper Autopilot · "+("RUNNING" if paper_settings["enabled"] else "PAUSED")+
+                                                "\nMarkets: "+", ".join(paper_settings["symbols"])+
+                                                "\nRisk/trade: "+str(paper_settings["risk_percent"])+"% · Daily stop: "+str(paper_settings["max_daily_loss_percent"])+"%"+
+                                                "\nMode: LOCAL PAPER ONLY · no broker orders.")
+                                        elif action in {"qx:paper_start","qx:paper_pause"}:
+                                            from .phase12_20_engine import DEFAULT_SETTINGS, normalize_settings
+                                            try:
+                                                paper_settings=json.loads(_get(db,user_id,"paper_autopilot_settings","{}")) or dict(DEFAULT_SETTINGS)
+                                                paper_settings["enabled"]=(action=="qx:paper_start")
+                                                paper_settings=normalize_settings(paper_settings)
+                                                _set(db,user_id,"paper_autopilot_settings",json.dumps(paper_settings))
+                                                db.commit()
+                                                answer=(("▶ Paper autopilot STARTED" if paper_settings["enabled"] else "⏸ Paper autopilot PAUSED")
+                                                    + "\nLocal simulated trades only. No broker or real-money orders.")
+                                            except (ValueError,TypeError) as exc:
+                                                answer="Cannot change paper mode: "+str(exc)
                                         elif action=="qx:goals": answer=_goal_dashboard(db,user_id)
                                         elif action=="qx:risk": answer=_risk_dashboard(db,user_id)
                                         elif action=="qx:market": answer=await _handle_command(client,db,user_id,token,chat_id,"/scan BTCUSDT")

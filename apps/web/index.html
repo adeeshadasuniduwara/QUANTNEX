@@ -8,7 +8,8 @@
   <meta name="description" content="QUANTNEX is a modern trading workspace for risk planning and trade review.">
   <title>QUANTNEX — QUANTNEX VIEW</title>
   <link rel="stylesheet" href="styles.css?v=20261112-quantnex-view3">
-  <link rel="stylesheet" href="signal-tool.css">\n  <link rel="stylesheet" href="quantnex-view-intelligence.css">
+  <link rel="stylesheet" href="signal-tool.css">
+  <link rel="stylesheet" href="quantnex-view-intelligence.css">
   <link rel="stylesheet" href="workspace-pages.css?v=20261112-pages10">
 </head>
 <body>
@@ -31,6 +32,7 @@
         <a class="nav-link" href="#orderflow-liquidity"><span>≋</span>Order Flow &amp; Liquidity</a>
         <a class="nav-link" href="#news-intelligence"><span>▤</span>News Intelligence</a>
         <a class="nav-link" href="#paper-trading"><span>▣</span>Paper Trading</a>
+        <a class="nav-link" href="#paper-autopilot"><span>⏵</span>Paper Autopilot</a>
         <a class="nav-link" href="#performance-lab"><span>▥</span>Performance Lab</a>
         <a class="nav-link" href="#risk-management"><span>◇</span>Risk Management</a>
         <div class="side-caption">MARKET DESKS</div>
@@ -229,7 +231,8 @@
       <section class="panel timeframe-panel">
         <div class="signal-intro"><div><strong>Signal timeframe preferences</strong><p>Choose the market, analysis timeframes and confluence threshold used by the multi-market signal engine.</p></div><span class="signal-pill">USER CONFIGURABLE</span></div>
         <div class="timeframe-grid">
-          <label>Signal market<select id="signalMarketSymbol"><option value="BTCUSDT" selected>Bitcoin · BTCUSDT</option><option value="ETHUSDT">Ethereum · ETHUSDT</option><option value="SOLUSDT">Solana · SOLUSDT</option><option value="XAUUSD">Gold · XAUUSD</option></select></label>\n          <label>Primary signal timeframe<select id="primarySignalTf"><option value="1">1 Minute</option><option value="5" selected>5 Minutes</option><option value="15">15 Minutes</option><option value="30">30 Minutes</option><option value="60">1 Hour</option><option value="50">50 Minutes (custom)</option></select></label>
+          <label>Signal market<select id="signalMarketSymbol"><option value="BTCUSDT" selected>Bitcoin · BTCUSDT</option><option value="ETHUSDT">Ethereum · ETHUSDT</option><option value="SOLUSDT">Solana · SOLUSDT</option><option value="XAUUSD">Gold · XAUUSD</option></select></label>
+          <label>Primary signal timeframe<select id="primarySignalTf"><option value="1">1 Minute</option><option value="5" selected>5 Minutes</option><option value="15">15 Minutes</option><option value="30">30 Minutes</option><option value="60">1 Hour</option><option value="50">50 Minutes (custom)</option></select></label>
           <label>Trend timeframe<select id="trendSignalTf"><option value="15">15 Minutes</option><option value="30" selected>30 Minutes</option><option value="60">1 Hour</option><option value="240">4 Hours</option></select></label>
           <label>Chart timeframe<select id="chartSignalTf"><option value="1">1 Minute</option><option value="5">5 Minutes</option><option value="15" selected>15 Minutes</option><option value="30">30 Minutes</option><option value="60">1 Hour</option><option value="50">50 Minutes (custom)</option></select></label>
         </div>
@@ -342,6 +345,39 @@
         </div>
         <div class="qx-strategy-details"><details><summary>View setup catalogue and active confluence</summary><div id="qxStrategyList">Loading strategy catalogue…</div></details></div>
         <p class="qx-intel-disclaimer">Confluence score is not a win probability. No 70% accuracy is promised. Backtest outcomes are historical simulations, not live results or financial advice. This engine does not place broker orders.</p>
+      </section>
+      <section class="section-heading" id="paper-autopilot"><div><div class="overline">PHASES 12–20 · LOCAL AUTOMATION</div><h2>Autonomous Paper Desk</h2><p>Opt-in simulated trading, risk guard, market universe and performance. No broker execution.</p></div><span class="pill" id="paperEngineState">DISABLED</span></section>
+      <section class="panel workspace-page-panel paper-engine-panel">
+        <div class="workspace-page-toolbar"><div><strong>Paper engine controls</strong><p>The worker runs only while this local API is open. Automatic mode starts OFF. Telegram menu also provides explicit Start/Pause controls.</p></div><div class="paper-engine-actions"><button class="secondary-btn" id="paperEngineSave" type="button">Save settings</button><button class="primary-btn" id="paperEngineToggle" type="button">Start paper mode</button></div></div>
+        <div class="paper-engine-settings">
+          <label>Paper equity (USD)<input id="paperEngineEquity" type="number" min="100" max="10000000" step="100" value="10000"></label>
+          <label>Risk per trade (%)<input id="paperEngineRisk" type="number" min="0.05" max="1" step="0.05" value="0.25"></label>
+          <label>Daily loss stop (%)<input id="paperEngineDailyLoss" type="number" min="0.25" max="10" step="0.25" value="2"></label>
+          <label>Max drawdown stop (%)<input id="paperEngineDrawdown" type="number" min="0.5" max="25" step="0.5" value="5"></label>
+          <label>Maximum open positions<input id="paperEngineMaxOpen" type="number" min="1" max="10" step="1" value="3"></label>
+          <label>Scan interval (seconds)<input id="paperEngineInterval" type="number" min="60" max="3600" step="30" value="180"></label>
+          <label>Minimum signal score<select id="paperEngineScore"><option value="8">8 / 10</option><option value="9">9 / 10</option><option value="10">10 / 10</option></select></label>
+          <label>Auto-scan symbols<input id="paperEngineSymbols" value="BTCUSDT, ETHUSDT, SOLUSDT" readonly></label>
+        </div>
+        <p class="p7-note" id="paperEngineStatus" aria-live="polite">Automatic paper mode is disabled. Enable it only after reviewing risk settings.</p>
+        <div class="workspace-page-cards" id="paperEngineRiskCards"></div>
+        <div class="workspace-page-toolbar"><div><strong>Paper performance</strong><p>Recorded simulated results only; historical paper ledger may not include fees or slippage.</p></div><button class="secondary-btn" id="paperEngineRefresh" type="button">Refresh metrics</button></div>
+        <div class="workspace-page-cards" id="paperEnginePerformance"></div>
+        <div class="workspace-page-toolbar"><div><strong>Live paper-position marks</strong><p>Indicative provider quotes with freshness status, not broker-executable prices.</p></div><button class="secondary-btn" id="paperEngineMonitor" type="button">Refresh positions</button></div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Symbol</th><th>Side</th><th>Entry</th><th>Mark</th><th>Unrealized P&amp;L</th><th>Feed health</th></tr></thead><tbody id="paperEnginePositions"><tr><td colspan="6" class="empty-row">No monitored positions.</td></tr></tbody></table></div>
+        <div class="workspace-page-toolbar"><div><strong>Binance Spot market universe</strong><p>Exchange metadata discovery only. The autonomous engine currently trades only validated BTC, ETH and SOL USDT pairs.</p></div><button class="secondary-btn" id="paperUniverseRefresh" type="button">Discover eligible pairs</button></div>
+        <p class="p7-note" id="paperUniverseStatus">Not scanned yet.</p>
+        <div class="p7-table-wrap"><table><thead><tr><th>Symbol</th><th>Base asset</th><th>Quote</th><th>Provider status</th></tr></thead><tbody id="paperUniverseRows"><tr><td colspan="4" class="empty-row">Press Discover eligible pairs.</td></tr></tbody></table></div>
+        <div class="workspace-page-toolbar"><div><strong>Paper trade event ledger</strong><p>Open/close events and reasons, stored locally.</p></div><button class="secondary-btn" id="paperEngineEventsRefresh" type="button">Refresh events</button></div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Time</th><th>Trade</th><th>Event</th><th>Price</th><th>Quantity</th><th>P&amp;L</th></tr></thead><tbody id="paperEngineEvents"><tr><td colspan="6" class="empty-row">No paper events yet.</td></tr></tbody></table></div>
+        <div class="workspace-page-toolbar"><div><strong>Strategy holdout validation</strong><p>Runs the same fixed strategy on chronological training and unseen holdout candles.</p></div></div>
+        <div class="workspace-page-form compact">
+          <label>Symbol<select id="paperWalkForwardSymbol"><option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option><option>XAUUSD</option></select></label>
+          <label>Timeframe<select id="paperWalkForwardTimeframe"><option>5m</option><option selected>15m</option><option>1h</option><option>4h</option></select></label>
+          <button class="secondary-btn" id="paperWalkForwardRun" type="button">Run holdout validation</button>
+        </div>
+        <p class="p7-note" id="paperWalkForwardResult">No validation run yet. Results are historical simulations, not evidence of future profitability.</p>
+        <p class="p7-note">Safety limits: paper-only, no broker API, no real-money orders. Automatic mode is disabled by default. FX/Gold auto-sizing is not enabled because contract multipliers and tick-value assumptions are not yet verified.</p>
       </section>
       <section class="section-heading" id="tools"><div><div class="overline">RISK MANAGEMENT</div><h2>Position size calculator</h2><p>Estimate position size using your broker's pip value.</p></div></section>
       <section class="panel calculator-panel">
@@ -551,21 +587,26 @@
             <label>Goal name<input id="goalTitle" maxlength="120" required placeholder="e.g. Nissan GT-R"></label>
             <label>Target amount<input id="goalTarget" type="number" min="0.01" step="0.01" required placeholder="Target amount"></label>
             <label>Currency<select id="goalCurrency"><option>USD</option><option>LKR</option><option>EUR</option><option>GBP</option><option>AUD</option><option>CAD</option></select></label>
-            <label>Target date<input id="goalTargetDate" type="date"></label>
-            <label>Goal image URL (optional)<input id="goalImage" type="url" placeholder="https://…"></label>
-            <label class="goal-wide">Description<textarea id="goalDescription" maxlength="2000" rows="2" placeholder="Why this goal matters to you…"></textarea></label>
-            <label>Starting savings<input id="goalInitial" type="number" min="0" step="0.01" value="0"></label>
-            <label class="goal-confirm"><input id="goalInitialConfirm" type="checkbox"> I confirm this starting amount is genuinely available real money.</label>
+            <label>Image URL (optional)<input id="goalImage" type="url" placeholder="Paste a direct image URL"></label>
+            <div class="goal-image-preview goal-wide" id="goalImagePreview" aria-live="polite"><span>Image preview will appear here.</span></div>
             <button class="primary-btn" type="submit" id="goalCreateButton">Create personal goal</button>
           </form>
           <div class="goal-contribution-panel">
             <h3>Add real savings / realized profit</h3>
             <label>Goal<select id="goalContributionSelect"><option value="">Choose a goal</option></select></label>
             <label>Amount<input id="goalContributionAmount" type="number" min="0.01" step="0.01" placeholder="Amount"></label>
-            <label>Note<input id="goalContributionNote" maxlength="240" placeholder="Optional note"></label>
             <label class="goal-confirm"><input id="goalContributionConfirm" type="checkbox"> I confirm this is available real-account profit or savings, not paper-trading or backtest P&amp;L.</label>
             <button class="secondary-btn" id="goalAddContribution">Add contribution</button>
             <p class="p7-note" id="goalContributionStatus">Contributions are manual and require your confirmation.</p>
+          </div>
+          <div class="goal-contribution-panel">
+            <h3>Optional journal-to-goal import</h3>
+            <label>Goal<select id="goalJournalImportSelect"><option value="">Choose a goal</option></select></label>
+            <button class="secondary-btn" id="goalJournalPreview" type="button">Preview eligible journal profits</button>
+            <div id="goalJournalCandidates" class="goal-journal-candidates" aria-live="polite"></div>
+            <label class="goal-confirm"><input id="goalJournalConfirm" type="checkbox"> I confirm selected profits were actually received and are available real-account savings. Paper/backtest results are excluded.</label>
+            <button class="primary-btn" id="goalJournalImport" type="button" disabled>Import selected records</button>
+            <p class="p7-note" id="goalJournalStatus">Preview first. No journal records are imported automatically.</p>
           </div>
         </div>
         <div class="goal-cards" id="goalCards"><article class="workspace-page-card">Loading goals…</article></div>
@@ -605,8 +646,10 @@
   <script src="app.js"></script>
   <script src="realtime-events.js"></script>
   <script src="workspace-pages.js"></script>
+  <script src="phase12-20.js"></script>
   <script src="goals.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.0.8/dist/lightweight-charts.standalone.production.js" onerror="this.onerror=null;this.src='https://unpkg.com/lightweight-charts@5.0.8/dist/lightweight-charts.standalone.production.js';"></script>
-  <script src="signal-tool.js"></script>\n  <script src="quantnex-view-intelligence.js"></script>
+  <script src="signal-tool.js"></script>
+  <script src="quantnex-view-intelligence.js"></script>
 </body>
 </html>

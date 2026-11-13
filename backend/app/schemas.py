@@ -26,6 +26,7 @@ class TradeCreate(BaseModel):
 class LegacyJournalRow(TradeCreate):
     date: str = Field(default="", max_length=40)
     source_ref: str = Field(min_length=16, max_length=64, pattern="^[A-Za-z0-9_-]+$")
+    record_wallet: bool = False
 
 
 class LegacyJournalImportRequest(BaseModel):

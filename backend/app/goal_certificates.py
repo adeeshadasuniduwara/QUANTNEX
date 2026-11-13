@@ -111,9 +111,9 @@ def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
         Paragraph("Q U A N T N E X", brand),
         Spacer(1, 9*mm),
         Paragraph("DEMO CERTIFICATE PREVIEW" if demo_only else "CERTIFICATE OF ACHIEVEMENT", title),
-        Paragraph("SAMPLE ONLY · NOT VALID" if demo_only else "PROUDLY PRESENTED TO", lead),
+        Paragraph("SAMPLE ONLY · NOT VALID · PROUDLY PRESENTED TO" if demo_only else "PROUDLY PRESENTED TO", lead),
         Paragraph(_escape(display_name), name),
-        Paragraph("PROUDLY PRESENTED TO" if not demo_only else "SAMPLE RECIPIENT", lead),
+        Paragraph("PERSONAL GOAL ACHIEVED", lead),
         Paragraph(_escape(goal_title), goal),
         Spacer(1, 3*mm),
         Paragraph(_escape(achievement_text), lead),
@@ -142,8 +142,8 @@ def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
             try:
                 photo = Image(BytesIO(image_data), width=88*mm, height=52*mm, kind="proportional")
                 photo.hAlign = "CENTER"
-                story.insert(6, photo)
-                story.insert(7, Spacer(1, 3*mm))
+                story.insert(8, photo)
+                story.insert(9, Spacer(1, 3*mm))
             except Exception:
                 pass
     if demo_only:

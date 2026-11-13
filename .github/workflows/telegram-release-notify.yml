@@ -32,6 +32,7 @@ jobs:
           import html
           import json
           import os
+          import urllib.error
           import urllib.request
 
           repo = os.environ["REPO"]
@@ -46,8 +47,8 @@ jobs:
               tag = "main@" + sha[:7]
               release_url = "https://github.com/" + repo + "/commit/" + sha
               intro = (
-                  "A new QUANTNEX update has been merged into the official main branch.\\n"
-                  "The running source-based workspace will download changed files and apply the update automatically.\\n"
+                  "A new QUANTNEX update has been merged into the official main branch.\n"
+                  "The running source-based workspace will download changed files and apply the update automatically.\n"
                   "🔒 Local wallet, journal, settings and credentials remain on this computer."
               )
           else:
@@ -78,9 +79,27 @@ jobs:
               headers={"Content-Type": "application/json"},
               method="POST"
           )
-          with urllib.request.urlopen(request, timeout=20) as response:
-              result = json.loads(response.read().decode("utf-8"))
+          try:
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  result = json.loads(response.read().decode("utf-8"))
+          except urllib.error.HTTPError as exc:
+              raw = exc.read().decode("utf-8", "replace")
+              try:
+                  detail = json.loads(raw).get("description") or raw[:300]
+              except (ValueError, AttributeError):
+                  detail = raw[:300] or str(exc.reason)
+              raise SystemExit(
+                  f"Telegram sendMessage failed (HTTP {exc.code}): {detail}. "
+                  "Check TELEGRAM_CHAT_ID and confirm the bot can message that chat "
+                  "(the user must start it with /start, or the bot must be added to the group)."
+              ) from None
+          except urllib.error.URLError as exc:
+              raise SystemExit(f"Telegram network request failed: {exc.reason}") from None
+
           if not result.get("ok"):
-              raise SystemExit("Telegram API rejected the announcement.")
+              raise SystemExit(
+                  "Telegram API rejected the announcement: "
+                  + str(result.get("description") or "unknown Telegram API error")
+              )
           print("Telegram announcement sent successfully.")
           PY

@@ -161,7 +161,8 @@ def aggregate_minutes(candles: list[dict[str, Any]], minutes: int) -> list[dict[
         key=epoch//(minutes*60)
         b=buckets.get(key)
         if b is None:
-            buckets[key]={"time":c["time"],"open":c["open"],"high":c["high"],"low":c["low"],"close":c["close"]}
+            bucket_start = datetime.fromtimestamp(key * minutes * 60, timezone.utc).isoformat()
+            buckets[key]={"time":bucket_start,"open":c["open"],"high":c["high"],"low":c["low"],"close":c["close"]}
         else:
             b["high"]=max(b["high"],c["high"]);b["low"]=min(b["low"],c["low"]);b["close"]=c["close"]
     return [buckets[k] for k in sorted(buckets)]
@@ -308,7 +309,10 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
         if isinstance(result,Exception):
             errors.append(f"{tf}m: {str(result)}")
         else: candles[tf]=result
-    if "50" in needed and "1" in candles: candles["50"]=aggregate_minutes(candles["1"],50)
+    if "50" in needed and "1" in candles:
+        candles["50"] = closed_candles(aggregate_minutes(candles["1"], 50), "50min")
+        if len(candles["50"]) < 50:
+            raise MarketDataError("Not enough fully closed M50 candles for stable indicator calculations.")
     if errors: raise MarketDataError("; ".join(errors))
     analysis={tf:inspect_tf(candles[tf]) for tf in needed if tf in candles and len(candles[tf])>=(50 if tf=="50" else 210)}
     primary=str(settings.get("primary","5")); trend=str(settings.get("trend","60"))

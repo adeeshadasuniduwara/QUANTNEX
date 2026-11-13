@@ -85,3 +85,13 @@ assert.match(signal, /detail\.type==="preferences\.changed"/, "Telegram timefram
 assert.match(signal, /detail\.type==="integration\.changed"/, "Telegram connect/disconnect events must refresh the Signal Lab bot status");
 assert.match(signal, /quantnex:workspace-resync/, "Signal Lab must refresh provider/settings state after event-stream resync");
 console.log("Signal Lab local event integration checks passed.");
+
+assert.match(app, /WEB UPDATE INSTALLED/, "Telegram update receipt must use the branded message layout");
+assert.match(app, /Wallet, journal and settings preserved/, "Telegram update receipt must reassure users their local data is preserved");
+assert.match(app, /\]\.join\("\\\\n"\)/, "Telegram update receipt must use real newline separators");
+assert.match(app, /initQuantnexSmoothZoom/, "Ctrl + mouse wheel workspace zoom must be available");
+assert.match(app, /event\.ctrlKey/, "Workspace zoom must respond to Ctrl + mouse wheel");
+assert.match(app, /passive:false/, "Ctrl + wheel must be cancellable to prevent abrupt browser zoom");
+assert.match(css, /\.workspace-page-card strong\{font-size:18px/, "Extended workspace metric typography must be more compact");
+assert.match(css, /transition:zoom 180ms/, "Workspace zoom must animate smoothly");
+console.log("QUANTNEX Telegram receipt, compact typography and smooth zoom checks passed.");

@@ -438,7 +438,8 @@
           <label>P&amp;L ($)<input id="pnl" type="number" step="any" placeholder="25.00"></label>
         </div>
         <label class="notes-label">Trade notes<textarea id="notes" maxlength="500" rows="2" placeholder="Setup, execution, lesson learned..."></textarea></label>
-        <div class="form-actions"><span class="helper">Records are stored in this browser only.</span><button class="primary-btn" id="saveTrade">Save trade</button></div>
+        <div class="form-actions"><span class="helper">Saved to the local QUANTNEX database with a browser recovery copy.</span><button class="primary-btn" id="saveTrade">Save trade</button></div>
+        <p id="journalStatus" class="helper" role="status" aria-live="polite"></p>
         <div class="table-wrap"><table><thead><tr><th>Date</th><th>Symbol</th><th>Side</th><th>Outcome</th><th>P&amp;L</th><th></th></tr></thead><tbody id="journalRows"><tr><td colspan="6" class="empty-row">No journal records yet.</td></tr></tbody></table></div>
       </section>
 
@@ -761,7 +762,7 @@
     </main>
   </div>
   <script src="shared-news-config.js?v=20261113-shared-news1"></script>
-  <script src="app.js?v=20261113-active-workspace-polling1"></script>
+  <script src="app.js?v=20261114-journal-db1"></script>
   <script src="realtime-events.js"></script>
   <script src="workspace-pages.js"></script>
   <script src="phase12-20.js"></script>

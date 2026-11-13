@@ -378,3 +378,100 @@ def test_strategy_research_uses_only_fully_closed_candles():
     result = main_module._closed_strategy_candles(rows, "15m")
     assert len(result) == 210
     assert result[-1]["close"] == 309
+
+def test_legacy_journal_import_is_idempotent_and_preserves_wallet_balance():
+    client = TestClient(app)
+    before = client.get("/api/v1/wallet/summary").json()
+    source_id = "legacy-browser-import-test-2026"
+    payload = {
+        "source_id": source_id,
+        "rows": [
+            {
+                "source_ref": "legacy-row-reference-0001",
+                "date": "2024-04-02",
+                "symbol": "XAUUSD",
+                "direction": "buy",
+                "outcome": "win",
+                "pnl": 125.50,
+                "notes": "Imported historical browser journal row",
+            },
+            {
+                "source_ref": "legacy-row-reference-0002",
+                "date": "2024-04-03",
+                "symbol": "BTCUSDT",
+                "direction": "sell",
+                "outcome": "loss",
+                "pnl": -20.25,
+                "notes": "Second historical browser journal row",
+            },
+        ],
+    }
+
+    first = client.post("/api/v1/journal/import", json=payload)
+    assert first.status_code == 200
+    assert first.json() == {"imported": 2, "total": 2}
+
+    retry = client.post("/api/v1/journal/import", json=payload)
+    assert retry.status_code == 200
+    assert retry.json() == {"imported": 0, "total": 2}
+
+    retry_from_new_source = {**payload, "source_id": "second-browser-source-test-2026"}
+    assert client.post("/api/v1/journal/import", json=retry_from_new_source).json()["imported"] == 0
+
+    after = client.get("/api/v1/wallet/summary").json()
+    assert after == before
+
+    rows = client.get("/api/v1/journal?limit=500").json()
+    imported = [row for row in rows if "historical browser journal row" in row["notes"]]
+    assert len(imported) == 2
+    dates = {row["created_at"][:10] for row in imported}
+    assert dates == {"2024-04-02", "2024-04-03"}
+
+    deleted_id = imported[0]["id"]
+    assert client.delete(f"/api/v1/journal/{deleted_id}").status_code == 204
+    retry_after_delete = client.post("/api/v1/journal/import", json=payload)
+    assert retry_after_delete.status_code == 200
+    assert retry_after_delete.json()["imported"] == 0
+    remaining = client.get("/api/v1/journal?limit=500").json()
+    assert all(row["id"] != deleted_id for row in remaining)
+    assert client.get("/api/v1/wallet/summary").json() == before
+
+    # A newly-created trade queued while the backend was offline must still
+    # create exactly one wallet P&L transaction when it later syncs.
+    offline_payload = {
+        "source_id": "offline-journal-sync-test-2026",
+        "rows": [{
+            "source_ref": "offline-new-trade-reference-0001",
+            "date": "2026-11-14",
+            "symbol": "ETHUSDT",
+            "direction": "sell",
+            "outcome": "loss",
+            "pnl": -4.25,
+            "notes": "Queued while backend was unavailable",
+            "record_wallet": True,
+        }],
+    }
+    queued = client.post("/api/v1/journal/import", json=offline_payload)
+    assert queued.status_code == 200 and queued.json()["imported"] == 1
+    wallet_after_queue = client.get("/api/v1/wallet/summary").json()
+    assert round(wallet_after_queue["balance"] - before["balance"], 2) == -4.25
+    duplicate_queue = client.post("/api/v1/journal/import", json=offline_payload)
+    assert duplicate_queue.status_code == 200 and duplicate_queue.json()["imported"] == 0
+    offline_trade = next(row for row in client.get("/api/v1/journal?limit=500").json()
+                         if row["notes"] == "Queued while backend was unavailable")
+    assert client.delete(f"/api/v1/journal/{offline_trade['id']}").status_code == 204
+    assert client.get("/api/v1/wallet/summary").json() == before
+
+def test_journal_creation_normalizes_timezone_aware_local_dates():
+    client = TestClient(app)
+    created = client.post("/api/v1/journal", json={
+        "symbol": "EURUSD",
+        "direction": "buy",
+        "outcome": "win",
+        "pnl": 1.0,
+        "created_at": "2026-11-14T12:00:00+08:00",
+        "notes": "timezone date test",
+    })
+    assert created.status_code == 201
+    assert created.json()["created_at"].startswith("2026-11-14T04:00:00")
+    assert client.delete(f"/api/v1/journal/{created.json()['id']}").status_code == 204

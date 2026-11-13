@@ -1,5 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const storageKey = "quantnex.journal.v2";
+const journalSourceKey = "quantnex.journal.import_source.v1";
 function loadTrades(){
   try{
     const current=JSON.parse(localStorage.getItem(storageKey)||"null");
@@ -14,15 +15,42 @@ function loadTrades(){
   }catch{return[];}
 }
 function saveTrades(rows){localStorage.setItem(storageKey,JSON.stringify(rows));}
-function money(value){return (value<0?"−":"")+"$"+Math.abs(value).toFixed(2);}
+function setJournalStatus(message,error=false){
+  const status=$("journalStatus");
+  if(status){status.textContent=message;status.dataset.state=error?"error":"ok";}
+}
+function mapServerTrade(item){
+  const rawDate=String(item.created_at||"");
+  const date=new Date(/[zZ]|[+-]\d{2}:\d{2}$/.test(rawDate)?rawDate:rawDate+"Z");
+  const title=value=>String(value||"").charAt(0).toUpperCase()+String(value||"").slice(1).toLowerCase();
+  return {id:item.id,date:Number.isNaN(date.getTime())?"":date.toLocaleDateString("en-CA"),
+    symbol:String(item.symbol||""),direction:title(item.direction),outcome:title(item.outcome),
+    pnl:Number(item.pnl)||0,notes:String(item.notes||"")};
+}
+let journalRowsCache=loadTrades();
 function renderJournal(){
-  const rows=loadTrades(), body=$("journalRows");
+  const rows=journalRowsCache, body=$("journalRows");
   body.replaceChildren();
   if(!rows.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=6;td.className="empty-row";td.textContent="No journal records yet.";tr.append(td);body.append(tr);}
   rows.slice().reverse().forEach((trade,index)=>{
     const tr=document.createElement("tr");
     [trade.date,trade.symbol,trade.direction,trade.outcome,money(Number(trade.pnl))].forEach(value=>{const td=document.createElement("td");td.textContent=value;tr.append(td);});
-    const action=document.createElement("td"),button=document.createElement("button");button.className="delete-btn";button.textContent="Delete";button.setAttribute("aria-label","Delete journal record");button.addEventListener("click",()=>{const current=loadTrades();current.splice(current.length-1-index,1);saveTrades(current);renderJournal();});action.append(button);tr.append(action);body.append(tr);
+    const action=document.createElement("td"),button=document.createElement("button");button.className="delete-btn";button.textContent="Delete";button.setAttribute("aria-label","Delete journal record");
+    button.addEventListener("click",async()=>{
+      const target=journalRowsCache[journalRowsCache.length-1-index];
+      if(target?.id){
+        try{await apiRequest("/api/v1/journal/"+target.id,{method:"DELETE"});}
+        catch(error){setJournalStatus("Could not delete journal record: "+error.message,true);return;}
+      }
+      if(target?.id){
+        journalRowsCache=journalRowsCache.filter(row=>row.id!==target.id);
+      }else{
+        const current=journalRowsCache.slice();current.splice(current.length-1-index,1);journalRowsCache=current;
+      }
+      try{saveTrades(journalRowsCache);}catch{}
+      renderJournal();setJournalStatus("Journal record deleted.");
+    });
+    action.append(button);tr.append(action);
   });
   $("metricTrades").textContent=String(rows.length);
   $("metricPnl").textContent=money(rows.reduce((sum,t)=>sum+Number(t.pnl||0),0));
@@ -33,14 +61,31 @@ $("calculate").addEventListener("click",()=>{
   const amount=equity*risk/100,lots=amount/(stop*pip);
   out.replaceChildren();const strong=document.createElement("strong");strong.textContent=lots.toFixed(3)+" lots";out.append(strong,document.createTextNode("Risk amount "+money(amount)+" · Estimated stop loss "+money(lots*stop*pip)));
 });
-$("saveTrade").addEventListener("click",()=>{
+$("saveTrade").addEventListener("click",async()=>{
   const symbol=$("symbol").value.trim().toUpperCase(),pnl=Number($("pnl").value);
   if(!symbol||symbol.length>20||$("pnl").value.trim()===""||!Number.isFinite(pnl)){window.alert("Enter a valid symbol and P&L amount.");return;}
-  const rows=loadTrades();rows.push({date:new Date().toLocaleDateString("en-CA"),symbol,direction:$("direction").value,outcome:$("outcome").value,pnl,notes:$("notes").value.trim()});
-  try{saveTrades(rows);$("symbol").value="";$("pnl").value="";$("notes").value="";renderJournal();}catch{window.alert("Could not save journal data. Browser storage may be full or disabled.");}
+  const trade={client_ref:newJournalRef(),record_wallet:true,date:new Date().toLocaleDateString("en-CA"),symbol,direction:$("direction").value,outcome:$("outcome").value,pnl,notes:$("notes").value.trim()};
+  let saved;
+  try{
+    saved=await apiRequest("/api/v1/journal",{method:"POST",body:JSON.stringify({
+      symbol:trade.symbol,direction:trade.direction.toLowerCase(),outcome:trade.outcome.toLowerCase(),pnl:trade.pnl,notes:trade.notes,
+      created_at:new Date(trade.date+"T12:00:00").toISOString()
+    })});
+  }catch(error){
+    journalRowsCache.push(trade);
+    try{saveTrades(journalRowsCache);}catch{}
+    renderJournal();setJournalStatus("Backend unavailable. Trade is safely queued in the browser recovery copy for later sync.",true);
+    $("symbol").value="";$("pnl").value="";$("notes").value="";
+    return;
+  }
+  const savedRow=mapServerTrade(saved);
+  if(!journalRowsCache.some(row=>row.id===savedRow.id))journalRowsCache.push(savedRow);
+  try{saveTrades(journalRowsCache);}catch{}
+  renderJournal();setJournalStatus("Trade saved to the local QUANTNEX database.");
+  $("symbol").value="";$("pnl").value="";$("notes").value="";
 });
 $("exportJournal").addEventListener("click",()=>{
-  const rows=loadTrades();if(!rows.length){window.alert("There are no journal records to export yet.");return;}
+  const rows=journalRowsCache;if(!rows.length){window.alert("There are no journal records to export yet.");return;}
   const quote=value=>'"'+String(value??"").replaceAll('"','""')+'"';
   const csv=[["Date","Symbol","Direction","Outcome","PnL","Notes"],...rows.map(t=>[t.date,t.symbol,t.direction,t.outcome,t.pnl,t.notes])].map(row=>row.map(quote).join(",")).join("\r\n");
   const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),link=document.createElement("a");link.href=url;link.download="quantnex-trading-journal.csv";link.click();URL.revokeObjectURL(url);
@@ -263,11 +308,59 @@ async function apiRequest(path, options={}){
   if(!response.ok) throw new Error(payload?.detail||("API request failed ("+response.status+")."));
   return payload;
 }
-function renderWalletTransactions(rows){
-  const body=$("walletRows");body.replaceChildren();
-  if(!rows.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=4;td.className="empty-row";td.textContent="No wallet transactions yet.";tr.append(td);body.append(tr);return;}
-  rows.forEach(item=>{const tr=document.createElement("tr");const date=new Date(item.created_at).toLocaleString();const amount=Number(item.amount);[date,item.transaction_type.replaceAll("_"," "),item.description||"—",money(amount)].forEach((value,index)=>{const td=document.createElement("td");td.textContent=value;if(index===3)td.className=amount<0?"negative":"positive";tr.append(td);});body.append(tr);});
+let journalSyncing=false;
+function newJournalRef(){
+  return window.crypto?.randomUUID?.()||("qnx-row-"+Date.now()+"-"+Math.random().toString(16).slice(2));
 }
+async function syncJournal(){
+  if(journalSyncing)return;
+  journalSyncing=true;
+  try{
+    const pending=journalRowsCache.filter(row=>!row.id);
+    if(pending.length){
+      let sourceId=localStorage.getItem(journalSourceKey);
+      if(!sourceId){
+        sourceId=window.crypto?.randomUUID?.()||("qnx-"+Date.now()+"-"+Math.random().toString(16).slice(2));
+        localStorage.setItem(journalSourceKey,sourceId);
+      }
+      pending.forEach((row,index)=>{if(!row.client_ref)row.client_ref="legacy-"+sourceId+"-"+String(index).padStart(6,"0");});
+      try{saveTrades(journalRowsCache);}catch{}
+      const normalized=pending.map(row=>{
+        const dateText=String(row.date||"").slice(0,10);
+        const parsed=dateText?new Date(dateText+"T12:00:00"):null;
+        return {
+          source_ref:row.client_ref,
+          date:parsed&&!Number.isNaN(parsed.getTime())?parsed.toISOString():"",
+          symbol:String(row.symbol||"").trim().toUpperCase().slice(0,20),
+          direction:["buy","sell"].includes(String(row.direction||"").toLowerCase())?String(row.direction).toLowerCase():"buy",
+          outcome:["win","loss","breakeven"].includes(String(row.outcome||"").toLowerCase())?String(row.outcome).toLowerCase():"breakeven",
+          pnl:Number.isFinite(Number(row.pnl))?Number(row.pnl):0,
+          notes:String(row.notes||"").slice(0,2000),
+          record_wallet:row.record_wallet===true
+        };
+      });
+      for(let offset=0;offset<normalized.length;offset+=500){
+        await apiRequest("/api/v1/journal/import",{method:"POST",body:JSON.stringify({
+          source_id:sourceId,rows:normalized.slice(offset,offset+500)
+        })});
+      }
+    }
+    const remote=await apiRequest("/api/v1/journal?limit=500");
+    journalRowsCache=remote.slice().reverse().map(mapServerTrade);
+    saveTrades(journalRowsCache);renderJournal();
+    setJournalStatus("Journal synced with the local QUANTNEX database. A browser recovery copy is retained.");
+  }catch(error){
+    renderJournal();
+    setJournalStatus("Showing the browser recovery copy. Database sync failed: "+error.message,true);
+  }finally{
+    journalSyncing=false;
+  }
+}
+window.addEventListener("online",()=>syncJournal());
+window.addEventListener("quantnex:workspace-resync",()=>syncJournal());
+window.addEventListener("quantnex:workspace-event",event=>{
+  if(event.detail?.type==="journal.changed")syncJournal();
+});
 async function refreshWallet(){
   const [summary,transactions]=await Promise.all([apiRequest("/api/v1/wallet/summary"),apiRequest("/api/v1/wallet/transactions?limit=100")]);
   $("walletBalance").textContent=money(summary.balance);$("walletDeposits").textContent=money(summary.deposits);$("walletWithdrawals").textContent=money(summary.withdrawals);$("walletPnl").textContent=money(summary.trading_pnl);renderWalletTransactions(transactions);

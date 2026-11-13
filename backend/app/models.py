@@ -27,6 +27,19 @@ class Trade(Base):
     notes: Mapped[str] = mapped_column(Text, default="")
     user: Mapped[User] = relationship(back_populates="trades")
 
+class JournalImport(Base):
+    """Idempotency ledger for importing legacy browser-only journal rows."""
+    __tablename__ = "journal_imports"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    source_id: Mapped[str] = mapped_column(String(64))
+    source_ref: Mapped[str] = mapped_column(String(64))
+    trade_id: Mapped[int] = mapped_column(Integer)
+    __table_args__ = (
+        UniqueConstraint("user_id", "source_ref", name="uq_journal_import_source_row"),
+    )
+
+
 class Preference(Base):
     __tablename__ = "preferences"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

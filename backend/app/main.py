@@ -11,12 +11,13 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, DATABASE_URL, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
 from .database import Base, engine, get_db, SessionLocal
-from .models import AuditEvent, GoalContribution, PaperTrade, PaperTradeEvent, PersonalGoal, Preference, StrategyLabRun, Trade, User, WalletTransaction
-from .schemas import AIChatRequest, AIChatResponse, PreferenceResponse, PreferenceWrite, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TradeCreate, TradeResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
+from .models import AuditEvent, GoalContribution, JournalImport, PaperTrade, PaperTradeEvent, PersonalGoal, Preference, StrategyLabRun, Trade, User, WalletTransaction
+from .schemas import AIChatRequest, AIChatResponse, LegacyJournalImportRequest, LegacyJournalImportResponse, PreferenceResponse, PreferenceWrite, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TradeCreate, TradeResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
 from .security import decrypt_secret, encrypt_secret
 from .maintenance import daily_backup_worker, record_audit_event
 from .system_security import router as system_security_router
@@ -251,7 +252,12 @@ def list_journal(limit: int = 100, user: User = Depends(local_workspace), db: Se
 
 @app.post("/api/v1/journal", response_model=TradeResponse, status_code=201)
 def create_journal(payload: TradeCreate, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
-    item = Trade(user_id=user.id, symbol=payload.symbol, direction=payload.direction,
+    created_at = payload.created_at
+    if created_at is not None:
+        created_at = (created_at.replace(tzinfo=timezone.utc) if created_at.tzinfo is None
+                      else created_at.astimezone(timezone.utc))
+    item = Trade(user_id=user.id, created_at=created_at or datetime.now(timezone.utc),
+                 symbol=payload.symbol, direction=payload.direction,
                  outcome=payload.outcome, pnl=payload.pnl, notes=payload.notes)
     db.add(item)
     db.flush()
@@ -263,6 +269,68 @@ def create_journal(payload: TradeCreate, user: User = Depends(local_workspace), 
     event_hub.publish("journal.changed", "journal", "created", {"trade_id": item.id, "symbol": item.symbol})
     event_hub.publish("wallet.changed", "wallet", "journal_pnl_recorded", {"trade_id": item.id})
     return item
+
+@app.post("/api/v1/journal/import", response_model=LegacyJournalImportResponse)
+def import_legacy_journal(payload: LegacyJournalImportRequest,
+                          user: User = Depends(local_workspace),
+                          db: Session = Depends(get_db)):
+    """Import legacy browser journal rows without replaying historical P&L into the wallet.
+
+    source_ref makes retries safe if the browser loses its response
+    after the database commit or the import is split into multiple batches.
+    """
+    imported = 0
+    for row in payload.rows:
+        exists = db.scalar(select(JournalImport.id).where(
+            JournalImport.user_id == user.id,
+            JournalImport.source_ref == row.source_ref,
+        ))
+        if exists is not None:
+            continue
+        created_at = datetime.now(timezone.utc)
+        if row.date:
+            try:
+                created_at = datetime.fromisoformat(row.date.replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail="A legacy journal date is invalid.") from exc
+            if created_at.tzinfo is None:
+                if len(row.date.strip()) == 10:
+                    created_at = created_at.replace(hour=12, tzinfo=timezone.utc)
+                else:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+            else:
+                created_at = created_at.astimezone(timezone.utc)
+        try:
+            with db.begin_nested():
+                trade = Trade(user_id=user.id, created_at=created_at, symbol=row.symbol,
+                              direction=row.direction, outcome=row.outcome,
+                              pnl=row.pnl, notes=row.notes)
+                db.add(trade)
+                db.flush()
+                db.add(JournalImport(user_id=user.id, source_id=payload.source_id,
+                                     source_ref=row.source_ref, trade_id=trade.id))
+                if row.record_wallet:
+                    db.add(WalletTransaction(user_id=user.id, transaction_type="trade_pnl",
+                                             amount=row.pnl,
+                                             description=f"{row.symbol} {row.direction.upper()} journal P&L",
+                                             trade_id=trade.id))
+                db.flush()
+                imported += 1
+        except IntegrityError:
+            # Another browser tab may have imported the same source row first.
+            if db.scalar(select(JournalImport.id).where(
+                JournalImport.user_id == user.id,
+                JournalImport.source_ref == row.source_ref,
+            )) is None:
+                raise
+    if imported:
+        record_audit_event(db, "journal.legacy_imported",
+                           {"source_id": payload.source_id, "imported": imported})
+        db.commit()
+        event_hub.publish("journal.changed", "journal", "legacy_imported",
+                          {"imported": imported})
+    return {"imported": imported, "total": len(payload.rows)}
+
 
 @app.delete("/api/v1/journal/{trade_id}", status_code=204)
 def delete_journal(trade_id: int, user: User = Depends(local_workspace), db: Session = Depends(get_db)):

@@ -5,8 +5,9 @@ class TradeCreate(BaseModel):
     symbol: str = Field(min_length=1, max_length=20)
     direction: str
     outcome: str
-    pnl: float
+    pnl: float = Field(allow_inf_nan=False)
     notes: str = Field(default="", max_length=2000)
+    created_at: datetime | None = None
     @field_validator("symbol")
     @classmethod
     def normalize_symbol(cls, value): return value.strip().upper()
@@ -22,6 +23,22 @@ class TradeCreate(BaseModel):
         value = value.strip().lower()
         if value not in {"win", "loss", "breakeven"}: raise ValueError("Outcome must be win, loss or breakeven.")
         return value
+
+class LegacyJournalRow(TradeCreate):
+    date: str = Field(default="", max_length=40)
+    source_ref: str = Field(min_length=16, max_length=64, pattern="^[A-Za-z0-9_-]+$")
+    record_wallet: bool = False
+
+
+class LegacyJournalImportRequest(BaseModel):
+    source_id: str = Field(min_length=16, max_length=64, pattern="^[A-Za-z0-9_-]+$")
+    rows: list[LegacyJournalRow] = Field(max_length=500)
+
+
+class LegacyJournalImportResponse(BaseModel):
+    imported: int
+    total: int
+
 
 class TradeResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

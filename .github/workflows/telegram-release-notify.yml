@@ -54,9 +54,9 @@ jobs:
               tag = "Workspace update"
               release_url = "https://github.com/" + repo + "/commit/" + os.environ.get("COMMIT_SHA", "")
               intro = (
-                  "🎯 Personal goals creation and progress experience improved.\\n"
-                  "🏅 A sample achievement certificate is now available, prominently marked DEMO ONLY — NOT VALID.\\n"
-                  "💬 Telegram messages now use clearer branded formatting and helpful emojis.\\n"
+                  "🎯 Personal goals creation and progress experience improved.\n"
+                  "🏅 A sample achievement certificate is now available, prominently marked DEMO ONLY — NOT VALID.\n"
+                  "💬 Telegram messages now use clearer branded formatting and helpful emojis.\n"
                   "🔒 Your local wallet, journal, settings and credentials remain on your device."
               )
           else:

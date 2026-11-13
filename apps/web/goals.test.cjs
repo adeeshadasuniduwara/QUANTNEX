@@ -13,3 +13,10 @@ assert.match(js, /\/api\/v1\/goals\/demo-certificate/, "Demo certificate must us
 assert.match(js, /Number\.isFinite\(target_amount\)/, "Goal creation must reject invalid target values before sending");
 assert.match(js, /setTimeout\(\(\)=>URL\.revokeObjectURL\(url\),30000\)/, "PDF download URLs must remain available long enough for browser downloads");
 console.log("QUANTNEX goals creation and demo-certificate UI checks passed.");
+
+assert.match(html, /id="goalDemoTitle"/, "Demo certificate must have its own sample goal title field.");
+assert.match(html, /id="goalDemoMessage"/, "Demo certificate must have its own achievement message field.");
+const demoHandler = js.slice(js.indexOf('$("goalDemoCertificate")'), js.indexOf('$("goalGenerateCertificate")'));
+assert.ok(demoHandler.includes('goalCertificateName'), "Demo preview must use the entered display name.");
+assert.ok(demoHandler.includes('goalDemoTitle') && demoHandler.includes('goalDemoMessage'), "Demo preview must use its dedicated sample fields.");
+assert.ok(!demoHandler.includes('goalCertificateSelect'), "Demo preview must not depend on choosing an achieved goal.");

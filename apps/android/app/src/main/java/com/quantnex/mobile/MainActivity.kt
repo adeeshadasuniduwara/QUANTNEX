@@ -1,9 +1,15 @@
 package com.quantnex.mobile
 
 import android.app.DownloadManager
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.*
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
+import android.content.pm.PackageManager
 import android.webkit.*
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -23,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -30,6 +37,8 @@ import java.net.URL
 
 private const val PREFS = "quantnex_mobile"
 private const val REPO = "adeeshadasuniduwara/QUANTNEX"
+private const val UPDATE_CHANNEL = "quantnex_updates"
+private const val UPDATE_PREF = "last_notified_release"
 private val Bg = Color(0xFF080D13)
 private val Panel = Color(0xFF111A25)
 private val Accent = Color(0xFF50D6B0)
@@ -41,6 +50,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = android.graphics.Color.rgb(8,13,19)
         window.navigationBarColor = android.graphics.Color.rgb(8,13,19)
+        createUpdateChannel()
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 7301)
+        }
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(background=Bg, surface=Panel, primary=Accent, onPrimary=Bg, onSurface=Color.White)) {
                 QuantnexApp(
@@ -50,7 +63,10 @@ class MainActivity : ComponentActivity() {
                     onNavigate = { key -> webView?.evaluateJavascript("(function(){var a=document.querySelector('a[href=\\\"#$key\\\"]');if(a)a.click();else location.hash='#$key';})();", null) },
                     onReload = { webView?.reload() },
                     onUpdate = { url -> downloadApk(url) },
-                    checkUpdate = { fetchRelease() }
+                    checkUpdate = { fetchRelease() },
+                    lastNotifiedTag = getSharedPreferences(PREFS, MODE_PRIVATE).getString(UPDATE_PREF, "") ?: "",
+                    onReleaseSeen = { tag -> getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(UPDATE_PREF, tag).apply() },
+                    onNotifyRelease = { data -> notifyRelease(data) }
                 )
             }
         }
@@ -67,6 +83,28 @@ class MainActivity : ComponentActivity() {
         result
     } catch (_: Exception) { null }
 
+    private fun createUpdateChannel() {
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        manager.createNotificationChannel(NotificationChannel(UPDATE_CHANNEL, "QUANTNEX updates", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = "New QUANTNEX Android releases"
+        })
+    }
+
+    private fun notifyRelease(release: JSONObject) {
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        val launch = packageManager.getLaunchIntentForPackage(packageName) ?: return
+        val pending = PendingIntent.getActivity(this, 7302, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val tag = release.optString("tag_name", "New version")
+        val notification = Notification.Builder(this, UPDATE_CHANNEL)
+            .setSmallIcon(android.R.drawable.stat_notify_sync_noanim)
+            .setContentTitle("QUANTNEX update released")
+            .setContentText("Version $tag is ready. Open QUANTNEX to download it.")
+            .setStyle(Notification.BigTextStyle().bigText("A new QUANTNEX Android update ($tag) is available. Open the app and tap UPDATE to download and install it."))
+            .setContentIntent(pending)
+            .setAutoCancel(true)
+            .build()
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(7303, notification)
+    }
     private fun downloadApk(url: String) {
         try {
             val request = DownloadManager.Request(Uri.parse(url))
@@ -99,7 +137,10 @@ private fun QuantnexApp(
     onNavigate: (String) -> Unit,
     onReload: () -> Unit,
     onUpdate: (String) -> Unit,
-    checkUpdate: suspend () -> JSONObject?
+    checkUpdate: suspend () -> JSONObject?,
+    lastNotifiedTag: String,
+    onReleaseSeen: (String) -> Unit,
+    onNotifyRelease: (JSONObject) -> Unit
 ) {
     var url by remember { mutableStateOf(savedUrl) }
     var editUrl by remember { mutableStateOf(savedUrl) }
@@ -107,7 +148,32 @@ private fun QuantnexApp(
     var release by remember { mutableStateOf<JSONObject?>(null) }
     var active by remember { mutableStateOf("overview") }
     var error by remember { mutableStateOf("") }
-    LaunchedEffect(Unit) { release = withContext(Dispatchers.IO) { checkUpdate() } }
+    var showUpdatePopup by remember { mutableStateOf(false) }
+    var notifiedTag by remember { mutableStateOf(lastNotifiedTag) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val latest = withContext(Dispatchers.IO) { checkUpdate() }
+            if (latest != null && apkUrl(latest).isNotBlank()) {
+                val tag = latest.optString("tag_name")
+                if (tag.isNotBlank()) {
+                    if (notifiedTag.isBlank()) {
+                        notifiedTag = tag
+                        onReleaseSeen(tag)
+                        release = latest
+                    } else if (tag != notifiedTag) {
+                        release = latest
+                        showUpdatePopup = true
+                        onNotifyRelease(latest)
+                        notifiedTag = tag
+                        onReleaseSeen(tag)
+                    } else {
+                        release = latest
+                    }
+                }
+            }
+            delay(5 * 60 * 1000L)
+        }
+    }
     BackHandler(enabled = true) { onNavigate("overview") }
 
     Column(Modifier.fillMaxSize().background(Bg)) {
@@ -183,6 +249,21 @@ private fun QuantnexApp(
                 ) }
             }
         }
+    }
+    if (showUpdatePopup && release != null) {
+        val updateData = release!!
+        AlertDialog(
+            onDismissRequest = { showUpdatePopup = false },
+            containerColor = Panel,
+            title = { Text("New update released!", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = { Text("QUANTNEX " + updateData.optString("tag_name") + " is available. Download the latest Android update now?", color = Muted) },
+            confirmButton = {
+                TextButton(onClick = { showUpdatePopup = false; onUpdate(apkUrl(updateData)) }) {
+                    Text("DOWNLOAD NOW", color = Accent, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = { TextButton(onClick = { showUpdatePopup = false }) { Text("LATER", color = Muted) } }
+        )
     }
     if(showSettings && url.isNotBlank()) AlertDialog(
         onDismissRequest={ showSettings=false }, containerColor=Panel,

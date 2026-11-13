@@ -57,18 +57,18 @@ assert.match(html, /id="webUpdateModalVersion"/, "The update dialog must show th
 assert.match(html, /id="webUpdateModalChanges"/, "The update dialog must list what changed");
 assert.match(html, /id="webUpdateModalInstall"/, "The update dialog must offer Download & Install Now");
 assert.match(html, /id="webInstallUpdate" hidden/, "The Updates page install action must remain hidden until an update is found");
-assert.match(app, /New update released:/, "The updater must announce a newly available version");
+assert.match(app, /New update detected:/, "The updater must announce a newly available version");
 assert.match(app, /\["127\.0\.0\.1","localhost"\]\.includes\(location\.hostname\)/, "The updater must work on both supported loopback hostnames");
-assert.match(app, /openUpdateModal\(result\)/, "A detected update must open the notification dialog");
-assert.match(app, /modalInstallButton\?\.addEventListener\("click",\(\)=>installLatestCommit\(\)/, "The popup install action must start the update only after a click");
-assert.match(app, /rememberUpdateDismissed\(sha\)/, "The user must be able to dismiss the same notification until the next version");
+assert.match(app, /renderUpdateDetails\(result,false\)/, "Automatic installation must not block behind a release dialog");
+assert.match(app, /await installLatestCommit\(\)/, "A detected update must install automatically without a manual click");
 assert.match(app, /300000/, "The updater must periodically check for new GitHub commits while visible");
-assert.doesNotMatch(app, /Starting automatic installation/, "Detecting an update must never silently install it");
 assert.match(updater, /compare\/\{installed\}\.\.\.\{latest\['sha'\]\}/, "The updater must compare installed and latest GitHub commits");
 assert.match(updater, /"files_changed": files_changed/, "The updater must return changed-file metadata");
+assert.match(updater, /notify_connected_telegram\(commit\)/, "A successful update must notify an already-connected private Telegram bot");
+assert.match(updater, /127\.0\.0\.1:8000\/api\/v1\/telegram\/notify/, "Telegram notification must go through the local encrypted integration");
 assert.match(css, /\.web-update-dialog/, "The update dialog must have dedicated responsive styling");
 
-console.log("QUANTNEX update notification and user-approved install checks passed.");
+console.log("QUANTNEX automatic update and private Telegram notification checks passed.");
 
 assert.ok(html.includes("cdn.jsdelivr.net/npm/lightweight-charts"), "QUANTNEX VIEW must load its chart engine from the primary CDN");
 assert.ok(html.includes("unpkg.com/lightweight-charts"), "QUANTNEX VIEW must have a fallback chart-engine CDN");

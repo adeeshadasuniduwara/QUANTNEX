@@ -11,6 +11,11 @@ assert.ok(!html.includes("TradingView Lightweight Charts"), "Chart footer must n
 assert.ok(!fs.readFileSync("apps/web/signal-tool.js", "utf8").includes("window.LightweightCharts"), "Legacy TradingView chart controller must be removed.");
 assert.ok(js.includes("quantnex:market-tick"), "Native chart must subscribe to the shared Trading Room market feed.");
 assert.ok(js.includes("ANALYSIS ERROR · "), "Analysis errors must expose their actual cause.");
+assert.ok(js.includes("historyRequests=new Map()"), "History requests must be isolated by symbol/timeframe to avoid selection races.");
+assert.ok(js.includes("if(historyRequests.has(key))return historyRequests.get(key)"), "Repeated history requests for one market/timeframe must be deduplicated.");
+assert.ok(!js.includes("candles.length<210)throw Error"), "A valid short history must still render instead of blanking the chart.");
+assert.ok(js.includes("INDICATORS WARMING UP"), "Short histories must clearly disclose indicator warm-up instead of failing chart preview.");
+assert.ok(js.includes("c.high>=Math.max(c.open,c.close,c.low)"), "Malformed OHLC candles must be filtered before canvas rendering.");
 assert.ok(css.includes(".qx-native-chart-canvas"), "Native chart canvas styles are missing.");
 for (const symbol of ["BNBUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT"]) assert.ok(html.includes(`value="${symbol}"`), `Missing market selector option: ${symbol}`);
 console.log("QUANTNEX native canvas chart, live feed, indicators and market selector checks passed.");

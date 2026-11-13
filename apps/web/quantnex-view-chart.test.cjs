@@ -14,3 +14,9 @@ assert.ok(js.includes("ANALYSIS ERROR · "), "Analysis errors must expose their 
 assert.ok(css.includes(".qx-native-chart-canvas"), "Native chart canvas styles are missing.");
 for (const symbol of ["BNBUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT"]) assert.ok(html.includes(`value="${symbol}"`), `Missing market selector option: ${symbol}`);
 console.log("QUANTNEX native canvas chart, live feed, indicators and market selector checks passed.");
+
+assert.match(js, /Math\.min\(30000,1000\*Math\.pow\(2,/ , "Live feed reconnect must use capped exponential backoff.");
+assert.match(js, /Date\.now\(\)-lastFeedMessageAt>30000/, "Stale WebSocket feeds must be detected.");
+assert.match(js, /LIVE FEED STALE · RECONNECTING/, "Stale feed recovery must be visible to users.");
+assert.match(js, /document\.addEventListener\("visibilitychange"/, "Live feed must recover when the workspace becomes visible again.");
+console.log("QUANTNEX VIEW feed recovery checks passed.");

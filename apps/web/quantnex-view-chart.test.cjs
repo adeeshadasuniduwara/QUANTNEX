@@ -51,3 +51,5 @@ assert.doesNotMatch(js, /goldTimer|scan\(\)/, "The chart must not call the remov
 assert.match(js, /apiRequest\("\/api\/v1\/charts\/quote\?symbol=XAUUSD"\)/, "Gold chart must request a quote from the configured chart-history provider.");
 assert.match(js, /startsWith\("QUANTNEX VIEW · "\)/, "Gold chart must reject overview ticks from a different provider.");
 assert.match(js, /goldQuoteTimer=setInterval\(\(\)=>\{if\(isChartViewActive\(\)&&selected\(\)\.symbol==="XAUUSD"\)loadGoldQuote\(\);\},30000\)/, "Gold quote polling must be scoped to the active chart and rate limited.");
+
+assert.match(js, /document\.hidden\|\|!isChartViewActive\(\)\|\|selected\(\)\.symbol!=="XAUUSD"/, "Gold quote requests must stop while the browser tab is hidden.");

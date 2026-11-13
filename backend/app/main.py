@@ -149,11 +149,15 @@ async def chart_candles(symbol: str = "BTCUSDT", interval: str = "15m", limit: i
         raise HTTPException(status_code=502, detail="Chart market-data provider is temporarily unavailable.")
 
 @app.get("/api/v1/charts/quote")
-async def chart_quote(symbol: str = "XAUUSD"):
+async def chart_quote(symbol: str = "XAUUSD", interval: str = "15m"):
     """A live XAUUSD quote from the same configured provider as chart history."""
     symbol = symbol.upper()
     if symbol != "XAUUSD":
         raise HTTPException(status_code=422, detail="The chart quote endpoint currently supports XAUUSD only.")
+    interval_seconds = {"1m":60,"5m":300,"15m":900,"30m":1800,"1h":3600,"4h":14400}
+    if interval not in interval_seconds:
+        raise HTTPException(status_code=422, detail="Choose a supported chart timeframe.")
+    stale_after_seconds = max(120, interval_seconds[interval] * 2)
     from .phase07_engine import get_quote as get_twelve_data_quote, IntelligenceDataError
     from .mt5_feed import get_quote as get_mt5_quote, MT5FeedError
     try:
@@ -164,14 +168,16 @@ async def chart_quote(symbol: str = "XAUUSD"):
             return {"symbol": "XAUUSD", "price": price, "provider": quote["provider"],
                     "source_timestamp": quote.get("source_timestamp"),
                     "timestamp": quote.get("fetch_timestamp") or datetime.now(timezone.utc).isoformat(),
-                    "stale": bool(quote.get("stale")), "spread": quote.get("spread")}
+                    "stale": bool(quote.get("stale")) or float(quote.get("age_seconds") or 0) > stale_after_seconds,
+                    "stale_after_seconds": stale_after_seconds, "spread": quote.get("spread")}
         quote = await get_twelve_data_quote("XAUUSD")
         from .phase10_engine import assess_quote
         health = assess_quote(quote)
         return {"symbol": "XAUUSD", "price": quote["price"], "provider": quote["provider"],
                 "source_timestamp": quote.get("source_timestamp"),
                 "timestamp": quote.get("timestamp") or datetime.now(timezone.utc).isoformat(),
-                "stale": not health["trading_safe"], "data_health": health}
+                "stale": not health["trading_safe"] or health["age_seconds"] is None or health["age_seconds"] > stale_after_seconds,
+                "stale_after_seconds": stale_after_seconds, "data_health": health}
     except (MT5FeedError, IntelligenceDataError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except (ValueError, KeyError) as exc:

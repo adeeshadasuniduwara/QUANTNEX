@@ -78,8 +78,9 @@ async def restore_database(filename: str, request: Request):
     # Pause DB-using background workers so Windows can safely replace the SQLite file.
     paused_telegram = getattr(request.app.state, "telegram_worker_task", None) is not None
     paused_daily = getattr(request.app.state, "daily_backup_task", None) is not None
-    paused_paper = getattr(request.app.state, "paper_monitor_task", None) is not None
-    for attribute in ("telegram_worker_task", "daily_backup_task", "paper_monitor_task"):
+    paused_autopilot = getattr(request.app.state, "paper_autopilot_task", None) is not None
+    paused_guardian = getattr(request.app.state, "prop_challenge_guardian_task", None) is not None
+    for attribute in ("telegram_worker_task", "daily_backup_task", "paper_autopilot_task", "prop_challenge_guardian_task"):
         task = getattr(request.app.state, attribute, None)
         if task is not None:
             task.cancel()
@@ -113,9 +114,12 @@ async def restore_database(filename: str, request: Request):
             request.app.state.telegram_worker_task = asyncio.create_task(telegram_worker())
         if paused_daily:
             request.app.state.daily_backup_task = asyncio.create_task(daily_backup_worker())
-        if paused_paper:
-            from .paper_worker import paper_trade_monitor
-            request.app.state.paper_monitor_task = asyncio.create_task(paper_trade_monitor())
+        if paused_autopilot:
+            from .phase12_20_engine import paper_autopilot_worker
+            request.app.state.paper_autopilot_task = asyncio.create_task(paper_autopilot_worker())
+        if paused_guardian:
+            from .prop_challenge import mt5_guardian_worker
+            request.app.state.prop_challenge_guardian_task = asyncio.create_task(mt5_guardian_worker())
 
 @router.get("/audit")
 def get_audit_log(limit: int = Query(default=100, ge=1, le=500)):

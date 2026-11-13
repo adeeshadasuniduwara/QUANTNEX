@@ -316,3 +316,19 @@ def test_chart_quote_uses_twelve_data_provider_when_mt5_is_disabled(monkeypatch)
     assert response.status_code == 200
     assert response.json()["price"] == 2345.6
     assert response.json()["provider"] == "Twelve Data"
+
+def test_chart_quote_marks_twelve_data_price_stale_for_short_timeframes(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from app import phase07_engine
+
+    async def fake_quote(_symbol):
+        stamp = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        return {"symbol": "XAUUSD", "kind": "gold", "price": 2345.6,
+                "provider": "Twelve Data", "source_timestamp": stamp, "timestamp": datetime.now(timezone.utc).isoformat()}
+
+    monkeypatch.setattr(main_module, "QUANTNEX_MT5_ENABLED", False)
+    monkeypatch.setattr(phase07_engine, "get_quote", fake_quote)
+    response = TestClient(app).get("/api/v1/charts/quote?symbol=XAUUSD&interval=1m")
+    assert response.status_code == 200
+    assert response.json()["stale"] is True
+    assert response.json()["stale_after_seconds"] == 120

@@ -61,3 +61,78 @@ def test_live_system_metrics_returns_actual_host_samples():
     assert result["disk_total_bytes"] > 0
     assert result["disk_free_bytes"] >= 0
     assert result["timestamp"].endswith("+00:00")
+
+
+def test_backup_and_restore_operations_are_serialized(monkeypatch):
+    from threading import Event, Thread
+    from app import maintenance
+
+    backup_started = Event()
+    allow_backup_to_finish = Event()
+    restore_calling = Event()
+    restore_started = Event()
+
+    def fake_backup(*args, **kwargs):
+        backup_started.set()
+        assert allow_backup_to_finish.wait(3)
+        return {"filename": "test.sqlite3"}
+
+    def fake_restore(*args, **kwargs):
+        restore_started.set()
+        return {"restored": "test.sqlite3"}
+
+    monkeypatch.setattr(maintenance, "_create_backup_unlocked", fake_backup)
+    monkeypatch.setattr(maintenance, "_restore_backup_unlocked", fake_restore)
+
+    first = Thread(target=lambda: maintenance.create_backup("sqlite:///unused.db"))
+    def run_restore():
+        restore_calling.set()
+        maintenance.restore_backup("test.sqlite3", "sqlite:///unused.db", None)
+    second = Thread(target=run_restore)
+
+    first.start()
+    assert backup_started.wait(2)
+    second.start()
+    assert restore_calling.wait(2)
+    assert not restore_started.wait(0.1)
+    allow_backup_to_finish.set()
+    first.join(3)
+    second.join(3)
+    assert not first.is_alive() and not second.is_alive()
+    assert restore_started.is_set()
+
+
+def test_daily_backup_runs_off_event_loop_thread(monkeypatch):
+    import asyncio
+    import threading
+    from app import maintenance
+
+    loop_thread = threading.get_ident()
+    backup_threads = []
+
+    class FakeSession:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_):
+            return False
+        def commit(self):
+            pass
+
+    def fake_backup(_database_url):
+        backup_threads.append(threading.get_ident())
+        return {"filename": "test.sqlite3", "size_bytes": 10}
+
+    async def cancel_after_one_cycle(_seconds):
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(maintenance, "_latest_backup_is_fresh", lambda: False)
+    monkeypatch.setattr(maintenance, "create_backup", fake_backup)
+    monkeypatch.setattr(maintenance, "SessionLocal", lambda: FakeSession())
+    monkeypatch.setattr(maintenance, "record_audit_event", lambda *args, **kwargs: None)
+    monkeypatch.setattr(maintenance.asyncio, "sleep", cancel_after_one_cycle)
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(maintenance.daily_backup_worker())
+
+    assert backup_threads
+    assert backup_threads[0] != loop_thread

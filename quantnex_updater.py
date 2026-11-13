@@ -178,7 +178,7 @@ def _bootstrap_snapshot(root: Path, latest_sha: str) -> dict:
         _save_state(root, latest_sha)
     except Exception:
         for relative in reversed(touched):
-            destination, backup = root / relative, backup_root / relative
+            destination, backup = _safe_destination(root, relative), backup_root / relative
             try:
                 if backup.is_file():
                     shutil.copy2(backup, destination)

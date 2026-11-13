@@ -40,7 +40,7 @@ function applyCandles(rows){
  chart.timeScale().fitContent();const last=candles.at(-1),first=candles[0],change=first.close?100*(last.close-first.close)/first.close:0;
  if($("qxChartLastPrice"))$("qxChartLastPrice").textContent=fmt(last.close);
  if($("qxChartChange")){$("qxChartChange").textContent=(change>=0?"+":"")+change.toFixed(2)+"% across loaded candles";$("qxChartChange").dataset.direction=change>=0?"up":"down";}
- drawOverlay();
+ drawOverlay();renderIndicatorPanels();
 }
 
 function rsiSeries(values,period=14){
@@ -60,8 +60,8 @@ function adxSeries(rows,period=14){
 }
 function mountIndicatorChart(id,kind){
  const L=window.LightweightCharts,el=$(id);if(!L?.createChart||!el)return null;
- const old=indicatorCharts[id];if(old){try{old.remove();}catch{}}
- const light=$("qxChartTheme")?.value==="light",ic=L.createChart(el,{width:el.clientWidth||700,height:142,layout:{background:{type:"solid",color:light?"#f7f9fc":"#080d13"},textColor:light?"#526174":"#9aa8bb",fontFamily:"Inter,system-ui,sans-serif",fontSize:10},grid:{vertLines:{color:"rgba(130,150,175,.08)"},horzLines:{color:"rgba(130,150,175,.08)"}},rightPriceScale:{borderColor:"rgba(130,150,175,.18)"},timeScale:{visible:false,borderColor:"rgba(130,150,175,.15)"},handleScroll:false,handleScale:false});
+ const old=indicatorCharts[id],light=$("qxChartTheme")?.value==="light";if(old){old.applyOptions({width:el.clientWidth||700,layout:{background:{type:"solid",color:light?"#f7f9fc":"#080d13"},textColor:light?"#526174":"#9aa8bb"}});return old;}
+ const ic=L.createChart(el,{width:el.clientWidth||700,height:142,layout:{background:{type:"solid",color:light?"#f7f9fc":"#080d13"},textColor:light?"#526174":"#9aa8bb",fontFamily:"Inter,system-ui,sans-serif",fontSize:10},grid:{vertLines:{color:"rgba(130,150,175,.08)"},horzLines:{color:"rgba(130,150,175,.08)"}},rightPriceScale:{borderColor:"rgba(130,150,175,.18)"},timeScale:{visible:false,borderColor:"rgba(130,150,175,.15)"},handleScroll:false,handleScale:false});
  indicatorCharts[id]=ic;
  const add=(type,options)=>ic.addSeries(type,options);
  if(kind==="rsi"){

@@ -7,6 +7,7 @@ const css = fs.readFileSync("apps/web/styles.css", "utf8");
 const workspaceCss = fs.readFileSync("apps/web/workspace-pages.css", "utf8");
 const workspace = fs.readFileSync("apps/web/workspace-pages.js", "utf8");
 const signal = fs.readFileSync("apps/web/signal-tool.js", "utf8");
+const nativeChart = fs.readFileSync("apps/web/quantnex-view-chart.js", "utf8");
 const updater = fs.readFileSync("apps/web/quantnex_local_server.py", "utf8");
 
 assert.match(html, /id="p7BookmapCanvas"/, "Bookmap must render through a canvas");
@@ -43,10 +44,11 @@ assert.match(html, /Heikin Ashi/, "Heikin Ashi chart option is missing");
 assert.match(html, /name="autoSignalSymbol"/, "Selectable Telegram auto-signal markets are missing");
 assert.match(html, /id="signalMarketSymbol"/, "Manual signal market selector is missing");
 assert.doesNotMatch(html, /external-embedding\/embed-widget-advanced-chart|TradingView Advanced Chart/, "The embedded TradingView widget must be removed");
-assert.match(signal, /api\/v1\/charts\/candles/, "QUANTNEX VIEW must load real local OHLC candles");
-assert.match(signal, /CandlestickSeries/, "First-party candlestick rendering is missing");
-assert.match(signal, /const ha=/, "Heikin Ashi candle calculation is missing");
-assert.match(signal, /data-qx-draw/, "Chart drawing tools are missing");
+assert.match(nativeChart, /api\/v1\/charts\/candles/, "QUANTNEX VIEW must load real local OHLC candles");
+assert.match(nativeChart, /fillRect\(xx-candleW\/2/, "First-party native candlestick rendering is missing");
+assert.match(nativeChart, /function heikin\(/, "Heikin Ashi candle calculation is missing");
+assert.match(nativeChart, /data-qx-draw|querySelectorAll\("\[data-qx-draw\]"\)/, "Chart drawing tools are missing");
+assert.doesNotMatch(signal, /LightweightCharts/, "Legacy TradingView chart engine must not remain in signal-tool.js");
 assert.match(signal, /apiRequest\("\/api\/v1\/signals\/scan\?symbol=/, "Manual signal scan must use the selected market");
 assert.match(signal, /symbols\}\)/, "Telegram auto-signal settings must save selected markets");
 assert.match(app, /volume:isTrade\?Number\(data\.q\|\|0\):0/, "Live Binance trade size must feed chart volume");
@@ -71,13 +73,13 @@ assert.match(css, /\.web-update-dialog/, "The update dialog must have dedicated 
 
 console.log("QUANTNEX automatic update and private Telegram notification checks passed.");
 
-assert.ok(html.includes("cdn.jsdelivr.net/npm/lightweight-charts"), "QUANTNEX VIEW must load its chart engine from the primary CDN");
-assert.ok(html.includes("unpkg.com/lightweight-charts"), "QUANTNEX VIEW must have a fallback chart-engine CDN");
-assert.match(signal, /api\.binance\.com\/api\/v3\/klines/, "Crypto chart must fall back to Binance public OHLC candles");
-assert.match(signal, /Binance Spot · direct fallback/, "Direct crypto fallback provider must be identified");
+assert.doesNotMatch(html, /(?:cdn\.jsdelivr\.net|unpkg\.com)\/.*lightweight-charts/, "QUANTNEX VIEW must not load an external TradingView chart engine");
+assert.match(nativeChart, /new WebSocket\("wss:\/\/stream\.binance\.com:9443\/ws\/"\+stream\)/, "Native chart must stream Binance live kline candles");
+assert.match(nativeChart, /scheduleReconnect\(/, "Native chart must reconnect its live candle feed");
+assert.match(nativeChart, /HISTORY FEED ERROR/, "Native chart history errors must be visible");
+assert.match(nativeChart, /ANALYSIS ERROR · /, "Native chart analysis errors must expose the API cause");
+assert.match(app, /quantnex:market-tick/, "Chart and Trading Room must share the live market event feed");
 assert.match(signal, /SIGNAL STATUS UNAVAILABLE/, "Signal status API errors must be visible instead of leaving a stale feed status");
-assert.match(signal, /Chart data unavailable/, "Chart load errors must use a chart-specific status");
-assert.match(signal, /if\(!window\.LightweightCharts\)throw new Error/, "Missing chart library must be caught and shown in the chart panel");
 assert.match(css, /height:clamp\(390px,58vh,620px\)/, "QUANTNEX VIEW must use a responsive chart height");
 console.log("QUANTNEX VIEW CDN fallback, direct market fallback and error-state checks passed.");
 

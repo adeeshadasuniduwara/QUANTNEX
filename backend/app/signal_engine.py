@@ -55,7 +55,7 @@ async def fetch_candles(interval: str, outputsize: int = 320, symbol: str = "XAU
             raise MarketDataError(f"Not enough {symbol} {interval} Binance candles for stable indicator calculations ({len(candles)} received).")
         return candles
     if symbol != "XAUUSD":
-        raise MarketDataError("Supported markets are BTCUSDT, ETHUSDT, SOLUSDT and XAUUSD.")
+        raise MarketDataError("Supported crypto markets: "+", ".join(sorted(CRYPTO_SYMBOLS))+"; gold: XAUUSD.")
     if QUANTNEX_MT5_ENABLED:
         from .mt5_feed import get_candles as get_mt5_candles, MT5FeedError
         try:

@@ -1,9 +1,15 @@
 package com.quantnex.mobile
 
 import android.app.DownloadManager
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.*
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
+import android.content.pm.PackageManager
 import android.webkit.*
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -23,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -30,6 +37,8 @@ import java.net.URL
 
 private const val PREFS = "quantnex_mobile"
 private const val REPO = "adeeshadasuniduwara/QUANTNEX"
+private const val UPDATE_CHANNEL = "quantnex_updates"
+private const val UPDATE_PREF = "last_notified_release"
 private val Bg = Color(0xFF080D13)
 private val Panel = Color(0xFF111A25)
 private val Accent = Color(0xFF50D6B0)
@@ -41,6 +50,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = android.graphics.Color.rgb(8,13,19)
         window.navigationBarColor = android.graphics.Color.rgb(8,13,19)
+        createUpdateChannel()
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 7301)
+        }
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(background=Bg, surface=Panel, primary=Accent, onPrimary=Bg, onSurface=Color.White)) {
                 QuantnexApp(
@@ -50,7 +63,11 @@ class MainActivity : ComponentActivity() {
                     onNavigate = { key -> webView?.evaluateJavascript("(function(){var a=document.querySelector('a[href=\\\"#$key\\\"]');if(a)a.click();else location.hash='#$key';})();", null) },
                     onReload = { webView?.reload() },
                     onUpdate = { url -> downloadApk(url) },
-                    checkUpdate = { fetchRelease() }
+                    checkUpdate = { fetchRelease() },
+                    lastNotifiedTag = getSharedPreferences(PREFS, MODE_PRIVATE).getString(UPDATE_PREF, "") ?: "",
+                    installedVersion = packageManager.getPackageInfo(packageName, 0).versionName ?: "0",
+                    onReleaseSeen = { tag -> getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(UPDATE_PREF, tag).apply() },
+                    onNotifyRelease = { data -> notifyRelease(data) }
                 )
             }
         }
@@ -67,6 +84,28 @@ class MainActivity : ComponentActivity() {
         result
     } catch (_: Exception) { null }
 
+    private fun createUpdateChannel() {
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        manager.createNotificationChannel(NotificationChannel(UPDATE_CHANNEL, "QUANTNEX updates", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = "New QUANTNEX Android releases"
+        })
+    }
+
+    private fun notifyRelease(release: JSONObject) {
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        val launch = packageManager.getLaunchIntentForPackage(packageName) ?: return
+        val pending = PendingIntent.getActivity(this, 7302, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val tag = release.optString("tag_name", "New version")
+        val notification = Notification.Builder(this, UPDATE_CHANNEL)
+            .setSmallIcon(android.R.drawable.stat_notify_sync_noanim)
+            .setContentTitle("QUANTNEX update released")
+            .setContentText("Version $tag is ready. Open QUANTNEX to download it.")
+            .setStyle(Notification.BigTextStyle().bigText("A new QUANTNEX Android update ($tag) is available. Open the app and tap UPDATE to download and install it."))
+            .setContentIntent(pending)
+            .setAutoCancel(true)
+            .build()
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(7303, notification)
+    }
     private fun downloadApk(url: String) {
         try {
             val request = DownloadManager.Request(Uri.parse(url))
@@ -99,7 +138,11 @@ private fun QuantnexApp(
     onNavigate: (String) -> Unit,
     onReload: () -> Unit,
     onUpdate: (String) -> Unit,
-    checkUpdate: suspend () -> JSONObject?
+    checkUpdate: suspend () -> JSONObject?,
+    lastNotifiedTag: String,
+    installedVersion: String,
+    onReleaseSeen: (String) -> Unit,
+    onNotifyRelease: (JSONObject) -> Unit
 ) {
     var url by remember { mutableStateOf(savedUrl) }
     var editUrl by remember { mutableStateOf(savedUrl) }
@@ -107,7 +150,37 @@ private fun QuantnexApp(
     var release by remember { mutableStateOf<JSONObject?>(null) }
     var active by remember { mutableStateOf("overview") }
     var error by remember { mutableStateOf("") }
-    LaunchedEffect(Unit) { release = withContext(Dispatchers.IO) { checkUpdate() } }
+    var showUpdatePopup by remember { mutableStateOf(false) }
+    var dashboardRefresh by remember { mutableIntStateOf(0) }
+    var notifiedTag by remember { mutableStateOf(lastNotifiedTag) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val latest = withContext(Dispatchers.IO) { checkUpdate() }
+            if (latest != null && apkUrl(latest).isNotBlank()) {
+                val tag = latest.optString("tag_name")
+                if (tag.isNotBlank()) {
+                    if (notifiedTag.isBlank()) {
+                        release = latest
+                        if (tag.removePrefix("v") != installedVersion.removePrefix("v")) {
+                            showUpdatePopup = true
+                            onNotifyRelease(latest)
+                        }
+                        notifiedTag = tag
+                        onReleaseSeen(tag)
+                    } else if (tag != notifiedTag) {
+                        release = latest
+                        showUpdatePopup = true
+                        onNotifyRelease(latest)
+                        notifiedTag = tag
+                        onReleaseSeen(tag)
+                    } else {
+                        release = latest
+                    }
+                }
+            }
+            delay(5 * 60 * 1000L)
+        }
+    }
     BackHandler(enabled = true) { onNavigate("overview") }
 
     Column(Modifier.fillMaxSize().background(Bg)) {
@@ -129,19 +202,19 @@ private fun QuantnexApp(
                 TextButton(onClick={ onUpdate(apk) }) { Text("UPDATE", color=Accent) }
             }
         }
-        if (url.isBlank()) {
-            Column(Modifier.weight(1f).padding(24.dp), verticalArrangement=Arrangement.Center) {
-                Text("YOUR TRADING WORKSPACE, ON ANDROID.", color=Color.White, fontSize=27.sp, fontWeight=FontWeight.ExtraBold)
-                Spacer(Modifier.height(12.dp))
-                Text("Connect the same QUANTNEX Web workspace to use its charts, trading room, market feeds, journal and tools.", color=Muted)
-                Spacer(Modifier.height(18.dp))
-                OutlinedTextField(editUrl, { editUrl=it }, modifier=Modifier.fillMaxWidth(), singleLine=true, label={ Text("HTTPS workspace URL") })
-                Spacer(Modifier.height(12.dp))
-                Button(onClick={
-                    val v=editUrl.trim().trimEnd('/')
-                    if(v.startsWith("https://")) { url=v; onSaveUrl(v); showSettings=false }
-                }, modifier=Modifier.fillMaxWidth(), colors=ButtonDefaults.buttonColors(containerColor=Accent, contentColor=Bg)) { Text("CONNECT WORKSPACE") }
-                Text("Your PC's localhost address cannot be opened from a phone. Host the Web workspace on a reachable HTTPS server first.", color=Muted, fontSize=11.sp)
+        if (url.isBlank() || active == "overview") {
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                when (active) {
+                    "overview" -> NativeDashboardScreen(
+                        refreshKey = dashboardRefresh,
+                        onRefresh = { dashboardRefresh++ },
+                        onOpenSettings = { editUrl=url; showSettings=true }
+                    )
+                    "tradingview" -> NativeFeaturePlaceholder("QUANTNEX VIEW", "A native multi-market chart workspace with candles, timeframes, indicators and drawing tools is the next development phase.")
+                    "trading-room" -> NativeFeaturePlaceholder("TRADING ROOM", "Live market discussion, market context and trading-room tools will be integrated in a later native phase.")
+                    "journal" -> NativeFeaturePlaceholder("TRADE JOURNAL", "Your local trade journal and wallet tools will be connected after the secure data-sync architecture is ready.")
+                    else -> NativeFeaturePlaceholder("MORE TOOLS", "Updates, settings, prop-firm challenges and the remaining QUANTNEX toolkit will be added progressively.")
+                }
             }
         } else {
             Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -173,18 +246,33 @@ private fun QuantnexApp(
                     TextButton(onClick=onReload) { Text("RETRY", color=Accent) }
                 }
             }
-            NavigationBar(containerColor=Panel) {
-                val items=listOf(Triple("Home","overview",Icons.Default.Dashboard),Triple("Chart","tradingview",Icons.Default.ShowChart),Triple("Room","trading-room",Icons.Default.Groups),Triple("Journal","journal",Icons.Default.MenuBook),Triple("More","updates",Icons.Default.MoreHoriz))
-                items.forEach { item -> NavigationBarItem(
-                    selected=active==item.second,
-                    onClick={ active=item.second; onNavigate(item.second) },
-                    icon={ Icon(item.third, item.first) }, label={ Text(item.first, fontSize=10.sp) },
-                    colors=NavigationBarItemDefaults.colors(selectedIconColor=Accent, selectedTextColor=Accent, indicatorColor=Color(0xFF20382F), unselectedIconColor=Muted, unselectedTextColor=Muted)
-                ) }
-            }
+        }
+        NavigationBar(containerColor=Panel) {
+            val items=listOf(Triple("Home","overview",Icons.Default.Dashboard),Triple("Chart","tradingview",Icons.Default.ShowChart),Triple("Room","trading-room",Icons.Default.Groups),Triple("Journal","journal",Icons.Default.MenuBook),Triple("More","updates",Icons.Default.MoreHoriz))
+            items.forEach { item -> NavigationBarItem(
+                selected=active==item.second,
+                onClick={ active=item.second; if(url.isNotBlank()) onNavigate(item.second) },
+                icon={ Icon(item.third, item.first) }, label={ Text(item.first, fontSize=10.sp) },
+                colors=NavigationBarItemDefaults.colors(selectedIconColor=Accent, selectedTextColor=Accent, indicatorColor=Color(0xFF20382F), unselectedIconColor=Muted, unselectedTextColor=Muted)
+            ) }
         }
     }
-    if(showSettings && url.isNotBlank()) AlertDialog(
+    if (showUpdatePopup && release != null) {
+        val updateData = release!!
+        AlertDialog(
+            onDismissRequest = { showUpdatePopup = false },
+            containerColor = Panel,
+            title = { Text("New update released!", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = { Text("QUANTNEX " + updateData.optString("tag_name") + " is available. Download the latest Android update now?", color = Muted) },
+            confirmButton = {
+                TextButton(onClick = { showUpdatePopup = false; onUpdate(apkUrl(updateData)) }) {
+                    Text("DOWNLOAD NOW", color = Accent, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = { TextButton(onClick = { showUpdatePopup = false }) { Text("LATER", color = Muted) } }
+        )
+    }
+    if(showSettings) AlertDialog(
         onDismissRequest={ showSettings=false }, containerColor=Panel,
         title={ Text("Workspace settings", color=Color.White) },
         text={ OutlinedTextField(editUrl, { editUrl=it }, singleLine=true, label={ Text("HTTPS workspace URL") }) },

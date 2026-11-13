@@ -7,7 +7,7 @@ const INTERVALS={"1m":60,"5m":300,"15m":900,"30m":1800,"1h":3600,"4h":14400};
 const fmt=v=>Number(v).toLocaleString(undefined,{maximumFractionDigits:8});
 const stamp=v=>{let s=String(v||"");if(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?$/.test(s))s+="Z";const n=Date.parse(s);return Number.isFinite(n)?Math.floor(n/1000):null;};
 const selected=()=>({symbol:$("qxSymbol")?.value||"BTCUSDT",interval:$("qxInterval")?.value||"15m"});
-let candles=[],analysis=null,ws=null,retry=null,historyBusy=false,analysisBusy=false,resize=null,reconnectAttempts=0,lastFeedMessageAt=0,staleWatchdog=null;
+let candles=[],analysis=null,ws=null,retry=null,historyRequests=new Map(),analysisBusy=false,resize=null,reconnectAttempts=0,lastFeedMessageAt=0,staleWatchdog=null;
 let canvas,ctx,view={start:0,count:120,drag:null,crosshair:null},drawMode="cursor",drawings=[],pendingDrawing=null,tradePlan=null,lastPrice=null,feedName="",feedState="connecting";
 const chartBg=()=> $("qxChartTheme")?.value==="light"?"#f7f9fc":"#080d13";
 const textColor=()=> $("qxChartTheme")?.value==="light"?"#263244":"#b8c4d4";
@@ -84,7 +84,32 @@ function onTradingRoomTick(event){const d=event.detail||{},symbol=String(d.symbo
 function stopFeed(){if(ws){ws.onclose=null;ws.close();ws=null;}if(retry){clearTimeout(retry);retry=null;}if(staleWatchdog){clearInterval(staleWatchdog);staleWatchdog=null;}}
 function connectLive(){stopFeed();const{symbol,interval}=selected();if(symbol==="XAUUSD"){feedState="polling";return;}const stream=symbol.toLowerCase()+"@kline_"+interval;try{ws=new WebSocket("wss://stream.binance.com:9443/ws/"+stream);}catch{feedState="reconnecting";return scheduleReconnect();}ws.onopen=()=>{reconnectAttempts=0;lastFeedMessageAt=Date.now();feedState="live";setStatus("LIVE STREAM · "+symbol+" · "+interval.toUpperCase());const p=$("qxChartProvider");if(p)p.textContent="Feed: Binance WebSocket live · "+candles.length+" historical candles";};ws.onmessage=e=>{lastFeedMessageAt=Date.now();try{const k=JSON.parse(e.data).k;if(!k)return;mergeCandle({time:Math.floor(k.t/1000),open:k.o,high:k.h,low:k.l,close:k.c,volume:k.v});}catch{}};ws.onerror=()=>{feedState="reconnecting";try{ws?.close();}catch{}};ws.onclose=()=>{if(staleWatchdog){clearInterval(staleWatchdog);staleWatchdog=null;}if(selected().symbol===symbol&&selected().interval===interval){feedState="reconnecting";scheduleReconnect();}};staleWatchdog=setInterval(()=>{if(!document.hidden&&ws&&ws.readyState===WebSocket.OPEN&&lastFeedMessageAt&&Date.now()-lastFeedMessageAt>30000){feedState="reconnecting";setStatus("LIVE FEED STALE · RECONNECTING","error");try{ws.close();}catch{}}},10000);}
 function scheduleReconnect(){if(retry)return;const delay=Math.min(30000,1000*Math.pow(2,Math.min(reconnectAttempts,5)));reconnectAttempts=Math.min(reconnectAttempts+1,6);const p=$("qxChartProvider");if(p)p.textContent="Feed: reconnecting in "+Math.ceil(delay/1000)+"s · attempt "+reconnectAttempts;retry=setTimeout(()=>{retry=null;if(!document.hidden)connectLive();},delay);}
-async function loadHistory(){if(historyBusy)return;historyBusy=true;const pick=selected();try{const bars=await apiRequest("/api/v1/charts/candles?symbol="+encodeURIComponent(pick.symbol)+"&interval="+encodeURIComponent(pick.interval)+"&limit=1000");if(selected().symbol!==pick.symbol||selected().interval!==pick.interval)return;const rows=(bars.candles||[]).map(c=>({...c,time:stamp(c.time)})).filter(c=>c.time!==null).sort((a,b)=>a.time-b.time);if(!candles.length)candles=rows;else rows.forEach(mergeCandle);if(candles.length<210)throw Error("Only "+candles.length+" valid candles received; at least 210 are required for stable indicators.");feedName=bars.provider||"Market feed";const p=$("qxChartProvider");if(p)p.textContent="Feed: "+feedName+" · "+candles.length+" candles · "+(feedState==="live"?"WebSocket live":"polling")+(bars.stale?" · STALE DATA":" · FRESH");if(!view.start)fit();else draw();}catch(e){setStatus("HISTORY FEED ERROR","error");const p=$("qxChartProvider");if(p)p.textContent=e.message;}finally{historyBusy=false;}}
+async function loadHistory(){
+ const pick=selected(),key=pick.symbol+"|"+pick.interval;
+ if(historyRequests.has(key))return historyRequests.get(key);
+ const request=(async()=>{
+  try{
+   const bars=await apiRequest("/api/v1/charts/candles?symbol="+encodeURIComponent(pick.symbol)+"&interval="+encodeURIComponent(pick.interval)+"&limit=1000");
+   if(selected().symbol!==pick.symbol||selected().interval!==pick.interval)return;
+   const rows=(bars.candles||[]).map(c=>({...c,time:stamp(c.time),open:Number(c.open),high:Number(c.high),low:Number(c.low),close:Number(c.close),volume:Number(c.volume||0)}))
+    .filter(c=>c.time!==null&&[c.open,c.high,c.low,c.close,c.volume].every(Number.isFinite)&&c.open>0&&c.high>0&&c.low>0&&c.close>0&&c.high>=Math.max(c.open,c.close,c.low)&&c.low<=Math.min(c.open,c.close,c.high)&&c.volume>=0)
+    .sort((a,b)=>a.time-b.time);
+   const unique=[];for(const row of rows){if(unique.length&&unique[unique.length-1].time===row.time)unique[unique.length-1]=row;else unique.push(row);}
+   if(!unique.length)throw Error("The market-data provider returned no valid OHLC candles.");
+   candles=unique.slice(-1200);
+   feedName=bars.provider||"Market feed";
+   const p=$("qxChartProvider");
+   if(p)p.textContent="Feed: "+feedName+" · "+candles.length+" candles · "+(feedState==="live"?"WebSocket live":"polling")+(bars.stale?" · STALE DATA":" · FRESH")+(candles.length<210?" · INDICATORS WARMING UP":"");
+   if(!view.start)fit();else draw();
+   if(candles.length<210)setStatus("CHART READY · "+candles.length+" CANDLES · INDICATORS WARMING UP");
+  }catch(e){
+   setStatus("HISTORY FEED ERROR · "+(e.message||"market data unavailable"),"error");
+   const p=$("qxChartProvider");if(p)p.textContent=e.message||"Market data unavailable";
+  }
+ })();
+ historyRequests.set(key,request);
+ try{return await request;}finally{if(historyRequests.get(key)===request)historyRequests.delete(key);}
+}
 function renderAnalysis(data){analysis=data;const f=data.features||{},st=f.structure||{},summary=$("qxChartIntelSummary"),signal=data.signal;if(summary)summary.textContent=signal?signal.side+" · Entry "+fmt(signal.entry)+" · SL "+fmt(signal.stop_loss)+" · TP1 "+fmt(signal.tp1)+" / TP2 "+fmt(signal.tp2)+" / TP3 "+fmt(signal.tp3):"WAITING FOR CONFIRMATION · "+data.confluence_score+"/"+data.score_out_of+" rule matches. No trade plan is active.";const score=Math.max(0,Number(data.confluence_score)||0),outOf=Math.max(1,Number(data.score_out_of)||20),pct=Math.min(100,Math.round(score/outOf*100));if($("qxConfidenceFill"))$("qxConfidenceFill").style.width=pct+"%";if($("qxConfidenceLabel"))$("qxConfidenceLabel").textContent=score+" / "+outOf+" rule matches ("+pct+"% of checklist) · not a win probability";const metrics=$("qxChartIntelMetrics");if(metrics){metrics.replaceChildren();[["RSI",Number(f.rsi).toFixed(1)],["ADX",Number(f.adx).toFixed(1)],["EMA 20",fmt(f.ema20)],["EMA 50",fmt(f.ema50)],["EMA 200",fmt(f.ema200)],["Structure",st.structure_event||"—"],["Trend",st.structure_trend||"—"],["Liquidity",st.liquidity_sweep||"—"],["Premium / Discount",st.premium_discount||"—"],["Confidence",data.confluence_score+"/"+data.score_out_of]].forEach(([a,b])=>{const d=document.createElement("div"),n=document.createElement("span"),v=document.createElement("strong");d.className="qx-chart-intel-metric";n.textContent=a;v.textContent=b;d.append(n,v);metrics.append(d);});}window.quantnexViewSetTradePlan(signal||null);setStatus(signal?"CONFIRMED SETUP · "+signal.side:"WAITING FOR CONFIRMATION · SCANNING");}
 window.quantnexViewSetTradePlan=function(plan){tradePlan=plan||null;draw();};
 async function scan(){if(analysisBusy)return;analysisBusy=true;const pick=selected();try{const data=await apiRequest("/api/v1/quantnex-view/analyze?symbol="+encodeURIComponent(pick.symbol)+"&interval="+encodeURIComponent(pick.interval)+"&min_score=7");if(selected().symbol===pick.symbol&&selected().interval===pick.interval)renderAnalysis(data);}catch(e){setStatus("ANALYSIS ERROR · "+(e.message||"market analysis unavailable"),"error");const summary=$("qxChartIntelSummary");if(summary)summary.textContent="Analysis unavailable: "+(e.message||"Unknown API error")+". Candles may still stream live.";const label=$("qxConfidenceLabel");if(label)label.textContent="No fresh analysis result · check the local API and market feed.";if($("qxConfidenceFill"))$("qxConfidenceFill").style.width="0%";}finally{analysisBusy=false;}}

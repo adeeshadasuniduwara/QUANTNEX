@@ -23,6 +23,21 @@ class TradeCreate(BaseModel):
         if value not in {"win", "loss", "breakeven"}: raise ValueError("Outcome must be win, loss or breakeven.")
         return value
 
+class LegacyJournalRow(TradeCreate):
+    date: str = Field(default="", max_length=40)
+
+
+class LegacyJournalImportRequest(BaseModel):
+    source_id: str = Field(min_length=16, max_length=64, pattern="^[A-Za-z0-9_-]+$")
+    source_index_start: int = Field(default=0, ge=0)
+    rows: list[LegacyJournalRow] = Field(max_length=500)
+
+
+class LegacyJournalImportResponse(BaseModel):
+    imported: int
+    total: int
+
+
 class TradeResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int

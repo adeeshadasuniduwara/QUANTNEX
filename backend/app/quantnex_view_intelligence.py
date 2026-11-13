@@ -237,6 +237,10 @@ def backtest_candles(candles: list[dict[str, Any]], symbol: str, interval: str,
         remaining_pnl = max(-active["risk_cash"], min(active["risk_cash"]*3, (close-active["entry"])*sign/active["risk_distance"]*active["risk_cash"])) * remaining
         pnl = active.get("realized", 0.0) + (max(0.0, remaining_pnl) if active["be"] else remaining_pnl)
         balance += (max(0.0, remaining_pnl) if active["be"] else remaining_pnl)
+        # The final open position is a real equity change too; include it in
+        # peak-to-trough drawdown or a losing data-end close is under-reported.
+        peak = max(peak, balance)
+        max_dd = max(max_dd, (peak - balance) / peak * 100 if peak else 0.0)
         trades.append({**active, "exit": close, "pnl": round(pnl,2), "result": "WIN" if pnl>0 else "LOSS" if pnl<0 else "BREAKEVEN", "exit_time": candles[-1]["time"]})
     wins = sum(t["pnl"] > 0 for t in trades)
     losses = sum(t["pnl"] < 0 for t in trades)

@@ -151,3 +151,9 @@ console.log("QUANTNEX live-feed backoff reset checks passed.");
 assert.match(chartIntel, /api\/v1\/quantnex-view\/analyze/, "Chart intelligence must own the single periodic analysis request.");
 assert.match(chartIntel, /quantnexViewSetAnalysis\?\.\(data\)/, "Chart intelligence must share its analysis result with the native chart renderer.");
 console.log("QUANTNEX single-request chart analysis checks passed.");
+
+assert.match(chartIntel, /qxRunBacktest.*addEventListener\("click",backtest\)/, "Historical backtests must remain available from the explicit Run button.");
+assert.doesNotMatch(chartIntel, /setInterval\(\(\)=>\{if\(isTradingViewActive\(\)\)backtest\(\);\}/, "Historical backtests must not run periodically in the background.");
+assert.match(chartIntel, /current\.symbol===s\.symbol&&current\.interval===s\.interval/, "Late backtest responses must not overwrite a newly selected market or timeframe.");
+assert.match(chartIntel, /current\.symbol!==s\.symbol\|\|current\.interval!==s\.interval/, "Late analysis responses must be discarded after a market/timeframe change.");
+console.log("QUANTNEX backtest load and stale-response checks passed.");

@@ -59,7 +59,8 @@
     try{
       const s=selected();
       const data=await apiRequest("/api/v1/quantnex-view/analyze?symbol="+encodeURIComponent(s.symbol)+"&interval="+encodeURIComponent(s.interval)+"&min_score="+s.min);
-      if(!isTradingViewActive())return;
+      const current=selected();
+      if(!isTradingViewActive()||current.symbol!==s.symbol||current.interval!==s.interval||current.min!==s.min)return;
       lastAnalysis=data;renderFeatures(data.features);renderSignal(data);window.quantnexViewSetAnalysis?.(data);
       setStatus(data.status+" · "+data.eligible_setups+" ELIGIBLE / 100");
       const list=$("qxStrategyList");
@@ -85,16 +86,21 @@
       const s=selected(),balance=Number($("qxBacktestBalance").value),risk=Number($("qxBacktestRisk").value);
       const url="/api/v1/quantnex-view/backtest?symbol="+encodeURIComponent(s.symbol)+"&interval="+encodeURIComponent(s.interval)+
         "&initial_balance="+encodeURIComponent(balance)+"&risk_percent="+encodeURIComponent(risk)+"&min_score="+s.min;
-      const data=await apiRequest(url);if(isTradingViewActive())renderBacktest(data);
+      const data=await apiRequest(url),current=selected();
+      if(isTradingViewActive()&&current.symbol===s.symbol&&current.interval===s.interval&&current.min===s.min&&Number($("qxBacktestBalance").value)===balance&&Number($("qxBacktestRisk").value)===risk)renderBacktest(data);
     }catch(error){if(isTradingViewActive()){setText("qxBacktestStatus","ERROR");const host=$("qxBacktestMetrics");host.textContent="Backtest unavailable: "+error.message;}}
     finally{backtestBusy=false;if(button)button.disabled=false;if(backtestQueued&&isTradingViewActive()){backtestQueued=false;backtest();}else if(!isTradingViewActive())backtestQueued=false;}
   }
+  function resetBacktestForSelection(){
+    backtestQueued=false;
+    const host=$("qxBacktestMetrics");if(host)host.replaceChildren();
+    setText("qxBacktestStatus","SELECTION CHANGED · RUN BACKTEST");
+  }
   $("qxRunBacktest")?.addEventListener("click",backtest);
-  ["qxSymbol","qxInterval","qxIntelMinScore"].forEach(id=>$(id)?.addEventListener("change",()=>{analyze();backtest();}));
+  ["qxSymbol","qxInterval","qxIntelMinScore"].forEach(id=>$(id)?.addEventListener("change",()=>{analyze();resetBacktestForSelection();}));
   ["qxStopColor","qxTargetColor","qxEntryColor"].forEach(id=>$(id)?.addEventListener("input",()=>{if(lastAnalysis)renderSignal(lastAnalysis);}));
-  window.addEventListener("quantnex:view-changed",event=>{if(event.detail?.view==="tradingview"){analyze();backtest();}});
-  document.addEventListener("visibilitychange",()=>{if(isTradingViewActive()){analyze();backtest();}});
-  // Local-only research refresh. Hidden workspaces do not issue API requests.
+  window.addEventListener("quantnex:view-changed",event=>{if(event.detail?.view==="tradingview")analyze();});
+  document.addEventListener("visibilitychange",()=>{if(isTradingViewActive())analyze();});
+  // Historical backtests are user-triggered; do not run 1,000-candle simulations on view entry or on a timer.
   setInterval(()=>{if(isTradingViewActive())analyze();},60000);
-  setInterval(()=>{if(isTradingViewActive())backtest();},30*60*1000);
 })();

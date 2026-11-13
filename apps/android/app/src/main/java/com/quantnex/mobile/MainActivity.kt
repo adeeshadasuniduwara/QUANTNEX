@@ -202,7 +202,7 @@ private fun QuantnexApp(
                 TextButton(onClick={ onUpdate(apk) }) { Text("UPDATE", color=Accent) }
             }
         }
-        if (url.isBlank()) {
+        if (url.isBlank() || active == "overview") {
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (active) {
                     "overview" -> NativeDashboardScreen(

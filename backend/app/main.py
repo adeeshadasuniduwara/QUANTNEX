@@ -274,12 +274,11 @@ def import_legacy_journal(payload: LegacyJournalImportRequest,
     after the database commit or the import is split into multiple batches.
     """
     imported = 0
-    for offset, row in enumerate(payload.rows):
-        source_index = payload.source_index_start + offset
+    for row in payload.rows:
         exists = db.scalar(select(JournalImport.id).where(
             JournalImport.user_id == user.id,
             JournalImport.source_id == payload.source_id,
-            JournalImport.source_index == source_index,
+            JournalImport.source_ref == row.source_ref,
         ))
         if exists is not None:
             continue
@@ -302,7 +301,7 @@ def import_legacy_journal(payload: LegacyJournalImportRequest,
         db.add(trade)
         db.flush()
         db.add(JournalImport(user_id=user.id, source_id=payload.source_id,
-                             source_index=source_index, trade_id=trade.id))
+                             source_ref=row.source_ref, trade_id=trade.id))
         imported += 1
     if imported:
         record_audit_event(db, "journal.legacy_imported",

@@ -65,6 +65,7 @@ class MainActivity : ComponentActivity() {
                     onUpdate = { url -> downloadApk(url) },
                     checkUpdate = { fetchRelease() },
                     lastNotifiedTag = getSharedPreferences(PREFS, MODE_PRIVATE).getString(UPDATE_PREF, "") ?: "",
+                    installedVersion = packageManager.getPackageInfo(packageName, 0).versionName ?: "0",
                     onReleaseSeen = { tag -> getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(UPDATE_PREF, tag).apply() },
                     onNotifyRelease = { data -> notifyRelease(data) }
                 )
@@ -139,6 +140,7 @@ private fun QuantnexApp(
     onUpdate: (String) -> Unit,
     checkUpdate: suspend () -> JSONObject?,
     lastNotifiedTag: String,
+    installedVersion: String,
     onReleaseSeen: (String) -> Unit,
     onNotifyRelease: (JSONObject) -> Unit
 ) {
@@ -157,9 +159,13 @@ private fun QuantnexApp(
                 val tag = latest.optString("tag_name")
                 if (tag.isNotBlank()) {
                     if (notifiedTag.isBlank()) {
+                        release = latest
+                        if (tag.removePrefix("v") != installedVersion.removePrefix("v")) {
+                            showUpdatePopup = true
+                            onNotifyRelease(latest)
+                        }
                         notifiedTag = tag
                         onReleaseSeen(tag)
-                        release = latest
                     } else if (tag != notifiedTag) {
                         release = latest
                         showUpdatePopup = true

@@ -508,11 +508,11 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     if(document.hidden||tickerSocket||!window.WebSocket)return;
     try{
       tickerSocket=new WebSocket("wss://stream.binance.com:9443/stream?streams=btcusdt@trade/ethusdt@trade/solusdt@trade/btcusdt@ticker/ethusdt@ticker/solusdt@ticker");
-      tickerSocket.onopen=()=>{tickerReconnectAttempts=0;tickerLastMessageAt=Date.now();window.dispatchEvent(new CustomEvent("quantnex:stream-status",{detail:{feed:"crypto",status:"connected"}}));};
+      tickerSocket.onopen=()=>{tickerLastMessageAt=Date.now();window.dispatchEvent(new CustomEvent("quantnex:stream-status",{detail:{feed:"crypto",status:"connected"}}));};
       tickerSocket.onmessage=event=>{
         tickerLastMessageAt=Date.now();
         try{
-          const packet=JSON.parse(event.data),data=packet.data||packet;
+          const packet=JSON.parse(event.data),data=packet.data||packet;tickerReconnectAttempts=0;
           const symbol=String(data.s||"").toUpperCase(),refs=marketCards.get(symbol);
           const isTrade=data.e==="trade";
           const price=Number(isTrade?data.p:data.c),change=Number(data.P),high=Number(data.h),low=Number(data.l);
@@ -628,11 +628,11 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     if(!window.WebSocket||document.hidden)return;
     try{
       bookSocket=new WebSocket("wss://stream.binance.com:9443/ws/"+symbol+"@depth20@100ms");
-      bookSocket.onopen=()=>{if(generation===bookGeneration){bookReconnectAttempts=0;bookLastMessageAt=Date.now();$("p7BookLiveStatus").textContent="Connected · waiting for depth";}};
+      bookSocket.onopen=()=>{if(generation===bookGeneration){bookLastMessageAt=Date.now();$("p7BookLiveStatus").textContent="Connected · waiting for depth";}};
       bookSocket.onmessage=event=>{
         if(generation!==bookGeneration)return;
         bookLastMessageAt=Date.now();
-        try{const data=JSON.parse(event.data);renderBookmap(symbol.toUpperCase(),data.bids||[],data.asks||[]);}catch{}
+        try{const data=JSON.parse(event.data);bookReconnectAttempts=0;renderBookmap(symbol.toUpperCase(),data.bids||[],data.asks||[]);}catch{}
       };
       bookSocket.onerror=()=>{try{bookSocket?.close();}catch{}};
       bookSocket.onclose=()=>{if(generation!==bookGeneration)return;if(bookWatchdog){clearInterval(bookWatchdog);bookWatchdog=null;}bookSocket=null;if(!document.hidden){$("p7BookLiveStatus").textContent="Stream disconnected · reconnecting…";scheduleBookReconnect(generation);}};

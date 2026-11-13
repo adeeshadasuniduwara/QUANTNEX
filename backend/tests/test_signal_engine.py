@@ -130,3 +130,86 @@ def test_structure_exposes_confirmed_event_trend_and_atr_support_resistance_zone
     assert result["resistance_zone"]["low"] < result["resistance_zone"]["high"]
     assert result["support_zone"]["low"] <= result["swing_low"] <= result["support_zone"]["high"]
     assert result["resistance_zone"]["low"] <= result["swing_high"] <= result["resistance_zone"]["high"]
+
+
+def test_gold_candle_normalizer_sorts_deduplicates_and_rejects_bad_ohlc():
+    from app.signal_engine import _normalize_gold_candles
+
+    rows = [
+        {"datetime": "2026-01-01T00:02:00Z", "open": "2", "high": "3", "low": "1", "close": "2.5"},
+        {"datetime": "2026-01-01T00:01:00+00:00", "open": "2", "high": "1", "low": "1.5", "close": "2"},
+        {"datetime": "2026-01-01T00:02:00+00:00", "open": "2.1", "high": "3.2", "low": "1.1", "close": "2.8"},
+        {"datetime": "2026-01-01T00:03:00Z", "open": "nan", "high": "4", "low": "2", "close": "3"},
+    ]
+    result = _normalize_gold_candles(rows)
+    assert len(result) == 1
+    assert result[0]["time"] == "2026-01-01T00:02:00+00:00"
+    assert result[0]["close"] == 2.8
+    assert result[0]["volume"] == 0.0
+
+
+def test_xauusd_provider_candles_are_cached_and_returned_as_copies(monkeypatch):
+    import asyncio
+    import httpx
+    from app import signal_engine
+
+    signal_engine._GOLD_CANDLE_CACHE.clear()
+    monkeypatch.setattr(signal_engine, "TWELVE_DATA_API_KEY", "test-api-key")
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    payload = []
+    for index in reversed(range(220)):
+        stamp = start + timedelta(minutes=index)
+        price = 2300.0 + index * 0.1
+        payload.append({
+            "datetime": stamp.isoformat(), "open": str(price),
+            "high": str(price + 0.3), "low": str(price - 0.2),
+            "close": str(price + 0.1),
+        })
+
+    calls = []
+    def handler(request):
+        calls.append(request.url)
+        assert request.url.host == "api.twelvedata.com"
+        assert request.url.params["symbol"] == "XAU/USD"
+        assert request.url.params["apikey"] == "test-api-key"
+        return httpx.Response(200, json={"status": "ok", "values": payload})
+
+    original_client = httpx.AsyncClient
+    transport = httpx.MockTransport(handler)
+    def mock_client(*args, **kwargs):
+        return original_client(*args, transport=transport, **kwargs)
+    monkeypatch.setattr(signal_engine.httpx, "AsyncClient", mock_client)
+
+    first = asyncio.run(signal_engine.fetch_candles("1min", 220, "XAUUSD"))
+    first[0]["close"] = -1
+    second = asyncio.run(signal_engine.fetch_candles("1min", 220, "XAUUSD"))
+
+    assert len(calls) == 1
+    assert len(second) == 220
+    assert second[0]["time"] < second[-1]["time"]
+    assert second[0]["close"] > 0
+    assert second[0]["volume"] == 0.0
+
+
+def test_xauusd_rejects_insufficient_valid_provider_candles(monkeypatch):
+    import asyncio
+    import httpx
+    from app import signal_engine
+
+    signal_engine._GOLD_CANDLE_CACHE.clear()
+    monkeypatch.setattr(signal_engine, "TWELVE_DATA_API_KEY", "test-api-key")
+    payload = [
+        {"datetime": f"2026-01-01T00:{index:02d}:00Z", "open": "2300",
+         "high": "2299", "low": "2301", "close": "2300"}
+        for index in range(10)
+    ]
+
+    original_client = httpx.AsyncClient
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"values": payload}))
+    def mock_client(*args, **kwargs):
+        return original_client(*args, transport=transport, **kwargs)
+    monkeypatch.setattr(signal_engine.httpx, "AsyncClient", mock_client)
+
+    import pytest
+    with pytest.raises(signal_engine.MarketDataError, match="Not enough valid"):
+        asyncio.run(signal_engine.fetch_candles("1min", 220, "XAUUSD"))

@@ -37,3 +37,20 @@ def test_stress_test_is_directional_and_explicit():
     rows=[SimpleNamespace(status="OPEN",side="BUY",quantity=2,entry_price=100)]
     r=stress_test(rows,{"shock":-0.1})
     assert r["scenarios"][0]["estimated_pnl_impact"]==-20
+
+
+def test_drawdown_guard_reconstructs_starting_equity_from_current_equity():
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    trades = [
+        SimpleNamespace(status="CLOSED", realized_pnl=100, closed_at=now-timedelta(days=2), created_at=now-timedelta(days=2), id=1),
+        SimpleNamespace(status="CLOSED", realized_pnl=-200, closed_at=now-timedelta(days=1), created_at=now-timedelta(days=1), id=2),
+    ]
+    # Current equity is 900 after +100 then -200 from a reconstructed 1,000 start.
+    # The actual peak-to-trough drawdown is 200 / 1,100 = 18.18%, not 20%.
+    result = drawdown_guard(trades, 900, 3, 19, 4)
+    assert result["historical_max_drawdown_percent"] == 18.1818
+    assert result["trading_allowed"] is True
+    blocked = drawdown_guard(trades, 900, 3, 18, 4)
+    assert blocked["trading_allowed"] is False
+    assert "MAX_DRAWDOWN" in blocked["triggers"]

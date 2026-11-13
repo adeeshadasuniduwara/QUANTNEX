@@ -93,7 +93,7 @@ function wheel(e){e.preventDefault();const factor=e.deltaY < 0 ? 0.85 : 1.18,old
 function mergeCandle(row){if(!row||!Number.isFinite(Number(row.close)))return;const t=typeof row.time==="number"?Math.floor(row.time):stamp(row.time);if(!Number.isFinite(t))return;const next={...row,time:t,open:+row.open,high:+row.high,low:+row.low,close:+row.close,volume:+(row.volume||0)};const last=candles.at(-1);if(last&&last.time===t)candles[candles.length-1]=next;else if(!last||t>last.time)candles.push(next);else{const i=candles.findIndex(c=>c.time===t);if(i>=0)candles[i]=next;else return;}if(candles.length>1200)candles=candles.slice(-1200);candleRevision++;scheduleDraw();}
 function onTradingRoomTick(event){if(!isChartViewActive())return;const d=event.detail||{},symbol=String(d.symbol||"").toUpperCase();if(symbol!==selected().symbol)return;if(symbol==="XAUUSD"&&!String(d.source||"").startsWith("QUANTNEX VIEW · "))return;const price=Number(d.price),ms=Number(d.eventTime)||Date.now();if(!Number.isFinite(price)||price<=0||!candles.length)return;const seconds=INTERVALS[selected().interval]||900,time=Math.floor(ms/1000/seconds)*seconds;let last=candles.at(-1);if(time<last.time)return;if(time>last.time){last={time,open:price,high:price,low:price,close:price,volume:0};candles.push(last);}else{last.high=Math.max(last.high,price);last.low=Math.min(last.low,price);last.close=price;}if(d.kind==="trade"&&Number.isFinite(Number(d.volume)))last.volume+=Number(d.volume);if(candles.length>1200)candles=candles.slice(-1200);candleRevision++;feedName="Trading Room · "+(d.source||"shared live market feed");const p=$("qxChartProvider");if(p)p.textContent="Feed: "+feedName+" · "+candles.length+" candles";scheduleDraw();}
 async function loadGoldQuote(){
- if(!isChartViewActive()||selected().symbol!=="XAUUSD")return;
+ if(document.hidden||!isChartViewActive()||selected().symbol!=="XAUUSD")return;
  const pick=selected();
  try{
   const quote=await apiRequest("/api/v1/charts/quote?symbol=XAUUSD");
@@ -150,6 +150,6 @@ window.addEventListener("quantnex:view-changed",event=>{if(event.detail?.view===
 document.addEventListener("visibilitychange",()=>{if(document.hidden){stopFeed();return;}if(isChartViewActive())refresh();});
 setupCanvas();
 const historyTimer=setInterval(()=>{if(!isChartViewActive()||selected().symbol==="XAUUSD")return;loadHistory();},60000);
-const goldQuoteTimer=setInterval(()=>{if(isChartViewActive()&&selected().symbol==="XAUUSD")loadGoldQuote();},30000);
+const goldQuoteTimer=setInterval(()=>{if(!document.hidden&&isChartViewActive()&&selected().symbol==="XAUUSD")loadGoldQuote();},30000);
 window.addEventListener("beforeunload",()=>{clearInterval(historyTimer);clearInterval(goldQuoteTimer);stopFeed();window.removeEventListener("quantnex:market-tick",onTradingRoomTick);resize?.disconnect();});
 })();

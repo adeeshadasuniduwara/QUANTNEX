@@ -1,0 +1,11 @@
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const html = fs.readFileSync("apps/web/index.html", "utf8");
+const js = fs.readFileSync("apps/web/goals.js", "utf8");
+assert.match(html, /id="goalCreateForm"/, "Goals must expose the create form");
+assert.match(html, /id="goalCards"/, "Goals must expose the saved-goals list");
+assert.match(html, /id="goalDemoCertificate"/, "A demo certificate preview must be available without achieving a goal");
+assert.match(js, /\/api\/v1\/goals\/demo-certificate/, "Demo certificate must use the dedicated sample endpoint");
+assert.match(js, /Number\.isFinite\(target_amount\)/, "Goal creation must reject invalid target values before sending");
+assert.match(js, /setTimeout\(\(\)=>URL\.revokeObjectURL\(url\),30000\)/, "PDF download URLs must remain available long enough for browser downloads");
+console.log("QUANTNEX goals creation and demo-certificate UI checks passed.");

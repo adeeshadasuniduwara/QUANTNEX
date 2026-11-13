@@ -341,113 +341,119 @@ async def telegram_worker() -> None:
                             if data.get("ok"):
                                 for update in data.get("result",[]):
                                     offset=max(offset,int(update.get("update_id",0))+1)
-                                    callback=update.get("callback_query")
-                                    if callback:
-                                        message=callback.get("message") or {}
-                                        chat=message.get("chat") or {}
-                                        if str(chat.get("id")) != str(chat_id): continue
-                                        try:
-                                            await _telegram_post(client,token,"answerCallbackQuery",{"callback_query_id":callback.get("id")})
-                                        except Exception:
-                                            pass
-                                        action=str(callback.get("data",""))
-                                        keyboard=MENU
-                                        if action=="qx:menu:home":
-                                            answer="QUANTNEX · MAIN WORKSPACE\nChoose a section below. Select a button to continue — no commands needed."
+                                    try:
+                                        callback=update.get("callback_query")
+                                        if callback:
+                                            message=callback.get("message") or {}
+                                            chat=message.get("chat") or {}
+                                            if str(chat.get("id")) != str(chat_id): continue
+                                            try:
+                                                await _telegram_post(client,token,"answerCallbackQuery",{"callback_query_id":callback.get("id")})
+                                            except Exception:
+                                                pass
+                                            action=str(callback.get("data",""))
                                             keyboard=MENU
-                                        elif action in SUBMENUS:
-                                            keyboard=SUBMENUS[action]
-                                            answer=MENU_TITLES[action]+"\nChoose an action below. No command typing required."
-                                        elif action.startswith("qx:settf:"):
-                                            raw_settings=_get(db,user_id,"signal_settings",'{"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":7}')
-                                            try: settings=json.loads(raw_settings)
-                                            except ValueError: settings={"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":7}
-                                            names={"1":"M1","5":"M5","15":"M15","30":"M30","50":"M50","60":"H1","240":"H4"}
-                                            value=action.split(":")[-1]
-                                            if value in {"1","5","15","30","50","60"}:
-                                                settings["primary"]=value
-                                                _set(db,user_id,"signal_settings",json.dumps(settings));db.commit();_publish_signal_settings_changed()
-                                                answer="✅ Primary signal timeframe updated to "+names[value]+"."
-                                                keyboard=SUBMENUS["qx:menu:signals"]
-                                            else:
-                                                answer="⚠️ Unsupported timeframe.";keyboard=SUBMENUS["qx:menu:signals"]
-                                        elif action.startswith("qx:settrend:"):
-                                            raw_settings=_get(db,user_id,"signal_settings",'{"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":7}')
-                                            try: settings=json.loads(raw_settings)
-                                            except ValueError: settings={"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":7}
-                                            names={"1":"M1","5":"M5","15":"M15","30":"M30","50":"M50","60":"H1","240":"H4"}
-                                            value=action.split(":")[-1]
-                                            if value in {"15","30","60","240"}:
-                                                settings["trend"]=value
-                                                _set(db,user_id,"signal_settings",json.dumps(settings));db.commit();_publish_signal_settings_changed()
-                                                answer="✅ Trend timeframe updated to "+names[value]+"."
-                                                keyboard=SUBMENUS["qx:menu:signals"]
-                                            else:
-                                                answer="⚠️ Unsupported trend timeframe.";keyboard=SUBMENUS["qx:menu:signals"]
-                                        elif action=="qx:daily_toggle":
-                                            enabled=_get(db,user_id,"telegram_daily_report_enabled","false")=="true"
-                                            _set(db,user_id,"telegram_daily_report_enabled","false" if enabled else "true")
-                                            db.commit()
-                                            answer="🕗 Daily PDF at 20:00 Asia/Colombo is now "+("OFF" if enabled else "ON")+"."
-                                        elif action=="qx:daily":
-                                            try:
-                                                stats=await _deliver_daily_pdf(client,db,user_id,token,chat_id)
-                                                answer="📄 Today report sent · Closed "+str(stats["closed"])+" · Win rate "+format(stats["win_rate"],".2f")+"% · Net $"+format(stats["net"],".2f")
-                                            except Exception as exc:
-                                                logger.warning("Daily PDF request failed for local user %s: %s",user_id,type(exc).__name__)
-                                                answer="Could not generate/send PDF. Check the PaperTrade ledger and Telegram connection."
-                                        elif action.startswith("qx:scan:"): answer=await _handle_command(client,db,user_id,token,chat_id,"/scan "+action.split(":")[-1])
-                                        elif action=="qx:status": answer=await _handle_command(client,db,user_id,token,chat_id,"/status")
-                                        elif action=="qx:timeframes": answer=await _handle_command(client,db,user_id,token,chat_id,"/timeframes")
-                                        elif action=="qx:home": answer=_paper_dashboard(db,user_id)
-                                        elif action=="qx:paper":
-                                            from .phase12_20_engine import DEFAULT_SETTINGS, normalize_settings
-                                            try:
-                                                paper_settings=normalize_settings(json.loads(_get(db,user_id,"paper_autopilot_settings","{}")))
-                                            except (ValueError,TypeError):
-                                                paper_settings=normalize_settings(DEFAULT_SETTINGS)
-                                            answer=("🤖 QUANTNEX Paper Autopilot · "+("RUNNING" if paper_settings["enabled"] else "PAUSED")+
-                                                "\nMarkets: "+", ".join(paper_settings["symbols"])+
-                                                "\nRisk/trade: "+str(paper_settings["risk_percent"])+"% · Daily stop: "+str(paper_settings["max_daily_loss_percent"])+"%"+
-                                                "\nMode: LOCAL PAPER ONLY · no broker orders.")
-                                        elif action in {"qx:paper_start","qx:paper_pause"}:
-                                            from .phase12_20_engine import DEFAULT_SETTINGS, normalize_settings
-                                            try:
-                                                paper_settings=json.loads(_get(db,user_id,"paper_autopilot_settings","{}")) or dict(DEFAULT_SETTINGS)
-                                                paper_settings["enabled"]=(action=="qx:paper_start")
-                                                paper_settings=normalize_settings(paper_settings)
-                                                _set(db,user_id,"paper_autopilot_settings",json.dumps(paper_settings))
+                                            if action=="qx:menu:home":
+                                                answer="QUANTNEX · MAIN WORKSPACE\nChoose a section below. Select a button to continue — no commands needed."
+                                                keyboard=MENU
+                                            elif action in SUBMENUS:
+                                                keyboard=SUBMENUS[action]
+                                                answer=MENU_TITLES[action]+"\nChoose an action below. No command typing required."
+                                            elif action.startswith("qx:settf:"):
+                                                raw_settings=_get(db,user_id,"signal_settings",'{"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":7}')
+                                                try: settings=json.loads(raw_settings)
+                                                except ValueError: settings={"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":7}
+                                                names={"1":"M1","5":"M5","15":"M15","30":"M30","50":"M50","60":"H1","240":"H4"}
+                                                value=action.split(":")[-1]
+                                                if value in {"1","5","15","30","50","60"}:
+                                                    settings["primary"]=value
+                                                    _set(db,user_id,"signal_settings",json.dumps(settings));db.commit();_publish_signal_settings_changed()
+                                                    answer="✅ Primary signal timeframe updated to "+names[value]+"."
+                                                    keyboard=SUBMENUS["qx:menu:signals"]
+                                                else:
+                                                    answer="⚠️ Unsupported timeframe.";keyboard=SUBMENUS["qx:menu:signals"]
+                                            elif action.startswith("qx:settrend:"):
+                                                raw_settings=_get(db,user_id,"signal_settings",'{"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":7}')
+                                                try: settings=json.loads(raw_settings)
+                                                except ValueError: settings={"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":7}
+                                                names={"1":"M1","5":"M5","15":"M15","30":"M30","50":"M50","60":"H1","240":"H4"}
+                                                value=action.split(":")[-1]
+                                                if value in {"15","30","60","240"}:
+                                                    settings["trend"]=value
+                                                    _set(db,user_id,"signal_settings",json.dumps(settings));db.commit();_publish_signal_settings_changed()
+                                                    answer="✅ Trend timeframe updated to "+names[value]+"."
+                                                    keyboard=SUBMENUS["qx:menu:signals"]
+                                                else:
+                                                    answer="⚠️ Unsupported trend timeframe.";keyboard=SUBMENUS["qx:menu:signals"]
+                                            elif action=="qx:daily_toggle":
+                                                enabled=_get(db,user_id,"telegram_daily_report_enabled","false")=="true"
+                                                _set(db,user_id,"telegram_daily_report_enabled","false" if enabled else "true")
                                                 db.commit()
-                                                answer=(("▶ Paper autopilot STARTED" if paper_settings["enabled"] else "⏸ Paper autopilot PAUSED")
-                                                    + "\nLocal simulated trades only. No broker or real-money orders.")
-                                            except (ValueError,TypeError) as exc:
-                                                answer="Cannot change paper mode: "+str(exc)
-                                        elif action=="qx:goals": answer=_goal_dashboard(db,user_id)
-                                        elif action=="qx:risk": answer=_risk_dashboard(db,user_id)
-                                        elif action=="qx:market": answer=await _handle_command(client,db,user_id,token,chat_id,"/scan BTCUSDT")
-                                        elif action=="qx:pause" or action=="qx:resume":
-                                            try: auto_settings=json.loads(_get(db,user_id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}'))
-                                            except ValueError: auto_settings={"enabled":False,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}
-                                            auto_settings["enabled"]=(action=="qx:resume")
-                                            _set(db,user_id,"auto_signal_settings",json.dumps(auto_settings));db.commit()
-                                            answer="Telegram Auto Signals "+("RESUMED" if auto_settings["enabled"] else "PAUSED")+". This controls alerts only, not trading execution."
-                                        elif action=="qx:help":
-                                            answer="QUANTNEX HELP & QUICK GUIDE\\nUse the buttons to navigate Markets, Signals, Paper Desk, Reports and Settings.\\nChoose a market to scan, select signal timeframes, pause or resume alerts, review paper results and download a daily PDF.\\nNo slash commands are needed.\\n\\nSignals are analysis only. No live broker orders are placed."
-                                            keyboard=MENU
-                                        else: answer="📊 QUANTNEX local workspace · Signal alerts only. Paper simulation and broker execution are separate."
-                                        try: await _edit_message(client,token,chat_id,int(message.get("message_id")),answer,keyboard)
-                                        except Exception: await _send(client,token,chat_id,answer,MENU)
-                                        continue
-                                    message=update.get("message") or update.get("channel_post") or {}
-                                    chat=message.get("chat") or {}
-                                    if str(chat.get("id"))!=str(chat_id) and not (str(chat_id).startswith("@") and ("@"+str(chat.get("username","")).lower())==str(chat_id).lower()):continue
-                                    command=message.get("text","")
-                                    answer=await _handle_command(client,db,user_id,token,chat_id,command)
-                                    if answer:
-                                        is_start=command.strip().split(" ")[0].split("@")[0].lower() in {"/start","/help"}
-                                        is_plain_text=bool(command.strip()) and not command.strip().startswith("/")
-                                        await _send(client,token,chat_id,answer,MENU if (is_start or is_plain_text) else None)
-                                _set(db,user_id,"telegram_update_offset",str(offset));db.commit()
+                                                answer="🕗 Daily PDF at 20:00 Asia/Colombo is now "+("OFF" if enabled else "ON")+"."
+                                            elif action=="qx:daily":
+                                                try:
+                                                    stats=await _deliver_daily_pdf(client,db,user_id,token,chat_id)
+                                                    answer="📄 Today report sent · Closed "+str(stats["closed"])+" · Win rate "+format(stats["win_rate"],".2f")+"% · Net $"+format(stats["net"],".2f")
+                                                except Exception as exc:
+                                                    logger.warning("Daily PDF request failed for local user %s: %s",user_id,type(exc).__name__)
+                                                    answer="Could not generate/send PDF. Check the PaperTrade ledger and Telegram connection."
+                                            elif action.startswith("qx:scan:"): answer=await _handle_command(client,db,user_id,token,chat_id,"/scan "+action.split(":")[-1])
+                                            elif action=="qx:status": answer=await _handle_command(client,db,user_id,token,chat_id,"/status")
+                                            elif action=="qx:timeframes": answer=await _handle_command(client,db,user_id,token,chat_id,"/timeframes")
+                                            elif action=="qx:home": answer=_paper_dashboard(db,user_id)
+                                            elif action=="qx:paper":
+                                                from .phase12_20_engine import DEFAULT_SETTINGS, normalize_settings
+                                                try:
+                                                    paper_settings=normalize_settings(json.loads(_get(db,user_id,"paper_autopilot_settings","{}")))
+                                                except (ValueError,TypeError):
+                                                    paper_settings=normalize_settings(DEFAULT_SETTINGS)
+                                                answer=("🤖 QUANTNEX Paper Autopilot · "+("RUNNING" if paper_settings["enabled"] else "PAUSED")+
+                                                    "\nMarkets: "+", ".join(paper_settings["symbols"])+
+                                                    "\nRisk/trade: "+str(paper_settings["risk_percent"])+"% · Daily stop: "+str(paper_settings["max_daily_loss_percent"])+"%"+
+                                                    "\nMode: LOCAL PAPER ONLY · no broker orders.")
+                                            elif action in {"qx:paper_start","qx:paper_pause"}:
+                                                from .phase12_20_engine import DEFAULT_SETTINGS, normalize_settings
+                                                try:
+                                                    paper_settings=json.loads(_get(db,user_id,"paper_autopilot_settings","{}")) or dict(DEFAULT_SETTINGS)
+                                                    paper_settings["enabled"]=(action=="qx:paper_start")
+                                                    paper_settings=normalize_settings(paper_settings)
+                                                    _set(db,user_id,"paper_autopilot_settings",json.dumps(paper_settings))
+                                                    db.commit()
+                                                    answer=(("▶ Paper autopilot STARTED" if paper_settings["enabled"] else "⏸ Paper autopilot PAUSED")
+                                                        + "\nLocal simulated trades only. No broker or real-money orders.")
+                                                except (ValueError,TypeError) as exc:
+                                                    answer="Cannot change paper mode: "+str(exc)
+                                            elif action=="qx:goals": answer=_goal_dashboard(db,user_id)
+                                            elif action=="qx:risk": answer=_risk_dashboard(db,user_id)
+                                            elif action=="qx:market": answer=await _handle_command(client,db,user_id,token,chat_id,"/scan BTCUSDT")
+                                            elif action=="qx:pause" or action=="qx:resume":
+                                                try: auto_settings=json.loads(_get(db,user_id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}'))
+                                                except ValueError: auto_settings={"enabled":False,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}
+                                                auto_settings["enabled"]=(action=="qx:resume")
+                                                _set(db,user_id,"auto_signal_settings",json.dumps(auto_settings));db.commit()
+                                                answer="Telegram Auto Signals "+("RESUMED" if auto_settings["enabled"] else "PAUSED")+". This controls alerts only, not trading execution."
+                                            elif action=="qx:help":
+                                                answer="QUANTNEX HELP & QUICK GUIDE\\nUse the buttons to navigate Markets, Signals, Paper Desk, Reports and Settings.\\nChoose a market to scan, select signal timeframes, pause or resume alerts, review paper results and download a daily PDF.\\nNo slash commands are needed.\\n\\nSignals are analysis only. No live broker orders are placed."
+                                                keyboard=MENU
+                                            else: answer="📊 QUANTNEX local workspace · Signal alerts only. Paper simulation and broker execution are separate."
+                                            try: await _edit_message(client,token,chat_id,int(message.get("message_id")),answer,keyboard)
+                                            except Exception: await _send(client,token,chat_id,answer,MENU)
+                                            continue
+                                        message=update.get("message") or update.get("channel_post") or {}
+                                        chat=message.get("chat") or {}
+                                        if str(chat.get("id"))!=str(chat_id) and not (str(chat_id).startswith("@") and ("@"+str(chat.get("username","")).lower())==str(chat_id).lower()):continue
+                                        command=message.get("text","")
+                                        answer=await _handle_command(client,db,user_id,token,chat_id,command)
+                                        if answer:
+                                            is_start=command.strip().split(" ")[0].split("@")[0].lower() in {"/start","/help"}
+                                            is_plain_text=bool(command.strip()) and not command.strip().startswith("/")
+                                            await _send(client,token,chat_id,answer,MENU if (is_start or is_plain_text) else None)
+                                    except Exception as update_error:
+                                        logger.warning("Telegram update %s failed for local user %s: %s",
+                                                       update.get("update_id"), user_id, type(update_error).__name__)
+                                    finally:
+                                        # Consume each update exactly once, even if its reply fails.
+                                        _set(db,user_id,"telegram_update_offset",str(offset));db.commit()
                         except (httpx.HTTPError,ValueError) as exc:
                             logger.warning("Telegram polling failed for local user %s: %s",user_id,type(exc).__name__)
                         now=asyncio.get_running_loop().time()

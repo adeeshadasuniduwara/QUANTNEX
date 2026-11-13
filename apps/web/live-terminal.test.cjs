@@ -8,6 +8,7 @@ const workspaceCss = fs.readFileSync("apps/web/workspace-pages.css", "utf8");
 const workspace = fs.readFileSync("apps/web/workspace-pages.js", "utf8");
 const signal = fs.readFileSync("apps/web/signal-tool.js", "utf8");
 const nativeChart = fs.readFileSync("apps/web/quantnex-view-chart.js", "utf8");
+const chartIntel = fs.readFileSync("apps/web/quantnex-view-intelligence.js", "utf8");
 const updater = fs.readFileSync("apps/web/quantnex_local_server.py", "utf8");
 
 assert.match(html, /id="p7BookmapCanvas"/, "Bookmap must render through a canvas");
@@ -131,11 +132,11 @@ console.log("QUANTNEX active-workspace polling and cleanup checks passed.");
 assert.match(html, /app\.js\?v=20261113-active-workspace-polling1/, "Workspace polling fixes must invalidate the cached app.js asset.");
 
 
-assert.match(chart, /isChartViewActive/, "QUANTNEX VIEW history, analysis and live ticks must be scoped to the visible chart workspace.");
-assert.match(chart, /quantnex:view-changed/, "Chart feed must start on chart navigation and stop when leaving the chart.");
-assert.match(chart, /if\(!isChartViewActive\(\)\|\|selected\(\)\.symbol!==pick\.symbol/, "Late chart history responses must not update a hidden or stale chart.");
-assert.match(intel, /isTradingViewActive/, "Chart intelligence analysis and backtests must pause outside QUANTNEX VIEW.");
-assert.match(intel, /backtestBusy/, "Chart intelligence must prevent overlapping backtest requests.");
+assert.match(nativeChart, /isChartViewActive/, "QUANTNEX VIEW history, analysis and live ticks must be scoped to the visible chart workspace.");
+assert.match(nativeChart, /quantnex:view-changed/, "Chart feed must start on chart navigation and stop when leaving the chart.");
+assert.match(nativeChart, /if\(!isChartViewActive\(\)\|\|selected\(\)\.symbol!==pick\.symbol/, "Late chart history responses must not update a hidden or stale chart.");
+assert.match(chartIntel, /isTradingViewActive/, "Chart intelligence analysis and backtests must pause outside QUANTNEX VIEW.");
+assert.match(chartIntel, /backtestBusy/, "Chart intelligence must prevent overlapping backtest requests.");
 assert.match(html, /quantnex-view-chart\.js\?v=20261113-visible-chart1/, "Chart lifecycle fix must invalidate the cached chart bundle.");
 assert.match(html, /quantnex-view-intelligence\.js\?v=20261113-visible-intel1/, "Chart intelligence fix must invalidate the cached intelligence bundle.");
 console.log("QUANTNEX VIEW active-page lifecycle checks passed.");

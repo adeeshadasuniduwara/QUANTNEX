@@ -121,9 +121,28 @@ async def chart_candles(symbol: str = "BTCUSDT", interval: str = "15m", limit: i
     try:
         candles = await fetch_candles(allowed_intervals[interval], limit, symbol)
         provider = "Binance Spot" if symbol in CRYPTO_SYMBOLS else ("MetaTrader 5 local terminal" if QUANTNEX_MT5_ENABLED else "Twelve Data")
+        rows = candles[-limit:]
+        source_timestamp = None
+        age_seconds = None
+        stale = True
+        try:
+            raw_source_time = str(rows[-1]["time"]).replace("Z", "+00:00")
+            source_time = datetime.fromisoformat(raw_source_time)
+            if source_time.tzinfo is None:
+                source_time = source_time.replace(tzinfo=timezone.utc)
+            source_time = source_time.astimezone(timezone.utc)
+            source_timestamp = source_time.isoformat()
+            age_seconds = max(0.0, (datetime.now(timezone.utc) - source_time).total_seconds())
+            interval_seconds = {"1m":60,"5m":300,"15m":900,"30m":1800,"1h":3600,"4h":14400}[interval]
+            stale = age_seconds > max(120, interval_seconds * 2)
+        except (KeyError, IndexError, TypeError, ValueError, OverflowError):
+            pass
         return {"symbol":symbol,"interval":interval,"provider":provider,
-                "candles":candles[-limit:],"count":min(limit,len(candles)),
-                "timestamp":datetime.now(timezone.utc).isoformat()}
+                "candles":rows,"count":len(rows),
+                "timestamp":datetime.now(timezone.utc).isoformat(),
+                "source_timestamp":source_timestamp,"age_seconds":round(age_seconds, 2) if age_seconds is not None else None,
+                "stale":stale,"data_health":"stale" if stale else "ok",
+                "stale_after_seconds":max(120, {"1m":60,"5m":300,"15m":900,"30m":1800,"1h":3600,"4h":14400}[interval] * 2)}
     except MarketDataError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     except httpx.HTTPError:

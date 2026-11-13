@@ -2,7 +2,7 @@
 "use strict";
 const $=id=>document.getElementById(id),host=$("qxChartHost");
 if(!host||typeof apiRequest!=="function")return;
-let chart=null,series=null,volume=null,emaLines={},overlay=null,ctx=null,candles=[],analysis=null,busy=false,observer=null,tradeLines=[];
+let chart=null,series=null,volume=null,emaLines={},overlay=null,ctx=null,candles=[],analysis=null,busy=false,observer=null,tradeLines=[],markerApi=null;
 const palette={bull:"#22c997",bear:"#f05d68",fvg:"#4a9cff",ob:"#c18cff",breaker:"#f4b860",sr:"#e6c85c"};
 const stamp=v=>{let s=String(v||"");if(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?$/.test(s))s+="Z";let n=Date.parse(s);return Number.isFinite(n)?Math.floor(n/1000):null;};
 const fmt=v=>Number(v).toLocaleString(undefined,{maximumFractionDigits:8});
@@ -11,7 +11,7 @@ function setStatus(message,state=""){const el=$("qxChartStatus");if(el){el.textC
 function ema(values,p){if(!values.length)return[];const a=2/(p+1),out=[values[0]];for(let i=1;i<values.length;i++)out.push(a*values[i]+(1-a)*out[i-1]);return out;}
 function makeChart(){
  const L=window.LightweightCharts;if(!L?.createChart)throw Error("Chart library unavailable. Check internet connection.");
- host.replaceChildren();chart=L.createChart(host,{width:host.clientWidth||800,height:host.clientHeight||470,
+ host.replaceChildren();markerApi=null;chart=L.createChart(host,{width:host.clientWidth||800,height:host.clientHeight||470,
   layout:{background:{type:"solid",color:$("qxChartTheme")?.value==="light"?"#f7f9fc":"#080d13"},textColor:$("qxChartTheme")?.value==="light"?"#263244":"#b8c4d4",fontFamily:"Inter,system-ui,sans-serif",fontSize:11},
   grid:{vertLines:{color:$("qxGrid")?.checked?"rgba(130,150,175,.10)":"transparent"},horzLines:{color:$("qxGrid")?.checked?"rgba(130,150,175,.10)":"transparent"}},
   rightPriceScale:{borderColor:"rgba(130,150,175,.22)",mode:$("qxLogScale")?.checked?L.PriceScaleMode?.Logarithmic:L.PriceScaleMode?.Normal},
@@ -72,7 +72,7 @@ function renderAnalysis(data){
  analysis=data;const f=data.features||{},st=f.structure||{},summary=$("qxChartIntelSummary");
  if(summary){const s=data.signal;summary.textContent=s?s.side+" · Entry "+fmt(s.entry)+" · SL "+fmt(s.stop_loss)+" · TP1 "+fmt(s.tp1)+" / TP2 "+fmt(s.tp2)+" / TP3 "+fmt(s.tp3):"WAITING FOR CONFIRMATION · "+data.confluence_score+"/"+data.score_out_of+" confluence. No trade plan is active.";}
  const metrics=$("qxChartIntelMetrics");if(metrics){metrics.replaceChildren();[["RSI",Number(f.rsi).toFixed(1)],["ADX",Number(f.adx).toFixed(1)],["EMA 20",fmt(f.ema20)],["EMA 50",fmt(f.ema50)],["EMA 200",fmt(f.ema200)],["Structure",st.bos_mss||"—"],["Liquidity",st.liquidity_sweep||"—"],["Premium / Discount",st.premium_discount||"—"]].forEach(([a,b])=>{let d=document.createElement("div"),n=document.createElement("span"),v=document.createElement("strong");d.className="qx-chart-intel-metric";n.textContent=a;v.textContent=b;d.append(n,v);metrics.append(d);});}
- if(data.signal&&series&&window.LightweightCharts?.createSeriesMarkers){window.LightweightCharts.createSeriesMarkers(series,[{time:candles.at(-1).time,position:data.signal.side==="BUY"?"belowBar":"aboveBar",color:data.signal.side==="BUY"?palette.bull:palette.bear,shape:data.signal.side==="BUY"?"arrowUp":"arrowDown",text:data.signal.side+" · "+data.signal.timeframe}]);}
+ if(series&&window.LightweightCharts?.createSeriesMarkers){const marks=data.signal?[{time:candles.at(-1).time,position:data.signal.side==="BUY"?"belowBar":"aboveBar",color:data.signal.side==="BUY"?palette.bull:palette.bear,shape:data.signal.side==="BUY"?"arrowUp":"arrowDown",text:data.signal.side+" · "+data.signal.timeframe}]:[];if(markerApi)markerApi.setMarkers(marks);else markerApi=window.LightweightCharts.createSeriesMarkers(series,marks);}
  if(window.quantnexViewSetTradePlan)window.quantnexViewSetTradePlan(data.signal||null);drawOverlay();
 }
 async function refresh(){

@@ -11,6 +11,7 @@ WEB_FILES = (
     ROOT / "apps" / "web" / "app.js",
     ROOT / "apps" / "web" / "signal-tool.js",
     ROOT / "apps" / "web" / "workspace-pages.js",
+    ROOT / "apps" / "web" / "prop-challenge.js",
 )
 CALL = re.compile(r"""\b(?:apiRequest|api)\s*\(\s*["'`]([^"'`]+)["'`]""")
 DIRECT_FETCH = re.compile(r"""\bfetch\s*\(\s*["'`]http://127\.0\.0\.1:8000([^"'`]+)["'`]""")

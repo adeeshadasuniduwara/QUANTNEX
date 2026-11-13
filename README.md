@@ -58,3 +58,10 @@ QUANTNEX includes an optional GitHub Actions workflow that announces published r
 - The laptop must remain powered on, connected to the internet and running the QUANTNEX API for Auto Signals. A VPS can host the same API process for continuous operation. The browser itself does not need to stay open once Auto Signals are saved.
 - Reaper is not implemented because its exact formula/source has not been provided. There is no broker execution, automatic SL movement, or verified win-rate calculation.
 
+## Prop Firm Challenge Simulator
+
+- Practice evaluation rules using a local virtual account or optional Windows MT5 DEMO monitoring.
+- Configure profit target, daily maximum loss, maximum overall loss, minimum trading days, daily reset timezone and static or trailing drawdown.
+- MT5 mode accepts DEMO accounts only. On a rule breach the local guardian attempts to close open demo positions and locks the challenge; this is best-effort protection, not a broker-guaranteed loss limit.
+- Virtual mode records manually entered closed P&L and does not create orders.
+- Sidebar navigation supports grouped views and short fade transitions; reduced-motion preferences are respected.

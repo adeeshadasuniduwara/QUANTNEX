@@ -19,7 +19,7 @@ for (const page of requiredPages) {
   assert.ok(sectionIds.includes(page), "Missing page section: " + page);
   assert.ok(navTargets.includes(page), "Missing sidebar link: " + page);
 }
-for (const asset of ["apps/web/workspace-pages.js", "apps/web/workspace-pages.css", "apps/web/realtime-events.js"]) {
+for (const asset of ["apps/web/workspace-pages.js", "apps/web/workspace-pages.css", "apps/web/realtime-events.js", "apps/web/prop-challenge.js"]) {
   assert.ok(fs.existsSync(asset), "Missing workspace page asset: " + asset);
 }
 assert.ok(html.indexOf('src="realtime-events.js"') > html.indexOf('src="app.js"'), "Realtime event client must load after the main app");
@@ -79,3 +79,6 @@ assert.match(welcomeCss, /prefers-reduced-motion/, "Onboarding must respect redu
 assert.match(app, /QuantnexOnboarding\?\.showRelease/, "Updater must pass release changes to What's New");
 console.log("Welcome and release onboarding checks passed.");
 
+
+assert.ok(html.includes('id="prop-challenge"'), "Prop Firm Challenge workspace section must exist");
+assert.ok(html.includes('id="pcCreateForm"'), "Prop Firm Challenge must expose its rule configuration form");

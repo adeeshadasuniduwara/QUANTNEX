@@ -33,6 +33,8 @@ jobs:
           node --check apps/web/phase12-20.js
           node --check apps/web/workspace-polish.js
           node --check apps/web/welcome-whats-new.js
+          node --check apps/web/navigation.js
+          node --check apps/web/prop-challenge.js
           node --check apps/web/quantnex-view-intelligence.js
           node --check apps/web/quantnex-view-chart.js
           node --check apps/web/workspace-pages.js
@@ -40,6 +42,7 @@ jobs:
           node apps/web/quantnex-view-chart.test.cjs
           node apps/web/live-terminal.test.cjs
           node apps/web/sidebar-scroll.test.cjs
+          node apps/web/navigation.test.cjs
       - name: Validate local updater Python syntax
         run: python -m py_compile apps/web/quantnex_local_server.py
       - name: Verify local-only wallet and updater UI

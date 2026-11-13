@@ -74,6 +74,32 @@ def _prune_backups(backup_dir: Path, keep: int = BACKUP_RETENTION, protect: set[
             old.with_suffix(old.suffix + ".sha256").unlink(missing_ok=True)
             removed += 1
     return removed
+def backup_overview(backup_dir: Path = BACKUP_DIR) -> dict:
+    """Return lightweight health metadata without hashing retained database files."""
+    if not backup_dir.exists():
+        return {"count": 0, "latest": None, "latest_verified": False,
+                "verification_note": "No local backup is available."}
+    files = sorted(backup_dir.glob("quantnex-*.sqlite3"),
+                   key=lambda item: item.stat().st_mtime, reverse=True)
+    if not files:
+        return {"count": 0, "latest": None, "latest_verified": False,
+                "verification_note": "No local backup is available."}
+    latest = files[0]
+    manifest = latest.with_suffix(latest.suffix + ".sha256")
+    manifest_present = False
+    try:
+        digest = manifest.read_text(encoding="ascii").strip().split()[0].lower()
+        manifest_present = latest.is_file() and latest.stat().st_size > 0 and bool(re.fullmatch(r"[0-9a-f]{64}", digest))
+    except (OSError, ValueError, IndexError):
+        manifest_present = False
+    return {
+        "count": len(files),
+        "latest": datetime.fromtimestamp(latest.stat().st_mtime, timezone.utc).isoformat(),
+        "latest_verified": manifest_present,
+        "verification_note": "Manifest indicates the backup passed integrity and SHA-256 checks when created; full verification is performed on request and before restore.",
+    }
+
+
 def _latest_backup_is_fresh(backup_dir: Path = BACKUP_DIR, now: float | None = None) -> bool:
     """Cheap freshness check; full verification remains mandatory before restore.
 

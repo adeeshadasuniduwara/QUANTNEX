@@ -60,7 +60,7 @@
       const s=selected();
       const data=await apiRequest("/api/v1/quantnex-view/analyze?symbol="+encodeURIComponent(s.symbol)+"&interval="+encodeURIComponent(s.interval)+"&min_score="+s.min);
       if(!isTradingViewActive())return;
-      lastAnalysis=data;renderFeatures(data.features);renderSignal(data);
+      lastAnalysis=data;renderFeatures(data.features);renderSignal(data);window.quantnexViewSetAnalysis?.(data);
       setStatus(data.status+" · "+data.eligible_setups+" ELIGIBLE / 100");
       const list=$("qxStrategyList");
       if(list){

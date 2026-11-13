@@ -44,7 +44,8 @@ assert.match(realtime, /lastEventId=current/, "The event cursor must reset to th
 console.log("Realtime event restart-resync checks passed.");
 
 const chartClient = fs.readFileSync("apps/web/quantnex-view-chart.js", "utf8");
-assert.ok(/src="quantnex-view-chart\.js\?v=20261113-chart-redraw2"/.test(html), "Live chart controller must load with the current cache version");
+const chartIntelligence = fs.readFileSync("apps/web/quantnex-view-intelligence.js", "utf8");
+assert.ok(/src="quantnex-view-chart\.js\?v=20261113-analysis-dedupe1"/.test(html), "Live chart controller must load with the current cache version");
 assert.ok(html.includes('id="qxChartIntelMetrics"'), "Chart must expose indicator readouts");
 assert.ok(html.includes('id="qxOverlayZones"'), "Chart must expose zone visibility control");
 for (const feature of ["bullish_fvg", "bearish_fvg", "bullish_order_block", "bearish_order_block",
@@ -53,7 +54,8 @@ for (const feature of ["bullish_fvg", "bearish_fvg", "bullish_order_block", "bea
   assert.ok(chartClient.includes(feature), "Chart intelligence renderer is missing: " + feature);
 }
 assert.match(chartClient, /api\/v1\/charts\/candles/, "Chart must use the local historical candle API");
-assert.match(chartClient, /api\/v1\/quantnex-view\/analyze/, "Chart must use the QUANTNEX VIEW analysis API");
+assert.match(chartClient, /window\.quantnexViewSetAnalysis=renderAnalysis/, "Chart must expose the shared analysis renderer");
+assert.match(chartIntelligence, /api\/v1\/quantnex-view\/analyze/, "Chart Intelligence must own the QUANTNEX VIEW analysis API request");
 console.log("QUANTNEX VIEW checks passed: local candles, signal plan levels, structure, liquidity and OB/BB/FVG/SR overlays.");
 
 const polish = fs.readFileSync("apps/web/workspace-polish.js", "utf8");

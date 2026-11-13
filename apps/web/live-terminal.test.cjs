@@ -78,7 +78,7 @@ assert.doesNotMatch(html, /(?:cdn\.jsdelivr\.net|unpkg\.com)\/.*lightweight-char
 assert.match(nativeChart, /new WebSocket\("wss:\/\/stream\.binance\.com:9443\/ws\/"\+stream\)/, "Native chart must stream Binance live kline candles");
 assert.match(nativeChart, /scheduleReconnect\(/, "Native chart must reconnect its live candle feed");
 assert.match(nativeChart, /HISTORY FEED ERROR/, "Native chart history errors must be visible");
-assert.match(nativeChart, /ANALYSIS ERROR · /, "Native chart analysis errors must expose the API cause");
+assert.match(chartIntel, /Signal analysis unavailable: /, "Chart Intelligence must expose the analysis API cause");
 assert.match(app, /quantnex:market-tick/, "Chart and Trading Room must share the live market event feed");
 assert.match(signal, /SIGNAL STATUS UNAVAILABLE/, "Signal status API errors must be visible instead of leaving a stale feed status");
 assert.match(css, /height:clamp\(390px,58vh,620px\)/, "QUANTNEX VIEW must use a responsive chart height");
@@ -137,7 +137,7 @@ assert.match(nativeChart, /quantnex:view-changed/, "Chart feed must start on cha
 assert.match(nativeChart, /if\(!isChartViewActive\(\)\|\|selected\(\)\.symbol!==pick\.symbol/, "Late chart history responses must not update a hidden or stale chart.");
 assert.match(chartIntel, /isTradingViewActive/, "Chart intelligence analysis and backtests must pause outside QUANTNEX VIEW.");
 assert.match(chartIntel, /backtestBusy/, "Chart intelligence must prevent overlapping backtest requests.");
-assert.match(html, /quantnex-view-chart\.js\?v=20261113-chart-redraw2/, "Chart lifecycle fix must invalidate the cached chart bundle.");
+assert.match(html, /quantnex-view-chart\.js\?v=20261113-analysis-dedupe1/, "Chart lifecycle fix must invalidate the cached chart bundle.");
 assert.match(html, /quantnex-view-intelligence\.js\?v=20261113-visible-intel1/, "Chart intelligence fix must invalidate the cached intelligence bundle.");
 console.log("QUANTNEX VIEW active-page lifecycle checks passed.");
 
@@ -147,3 +147,7 @@ assert.match(app, /tickerSocket\.onmessage=event=>\{\s*tickerLastMessageAt=Date\
 assert.doesNotMatch(app, /bookSocket\.onopen=\(\)=>\{if\(generation===bookGeneration\)\{bookReconnectAttempts=0/, "Depth reconnect backoff must not reset merely because the socket opened.");
 assert.match(app, /bookSocket\.onmessage=event=>\{\s*if\(generation!==bookGeneration\)return;\s*bookLastMessageAt=Date\.now\(\);\s*try\{const data=JSON\.parse\(event\.data\);bookReconnectAttempts=0;/, "Depth reconnect backoff must reset only after a valid order-book message arrives.");
 console.log("QUANTNEX live-feed backoff reset checks passed.");
+
+assert.match(chartIntel, /api\/v1\/quantnex-view\/analyze/, "Chart intelligence must own the single periodic analysis request.");
+assert.match(chartIntel, /quantnexViewSetAnalysis\?\.\(data\)/, "Chart intelligence must share its analysis result with the native chart renderer.");
+console.log("QUANTNEX single-request chart analysis checks passed.");

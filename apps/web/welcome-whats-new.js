@@ -21,6 +21,7 @@ function release(r){mode="release";sha=String(r.commit_sha||r.latest||"");open()
 function finish(){if(mode==="tour")localStorage.setItem(FIRST,"done");if(mode==="release"&&sha){localStorage.setItem(LAST,sha);let seen=[];try{seen=JSON.parse(localStorage.getItem(SEEN)||"[]");}catch{}localStorage.setItem(SEEN,JSON.stringify([...new Set([...seen,...shownChanges])].slice(-150)));}close();if(mode==="tour"&&queued){const r=queued;queued=null;setTimeout(()=>showRelease(r),220);}}
 function showRelease(r){const v=String(r?.commit_sha||r?.latest||"");if(!v||localStorage.getItem(LAST)===v)return false;if(localStorage.getItem(FIRST)!=="done"){queued=r;return false;}release(r);return true;}
 function replay(){step=0;tour();}
-window.QuantnexOnboarding={showRelease,isReleaseOpen:()=>mode==="release"&&root&&!root.hidden,replay};\nconst help=document.createElement("button");help.type="button";help.className="qx-guide-trigger";help.textContent="Help & Guide";help.addEventListener("click",replay);document.querySelector(".sidebar")?.insertBefore(help,document.querySelector(".sidebar-bottom"));
+window.QuantnexOnboarding={showRelease,isReleaseOpen:()=>mode==="release"&&root&&!root.hidden,replay};
+const help=document.createElement("button");help.type="button";help.className="qx-guide-trigger";help.textContent="Help & Guide";help.addEventListener("click",replay);document.querySelector(".sidebar")?.insertBefore(help,document.querySelector(".sidebar-bottom"));
 if(localStorage.getItem(FIRST)!=="done")setTimeout(()=>{if(!document.hidden)tour();else window.addEventListener("focus",()=>{if(localStorage.getItem(FIRST)!=="done")tour();},{once:true});},650);
 })();

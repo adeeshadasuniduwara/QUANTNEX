@@ -142,7 +142,7 @@ async def fetch_candles(interval: str, outputsize: int = 320, symbol: str = "XAU
     candles = _normalize_gold_candles(payload["values"])
     candles = closed_candles(candles, interval)
     if len(candles) < 210:
-        raise MarketDataError(f"Not enough CLOSED valid {interval} XAUUSD candles for stable indicator calculations ({len(candles)} received).")
+        raise MarketDataError(f"Not enough valid CLOSED {interval} XAUUSD candles for stable indicator calculations ({len(candles)} received).")
     candles = candles[-requested:]
     _GOLD_CANDLE_CACHE[cache_key] = (time.monotonic(), candles)
     return [dict(row) for row in candles]

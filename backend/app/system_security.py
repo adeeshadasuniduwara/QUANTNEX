@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy import select, text
 from .config import DATABASE_URL
 from .database import Base, SessionLocal, engine, enable_sqlite_wal
-from .maintenance import create_backup, daily_backup_worker, list_backups, record_audit_event, restore_backup, verify_backup
+from .maintenance import backup_overview, create_backup, daily_backup_worker, list_backups, record_audit_event, restore_backup, verify_backup
 from .models import AuditEvent
 
 router = APIRouter(prefix="/api/v1/system", tags=["local-system"])
@@ -24,7 +24,7 @@ def detailed_system_health():
             from .maintenance import sqlite_database_path
             path = sqlite_database_path(DATABASE_URL)
             db_size = path.stat().st_size if path.exists() else 0
-        backups = list_backups()
+        backups = backup_overview()
         return {
             "status": "ok",
             "database": {"engine": "sqlite" if DATABASE_URL.startswith("sqlite") else "postgresql",
@@ -32,9 +32,7 @@ def detailed_system_health():
             "system": {"cpu_percent": psutil.cpu_percent(interval=0),
                        "memory_percent": psutil.virtual_memory().percent,
                        "disk_free_bytes": disk.free, "disk_total_bytes": disk.total},
-            "backups": {"count": len(backups),
-                        "latest": backups[0].get("created_at") if backups else None,
-                        "latest_verified": backups[0].get("verified") if backups else None},
+            "backups": backups,
         }
     except Exception:
         raise HTTPException(status_code=503, detail="System health checks are temporarily unavailable.")

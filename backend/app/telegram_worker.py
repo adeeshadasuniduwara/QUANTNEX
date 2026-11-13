@@ -28,42 +28,54 @@ def _publish_signal_settings_changed() -> None:
     event_hub.publish("preferences.changed","preferences","updated",{"key":"signal_settings"})
 
 MENU = {"inline_keyboard": [
-    [{"text":"📈 Markets & scans","callback_data":"qx:menu:markets"},{"text":"🧠 Signals","callback_data":"qx:menu:signals"}],
-    [{"text":"🤖 Paper desk","callback_data":"qx:menu:paper"},{"text":"📊 Reports & goals","callback_data":"qx:menu:reports"}],
-    [{"text":"⚙ Settings & status","callback_data":"qx:menu:settings"}]
+    [{"text":"📈 Markets & scans","callback_data":"qx:menu:markets"},{"text":"🧠 Signal controls","callback_data":"qx:menu:signals"}],
+    [{"text":"🤖 Paper trading","callback_data":"qx:menu:paper"},{"text":"📊 Reports & goals","callback_data":"qx:menu:reports"}],
+    [{"text":"⚙ Settings & status","callback_data":"qx:menu:settings"},{"text":"❔ Help & guide","callback_data":"qx:help"}]
 ]}
 
 SUBMENUS = {
     "qx:menu:markets": {"inline_keyboard": [
         [{"text":"₿ BTCUSDT","callback_data":"qx:scan:BTCUSDT"},{"text":"Ξ ETHUSDT","callback_data":"qx:scan:ETHUSDT"}],
         [{"text":"◎ SOLUSDT","callback_data":"qx:scan:SOLUSDT"},{"text":"🥇 XAUUSD","callback_data":"qx:scan:XAUUSD"}],
-        [{"text":"🔎 Scan BTC","callback_data":"qx:market"}],
-        [{"text":"⬅ Main menu","callback_data":"qx:menu:home"}]
+        [{"text":"🔄 Scan BTC now","callback_data":"qx:scan:BTCUSDT"}],
+        [{"text":"🏠 Main menu","callback_data":"qx:menu:home"}]
     ]},
     "qx:menu:signals": {"inline_keyboard": [
-        [{"text":"⏱ Timeframes","callback_data":"qx:timeframes"},{"text":"🔌 Feed status","callback_data":"qx:status"}],
-        [{"text":"▶ Resume alerts","callback_data":"qx:resume"},{"text":"⏸ Pause alerts","callback_data":"qx:pause"}],
-        [{"text":"🎯 Risk & filters","callback_data":"qx:risk"}],
-        [{"text":"⬅ Main menu","callback_data":"qx:menu:home"}]
+        [{"text":"M1","callback_data":"qx:settf:1"},{"text":"M5","callback_data":"qx:settf:5"},{"text":"M15","callback_data":"qx:settf:15"}],
+        [{"text":"M30","callback_data":"qx:settf:30"},{"text":"M50","callback_data":"qx:settf:50"},{"text":"H1","callback_data":"qx:settf:60"}],
+        [{"text":"Trend M15","callback_data":"qx:settrend:15"},{"text":"Trend M30","callback_data":"qx:settrend:30"}],
+        [{"text":"Trend H1","callback_data":"qx:settrend:60"},{"text":"Trend H4","callback_data":"qx:settrend:240"}],
+        [{"text":"▶ Enable alerts","callback_data":"qx:resume"},{"text":"⏸ Pause alerts","callback_data":"qx:pause"}],
+        [{"text":"🔎 Feed status","callback_data":"qx:status"},{"text":"🛡 Risk settings","callback_data":"qx:risk"}],
+        [{"text":"🏠 Main menu","callback_data":"qx:menu:home"}]
     ]},
     "qx:menu:paper": {"inline_keyboard": [
         [{"text":"📊 Paper ledger","callback_data":"qx:home"}],
-        [{"text":"▶ Start paper","callback_data":"qx:paper_start"},{"text":"⏸ Pause paper","callback_data":"qx:paper_pause"}],
+        [{"text":"▶ Start paper mode","callback_data":"qx:paper_start"},{"text":"⏸ Pause paper","callback_data":"qx:paper_pause"}],
         [{"text":"🤖 Paper status","callback_data":"qx:paper"}],
-        [{"text":"⬅ Main menu","callback_data":"qx:menu:home"}]
+        [{"text":"🏠 Main menu","callback_data":"qx:menu:home"}]
     ]},
     "qx:menu:reports": {"inline_keyboard": [
-        [{"text":"📄 Today's PDF","callback_data":"qx:daily"}],
+        [{"text":"📄 Today's PDF report","callback_data":"qx:daily"}],
         [{"text":"🕗 Daily PDF 20:00 ON/OFF","callback_data":"qx:daily_toggle"}],
         [{"text":"🎯 Personal goals","callback_data":"qx:goals"}],
-        [{"text":"⬅ Main menu","callback_data":"qx:menu:home"}]
+        [{"text":"🏠 Main menu","callback_data":"qx:menu:home"}]
     ]},
     "qx:menu:settings": {"inline_keyboard": [
-        [{"text":"⏱ Timeframes","callback_data":"qx:timeframes"},{"text":"🛡 Risk settings","callback_data":"qx:risk"}],
         [{"text":"🔌 Connection status","callback_data":"qx:status"}],
-        [{"text":"❔ Help","callback_data":"qx:help"}],
-        [{"text":"⬅ Main menu","callback_data":"qx:menu:home"}]
+        [{"text":"⏱ Timeframe controls","callback_data":"qx:menu:signals"}],
+        [{"text":"🛡 Risk & alert settings","callback_data":"qx:risk"}],
+        [{"text":"❔ Help & guide","callback_data":"qx:help"}],
+        [{"text":"🏠 Main menu","callback_data":"qx:menu:home"}]
     ]}
+}
+
+MENU_TITLES = {
+    "qx:menu:markets": "📈 MARKET SCANNER",
+    "qx:menu:signals": "🧠 SIGNAL & TIMEFRAME CONTROLS",
+    "qx:menu:paper": "🤖 PAPER TRADING DESK",
+    "qx:menu:reports": "📊 REPORTS & PERSONAL GOALS",
+    "qx:menu:settings": "⚙ SETTINGS & SYSTEM STATUS",
 }
 
 async def _telegram_post(client, token: str, method: str, payload: dict):
@@ -85,16 +97,23 @@ async def _telegram_post(client, token: str, method: str, payload: dict):
     raise RuntimeError("Telegram retry limit reached.")
 
 def _format_telegram_message(message: str) -> str:
-    """Keep Telegram text messages warm, branded and easy to scan."""
+    """Apply a consistent Telegram HTML design system to every outgoing text."""
+    import html
     content = str(message or "").replace("\r\n", "\n").strip()
     if not content:
-        return "✨ QUANTNEX\n\nNo message content."
-    first_line = content.splitlines()[0]
-    if "QUANTNEX" in first_line.upper():
-        content = "✨ " + content
-    else:
-        content = "✨ QUANTNEX\n\n" + content
-    return content[:4000]
+        content = "No message content."
+    rendered = []
+    for index, line in enumerate(content.splitlines()):
+        safe = html.escape(line, quote=False)
+        if not safe.strip():
+            rendered.append("")
+        elif index == 0:
+            rendered.append("<b>✨ " + safe + "</b>")
+        elif (line.strip().isupper() and len(line.strip()) > 3) or line.strip().startswith(("📈", "🧠", "🛡", "🎯", "📊", "⚙", "🚀", "🏅", "🔒")):
+            rendered.append("<b>" + safe + "</b>")
+        else:
+            rendered.append(safe)
+    return "\n".join(rendered)[:3900]
 
 
 async def _send(client, token: str, chat_id: str, text: str, reply_markup: dict | None = None):
@@ -103,7 +122,7 @@ async def _send(client, token: str, chat_id: str, text: str, reply_markup: dict 
         await _telegram_post(client, token, "sendChatAction", {"chat_id": chat_id, "action": "typing"})
     except Exception:
         pass
-    payload={"chat_id":chat_id,"text":_format_telegram_message(text),"disable_web_page_preview":True}
+    payload={"chat_id":chat_id,"text":_format_telegram_message(text),"parse_mode":"HTML","disable_web_page_preview":True}
     if reply_markup: payload["reply_markup"]=reply_markup
     return await _telegram_post(client,token,"sendMessage",payload)
 
@@ -131,7 +150,7 @@ async def _send_pdf(client, token: str, chat_id: str, pdf: bytes, filename: str,
     raise RuntimeError("Telegram PDF retry limit reached.")
 
 async def _edit_message(client, token: str, chat_id: str, message_id: int, text: str, reply_markup: dict | None = None):
-    payload={"chat_id":chat_id,"message_id":message_id,"text":text[:4000]}
+    payload={"chat_id":chat_id,"message_id":message_id,"text":_format_telegram_message(text),"parse_mode":"HTML"}
     if reply_markup is not None: payload["reply_markup"]=reply_markup
     return await _telegram_post(client,token,"editMessageText",payload)
 
@@ -204,15 +223,29 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
     names={"1":"M1","5":"M5","15":"M15","30":"M30","50":"M50","60":"H1","240":"H4"}
     if command in {"/start","/help"}:
         return (
-            "◈ QUANTNEX  |  TRADING COMMAND CENTER\n"
-            "Your market workspace is ready.\n\n"
-            "SELECT AN ACTION\n"
-            "📈  Live market scans\n"
-            "🧠  Signal & timeframe controls\n"
-            "🛡  Risk and paper-trading desk\n"
-            "📊  Performance, goals & reports\n\n"
-            "Choose a button below to continue.\n"
-            "Signals are analysis only — no broker orders are placed."
+            "QUANTNEX · YOUR SMART TRADING COMPANION\\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━\\n"
+            "🌍 ENGLISH\\n"
+            "Welcome to QUANTNEX — a trading intelligence workspace built to help you study markets, analyse setups and manage your trading routine.\\n\\n"
+            "✨ WHAT YOU CAN DO\\n"
+            "📈 Scan supported crypto markets and Gold (when its local data feed is configured).\\n"
+            "🧠 Review multi-timeframe signals, confirmations and Entry / SL / TP plans.\\n"
+            "🛡 Manage alert settings and monitor your paper-trading workspace.\\n"
+            "📊 View your paper ledger, daily PDF reports and personal goals.\\n"
+            "🔐 Your workspace settings and personal records remain in your local QUANTNEX environment.\\n\\n"
+            "🇱🇰 සිංහල\\n"
+            "QUANTNEX වෙත සාදරයෙන් පිළිගනිමු! මෙය වෙළඳපොළ අධ්‍යයනය, trade setups විශ්ලේෂණය සහ ඔබගේ trading routine එක කළමනාකරණය සඳහා නිර්මාණය කළ intelligent workspace එකකි.\\n\\n"
+            "✨ ඔබට මෙයින් කළ හැක්කේ\\n"
+            "📈 සහාය දක්වන Crypto markets සහ Gold market scan කිරීම.\\n"
+            "🧠 Multi-timeframe signals, confirmations, Entry / SL / TP සැලසුම් බැලීම.\\n"
+            "🛡 Alerts සහ Paper Trading පාලනය කිරීම.\\n"
+            "📊 Paper ledger, Daily PDF reports සහ Personal Goals පරීක්ෂා කිරීම.\\n"
+            "🔐 ඔබගේ පුද්ගලික දත්ත සහ settings ඔබගේ local QUANTNEX workspace එකේම පවතී.\\n\\n"
+            "⚠️ IMPORTANT · ආරක්ෂාව\\n"
+            "Signals are analysis only. Paper mode is simulated. No live broker orders are placed by this Telegram assistant. Always verify market data, spread and risk yourself.\\n"
+            "Signals යනු විශ්ලේෂණ තොරතුරු පමණයි. මෙය profit හෝ win-rate සහතිකයක් නොවේ.\\n\\n"
+            "👇 TAP A BUTTON BELOW TO OPEN YOUR WORKSPACE\\n"
+            "👇 පහත Button එකක් තෝරාගෙන ආරම්භ කරන්න."
         )
     if command=="/timeframes":
         enabled=", ".join(names.get(str(x),str(x)) for x in settings.get("enabled",[]))
@@ -291,11 +324,29 @@ async def telegram_worker() -> None:
                                         action=str(callback.get("data",""))
                                         keyboard=MENU
                                         if action=="qx:menu:home":
-                                            answer="◈ QUANTNEX  |  TRADING COMMAND CENTER\\nChoose a workspace below."
+                                            answer="QUANTNEX · MAIN WORKSPACE\\nChoose a section below. Select a button to continue — no commands needed."
+                                            keyboard=MENU
                                         elif action in SUBMENUS:
                                             keyboard=SUBMENUS[action]
-                                            titles={"qx:menu:markets":"📈 MARKET SCANNER\\nChoose a market to analyse.","qx:menu:signals":"🧠 SIGNAL CONTROLS\\nManage timeframes, alert state and filters.","qx:menu:paper":"🤖 PAPER TRADING DESK\\nLocal simulation controls and ledger.","qx:menu:reports":"📊 REPORTS & GOALS\\nReview your reports and progress.","qx:menu:settings":"⚙ SETTINGS & SYSTEM STATUS\\nReview connection and analysis settings."}
-                                            answer=titles[action]
+                                            answer=MENU_TITLES[action]+"\\nChoose an action below. No command typing required."
+                                        elif action.startswith("qx:settf:"):
+                                            value=action.split(":")[-1]
+                                            if value in {"1","5","15","30","50","60"}:
+                                                settings["primary"]=value
+                                                _set(db,user_id,"signal_settings",json.dumps(settings));db.commit();_publish_signal_settings_changed()
+                                                answer="✅ Primary signal timeframe updated to "+names[value]+"."
+                                                keyboard=SUBMENUS["qx:menu:signals"]
+                                            else:
+                                                answer="⚠️ Unsupported timeframe.";keyboard=SUBMENUS["qx:menu:signals"]
+                                        elif action.startswith("qx:settrend:"):
+                                            value=action.split(":")[-1]
+                                            if value in {"15","30","60","240"}:
+                                                settings["trend"]=value
+                                                _set(db,user_id,"signal_settings",json.dumps(settings));db.commit();_publish_signal_settings_changed()
+                                                answer="✅ Trend timeframe updated to "+names[value]+"."
+                                                keyboard=SUBMENUS["qx:menu:signals"]
+                                            else:
+                                                answer="⚠️ Unsupported trend timeframe.";keyboard=SUBMENUS["qx:menu:signals"]
                                         elif action=="qx:daily_toggle":
                                             enabled=_get(db,user_id,"telegram_daily_report_enabled","false")=="true"
                                             _set(db,user_id,"telegram_daily_report_enabled","false" if enabled else "true")
@@ -343,7 +394,9 @@ async def telegram_worker() -> None:
                                             auto_settings["enabled"]=(action=="qx:resume")
                                             _set(db,user_id,"auto_signal_settings",json.dumps(auto_settings));db.commit()
                                             answer="Telegram Auto Signals "+("RESUMED" if auto_settings["enabled"] else "PAUSED")+". This controls alerts only, not trading execution."
-                                        elif action=="qx:help": answer="QUANTNEX menu · Buttons provide scans, ledger summary, goals, alert settings and daily PDF. Use /scan SYMBOL as a command fallback."
+                                        elif action=="qx:help":
+                                            answer="QUANTNEX HELP & QUICK GUIDE\\nUse the buttons to navigate Markets, Signals, Paper Desk, Reports and Settings.\\nChoose a market to scan, select signal timeframes, pause or resume alerts, review paper results and download a daily PDF.\\nNo slash commands are needed.\\n\\nSignals are analysis only. No live broker orders are placed."
+                                            keyboard=MENU
                                         else: answer="📊 QUANTNEX local workspace · Signal alerts only. Paper simulation and broker execution are separate."
                                         try: await _edit_message(client,token,chat_id,int(message.get("message_id")),answer,keyboard)
                                         except Exception: await _send(client,token,chat_id,answer,MENU)

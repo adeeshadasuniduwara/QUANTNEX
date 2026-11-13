@@ -88,7 +88,8 @@ function renderIndicatorPanels(){
  const last=(arr)=>{for(let i=arr.length-1;i>=0;i--)if(Number.isFinite(arr[i]))return arr[i];return null;};
  [["qxRsiValue",last(rsi)],["qxMacdValue",last(macdLine)-last(macdSignal)],["qxAdxValue",last(adx.adx)]].forEach(([id,v])=>{const el=$(id);if(el)el.textContent=v===null||!Number.isFinite(v)?"—":v.toFixed(2);});
 }
-\nfunction drawOverlay(){
+
+function drawOverlay(){
  if(!overlay||!chart||!candles.length||!ctx)return;
  const r=host.getBoundingClientRect(),d=window.devicePixelRatio||1;overlay.width=Math.max(1,Math.floor(r.width*d));overlay.height=Math.max(1,Math.floor(r.height*d));overlay.style.width=r.width+"px";overlay.style.height=r.height+"px";
  ctx.setTransform(d,0,0,d,0,0);ctx.clearRect(0,0,r.width,r.height);

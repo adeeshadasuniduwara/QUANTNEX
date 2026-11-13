@@ -75,7 +75,7 @@ function updateDismissed(sha){
 function rememberUpdateDismissed(sha){
   try{sessionStorage.setItem("quantnex.updateNoticeDismissed",sha);}catch{}
 }
-function renderUpdateDetails(result){
+function renderUpdateDetails(result,announce=true){
   const details=$("webUpdateDetails"),summary=$("webUpdateSummary"),list=$("webUpdateChanges"),meta=$("webUpdateMeta");
   const messages=Array.isArray(result.changes)?result.changes.filter(Boolean).slice(0,8):[];
   summary.textContent=result.latest_message||"A new QUANTNEX source update is available.";
@@ -93,7 +93,7 @@ function renderUpdateDetails(result){
   if(!messages.length){const item=document.createElement("li");item.textContent="Workspace improvements and fixes.";modalList.append(item);}
   $("webUpdateModalMeta").textContent=meta.textContent;
   $("webUpdateModalVersion").textContent=result.latest||"Latest version";
-  window.QuantnexOnboarding?.showRelease(result);
+  if(announce)window.QuantnexOnboarding?.showRelease(result);
 }
 function openUpdateModal(result){
   if(window.QuantnexOnboarding?.isReleaseOpen())return;
@@ -120,7 +120,19 @@ window.addEventListener("keydown",event=>{if(event.key==="Escape"&&updateModal&&
 
 if(sessionStorage.getItem("quantnex.webUpdateComplete")==="1"){
   sessionStorage.removeItem("quantnex.webUpdateComplete");
-  window.addEventListener("load",()=>showUpdateToast("✓ QUANTNEX has been updated successfully."));
+  const installedVersion=sessionStorage.getItem("quantnex.webUpdateVersion")||"latest";
+  const installedHeadline=sessionStorage.getItem("quantnex.webUpdateHeadline")||"QUANTNEX Web update";
+  sessionStorage.removeItem("quantnex.webUpdateVersion");
+  sessionStorage.removeItem("quantnex.webUpdateHeadline");
+  const announceInstalledUpdate=()=>{
+    showUpdateToast("✓ QUANTNEX has been updated successfully.");
+    const message="QUANTNEX — UPDATE INSTALLED\\n\\nVersion: "+installedVersion+"\\nUpdate: "+installedHeadline+"\\n\\nYour QUANTNEX Web workspace was updated successfully. Your local wallet, journal and settings were kept separate.";
+    // The local API uses the user's existing encrypted bot credentials. A missing
+    // Telegram connection is an intentional opt-out and does not affect the update.
+    apiRequest("/api/v1/telegram/notify",{method:"POST",body:JSON.stringify({message})}).catch(()=>{});
+  };
+  if(document.readyState==="complete")announceInstalledUpdate();
+  else window.addEventListener("load",announceInstalledUpdate,{once:true});
 }
 
 async function watchUpdateInstall(){
@@ -140,6 +152,8 @@ async function watchUpdateInstall(){
       if(state.status==="complete"){
         status.textContent=state.message||"Update installed. Refreshing workspace…";
         sessionStorage.setItem("quantnex.webUpdateComplete","1");
+        sessionStorage.setItem("quantnex.webUpdateVersion",latestUpdateCommit||"");
+        sessionStorage.setItem("quantnex.webUpdateHeadline",$("webUpdateSummary")?.textContent||"QUANTNEX Web update");
         window.setTimeout(()=>window.location.replace(window.location.pathname+"?updated="+Date.now()),900);
         return;
       }
@@ -191,12 +205,12 @@ async function checkLocalUpdate(options={}){
     if(result.release_notes)releaseNotesLink.href=result.release_notes;
     if(result.update_available){
       latestUpdateCommit=result.commit_sha||result.latest||"";
-      renderUpdateDetails(result);
-      status.textContent="New update released: "+result.latest+". Review the changes and choose when to install.";
+      renderUpdateDetails(result,false);
+      status.textContent="New update detected: "+result.latest+". QUANTNEX is installing it automatically…";
       if(installButton)installButton.hidden=false;
-      if(!updateDismissed(latestUpdateCommit)){
-        openUpdateModal(result);
-      }
+      // Startup and five-minute background checks install the pinned main commit
+      // automatically. The existing manual button remains available if a retry is needed.
+      await installLatestCommit();
     }else{
       latestUpdateCommit="";
       $("webUpdateDetails").hidden=true;

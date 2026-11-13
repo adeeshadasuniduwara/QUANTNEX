@@ -435,7 +435,7 @@
 
       <section class="section-heading" id="automation"><div><div class="overline">AUTOMATION</div><h2>Telegram signal delivery</h2><p>Personal bot connection and automatic signal delivery status.</p></div></section>
       <section class="panel bot-panel"><div class="bot-icon">◉</div><div><strong id="telegramMonitorTitle">Telegram bot not connected</strong><p id="telegramMonitorDescription">Open Signal Lab to connect your BotFather bot and explicitly enable Auto Signals. Alerts run while the QUANTNEX API is active.</p></div><span class="pill" id="telegramMonitorPill">OFFLINE</span></section>
-      <section class="section-heading" id="updates"><div><div class="overline">SOFTWARE</div><h2>Updates</h2><p>Get notified when a new QUANTNEX version is available. Review what changed before installing.</p></div></section>
+      <section class="section-heading" id="updates"><div><div class="overline">SOFTWARE</div><h2>Updates</h2><p>QUANTNEX checks for verified updates automatically and installs them in the background.</p></div></section>
       <section class="panel update-panel">
         <img class="update-orbit-img" src="quantnex-mark.svg" alt="">
         <div class="update-copy">
@@ -453,7 +453,7 @@
             <a class="secondary-btn link-btn" href="https://github.com/adeeshadasuniduwara/QUANTNEX/archive/refs/heads/main.zip" target="_blank" rel="noreferrer">Download current source ZIP</a>
           </div>
           <div class="release-assets" id="webReleaseAssets" hidden></div>
-          <p class="update-manual-note">The Updates tab checks the latest GitHub main-branch commit on startup and when requested. It downloads a pinned source archive, backs up replaced Web files, and rolls back if installation fails. Your local database and settings are kept separately.</p>
+          <p class="update-manual-note">QUANTNEX checks GitHub on startup and every five minutes while the workspace is open. A newer main-branch commit is downloaded automatically from its pinned SHA, backed up, and installed with rollback on failure. If your personal Telegram bot is connected, it receives a message after the update succeeds. This updater changes the Web workspace only; backend and Windows desktop source updates still require their respective update path. Your local database and settings stay separate.</p>
         </div>
         <span class="pill">OFFICIAL</span>
       </section>

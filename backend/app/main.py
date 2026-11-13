@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, DATABASE_URL, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
@@ -295,14 +296,25 @@ def import_legacy_journal(payload: LegacyJournalImportRequest,
                     created_at = created_at.replace(tzinfo=timezone.utc)
             else:
                 created_at = created_at.astimezone(timezone.utc)
-        trade = Trade(user_id=user.id, created_at=created_at, symbol=row.symbol,
-                      direction=row.direction, outcome=row.outcome,
-                      pnl=row.pnl, notes=row.notes)
-        db.add(trade)
-        db.flush()
-        db.add(JournalImport(user_id=user.id, source_id=payload.source_id,
-                             source_ref=row.source_ref, trade_id=trade.id))
-        imported += 1
+        try:
+            with db.begin_nested():
+                trade = Trade(user_id=user.id, created_at=created_at, symbol=row.symbol,
+                              direction=row.direction, outcome=row.outcome,
+                              pnl=row.pnl, notes=row.notes)
+                db.add(trade)
+                db.flush()
+                db.add(JournalImport(user_id=user.id, source_id=payload.source_id,
+                                     source_ref=row.source_ref, trade_id=trade.id))
+                db.flush()
+                imported += 1
+        except IntegrityError:
+            # Another browser tab may have imported the same source row first.
+            if db.scalar(select(JournalImport.id).where(
+                JournalImport.user_id == user.id,
+                JournalImport.source_id == payload.source_id,
+                JournalImport.source_ref == row.source_ref,
+            )) is None:
+                raise
     if imported:
         record_audit_event(db, "journal.legacy_imported",
                            {"source_id": payload.source_id, "imported": imported})

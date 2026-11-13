@@ -1,16 +1,12 @@
 const fs = require("node:fs");
 const assert = require("node:assert/strict");
-
 const html = fs.readFileSync("apps/web/index.html", "utf8");
 const js = fs.readFileSync("apps/web/quantnex-view-chart.js", "utf8");
 const css = fs.readFileSync("apps/web/quantnex-view-chart.css", "utf8");
-
-for (const id of ["qxRsiChart", "qxMacdChart", "qxAdxChart", "qxRsiValue", "qxMacdValue", "qxAdxValue"]) {
-  assert.ok(html.includes(`id="${id}"`), `Missing indicator panel element: ${id}`);
-}
-for (const token of ["function rsiSeries", "function adxSeries", "function renderIndicatorPanels", "macdSignal", "createSeries"]) {
-  assert.ok(js.includes(token), `Indicator calculation/render path missing: ${token}`);
-}
-assert.ok(js.includes("renderIndicatorPanels();"), "Indicator panels are not refreshed with candle data.");
-assert.ok(css.includes(".qx-indicator-grid"), "Responsive indicator panel styles are missing.");
-console.log("QUANTNEX VIEW RSI / MACD / ADX panel checks passed.");
+for (const id of ["qxRsiChart", "qxMacdChart", "qxAdxChart", "qxRsiValue", "qxMacdValue", "qxAdxValue", "qxConfidenceMeter", "qxConfidenceFill"]) assert.ok(html.includes(`id="${id}"`), `Missing chart element: ${id}`);
+for (const token of ["function rsiSeries", "function adxSeries", "function renderIndicatorPanels", "new WebSocket", "kline_", "function pointerDown", "function wheel", "function mergeCandle", "quantnex-view/analyze"]) assert.ok(js.includes(token), `Native chart/live path missing: ${token}`);
+assert.ok(!js.includes("window.LightweightCharts"), "Chart must not depend on the TradingView Lightweight Charts runtime.");
+assert.ok(!html.includes("TradingView Lightweight Charts"), "Chart footer must not credit the removed chart runtime.");
+assert.ok(css.includes(".qx-native-chart-canvas"), "Native chart canvas styles are missing.");
+for (const symbol of ["BNBUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT"]) assert.ok(html.includes(`value="${symbol}"`), `Missing market selector option: ${symbol}`);
+console.log("QUANTNEX native canvas chart, live feed, indicators and market selector checks passed.");

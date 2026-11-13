@@ -44,3 +44,6 @@ console.log("QUANTNEX chart redraw performance regression checks passed.");
 
 
 assert.ok(html.includes("quantnex-view-chart.js?v=20261113-analysis-dedupe1"), "Shared chart analysis must invalidate the chart bundle cache.");
+
+assert.match(js, /quantnex:market-tick/, "Gold chart must consume the shared market tick feed.");
+assert.doesNotMatch(js, /goldTimer|scan\(\)/, "The chart must not call the removed scan function or poll full Gold history every five seconds.");

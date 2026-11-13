@@ -6,18 +6,20 @@ from app import system_security
 
 
 def test_background_worker_lifecycle_is_registered():
-    startup = {handler.__name__ for handler in app.router.on_startup}
-    shutdown = {handler.__name__ for handler in app.router.on_shutdown}
+    import inspect
+    from app.main import lifespan
 
-    assert "start_telegram_background_worker" in startup
-    assert "start_daily_backup_worker" in startup
-    assert "start_paper_autopilot_worker" in startup
-    assert "start_prop_challenge_guardian" in startup
-    assert "stop_daily_backup_worker" in shutdown
-    assert "stop_paper_autopilot_worker" in shutdown
+    lifecycle = inspect.getsource(lifespan)
+    assert "await prepare_local_workspace()" in lifecycle
+    assert "await start_telegram_background_worker()" in lifecycle
+    assert "await start_daily_backup_worker()" in lifecycle
+    assert "await start_paper_autopilot_worker()" in lifecycle
+    assert "await start_prop_challenge_guardian()" in lifecycle
+    assert "await stop_daily_backup_worker()" in lifecycle
+    assert "await stop_paper_autopilot_worker()" in lifecycle
     # The old unscoped monitor closed manually opened paper positions and
     # raced the opt-in autopilot worker. Manual positions stay user-controlled.
-    assert "start_phase07_paper_monitor" not in startup
+    assert "start_phase07_paper_monitor" not in lifecycle
 
 
 class _FakeTask:

@@ -25,11 +25,11 @@ class TradeCreate(BaseModel):
 
 class LegacyJournalRow(TradeCreate):
     date: str = Field(default="", max_length=40)
+    source_ref: str = Field(min_length=16, max_length=64, pattern="^[A-Za-z0-9_-]+$")
 
 
 class LegacyJournalImportRequest(BaseModel):
     source_id: str = Field(min_length=16, max_length=64, pattern="^[A-Za-z0-9_-]+$")
-    source_index_start: int = Field(default=0, ge=0)
     rows: list[LegacyJournalRow] = Field(max_length=500)
 
 

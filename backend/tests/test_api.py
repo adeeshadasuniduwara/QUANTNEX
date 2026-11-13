@@ -378,3 +378,57 @@ def test_strategy_research_uses_only_fully_closed_candles():
     result = main_module._closed_strategy_candles(rows, "15m")
     assert len(result) == 210
     assert result[-1]["close"] == 309
+
+def test_legacy_journal_import_is_idempotent_and_preserves_wallet_balance():
+    client = TestClient(app)
+    before = client.get("/api/v1/wallet/summary").json()
+    source_id = "legacy-browser-import-test-2026"
+    payload = {
+        "source_id": source_id,
+        "rows": [
+            {
+                "source_ref": "legacy-row-reference-0001",
+                "date": "2024-04-02",
+                "symbol": "XAUUSD",
+                "direction": "buy",
+                "outcome": "win",
+                "pnl": 125.50,
+                "notes": "Imported historical browser journal row",
+            },
+            {
+                "source_ref": "legacy-row-reference-0002",
+                "date": "2024-04-03",
+                "symbol": "BTCUSDT",
+                "direction": "sell",
+                "outcome": "loss",
+                "pnl": -20.25,
+                "notes": "Second historical browser journal row",
+            },
+        ],
+    }
+
+    first = client.post("/api/v1/journal/import", json=payload)
+    assert first.status_code == 200
+    assert first.json() == {"imported": 2, "total": 2}
+
+    retry = client.post("/api/v1/journal/import", json=payload)
+    assert retry.status_code == 200
+    assert retry.json() == {"imported": 0, "total": 2}
+
+    after = client.get("/api/v1/wallet/summary").json()
+    assert after == before
+
+    rows = client.get("/api/v1/journal?limit=500").json()
+    imported = [row for row in rows if row["notes"].startswith("Imported historical")]
+    assert len(imported) == 2
+    dates = {row["created_at"][:10] for row in imported}
+    assert dates == {"2024-04-02", "2024-04-03"}
+
+    deleted_id = imported[0]["id"]
+    assert client.delete(f"/api/v1/journal/{deleted_id}").status_code == 204
+    retry_after_delete = client.post("/api/v1/journal/import", json=payload)
+    assert retry_after_delete.status_code == 200
+    assert retry_after_delete.json()["imported"] == 0
+    remaining = client.get("/api/v1/journal?limit=500").json()
+    assert all(row["id"] != deleted_id for row in remaining)
+    assert client.get("/api/v1/wallet/summary").json() == before

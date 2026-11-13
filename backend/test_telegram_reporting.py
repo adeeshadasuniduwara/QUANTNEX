@@ -48,7 +48,7 @@ def test_daily_pdf_contains_only_paper_ledger_and_computes_win_rate():
 def test_telegram_text_messages_get_branded_emoji_headers():
     from app.telegram_worker import _format_telegram_message
 
-    assert _format_telegram_message("Status: connected") == "<b>✨ QUANTNEX</b>\n\nStatus: connected"
+    assert _format_telegram_message("Status: connected") == "<b>✨ QUANTNEX</b>\n\n<b>Status: connected</b>"
     assert _format_telegram_message("QUANTNEX status: connected") == "<b>✨ QUANTNEX status: connected</b>"
     assert "&lt;script&gt;" in _format_telegram_message("<script>")
     assert "<b>STATUS</b>" in _format_telegram_message("QUANTNEX\nSTATUS")

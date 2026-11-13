@@ -99,7 +99,7 @@ async def _telegram_post(client, token: str, method: str, payload: dict):
 def _format_telegram_message(message: str) -> str:
     """Apply a consistent branded Telegram HTML design system to every outgoing text."""
     import html
-    content = str(message or "").replace("\\r\\n", "\\n").strip() or "No message content."
+    content = str(message or "").replace("\r\n", "\n").strip() or "No message content."
     lines = content.splitlines()
     rendered = []
     if "QUANTNEX" not in lines[0].upper():
@@ -114,7 +114,7 @@ def _format_telegram_message(message: str) -> str:
             rendered.append("<b>" + safe + "</b>")
         else:
             rendered.append(safe)
-    return "\\n".join(rendered)[:3900]
+    return "\n".join(rendered)[:3900]
 
 
 async def _send(client, token: str, chat_id: str, text: str, reply_markup: dict | None = None):

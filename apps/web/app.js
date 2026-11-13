@@ -1,7 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const storageKey = "quantnex.journal.v2";
 const journalSourceKey = "quantnex.journal.import_source.v1";
-const journalLegacyBackupKey = "quantnex.journal.legacy_backup.v1";
 function loadTrades(){
   try{
     const current=JSON.parse(localStorage.getItem(storageKey)||"null");
@@ -301,9 +300,6 @@ async function apiRequest(path, options={}){
   if(!response.ok) throw new Error(payload?.detail||("API request failed ("+response.status+")."));
   return payload;
 }
-function newJournalRef(){
-  return window.crypto?.randomUUID?.()||("qnx-row-"+Date.now()+"-"+Math.random().toString(16).slice(2));
-}
 let journalSyncing=false;
 function newJournalRef(){
   return window.crypto?.randomUUID?.()||("qnx-row-"+Date.now()+"-"+Math.random().toString(16).slice(2));
@@ -314,8 +310,6 @@ async function syncJournal(){
   try{
     const pending=journalRowsCache.filter(row=>!row.id);
     if(pending.length){
-      if(!localStorage.getItem(journalLegacyBackupKey))
-        localStorage.setItem(journalLegacyBackupKey,JSON.stringify(journalRowsCache));
       let sourceId=localStorage.getItem(journalSourceKey);
       if(!sourceId){
         sourceId=window.crypto?.randomUUID?.()||("qnx-"+Date.now()+"-"+Math.random().toString(16).slice(2));

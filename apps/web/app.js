@@ -102,8 +102,8 @@ function openUpdateModal(result){
   if(updateDismissed(sha))return;
   updateModal.hidden=false;
   document.body.classList.add("web-update-modal-open");
-  const section=$("updates");
-  section?.scrollIntoView({behavior:"smooth",block:"start"});
+  if(typeof window.quantnexNavigate==="function")window.quantnexNavigate("updates");
+  else $("updates")?.scrollIntoView({behavior:"smooth",block:"start"});
   window.setTimeout(()=>modalInstallButton?.focus(),180);
 }
 function closeUpdateModal(remindLater=true){

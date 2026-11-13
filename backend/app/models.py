@@ -33,10 +33,10 @@ class JournalImport(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     source_id: Mapped[str] = mapped_column(String(64))
-    source_index: Mapped[int] = mapped_column(Integer)
+    source_ref: Mapped[str] = mapped_column(String(64))
     trade_id: Mapped[int] = mapped_column(Integer)
     __table_args__ = (
-        UniqueConstraint("user_id", "source_id", "source_index", name="uq_journal_import_source_row"),
+        UniqueConstraint("user_id", "source_id", "source_ref", name="uq_journal_import_source_row"),
     )
 
 

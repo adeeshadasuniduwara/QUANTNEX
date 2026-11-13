@@ -93,6 +93,17 @@ def update_summary(installed: str, latest: dict) -> dict:
     }
 
 
+def _safe_web_relative(raw_parts: tuple[str, ...]) -> PurePosixPath | None:
+    """Validate archive-relative names before creating Windows-native Paths."""
+    raw = "/".join(raw_parts)
+    if not raw or any(char in raw for char in ("\\", ":", "\x00")):
+        return None
+    relative = PurePosixPath(raw)
+    if relative.is_absolute() or not relative.parts or any(part in ("", ".", "..") for part in relative.parts):
+        return None
+    return relative
+
+
 def install_commit(commit: dict) -> None:
     sha = str(commit.get("sha", ""))
     archive_url = str(commit.get("archive_url", ""))
@@ -121,8 +132,8 @@ def install_commit(commit: dict) -> None:
                     continue
                 if app_index + 1 >= len(parts) or parts[app_index + 1] != "web":
                     continue
-                relative = PurePosixPath(*parts[app_index + 2:])
-                if not relative.parts or any(part in ("", ".", "..") for part in relative.parts):
+                relative = _safe_web_relative(parts[app_index + 2:])
+                if relative is None:
                     continue
                 mode = (info.external_attr >> 16) & 0o170000
                 if mode == 0o120000 or "__pycache__" in relative.parts or relative.suffix == ".pyc":

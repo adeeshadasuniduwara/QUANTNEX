@@ -26,7 +26,8 @@ assert.ok(html.indexOf('src="realtime-events.js"') > html.indexOf('src="app.js"'
 assert.ok(!html.includes("\\n"), "HTML must not contain literal escaped newline text");
 assert.ok(html.includes('id="goalImagePreview"'), "Personal goals must expose an inline image preview");
 assert.ok(html.includes('id="goalImage"'), "Personal goals must accept an image URL");
-assert.ok(!html.includes('id="goalDescription"'), "Personal goal creation should keep optional details minimal");
+assert.ok(html.includes('id="goalDescription"'), "Personal goals must support a custom achievement message");
+assert.ok(html.includes('id="goalTargetDate"'), "Personal goals must support an optional target date");
 assert.ok(html.includes('id="paper-autopilot"'), "Paper autopilot workspace section must exist");
 assert.ok(html.includes('id="paperEngineToggle"'), "Paper autopilot must expose an explicit start/pause control");
 assert.ok(html.includes('id="paperUniverseRefresh"'), "Market universe discovery control must exist");

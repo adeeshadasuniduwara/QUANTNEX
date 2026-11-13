@@ -1057,27 +1057,37 @@ async def smart_open_paper_trade(payload: dict, user: User = Depends(local_works
 
 
 @app.get("/api/v1/goals/demo-certificate")
-def download_demo_goal_certificate(user: User = Depends(local_workspace)):
-    """Return a clearly watermarked sample certificate; it is never a real achievement record."""
+@app.post("/api/v1/goals/demo-certificate")
+def download_demo_goal_certificate(payload: dict | None = None, user: User = Depends(local_workspace)):
+    """Render a personalized sample only; it never creates or unlocks a real certificate."""
     from .goal_certificates import build_goal_certificate_pdf
+    payload = payload or {}
+    display_name = str(payload.get("display_name") or "QUANTNEX Demo User").strip()
+    goal_title = str(payload.get("goal_title") or "Sample Personal Goal").strip()
+    achievement_text = str(payload.get("achievement_text") or "I just achieved gold").strip()
+    currency = str(payload.get("currency") or "USD").upper()
+    try:
+        target_amount = float(payload.get("target_amount") or 1000)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="Demo goal amount must be numeric.")
+    if not display_name or len(display_name) > 80:
+        raise HTTPException(status_code=422, detail="Enter a display name between 1 and 80 characters.")
+    if not goal_title or len(goal_title) > 120 or not achievement_text or len(achievement_text) > 240:
+        raise HTTPException(status_code=422, detail="Enter a goal name and achievement message within the allowed length.")
+    if currency not in {"USD","LKR","EUR","GBP","AUD","CAD"} or not (0 < target_amount <= 1000000000000):
+        raise HTTPException(status_code=422, detail="Enter a valid demo goal amount and currency.")
     achieved = datetime.now(timezone.utc)
-    created = datetime.fromtimestamp(achieved.timestamp() - 21 * 86400, tz=timezone.utc)
+    created = datetime.fromtimestamp(achieved.timestamp() - 21 * 86400 - 5 * 3600, tz=timezone.utc)
     pdf = build_goal_certificate_pdf(
-        display_name="QUANTNEX Demo User",
-        goal_title="Sample Personal Goal",
-        created_at=created,
-        achieved_at=achieved,
-        elapsed_days=21,
-        certificate_id="DEMO-NOT-VALID",
-        integrity_fingerprint="0" * 64,
-        target_amount=1000.0,
-        saved_amount=1000.0,
-        currency="USD",
-        demo_only=True,
+        display_name=display_name, goal_title=goal_title, achievement_text=achievement_text,
+        created_at=created, achieved_at=achieved, elapsed_days=21, elapsed_hours=509,
+        certificate_id="DEMO-NOT-VALID", integrity_fingerprint="0" * 64,
+        target_amount=target_amount, saved_amount=target_amount, currency=currency,
+        goal_image_url=str(payload.get("image_url") or ""), demo_only=True,
     )
     return Response(content=pdf, media_type="application/pdf",
-        headers={"Content-Disposition": 'attachment; filename="QUANTNEX-DEMO-CERTIFICATE-NOT-VALID.pdf"'})
-
+        headers={"Content-Disposition": 'inline; filename="QUANTNEX-DEMO-CERTIFICATE-NOT-VALID.pdf"',
+                 "Cache-Control": "no-store"})
 
 @app.get("/api/v1/goals")
 def list_personal_goals(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
@@ -1232,11 +1242,15 @@ def generate_goal_certificate(goal_id: int, payload: dict, user: User = Depends(
     if achieved.tzinfo is None: achieved=achieved.replace(tzinfo=timezone.utc)
     created=goal.created_at
     if created.tzinfo is None: created=created.replace(tzinfo=timezone.utc)
-    elapsed=max(0,(achieved-created).days)
+    elapsed_seconds=max(0,int((achieved-created).total_seconds()))
+    elapsed=elapsed_seconds//86400
+    elapsed_hours=elapsed_seconds//3600
     pdf=build_goal_certificate_pdf(display_name=display_name,goal_title=goal.title,
-        created_at=created,achieved_at=achieved,elapsed_days=elapsed,
+        created_at=created,achieved_at=achieved,elapsed_days=elapsed,elapsed_hours=elapsed_hours,
         certificate_id=certificate_id,integrity_fingerprint=digest,
-        target_amount=goal.target_amount,saved_amount=saved,currency=goal.currency)
+        target_amount=goal.target_amount,saved_amount=saved,currency=goal.currency,
+        achievement_text=goal.description or "A meaningful result built through patience, consistency and self-discipline.",
+        goal_image_url=goal.image_url or "")
     safe_name="".join(ch for ch in display_name if ch.isalnum() or ch in "-_")[:32] or "Trader"
     return Response(content=pdf,media_type="application/pdf",
         headers={"Content-Disposition":f'attachment; filename="QUANTNEX-Achievement-{safe_name}.pdf"'})

@@ -100,3 +100,15 @@ html{transition:zoom 180ms cubic-bezier(.2,.75,.25,1)}
 .calendar-high-row td{background:#ff444405}
 .calendar-workspace table td{vertical-align:middle}
 @media(max-width:650px){.calendar-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.calendar-kpis article{padding:9px}.calendar-kpis strong{font-size:16px}.calendar-filters{grid-template-columns:1fr 1fr}.calendar-search{grid-column:1/-1}}
+
+
+.goal-certificate-preview-wrap{display:grid;gap:10px;margin-top:14px;padding:12px;border:1px solid rgba(201,162,39,.38);border-radius:12px;background:linear-gradient(145deg,#17140d,#0d0d0d 58%,#17130a)}
+.goal-certificate-preview-wrap[hidden]{display:none}
+.goal-certificate-preview-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#e6d39a;font-size:12px}
+.goal-certificate-preview-heading span{color:#a99768;font-size:11px}
+.goal-certificate-preview-wrap iframe{display:block;width:100%;height:min(78vh,820px);min-height:520px;border:1px solid #66552b;border-radius:8px;background:#fff}
+@media(max-width:700px){.goal-certificate-preview-wrap iframe{height:68vh;min-height:420px}.goal-certificate-preview-heading{align-items:flex-start;flex-direction:column;gap:3px}}
+
+
+.goal-achievement-text{margin:8px 0 4px;color:#d9c58d;font-size:12px;line-height:1.55}
+.goal-card small{display:block;color:#9c927b;margin-top:5px}

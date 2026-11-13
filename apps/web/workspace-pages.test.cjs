@@ -94,3 +94,7 @@ assert.match(app, /window\.addEventListener\("online"/, "Offline journal rows mu
 assert.ok(html.includes('id="journalStatus"'), "The journal must expose database synchronization status.");
 assert.ok(!html.includes("Records are stored in this browser only."), "Journal copy must not imply browser-only persistence.");
 console.log("Database-backed journal and legacy recovery checks passed.");
+
+assert.match(app, /created_at:new Date\(trade\.date\+"T12:00:00"\)\.toISOString\(\)/, "Journal writes must preserve the user's local calendar date.");
+assert.ok(app.includes('/[zZ]|[+-]\\d{2}:\\d{2}$/'), "SQLite timestamps without an offset must be parsed as UTC.");
+console.log("Journal timezone normalization checks passed.");

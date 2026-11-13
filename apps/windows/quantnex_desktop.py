@@ -570,10 +570,12 @@ try {
     Start-Process -FilePath $target
     Remove-Item -LiteralPath $staged -Force -ErrorAction SilentlyContinue
 } catch {
-    if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue }
     if ($hadOriginal -and (Test-Path -LiteralPath $backup)) {
+        if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue }
         Move-Item -LiteralPath $backup -Destination $target -Force
         Start-Process -FilePath $target
+    } elseif (-not $hadOriginal -and (Test-Path -LiteralPath $target)) {
+        Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
     }
     throw
 } finally {

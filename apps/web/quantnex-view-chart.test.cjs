@@ -39,3 +39,5 @@ assert.match(js, /function scheduleDraw\(\).*requestAnimationFrame/, "High-frequ
 assert.match(js, /candleRevision\+\+/, "New or updated candles must invalidate the indicator cache.");
 assert.match(js, /cancelAnimationFrame\(drawFrame\)/, "Pending chart redraws must be cancelled when leaving the chart.");
 console.log("QUANTNEX chart redraw performance regression checks passed.");
+
+assert.ok(html.includes("quantnex-view-chart.js?v=20261113-chart-redraw2"), "Chart redraw performance fix must invalidate the cached chart asset.");

@@ -2,7 +2,7 @@
 "use strict";
 const $=id=>document.getElementById(id),host=$("qxChartHost");
 if(!host||typeof apiRequest!=="function")return;
-let chart=null,series=null,volume=null,emaLines={},overlay=null,ctx=null,candles=[],analysis=null,busy=false,observer=null,tradeLines=[],markerApi=null;
+let chart=null,series=null,volume=null,emaLines={},overlay=null,ctx=null,candles=[],analysis=null,busy=false,observer=null,tradeLines=[],markerApi=null;\nconst indicatorCharts={};
 const palette={bull:"#22c997",bear:"#f05d68",fvg:"#4a9cff",ob:"#c18cff",breaker:"#f4b860",sr:"#e6c85c"};
 const stamp=v=>{let s=String(v||"");if(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?$/.test(s))s+="Z";let n=Date.parse(s);return Number.isFinite(n)?Math.floor(n/1000):null;};
 const fmt=v=>Number(v).toLocaleString(undefined,{maximumFractionDigits:8});
@@ -26,7 +26,7 @@ function makeChart(){
  [["20","qxEma20","#f3c969"],["50","qxEma50","#67a7ff"],["200","qxEma200","#c18cff"]].forEach(([p,id,color])=>{if($(id)?.checked)emaLines[p]=chart.addSeries(L.LineSeries,{color,lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});});
  overlay=document.createElement("canvas");overlay.className="qx-intelligence-overlay";overlay.setAttribute("aria-hidden","true");host.append(overlay);ctx=overlay.getContext("2d");
  chart.timeScale().subscribeVisibleLogicalRangeChange(drawOverlay);chart.timeScale().subscribeVisibleTimeRangeChange(drawOverlay);
- observer?.disconnect();observer=new ResizeObserver(entries=>{let r=entries[0]?.contentRect;if(r&&chart){chart.applyOptions({width:Math.max(280,Math.floor(r.width)),height:Math.max(320,Math.floor(r.height))});drawOverlay();}});observer.observe(host);
+ observer?.disconnect();observer=new ResizeObserver(entries=>{entries.forEach(entry=>{const w=Math.max(260,Math.floor(entry.contentRect.width));if(entry.target===host&&chart){chart.applyOptions({width:w,height:Math.max(320,Math.floor(entry.contentRect.height))});drawOverlay();}else{const id=entry.target.id,ic=indicatorCharts[id];if(ic)ic.applyOptions({width:w});}});});observer.observe(host);\n ["qxRsiChart","qxMacdChart","qxAdxChart"].forEach(id=>{const el=$(id);if(el)observer.observe(el);});
 }
 function applyCandles(rows){
  candles=(rows||[]).map(r=>({...r,time:stamp(r.time)})).filter(r=>r.time!==null).sort((a,b)=>a.time-b.time).filter((r,i,a)=>i===0||r.time>a[i-1].time);
@@ -42,7 +42,51 @@ function applyCandles(rows){
  if($("qxChartChange")){$("qxChartChange").textContent=(change>=0?"+":"")+change.toFixed(2)+"% across loaded candles";$("qxChartChange").dataset.direction=change>=0?"up":"down";}
  drawOverlay();
 }
-function drawOverlay(){
+
+function rsiSeries(values,period=14){
+ const out=Array(values.length).fill(null);if(values.length<=period)return out;
+ let gain=0,loss=0;for(let i=1;i<=period;i++){const d=values[i]-values[i-1];gain+=Math.max(d,0);loss+=Math.max(-d,0);}
+ let ag=gain/period,al=loss/period;const calc=()=>al===0?100:100-(100/(1+ag/al));out[period]=calc();
+ for(let i=period+1;i<values.length;i++){const d=values[i]-values[i-1];ag=(ag*(period-1)+Math.max(d,0))/period;al=(al*(period-1)+Math.max(-d,0))/period;out[i]=calc();}
+ return out;
+}
+function adxSeries(rows,period=14){
+ const out=Array(rows.length).fill(null),pdi=Array(rows.length).fill(null),mdi=Array(rows.length).fill(null);if(rows.length<period*2+1)return {adx:out,pdi,mdi};
+ const tr=[],plus=[],minus=[];
+ for(let i=1;i<rows.length;i++){const a=rows[i],b=rows[i-1],up=a.high-b.high,down=b.low-a.low;tr.push(Math.max(a.high-a.low,Math.abs(a.high-b.close),Math.abs(a.low-b.close)));plus.push(up>down&&up>0?up:0);minus.push(down>up&&down>0?down:0);}
+ const dx=[];for(let i=period-1;i<tr.length;i++){const t=tr.slice(i-period+1,i+1).reduce((a,b)=>a+b,0),p=plus.slice(i-period+1,i+1).reduce((a,b)=>a+b,0),m=minus.slice(i-period+1,i+1).reduce((a,b)=>a+b,0);const pi=t?100*p/t:0,mi=t?100*m/t:0;const x=100*Math.abs(pi-mi)/Math.max(pi+mi,1e-9);pdi[i+1]=pi;mdi[i+1]=mi;dx.push({index:i+1,value:x});}
+ for(let i=period-1;i<dx.length;i++){const chunk=dx.slice(Math.max(0,i-period+1),i+1);if(chunk.length===period)out[chunk.at(-1).index]=chunk.reduce((s,x)=>s+x.value,0)/period;}
+ return {adx:out,pdi,mdi};
+}
+function mountIndicatorChart(id,kind){
+ const L=window.LightweightCharts,el=$(id);if(!L?.createChart||!el)return null;
+ const old=indicatorCharts[id];if(old){try{old.remove();}catch{}}
+ const light=$("qxChartTheme")?.value==="light",ic=L.createChart(el,{width:el.clientWidth||700,height:142,layout:{background:{type:"solid",color:light?"#f7f9fc":"#080d13"},textColor:light?"#526174":"#9aa8bb",fontFamily:"Inter,system-ui,sans-serif",fontSize:10},grid:{vertLines:{color:"rgba(130,150,175,.08)"},horzLines:{color:"rgba(130,150,175,.08)"}},rightPriceScale:{borderColor:"rgba(130,150,175,.18)"},timeScale:{visible:false,borderColor:"rgba(130,150,175,.15)"},handleScroll:false,handleScale:false});
+ indicatorCharts[id]=ic;
+ const add=(type,options)=>ic.addSeries(type,options);
+ if(kind==="rsi"){
+  const s=add(L.LineSeries,{color:"#b58cff",lineWidth:2,priceLineVisible:false,lastValueVisible:true});s.setData([]);
+  [30,70].forEach(v=>{const line=s.createPriceLine({price:v,color:"rgba(180,190,210,.45)",lineStyle:2,lineWidth:1,axisLabelVisible:true,title:String(v)});});
+  ic.__series={main:s};
+ }else if(kind==="macd"){
+  const h=add(L.HistogramSeries,{priceLineVisible:false,lastValueVisible:false,base:0});const m=add(L.LineSeries,{color:"#62aaff",lineWidth:2,priceLineVisible:false});const sig=add(L.LineSeries,{color:"#f2c86b",lineWidth:1,priceLineVisible:false});ic.__series={hist:h,main:m,signal:sig};
+ }else{
+  const a=add(L.LineSeries,{color:"#e8c56b",lineWidth:2,priceLineVisible:false});const p=add(L.LineSeries,{color:"#25c997",lineWidth:1,priceLineVisible:false});const n=add(L.LineSeries,{color:"#f06b75",lineWidth:1,priceLineVisible:false});ic.__series={main:a,plus:p,minus:n};
+ }
+ return ic;
+}
+function renderIndicatorPanels(){
+ if(!candles.length||!window.LightweightCharts)return;
+ const closes=candles.map(x=>x.close),times=candles.map(x=>x.time),L=window.LightweightCharts;
+ const rsi=rsiSeries(closes),macdFast=ema(closes,12),macdSlow=ema(closes,26),macdLine=macdFast.map((v,i)=>v-macdSlow[i]),macdSignal=ema(macdLine,9),adx=adxSeries(candles);
+ const r=mountIndicatorChart("qxRsiChart","rsi"),m=mountIndicatorChart("qxMacdChart","macd"),a=mountIndicatorChart("qxAdxChart","adx");
+ if(r){r.__series.main.setData(times.map((time,i)=>({time,value:rsi[i]})).filter(x=>Number.isFinite(x.value)));r.timeScale().fitContent();}
+ if(m){m.__series.hist.setData(times.map((time,i)=>({time,value:macdLine[i]-macdSignal[i],color:macdLine[i]>=macdSignal[i]?"rgba(37,201,151,.55)":"rgba(240,107,117,.55)"})));m.__series.main.setData(times.map((time,i)=>({time,value:macdLine[i]})));m.__series.signal.setData(times.map((time,i)=>({time,value:macdSignal[i]})));m.timeScale().fitContent();}
+ if(a){a.__series.main.setData(times.map((time,i)=>({time,value:adx.adx[i]})).filter(x=>Number.isFinite(x.value)));a.__series.plus.setData(times.map((time,i)=>({time,value:adx.pdi[i]})).filter(x=>Number.isFinite(x.value)));a.__series.minus.setData(times.map((time,i)=>({time,value:adx.mdi[i]})).filter(x=>Number.isFinite(x.value)));a.timeScale().fitContent();}
+ const last=(arr)=>{for(let i=arr.length-1;i>=0;i--)if(Number.isFinite(arr[i]))return arr[i];return null;};
+ [["qxRsiValue",last(rsi)],["qxMacdValue",last(macdLine)-last(macdSignal)],["qxAdxValue",last(adx.adx)]].forEach(([id,v])=>{const el=$(id);if(el)el.textContent=v===null||!Number.isFinite(v)?"—":v.toFixed(2);});
+}
+\nfunction drawOverlay(){
  if(!overlay||!chart||!candles.length||!ctx)return;
  const r=host.getBoundingClientRect(),d=window.devicePixelRatio||1;overlay.width=Math.max(1,Math.floor(r.width*d));overlay.height=Math.max(1,Math.floor(r.height*d));overlay.style.width=r.width+"px";overlay.style.height=r.height+"px";
  ctx.setTransform(d,0,0,d,0,0);ctx.clearRect(0,0,r.width,r.height);
@@ -94,5 +138,5 @@ function rebuild(){if(!candles.length){refresh();return;}const old=candles;makeC
 ["qxOverlayStructure","qxOverlayZones","qxOverlaySR"].forEach(id=>$(id)?.addEventListener("change",drawOverlay));
 $("qxFitChart")?.addEventListener("click",()=>chart?.timeScale().fitContent());
 $("qxScreenshot")?.addEventListener("click",()=>{try{const c=chart?.takeScreenshot?.();if(!c)throw Error("Snapshot unavailable in this chart build.");const a=document.createElement("a");a.download="QUANTNEX-VIEW-"+selected().symbol+".png";a.href=c.toDataURL("image/png");a.click();}catch(e){setStatus(e.message,"error");}});
-refresh();const timer=window.setInterval(refresh,45000);window.addEventListener("beforeunload",()=>{window.clearInterval(timer);observer?.disconnect();chart?.remove();});
+refresh();const timer=window.setInterval(refresh,45000);window.addEventListener("beforeunload",()=>{window.clearInterval(timer);observer?.disconnect();chart?.remove();Object.values(indicatorCharts).forEach(c=>c.remove());});
 })();

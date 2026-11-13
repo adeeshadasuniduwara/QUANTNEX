@@ -1,4 +1,7 @@
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from quantnex_updater import _safe_relative, _valid_sha
 

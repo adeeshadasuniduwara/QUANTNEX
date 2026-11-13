@@ -1,4 +1,4 @@
-"""Print-ready monochrome QUANTNEX personal achievement certificate."""
+"""Print-ready A4 QUANTNEX achievement certificates with a gold ornamental design."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -12,86 +12,120 @@ from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
 
+GOLD = colors.HexColor("#B58A28")
+LIGHT_GOLD = colors.HexColor("#E8D79B")
+DARK = colors.HexColor("#262116")
+
+
 def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
                                created_at: datetime, achieved_at: datetime,
                                elapsed_days: int, certificate_id: str,
                                integrity_fingerprint: str, target_amount: float,
                                saved_amount: float, currency: str, demo_only: bool = False) -> bytes:
+    """Build a self-contained PDF; demo certificates are prominently non-valid."""
     buffer = BytesIO()
     page_w, page_h = A4
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=24*mm, leftMargin=24*mm,
-                            topMargin=36*mm, bottomMargin=32*mm,
-                            title=("QUANTNEX Demo Certificate — NOT VALID" if demo_only else "QUANTNEX Achievement Certificate"))
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4, rightMargin=25*mm, leftMargin=25*mm,
+        topMargin=43*mm, bottomMargin=35*mm,
+        title=("QUANTNEX Demo Certificate — NOT VALID" if demo_only else "QUANTNEX Achievement Certificate"),
+        author="QUANTNEX",
+    )
+
+    def star(canvas, cx, cy, outer, inner):
+        path = canvas.beginPath()
+        for i in range(10):
+            import math
+            angle = math.pi / 2 + i * math.pi / 5
+            radius = outer if i % 2 == 0 else inner
+            x, y = cx + math.cos(angle)*radius, cy + math.sin(angle)*radius
+            (path.moveTo if i == 0 else path.lineTo)(x, y)
+        path.close()
+        canvas.drawPath(path, fill=1, stroke=0)
 
     def decorate(canvas, _doc):
         canvas.saveState()
-        canvas.setStrokeColor(colors.HexColor("#111111"))
-        canvas.setLineWidth(1.4)
-        canvas.rect(10*mm, 10*mm, page_w-20*mm, page_h-20*mm)
-        canvas.setLineWidth(0.45)
-        canvas.rect(13*mm, 13*mm, page_w-26*mm, page_h-26*mm)
-        draw_quantnex_mark(canvas,page_w/2-7.5*mm,page_h-33*mm,15*mm)
+        # Warm ivory sheet and layered metallic-gold frame.
+        canvas.setFillColor(colors.HexColor("#FFFEFA"))
+        canvas.rect(0, 0, page_w, page_h, fill=1, stroke=0)
+        canvas.setStrokeColor(GOLD)
+        canvas.setLineWidth(2.2)
+        canvas.rect(9*mm, 9*mm, page_w-18*mm, page_h-18*mm, fill=0, stroke=1)
+        canvas.setStrokeColor(LIGHT_GOLD)
+        canvas.setLineWidth(0.8)
+        canvas.rect(13*mm, 13*mm, page_w-26*mm, page_h-26*mm, fill=0, stroke=1)
+        canvas.setStrokeColor(GOLD)
+        canvas.setLineWidth(0.6)
+        canvas.line(28*mm, page_h-39*mm, page_w-28*mm, page_h-39*mm)
+        canvas.line(28*mm, 34*mm, page_w-28*mm, 34*mm)
+        # Decorative corner stars and central Q emblem.
+        canvas.setFillColor(GOLD)
+        for x in (19*mm, page_w-19*mm):
+            for y in (19*mm, page_h-19*mm):
+                star(canvas, x, y, 3.0*mm, 1.2*mm)
+        draw_quantnex_mark(canvas, page_w/2-8*mm, page_h-34*mm, 16*mm, gold=True)
         if demo_only:
             canvas.saveState()
             canvas.translate(page_w/2, page_h/2)
-            canvas.rotate(35)
-            canvas.setFillColor(colors.HexColor("#D5D5D5"))
-            canvas.setFont("Helvetica-Bold", 34)
+            canvas.rotate(32)
+            canvas.setFillColor(colors.Color(0.72, 0.57, 0.25, alpha=0.20))
+            canvas.setFont("Helvetica-Bold", 31)
             canvas.drawCentredString(0, 0, "DEMO ONLY — NOT VALID")
-            canvas.setFont("Helvetica-Bold", 13)
-            canvas.drawCentredString(0, -14*mm, "FOR DISPLAY PURPOSES ONLY")
+            canvas.setFont("Helvetica-Bold", 12)
+            canvas.drawCentredString(0, -13*mm, "FOR DISPLAY PURPOSES ONLY")
             canvas.restoreState()
-        canvas.setFillColor(colors.black)
-        canvas.setFont("Helvetica-Bold", 9)
-        canvas.drawCentredString(page_w/2, 20*mm, "QUANTNEX  ·  PERSONAL DISCIPLINE SERIES")
+        canvas.setFillColor(DARK)
+        canvas.setFont("Helvetica-Bold", 8)
+        canvas.drawCentredString(page_w/2, 24*mm, "QUANTNEX  ·  PERSONAL DISCIPLINE SERIES")
+        canvas.setFillColor(GOLD)
         canvas.setFont("Helvetica", 6.5)
-        canvas.setFillColor(colors.HexColor("#555555"))
-        footer = ("DEMO SAMPLE · NOT VALID · FOR DISPLAY PURPOSES ONLY" if demo_only else "LOCAL CERTIFICATE · NOT A FINANCIAL LICENSE OR TRADING PERFORMANCE GUARANTEE")
-        canvas.drawCentredString(page_w/2, 16*mm, footer)
+        footer = ("DEMO SAMPLE · NOT VALID · FOR DISPLAY PURPOSES ONLY" if demo_only
+                  else "LOCAL CERTIFICATE · NOT A FINANCIAL LICENSE OR TRADING PERFORMANCE GUARANTEE")
+        canvas.drawCentredString(page_w/2, 20*mm, footer)
         canvas.restoreState()
 
     styles = getSampleStyleSheet()
-    brand = ParagraphStyle("Brand", parent=styles["Normal"], fontName="Helvetica-Bold",
-                           fontSize=12, leading=15, alignment=TA_CENTER, tracking=3)
-    title = ParagraphStyle("TitleQX", parent=styles["Title"], fontName="Times-Bold",
-                           fontSize=30, leading=36, alignment=TA_CENTER, textColor=colors.black,
-                           spaceAfter=6*mm)
-    lead = ParagraphStyle("LeadQX", parent=styles["Normal"], fontName="Helvetica",
-                          fontSize=11, leading=17, alignment=TA_CENTER, textColor=colors.HexColor("#333333"))
-    name = ParagraphStyle("NameQX", parent=styles["Heading1"], fontName="Times-BoldItalic",
-                          fontSize=25, leading=31, alignment=TA_CENTER, textColor=colors.black,
+    brand = ParagraphStyle("BrandGold", parent=styles["Normal"], fontName="Helvetica-Bold",
+                           fontSize=10, leading=14, alignment=TA_CENTER, textColor=GOLD, tracking=3)
+    title = ParagraphStyle("TitleGold", parent=styles["Title"], fontName="Times-Bold",
+                           fontSize=28, leading=34, alignment=TA_CENTER, textColor=DARK,
+                           spaceAfter=5*mm)
+    lead = ParagraphStyle("LeadGold", parent=styles["Normal"], fontName="Helvetica",
+                         fontSize=10, leading=16, alignment=TA_CENTER, textColor=DARK)
+    name = ParagraphStyle("NameGold", parent=styles["Heading1"], fontName="Times-BoldItalic",
+                          fontSize=27, leading=34, alignment=TA_CENTER, textColor=GOLD,
                           spaceBefore=7*mm, spaceAfter=5*mm)
-    goal = ParagraphStyle("GoalQX", parent=styles["Heading2"], fontName="Helvetica-Bold",
-                          fontSize=18, leading=24, alignment=TA_CENTER, textColor=colors.black,
+    goal = ParagraphStyle("GoalGold", parent=styles["Heading2"], fontName="Helvetica-Bold",
+                          fontSize=17, leading=22, alignment=TA_CENTER, textColor=DARK,
                           spaceBefore=4*mm, spaceAfter=4*mm)
-    small = ParagraphStyle("SmallQX", parent=styles["Normal"], fontName="Helvetica",
-                           fontSize=8, leading=12, alignment=TA_CENTER, textColor=colors.HexColor("#444444"))
+    small = ParagraphStyle("SmallGold", parent=styles["Normal"], fontName="Helvetica",
+                           fontSize=8, leading=12, alignment=TA_CENTER, textColor=colors.HexColor("#5B513C"))
     story = [
         Paragraph("Q U A N T N E X", brand),
-        Spacer(1, 10*mm),
+        Spacer(1, 9*mm),
         Paragraph("DEMO CERTIFICATE PREVIEW" if demo_only else "CERTIFICATE OF ACHIEVEMENT", title),
         Paragraph("SAMPLE ONLY · NOT VALID" if demo_only else "PROUDLY PRESENTED TO", lead),
-        Paragraph(display_name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"), name),
+        Paragraph(_escape(display_name), name),
         Paragraph("For achieving the personal goal", lead),
-        Paragraph(goal_title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"), goal),
-        Spacer(1, 5*mm),
-        Paragraph("A meaningful result built through patience, consistency and self-discipline.", lead),
+        Paragraph(_escape(goal_title), goal),
         Spacer(1, 4*mm),
+        Paragraph("A meaningful result built through patience, consistency and self-discipline.", lead),
+        Spacer(1, 5*mm),
         Paragraph(f"GOAL VALUE  ·  {currency} {target_amount:,.2f}  ·  RECORDED SAVINGS {currency} {saved_amount:,.2f}", small),
-        Spacer(1, 8*mm),
+        Spacer(1, 7*mm),
         Paragraph(f"GOAL STARTED  ·  {created_at.strftime('%d %B %Y')}", small),
         Spacer(1, 2*mm),
         Paragraph(f"ACHIEVED  ·  {achieved_at.strftime('%d %B %Y')}", small),
         Spacer(1, 2*mm),
         Paragraph(f"TIME INVESTED  ·  {elapsed_days} days", small),
-        Spacer(1, 13*mm),
+        Spacer(1, 11*mm),
         Paragraph("Presented by the QUANTNEX Support Team", lead),
         Spacer(1, 3*mm),
-        Paragraph("QUANTNEX", ParagraphStyle("Signature", parent=styles["Normal"],
-            fontName="Times-Italic", fontSize=20, leading=24, alignment=TA_CENTER)),
+        Paragraph("QUANTNEX", ParagraphStyle("SignatureGold", parent=styles["Normal"],
+            fontName="Times-Italic", fontSize=19, leading=23, alignment=TA_CENTER, textColor=GOLD)),
         Spacer(1, 2*mm),
         Paragraph("PERSONAL GOAL MILESTONE", small),
-        Spacer(1, 11*mm),
+        Spacer(1, 8*mm),
         Paragraph(f"Certificate ID: {certificate_id}", small),
         Paragraph(f"Local integrity fingerprint: {integrity_fingerprint[:24]}", small),
     ]
@@ -102,15 +136,19 @@ def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
     return buffer.getvalue()
 
 
-def draw_quantnex_mark(canvas, x: float, y: float, size: float) -> None:
-    """Draw a compact monochrome vector approximation of the repository Q mark."""
+def _escape(value: str) -> str:
+    return str(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def draw_quantnex_mark(canvas, x: float, y: float, size: float, gold: bool = False) -> None:
+    """Draw the QUANTNEX Q emblem in a black or gold medallion."""
     canvas.saveState()
     scale=size/64.0
     canvas.translate(x,y)
     canvas.scale(scale,scale)
-    canvas.setFillColor(colors.HexColor("#0B0B0B"))
+    canvas.setFillColor(GOLD if gold else colors.HexColor("#0B0B0B"))
     canvas.roundRect(0,0,64,64,16,fill=1,stroke=0)
-    canvas.setStrokeColor(colors.HexColor("#F5F5F5"))
+    canvas.setStrokeColor(colors.HexColor("#FFFEFA"))
     canvas.setLineWidth(5.5)
     canvas.setLineCap(1)
     canvas.arc(10,10,54,54,45,285)
@@ -118,6 +156,6 @@ def draw_quantnex_mark(canvas, x: float, y: float, size: float) -> None:
     path.moveTo(34,34)
     path.lineTo(48,48)
     canvas.drawPath(path,stroke=1,fill=0)
-    canvas.setFillColor(colors.HexColor("#F5F5F5"))
+    canvas.setFillColor(colors.HexColor("#FFFEFA"))
     canvas.circle(50.5,13.5,5.5,fill=1,stroke=0)
     canvas.restoreState()

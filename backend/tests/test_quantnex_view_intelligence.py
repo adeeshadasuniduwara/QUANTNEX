@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 from app.quantnex_view_intelligence import STRATEGY_CATALOG, analyze_candles, backtest_candles
 
@@ -50,3 +51,16 @@ def test_backtest_is_single_position_per_symbol_and_reports_metrics():
     assert result["initial_balance"] == 10000
     assert result["trades"] == len(result["trade_history"])
     assert 0 <= result["win_rate"] <= 100
+
+
+def test_final_open_trade_is_included_in_maximum_drawdown():
+    candles = sample_candles(261)
+    for row in candles[211:]:
+        row.update({"open": 99.6, "high": 99.7, "low": 99.4, "close": 99.5})
+    signal = {"side": "BUY", "entry": 100.0, "stop_loss": 99.0,
+              "tp1": 101.0, "tp2": 102.0, "tp3": 103.0,
+              "risk_distance": 1.0, "confirmations": ["test"]}
+    with patch("app.quantnex_view_intelligence.analyze_candles", return_value={"signal": signal}):
+        result = backtest_candles(candles, "BTCUSDT", "15m", 10000, 1)
+    assert result["final_balance"] == 9950.0
+    assert result["max_drawdown_percent"] == 0.5

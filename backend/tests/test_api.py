@@ -461,3 +461,17 @@ def test_legacy_journal_import_is_idempotent_and_preserves_wallet_balance():
                          if row["notes"] == "Queued while backend was unavailable")
     assert client.delete(f"/api/v1/journal/{offline_trade['id']}").status_code == 204
     assert client.get("/api/v1/wallet/summary").json() == before
+
+def test_journal_creation_normalizes_timezone_aware_local_dates():
+    client = TestClient(app)
+    created = client.post("/api/v1/journal", json={
+        "symbol": "EURUSD",
+        "direction": "buy",
+        "outcome": "win",
+        "pnl": 1.0,
+        "created_at": "2026-11-14T12:00:00+08:00",
+        "notes": "timezone date test",
+    })
+    assert created.status_code == 201
+    assert created.json()["created_at"].startswith("2026-11-14T04:00:00")
+    assert client.delete(f"/api/v1/journal/{created.json()['id']}").status_code == 204

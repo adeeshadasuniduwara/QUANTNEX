@@ -151,3 +151,5 @@ console.log("QUANTNEX live-feed backoff reset checks passed.");
 assert.match(chartIntel, /api\/v1\/quantnex-view\/analyze/, "Chart intelligence must own the single periodic analysis request.");
 assert.match(chartIntel, /quantnexViewSetAnalysis\?\.\(data\)/, "Chart intelligence must share its analysis result with the native chart renderer.");
 console.log("QUANTNEX single-request chart analysis checks passed.");
+
+assert.doesNotMatch(nativeChart, /goldTimer|scan\(\)/, "The native chart must not reference the removed scan function.");

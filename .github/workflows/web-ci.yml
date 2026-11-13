@@ -31,6 +31,8 @@ jobs:
           node --check apps/web/signal-tool.js
           node --check apps/web/goals.js
           node --check apps/web/phase12-20.js
+          node --check apps/web/workspace-polish.js
+          node --check apps/web/welcome-whats-new.js
           node --check apps/web/quantnex-view-intelligence.js
           node --check apps/web/quantnex-view-chart.js
           node --check apps/web/workspace-pages.js

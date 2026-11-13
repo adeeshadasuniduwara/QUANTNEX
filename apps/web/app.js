@@ -93,8 +93,10 @@ function renderUpdateDetails(result){
   if(!messages.length){const item=document.createElement("li");item.textContent="Workspace improvements and fixes.";modalList.append(item);}
   $("webUpdateModalMeta").textContent=meta.textContent;
   $("webUpdateModalVersion").textContent=result.latest||"Latest version";
+  window.QuantnexOnboarding?.showRelease(result);
 }
 function openUpdateModal(result){
+  if(window.QuantnexOnboarding?.isReleaseOpen())return;
   if(!updateModal)return;
   const sha=result.commit_sha||result.latest||"";
   if(updateDismissed(sha))return;

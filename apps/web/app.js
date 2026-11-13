@@ -304,7 +304,13 @@ async function apiRequest(path, options={}){
 function newJournalRef(){
   return window.crypto?.randomUUID?.()||("qnx-row-"+Date.now()+"-"+Math.random().toString(16).slice(2));
 }
+let journalSyncing=false;
+function newJournalRef(){
+  return window.crypto?.randomUUID?.()||("qnx-row-"+Date.now()+"-"+Math.random().toString(16).slice(2));
+}
 async function syncJournal(){
+  if(journalSyncing)return;
+  journalSyncing=true;
   try{
     const pending=journalRowsCache.filter(row=>!row.id);
     if(pending.length){
@@ -342,6 +348,8 @@ async function syncJournal(){
   }catch(error){
     renderJournal();
     setJournalStatus("Showing the browser recovery copy. Database sync failed: "+error.message,true);
+  }finally{
+    journalSyncing=false;
   }
 }
 window.addEventListener("online",()=>syncJournal());

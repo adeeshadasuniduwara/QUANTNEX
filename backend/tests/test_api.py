@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 import sqlite3
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
 import app.main as main_module
 from app.database import Base, engine
 from app.main import app, local_workspace, backup_legacy_database
@@ -220,3 +221,40 @@ def test_sqlite_engine_uses_foreign_keys_wal_and_busy_timeout():
         assert connection.exec_driver_sql("PRAGMA busy_timeout").scalar() >= 20000
         journal_mode = connection.exec_driver_sql("PRAGMA journal_mode").scalar().lower()
         assert journal_mode in {"wal", "memory"}
+
+
+def test_chart_candle_endpoint_reports_source_freshness(monkeypatch):
+    import asyncio
+    import app.signal_engine as signal_engine
+
+    source_time = datetime.now(timezone.utc) - timedelta(seconds=30)
+    rows = [{
+        "time": source_time.isoformat(), "open": 2300.0, "high": 2301.0,
+        "low": 2299.0, "close": 2300.5, "volume": 0.0,
+    } for _ in range(210)]
+
+    async def fresh_candles(interval, limit, symbol):
+        assert interval == "1min"
+        assert limit == 210
+        assert symbol == "XAUUSD"
+        return rows
+
+    monkeypatch.setattr(signal_engine, "fetch_candles", fresh_candles)
+    client = TestClient(app)
+    fresh = client.get("/api/v1/charts/candles?symbol=XAUUSD&interval=1m&limit=210")
+    assert fresh.status_code == 200
+    assert fresh.json()["data_health"] == "ok"
+    assert fresh.json()["stale"] is False
+    assert fresh.json()["source_timestamp"] == source_time.isoformat()
+
+    stale_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+    stale_rows = [{**row, "time": stale_time.isoformat()} for row in rows]
+
+    async def stale_candles(interval, limit, symbol):
+        return stale_rows
+
+    monkeypatch.setattr(signal_engine, "fetch_candles", stale_candles)
+    stale = client.get("/api/v1/charts/candles?symbol=XAUUSD&interval=1m&limit=210")
+    assert stale.status_code == 200
+    assert stale.json()["data_health"] == "stale"
+    assert stale.json()["stale"] is True

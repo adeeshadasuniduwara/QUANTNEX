@@ -64,8 +64,8 @@ assert.match(app, /await installLatestCommit\(\)/, "A detected update must insta
 assert.match(app, /300000/, "The updater must periodically check for new GitHub commits while visible");
 assert.match(updater, /compare\/\{installed\}\.\.\.\{latest\['sha'\]\}/, "The updater must compare installed and latest GitHub commits");
 assert.match(updater, /"files_changed": files_changed/, "The updater must return changed-file metadata");
-assert.match(updater, /notify_connected_telegram\(commit\)/, "A successful update must notify an already-connected private Telegram bot");
-assert.match(updater, /127\.0\.0\.1:8000\/api\/v1\/telegram\/notify/, "Telegram notification must go through the local encrypted integration");
+assert.match(app, /apiRequest\("\/api\/v1\/telegram\/notify"/, "A successful update must notify an already-connected private Telegram bot through the local API");
+assert.match(app, /quantnex\.webUpdateComplete/, "The Telegram update receipt must be sent only after the updated workspace reloads");
 assert.match(css, /\.web-update-dialog/, "The update dialog must have dedicated responsive styling");
 
 console.log("QUANTNEX automatic update and private Telegram notification checks passed.");

@@ -34,7 +34,7 @@ def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
     page_w, page_h = A4
     doc = SimpleDocTemplate(
         buffer, pagesize=A4, rightMargin=25*mm, leftMargin=25*mm,
-        topMargin=43*mm, bottomMargin=35*mm,
+        topMargin=38*mm, bottomMargin=28*mm,
         title=("QUANTNEX Demo Certificate — NOT VALID" if demo_only else "QUANTNEX Achievement Certificate"),
         author="QUANTNEX",
     )
@@ -93,39 +93,39 @@ def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
 
     styles = getSampleStyleSheet()
     brand = ParagraphStyle("BrandGold", parent=styles["Normal"], fontName="Helvetica-Bold",
-                           fontSize=10, leading=14, alignment=TA_CENTER, textColor=GOLD, tracking=3)
+                           fontSize=9, leading=11, alignment=TA_CENTER, textColor=GOLD, tracking=3)
     title = ParagraphStyle("TitleGold", parent=styles["Title"], fontName="Times-Bold",
-                           fontSize=28, leading=34, alignment=TA_CENTER, textColor=DARK,
+                           fontSize=24, leading=28, alignment=TA_CENTER, textColor=DARK,
                            spaceAfter=5*mm)
     lead = ParagraphStyle("LeadGold", parent=styles["Normal"], fontName="Helvetica",
-                         fontSize=10, leading=16, alignment=TA_CENTER, textColor=DARK)
+                         fontSize=9, leading=12, alignment=TA_CENTER, textColor=DARK)
     name = ParagraphStyle("NameGold", parent=styles["Heading1"], fontName="Times-BoldItalic",
-                          fontSize=27, leading=34, alignment=TA_CENTER, textColor=GOLD,
+                          fontSize=22, leading=26, alignment=TA_CENTER, textColor=GOLD,
                           spaceBefore=7*mm, spaceAfter=5*mm)
     goal = ParagraphStyle("GoalGold", parent=styles["Heading2"], fontName="Helvetica-Bold",
-                          fontSize=17, leading=22, alignment=TA_CENTER, textColor=DARK,
+                          fontSize=15, leading=18, alignment=TA_CENTER, textColor=DARK,
                           spaceBefore=4*mm, spaceAfter=4*mm)
     small = ParagraphStyle("SmallGold", parent=styles["Normal"], fontName="Helvetica",
-                           fontSize=8, leading=12, alignment=TA_CENTER, textColor=colors.HexColor("#5B513C"))
+                           fontSize=7, leading=9, alignment=TA_CENTER, textColor=colors.HexColor("#5B513C"))
     story = [
         Paragraph("Q U A N T N E X", brand),
-        Spacer(1, 9*mm),
+        Spacer(1, 4*mm),
         Paragraph("DEMO CERTIFICATE PREVIEW" if demo_only else "CERTIFICATE OF ACHIEVEMENT", title),
         Paragraph("SAMPLE ONLY · NOT VALID · PROUDLY PRESENTED TO" if demo_only else "PROUDLY PRESENTED TO", lead),
         Paragraph(_escape(display_name), name),
         Paragraph("PERSONAL GOAL ACHIEVED", lead),
         Paragraph(_escape(goal_title), goal),
-        Spacer(1, 3*mm),
+        Spacer(1, 2*mm),
         Paragraph(_escape(achievement_text), lead),
         Spacer(1, 3*mm),
         Paragraph(f"GOAL VALUE  ·  {currency} {target_amount:,.2f}  ·  RECORDED SAVINGS {currency} {saved_amount:,.2f}", small),
-        Spacer(1, 7*mm),
+        Spacer(1, 4*mm),
         Paragraph(f"GOAL STARTED  ·  {created_at.strftime('%d %B %Y')}", small),
         Spacer(1, 2*mm),
         Paragraph(f"ACHIEVED  ·  {achieved_at.strftime('%d %B %Y')}", small),
         Spacer(1, 2*mm),
         Paragraph(f"TIME INVESTED  ·  {elapsed_days} days · {elapsed_hours if elapsed_hours is not None else elapsed_days * 24} hours", small),
-        Spacer(1, 11*mm),
+        Spacer(1, 6*mm),
         Paragraph("Presented by the QUANTNEX Support Team", lead),
         Spacer(1, 3*mm),
         Paragraph("QUANTNEX", ParagraphStyle("SignatureGold", parent=styles["Normal"],
@@ -140,7 +140,7 @@ def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
         image_data = _fetch_public_goal_image(goal_image_url)
         if image_data:
             try:
-                photo = Image(BytesIO(image_data), width=88*mm, height=52*mm, kind="proportional")
+                photo = Image(BytesIO(image_data), width=70*mm, height=36*mm, kind="proportional")
                 photo.hAlign = "CENTER"
                 story.insert(8, photo)
                 story.insert(9, Spacer(1, 3*mm))

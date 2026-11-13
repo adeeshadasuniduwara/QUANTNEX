@@ -117,3 +117,13 @@ assert.match(app, /feed:"crypto",status:"stale"/, "Ticker staleness must be expo
 assert.match(app, /Depth feed stale · reconnecting/, "Order-book staleness must be visible to the user.");
 assert.match(app, /retry_in_ms:delay/, "Ticker reconnect status must expose its retry delay.");
 console.log("Trading Room ticker and order-book recovery checks passed.");
+
+
+assert.match(app, /function syncWorkspaceView\(/, "Workspace polling must follow the active navigation view.");
+assert.match(app, /quantnex:view-changed/, "Workspace navigation changes must start and stop view-specific polling.");
+assert.match(app, /isWorkspaceViewActive\("paper-trading"\)\)loadPaper\(\)/, "Paper ledger polling must only run while Paper Trading is visible.");
+assert.match(app, /isWorkspaceViewActive\("performance-lab"\)\)loadPerformance\(\)/, "Performance polling must only run while Performance Lab is visible.");
+assert.match(app, /isWorkspaceViewActive\("news-intelligence"\)\)loadNews\(\)/, "News polling must only run while News Intelligence is visible.");
+assert.match(app, /setInterval\(\(\)=>\{if\(isWorkspaceViewActive\("paper-trading"\)\)loadPaper\(\);\},20000\)/, "Paper polling must use a lower-frequency 20-second cadence.");
+assert.match(app, /function stopBookFeed\(/, "Order-book sockets and timers must be cleaned up when leaving their workspace.");
+console.log("QUANTNEX active-workspace polling and cleanup checks passed.");

@@ -32,7 +32,9 @@ function applyCandles(rows){
  candles=(rows||[]).map(r=>({...r,time:stamp(r.time)})).filter(r=>r.time!==null).sort((a,b)=>a.time-b.time).filter((r,i,a)=>i===0||r.time>a[i-1].time);
  if(!candles.length)throw Error("No valid candles returned.");
  const type=$("qxChartType")?.value||"candles";
- series.setData(candles.map(c=>type==="line"||type==="area"?{time:c.time,value:c.close}:c));
+ let chartRows=candles;
+ if(type==="heikin"){let prevOpen=null,prevClose=null;chartRows=candles.map(c=>{const close=(c.open+c.high+c.low+c.close)/4,open=prevOpen===null?(c.open+c.close)/2:(prevOpen+prevClose)/2;const row={time:c.time,open,high:Math.max(c.high,open,close),low:Math.min(c.low,open,close),close};prevOpen=open;prevClose=close;return row;});}
+ series.setData(candles.map((c,i)=>type==="line"||type==="area"?{time:c.time,value:c.close}:chartRows[i]));
  if(volume)volume.setData(candles.map(c=>({time:c.time,value:Number(c.volume||0),color:c.close>=c.open?"rgba(34,201,151,.42)":"rgba(240,93,104,.42)"})));
  Object.entries(emaLines).forEach(([p,line])=>{let values=ema(candles.map(c=>c.close),Number(p));line.setData(candles.map((c,i)=>({time:c.time,value:values[i]})));});
  chart.timeScale().fitContent();const last=candles.at(-1),first=candles[0],change=first.close?100*(last.close-first.close)/first.close:0;

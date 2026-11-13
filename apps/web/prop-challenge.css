@@ -1,0 +1,16 @@
+.prop-challenge-panel{gap:22px}
+.pc-setup-block,.pc-connection-block,.pc-practice-block,.pc-history-block{display:grid;gap:14px;padding-top:18px;border-top:1px solid #292929}
+.pc-setup-block h3,.pc-practice-block h3{margin:0;color:#eee;font-size:15px}
+.pc-setup-block .workspace-page-form,.pc-connection-block .workspace-page-form,.pc-practice-block .workspace-page-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:end}
+.pc-form-actions{grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.pc-form-actions .helper{max-width:680px;line-height:1.6}
+.pc-connected-actions{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;color:#9bd9ad;font-size:12px}
+.pc-footer-actions{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.pc-footer-actions .p7-note{flex:1;min-width:240px;margin:0;line-height:1.7}
+#pcStateBadge[data-state="FAILED"]{color:#ff9999;border-color:#704040}
+#pcStateBadge[data-state="PASSED"]{color:#9bd9ad;border-color:#3d6b4b}
+#pcStateBadge[data-state="ACTIVE"]{color:#e7c77e;border-color:#655532}
+#pcMt5ConnectForm[hidden],#pcMt5ConnectedActions[hidden],#pcVirtualPractice[hidden],#pcReset[hidden]{display:none!important}
+#pcTradeRows td:nth-child(3){font-variant-numeric:tabular-nums}
+@media(max-width:850px){.pc-setup-block .workspace-page-form,.pc-connection-block .workspace-page-form,.pc-practice-block .workspace-page-form{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.pc-setup-block .workspace-page-form,.pc-connection-block .workspace-page-form,.pc-practice-block .workspace-page-form{grid-template-columns:1fr}.pc-form-actions{align-items:stretch;flex-direction:column}.pc-form-actions button{width:100%}}

@@ -149,7 +149,7 @@ def _candles_sync(symbol: str, interval: str, limit: int) -> list[dict[str, Any]
                 rows.append({
                     "time": stamp.isoformat(), "open": op, "high": high,
                     "low": low, "close": close,
-                    "volume": max(0.0, float(row["tick_volume"])) if "tick_volume" in row.dtype.names else 0.0,
+                    "volume": max(0.0, float(row["tick_volume"])) if "tick_volume" in (getattr(getattr(row, "dtype", None), "names", None) or ()) else 0.0,
                 })
             except (KeyError, TypeError, ValueError, OverflowError):
                 continue

@@ -86,14 +86,14 @@ async def _telegram_post(client, token: str, method: str, payload: dict):
 
 def _format_telegram_message(message: str) -> str:
     """Keep Telegram text messages warm, branded and easy to scan."""
-    content = str(message or "").replace("\\r\\n", "\\n").strip()
+    content = str(message or "").replace("\r\n", "\n").strip()
     if not content:
-        return "✨ QUANTNEX\\n\\nNo message content."
+        return "✨ QUANTNEX\n\nNo message content."
     first_line = content.splitlines()[0]
     if "QUANTNEX" in first_line.upper():
         content = "✨ " + content
     else:
-        content = "✨ QUANTNEX\\n\\n" + content
+        content = "✨ QUANTNEX\n\n" + content
     return content[:4000]
 
 

@@ -25,7 +25,8 @@ QUANTNEX is currently a single-computer local application. It has no login, regi
 - Never embed API keys, broker credentials or signing keys in APKs or web bundles.
 - Read-only market data access is the default.
 - Trading execution requires a separate explicit opt-in, risk limits and audit logs.
-- Web updates are downloaded from a GitHub commit pinned by its SHA, staged, backed up and rolled back on copy failure.\n- Packaged Windows EXE updates use the latest GitHub Release, verify the published SHA256 manifest, stage the replacement outside the install folder, and use a separate PowerShell helper to replace the running executable after shutdown. The previous EXE is retained as a rollback copy; local AppData is not part of the executable replacement.
+- Web updates are downloaded from a GitHub commit pinned by its SHA, staged, backed up and rolled back on copy failure.
+- Packaged Windows EXE updates use the latest GitHub Release, verify the published SHA256 manifest, stage the replacement outside the install folder, and use a separate PowerShell helper to replace the running executable after shutdown. The previous EXE is retained as a rollback copy; local AppData is not part of the executable replacement.
 
 ## Current limitations
 

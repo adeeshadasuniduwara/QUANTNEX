@@ -422,7 +422,7 @@ def test_legacy_journal_import_is_idempotent_and_preserves_wallet_balance():
     assert after == before
 
     rows = client.get("/api/v1/journal?limit=500").json()
-    imported = [row for row in rows if row["notes"].startswith("Imported historical")]
+    imported = [row for row in rows if "historical browser journal row" in row["notes"]]
     assert len(imported) == 2
     dates = {row["created_at"][:10] for row in imported}
     assert dates == {"2024-04-02", "2024-04-03"}

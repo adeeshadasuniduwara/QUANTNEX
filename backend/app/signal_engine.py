@@ -144,34 +144,71 @@ def macd(values: list[float]) -> tuple[float,float,float]:
     return line[-1],signal[-1],line[-1]-signal[-1]
 
 def structure(c: list[dict[str,Any]]) -> dict[str,Any]:
-    recent=c[-80:]; highs=[x["high"] for x in recent[:-3]]; lows=[x["low"] for x in recent[:-3]]
-    swing_high=max(highs[-30:]); swing_low=min(lows[-30:])
-    last=recent[-1]; prev=recent[-2]
-    bos="BULLISH" if last["close"]>swing_high else "BEARISH" if last["close"]<swing_low else "NONE"
-    sweep="BULLISH" if prev["low"]<swing_low and last["close"]>swing_low else "BEARISH" if prev["high"]>swing_high and last["close"]<swing_high else "NONE"
-    bull_fvg=None; bear_fvg=None
+    """Return confirmed two-sided swing structure and the latest BOS/MSS event.
+
+    Swing points use a 2-left/2-right confirmation window, so the newest two
+    candles are never treated as confirmed pivots. The event is emitted only
+    when the latest candle closes through a previously confirmed swing.
+    """
+    recent=c[-120:]
+    if len(recent)<8:
+        raise ValueError("At least eight candles are required for structure analysis.")
+    highs=[];lows=[]
+    for i in range(2,len(recent)-2):
+        row=recent[i]
+        if row["high"]>=max(x["high"] for x in recent[i-2:i]) and row["high"]>max(x["high"] for x in recent[i+1:i+3]):
+            highs.append((i,row))
+        if row["low"]<=min(x["low"] for x in recent[i-2:i]) and row["low"]<min(x["low"] for x in recent[i+1:i+3]):
+            lows.append((i,row))
+    fallback=recent[-32:-2]
+    swing_high=highs[-1][1]["high"] if highs else max(x["high"] for x in fallback)
+    swing_low=lows[-1][1]["low"] if lows else min(x["low"] for x in fallback)
+    trend="NEUTRAL"
+    if len(highs)>=2 and len(lows)>=2:
+        hh=highs[-1][1]["high"]>highs[-2][1]["high"]
+        hl=lows[-1][1]["low"]>lows[-2][1]["low"]
+        lh=highs[-1][1]["high"]<highs[-2][1]["high"]
+        ll=lows[-1][1]["low"]<lows[-2][1]["low"]
+        if hh and hl: trend="BULLISH"
+        elif lh and ll: trend="BEARISH"
+    last=recent[-1];prev=recent[-2]
+    bullish_break=prev["close"]<=swing_high and last["close"]>swing_high
+    bearish_break=prev["close"]>=swing_low and last["close"]<swing_low
+    event="NONE"
+    if bullish_break:
+        event="BULLISH_MSS" if trend=="BEARISH" else "BULLISH_BOS"
+    elif bearish_break:
+        event="BEARISH_MSS" if trend=="BULLISH" else "BEARISH_BOS"
+    direction="BULLISH" if event.startswith("BULLISH") else "BEARISH" if event.startswith("BEARISH") else "NONE"
+    sweep="BULLISH" if last["low"]<swing_low and last["close"]>swing_low else "BEARISH" if last["high"]>swing_high and last["close"]<swing_high else "NONE"
+    bull_fvg=None;bear_fvg=None
     for i in range(max(2,len(recent)-40),len(recent)):
         a,b,d=recent[i-2],recent[i-1],recent[i]
         if a["high"]<d["low"]: bull_fvg={"low":a["high"],"high":d["low"]}
         if a["low"]>d["high"]: bear_fvg={"low":d["high"],"high":a["low"]}
-    # Heuristic last opposite candle before a close through a recent swing.
     bull_ob=None;bear_ob=None
-    if bos=="BULLISH":
+    if direction=="BULLISH":
         for row in reversed(recent[-12:-1]):
-            if row["close"]<row["open"]:bull_ob={"low":row["low"],"high":row["high"]};break
-    if bos=="BEARISH":
+            if row["close"]<row["open"]: bull_ob={"low":row["low"],"high":row["high"]};break
+    if direction=="BEARISH":
         for row in reversed(recent[-12:-1]):
-            if row["close"]>row["open"]:bear_ob={"low":row["low"],"high":row["high"]};break
+            if row["close"]>row["open"]: bear_ob={"low":row["low"],"high":row["high"]};break
     bull_ifvg={"low":bull_fvg["low"],"high":bull_fvg["high"]} if bull_fvg and last["close"]<bull_fvg["low"] else None
     bear_ifvg={"low":bear_fvg["low"],"high":bear_fvg["high"]} if bear_fvg and last["close"]>bear_fvg["high"] else None
     bear_breaker={"low":bull_ob["low"],"high":bull_ob["high"]} if bull_ob and last["close"]<bull_ob["low"] else None
     bull_breaker={"low":bear_ob["low"],"high":bear_ob["high"]} if bear_ob and last["close"]>bear_ob["high"] else None
+    volatility=atr(recent,14)
+    pad=max(volatility*0.12,abs(last["close"])*0.00001)
+    support={"low":swing_low-pad,"high":swing_low+pad}
+    resistance={"low":swing_high-pad,"high":swing_high+pad}
     equilibrium=(swing_high+swing_low)/2
     premium_discount="DISCOUNT" if last["close"]<equilibrium else "PREMIUM"
-    return {"bos_mss":bos,"liquidity_sweep":sweep,"bullish_fvg":bull_fvg,"bearish_fvg":bear_fvg,
+    return {"bos_mss":direction,"structure_event":event,"structure_trend":trend,
+            "liquidity_sweep":sweep,"bullish_fvg":bull_fvg,"bearish_fvg":bear_fvg,
             "bullish_ifvg":bull_ifvg,"bearish_ifvg":bear_ifvg,
             "bullish_order_block":bull_ob,"bearish_order_block":bear_ob,
             "bullish_breaker_block":bull_breaker,"bearish_breaker_block":bear_breaker,
+            "support_zone":support,"resistance_zone":resistance,
             "premium_discount":premium_discount,"equilibrium":equilibrium,
             "swing_high":swing_high,"swing_low":swing_low}
 

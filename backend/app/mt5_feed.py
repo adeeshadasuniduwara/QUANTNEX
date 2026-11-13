@@ -10,7 +10,9 @@ import asyncio
 from datetime import datetime, timezone
 import math
 import os
+from contextlib import contextmanager
 from typing import Any
+from .mt5_session import MT5_LOCK
 
 TIMEFRAMES = {
     "1m": "TIMEFRAME_M1",
@@ -54,6 +56,28 @@ def _shutdown(mt5):
         pass
 
 
+@contextmanager
+def _feed_session():
+    """Serialize feed calls and preserve a terminal session owned by the guardian."""
+    with MT5_LOCK:
+        mt5 = _mt5()
+        try:
+            already_initialized = mt5.terminal_info() is not None
+        except Exception:
+            already_initialized = False
+        try:
+            # Reuse an existing terminal session as-is; initialize only when
+            # the read-only feed is the first QUANTNEX component to connect.
+            if not already_initialized:
+                _initialize(mt5)
+            yield mt5
+        finally:
+            # Do not shut down a terminal connection established by the
+            # Prop Challenge Guardian (or another QUANTNEX MT5 owner).
+            if not already_initialized:
+                _shutdown(mt5)
+
+
 def _symbol(mt5, symbol: str):
     normalized = str(symbol or DEFAULT_SYMBOL).strip().upper()
     if not normalized or len(normalized) > 32:
@@ -70,8 +94,7 @@ def _symbol(mt5, symbol: str):
 
 
 def _status_sync() -> dict[str, Any]:
-    mt5 = _initialize(_mt5())
-    try:
+    with _feed_session() as mt5:
         terminal = mt5.terminal_info()
         connected = bool(terminal and getattr(terminal, "connected", False))
         return {
@@ -85,13 +108,10 @@ def _status_sync() -> dict[str, Any]:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "message": "Connected to local MT5 terminal." if connected else "MT5 terminal is open but not connected to its trade server.",
         }
-    finally:
-        _shutdown(mt5)
 
 
 def _quote_sync(symbol: str) -> dict[str, Any]:
-    mt5 = _initialize(_mt5())
-    try:
+    with _feed_session() as mt5:
         normalized = _symbol(mt5, symbol)
         tick = mt5.symbol_info_tick(normalized)
         if tick is None:
@@ -110,8 +130,6 @@ def _quote_sync(symbol: str) -> dict[str, Any]:
             "provider": "MetaTrader 5 local terminal",
             "note": "Broker quote for analysis only; not an executable order price.",
         }
-    finally:
-        _shutdown(mt5)
 
 
 def _candles_sync(symbol: str, interval: str, limit: int) -> list[dict[str, Any]]:
@@ -119,8 +137,7 @@ def _candles_sync(symbol: str, interval: str, limit: int) -> list[dict[str, Any]
         raise MT5FeedError("Supported MT5 timeframes: 1m, 5m, 15m, 30m, 1h and 4h.")
     if not 210 <= int(limit) <= 1000:
         raise MT5FeedError("Candle limit must be between 210 and 1000.")
-    mt5 = _initialize(_mt5())
-    try:
+    with _feed_session() as mt5:
         normalized = _symbol(mt5, symbol)
         timeframe = getattr(mt5, TIMEFRAMES[interval], None)
         if timeframe is None:
@@ -157,8 +174,6 @@ def _candles_sync(symbol: str, interval: str, limit: int) -> list[dict[str, Any]
         if len(rows) < 210:
             raise MT5FeedError(f"Only {len(rows)} valid {normalized} {interval} candles were received.")
         return rows[-int(limit):]
-    finally:
-        _shutdown(mt5)
 
 
 async def get_status() -> dict[str, Any]:

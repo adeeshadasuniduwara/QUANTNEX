@@ -19,6 +19,32 @@ class MarketDataError(RuntimeError):
 
 CRYPTO_SYMBOLS = {"BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "LTCUSDT", "BCHUSDT", "DOTUSDT", "TRXUSDT", "TONUSDT", "SUIUSDT", "NEARUSDT", "UNIUSDT", "AAVEUSDT", "SHIBUSDT", "PEPEUSDT"}
 BINANCE_INTERVALS = {"1min":"1m", "5min":"5m", "15min":"15m", "30min":"30m", "1h":"1h", "4h":"4h"}
+INTERVAL_SECONDS = {"1min":60, "5min":300, "15min":900, "30min":1800,
+                    "1h":3600, "4h":14400, "50min":3000}
+
+
+def closed_candles(candles: list[dict[str, Any]], interval: str,
+                   now: datetime | None = None) -> list[dict[str, Any]]:
+    """Keep only candles whose full interval has elapsed at the supplied UTC time."""
+    seconds = INTERVAL_SECONDS.get(interval)
+    if seconds is None:
+        raise MarketDataError(f"Unsupported candle interval for close validation: {interval}.")
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    else:
+        current = current.astimezone(timezone.utc)
+    result = []
+    for candle in candles:
+        try:
+            stamp = datetime.fromisoformat(str(candle["time"]).replace("Z", "+00:00"))
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=timezone.utc)
+            if stamp.astimezone(timezone.utc).timestamp() + seconds <= current.timestamp():
+                result.append(candle)
+        except (KeyError, TypeError, ValueError, OverflowError):
+            continue
+    return result
 _GOLD_CANDLE_CACHE: dict[tuple[str, str, int], tuple[float, list[dict[str, Any]]]] = {}
 _GOLD_CANDLE_CACHE_TTL = 15.0
 
@@ -83,15 +109,20 @@ async def fetch_candles(interval: str, outputsize: int = 320, symbol: str = "XAU
                                 "low":float(row[3]),"close":float(row[4]),"volume":float(row[5])})
             except (IndexError,TypeError,ValueError,OverflowError):
                 continue
+        candles = closed_candles(candles, interval)
         if len(candles) < 210:
-            raise MarketDataError(f"Not enough {symbol} {interval} Binance candles for stable indicator calculations ({len(candles)} received).")
+            raise MarketDataError(f"Not enough CLOSED {symbol} {interval} Binance candles for stable indicator calculations ({len(candles)} received).")
         return candles
     if symbol != "XAUUSD":
         raise MarketDataError("Supported crypto markets: "+", ".join(sorted(CRYPTO_SYMBOLS))+"; gold: XAUUSD.")
     if QUANTNEX_MT5_ENABLED:
         from .mt5_feed import get_candles as get_mt5_candles, MT5FeedError
         try:
-            return await get_mt5_candles(QUANTNEX_MT5_GOLD_SYMBOL, interval.replace("min", "m"), min(max(outputsize, 210), 1000))
+            candles = await get_mt5_candles(QUANTNEX_MT5_GOLD_SYMBOL, interval.replace("min", "m"), min(max(outputsize, 210), 1000))
+            candles = closed_candles(candles, interval)
+            if len(candles) < 210:
+                raise MarketDataError(f"Not enough CLOSED MT5 {interval} XAUUSD candles ({len(candles)} received).")
+            return candles
         except MT5FeedError as exc:
             raise MarketDataError(str(exc)) from exc
     if not TWELVE_DATA_API_KEY:
@@ -109,8 +140,9 @@ async def fetch_candles(interval: str, outputsize: int = 320, symbol: str = "XAU
     if payload.get("status") == "error" or not isinstance(payload.get("values"), list):
         raise MarketDataError(str(payload.get("message") or payload.get("code") or "Provider returned no candle data."))
     candles = _normalize_gold_candles(payload["values"])
+    candles = closed_candles(candles, interval)
     if len(candles) < 210:
-        raise MarketDataError(f"Not enough valid {interval} XAUUSD candles for stable indicator calculations ({len(candles)} received).")
+        raise MarketDataError(f"Not enough valid CLOSED {interval} XAUUSD candles for stable indicator calculations ({len(candles)} received).")
     candles = candles[-requested:]
     _GOLD_CANDLE_CACHE[cache_key] = (time.monotonic(), candles)
     return [dict(row) for row in candles]
@@ -129,7 +161,8 @@ def aggregate_minutes(candles: list[dict[str, Any]], minutes: int) -> list[dict[
         key=epoch//(minutes*60)
         b=buckets.get(key)
         if b is None:
-            buckets[key]={"time":c["time"],"open":c["open"],"high":c["high"],"low":c["low"],"close":c["close"]}
+            bucket_start = datetime.fromtimestamp(key * minutes * 60, timezone.utc).isoformat()
+            buckets[key]={"time":bucket_start,"open":c["open"],"high":c["high"],"low":c["low"],"close":c["close"]}
         else:
             b["high"]=max(b["high"],c["high"]);b["low"]=min(b["low"],c["low"]);b["close"]=c["close"]
     return [buckets[k] for k in sorted(buckets)]
@@ -276,7 +309,10 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
         if isinstance(result,Exception):
             errors.append(f"{tf}m: {str(result)}")
         else: candles[tf]=result
-    if "50" in needed and "1" in candles: candles["50"]=aggregate_minutes(candles["1"],50)
+    if "50" in needed and "1" in candles:
+        candles["50"] = closed_candles(aggregate_minutes(candles["1"], 50), "50min")
+        if len(candles["50"]) < 50:
+            raise MarketDataError("Not enough fully closed M50 candles for stable indicator calculations.")
     if errors: raise MarketDataError("; ".join(errors))
     analysis={tf:inspect_tf(candles[tf]) for tf in needed if tf in candles and len(candles[tf])>=(50 if tf=="50" else 210)}
     primary=str(settings.get("primary","5")); trend=str(settings.get("trend","60"))

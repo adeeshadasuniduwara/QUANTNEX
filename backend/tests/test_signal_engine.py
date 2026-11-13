@@ -213,3 +213,43 @@ def test_xauusd_rejects_insufficient_valid_provider_candles(monkeypatch):
     import pytest
     with pytest.raises(signal_engine.MarketDataError, match="Not enough valid"):
         asyncio.run(signal_engine.fetch_candles("1min", 220, "XAUUSD"))
+
+def test_closed_candle_filter_excludes_the_forming_interval():
+    from app.signal_engine import closed_candles
+
+    now = datetime(2026, 11, 14, 12, 10, tzinfo=timezone.utc)
+    rows = [
+        {"time": (now - timedelta(minutes=30)).isoformat(), "close": 1},
+        {"time": (now - timedelta(minutes=15)).isoformat(), "close": 2},
+        {"time": (now - timedelta(minutes=5)).isoformat(), "close": 3},
+    ]
+    result = closed_candles(rows, "15min", now)
+    assert [row["close"] for row in result] == [1, 2]
+
+
+def test_binance_signal_fetch_drops_current_unclosed_candle(monkeypatch):
+    import asyncio
+    import httpx
+    from app import signal_engine
+
+    now = datetime.now(timezone.utc)
+    last_open = int((now - timedelta(minutes=5)).timestamp() * 1000)
+    start = last_open - 219 * 900000
+    payload = []
+    for index in range(220):
+        price = 42000.0 + index
+        open_time = start + index * 900000
+        payload.append([open_time, str(price), str(price + 5), str(price - 5),
+                        str(price + 1), "12.5", open_time + 900000 - 1,
+                        "500000", 100, "6.0", "250000", "0"])
+
+    original_client = httpx.AsyncClient
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json=payload))
+
+    def mock_client(*args, **kwargs):
+        return original_client(*args, transport=transport, **kwargs)
+
+    monkeypatch.setattr(signal_engine.httpx, "AsyncClient", mock_client)
+    result = asyncio.run(signal_engine.fetch_candles("15min", 220, "BTCUSDT"))
+    assert len(result) == 219
+    assert result[-1]["time"] == datetime.fromtimestamp((last_open - 900000) / 1000, timezone.utc).isoformat()

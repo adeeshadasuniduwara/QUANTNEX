@@ -707,7 +707,7 @@ async def data_reliability_market(symbol: str, timeframe: str = "15m",
     try:
         info=market_info(symbol)
         quote=await get_quote(info["symbol"])
-        candles=await get_candles(info["symbol"],timeframe,250)
+        candles=_closed_strategy_candles(await get_candles(info["symbol"],timeframe,250),timeframe)
         health=assess_market_snapshot(quote,candles,timeframe)
         return {**health,"timeframe":timeframe,"price":quote["price"]}
     except (ValueError,TypeError) as exc:
@@ -913,6 +913,18 @@ def advanced_paper_performance(period_days: int = 0,
 # by paper_autopilot_worker, which checks AUTO_OPENED ledger events.
 
 
+def _closed_strategy_candles(candles: list[dict], timeframe: str) -> list[dict]:
+    """Keep strategy research and forward observations on fully closed market bars."""
+    from .signal_engine import closed_candles
+    interval = {"5m": "5min", "15m": "15min", "1h": "1h", "4h": "4h"}.get(timeframe)
+    if interval is None:
+        raise ValueError("Unsupported strategy timeframe.")
+    result = closed_candles(candles, interval)
+    if len(result) < 210:
+        raise ValueError(f"Not enough fully closed {timeframe} candles for strategy research ({len(result)} received).")
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Phase 08 — Strategy Laboratory (historical research + forward observation)
 # ---------------------------------------------------------------------------
@@ -923,7 +935,7 @@ async def strategy_lab_replay(symbol: str = "BTCUSDT", timeframe: str = "15m",
     try:
         info=market_info(symbol)
         if timeframe not in {"5m","15m","1h","4h"}: raise ValueError("Unsupported timeframe. Choose 5m, 15m, 1h or 4h.")
-        candles=await get_candles(info["symbol"],timeframe,250)
+        candles=_closed_strategy_candles(await get_candles(info["symbol"],timeframe,250),timeframe)
         return {"symbol":info["symbol"],"timeframe":timeframe,"candles":candles,
                 "count":len(candles),"mode":"HISTORICAL_REPLAY"}
     except (ValueError,TypeError) as exc:
@@ -940,7 +952,7 @@ async def strategy_lab_backtest(payload: dict, user: User = Depends(local_worksp
         timeframe=payload.get("timeframe","15m")
         if timeframe not in {"5m","15m","1h","4h"}: raise ValueError("Unsupported timeframe. Choose 5m, 15m, 1h or 4h.")
         strategy=validate_strategy(payload.get("strategy") or {})
-        candles=await get_candles(info["symbol"],timeframe,500)
+        candles=_closed_strategy_candles(await get_candles(info["symbol"],timeframe,500),timeframe)
         result=run_backtest(candles,strategy)
     except (ValueError,TypeError) as exc:
         raise HTTPException(status_code=422,detail=str(exc))
@@ -962,7 +974,7 @@ async def strategy_lab_optimize(payload: dict, user: User = Depends(local_worksp
         info=market_info(payload.get("symbol","BTCUSDT"))
         timeframe=payload.get("timeframe","15m")
         if timeframe not in {"5m","15m","1h","4h"}: raise ValueError("Unsupported timeframe. Choose 5m, 15m, 1h or 4h.")
-        candles=await get_candles(info["symbol"],timeframe,500)
+        candles=_closed_strategy_candles(await get_candles(info["symbol"],timeframe,500),timeframe)
         result=optimize(candles)
     except (ValueError,TypeError) as exc:
         raise HTTPException(status_code=422,detail=str(exc))
@@ -984,7 +996,7 @@ async def strategy_lab_forward_evaluate(payload: dict, user: User = Depends(loca
         timeframe=payload.get("timeframe","15m")
         if timeframe not in {"5m","15m","1h","4h"}: raise ValueError("Unsupported timeframe. Choose 5m, 15m, 1h or 4h.")
         strategy=validate_strategy(payload.get("strategy") or {})
-        candles=await get_candles(info["symbol"],timeframe,250)
+        candles=_closed_strategy_candles(await get_candles(info["symbol"],timeframe,250),timeframe)
     except (ValueError,TypeError) as exc:
         raise HTTPException(status_code=422,detail=str(exc))
     except Exception as exc:
@@ -1409,7 +1421,7 @@ async def strategy_lab_walk_forward(payload: dict, user: User = Depends(local_wo
         if timeframe not in {"5m", "15m", "1h", "4h"}:
             raise ValueError("Choose 5m, 15m, 1h or 4h.")
         strategy = validate_strategy(payload.get("strategy") or {})
-        candles = await get_candles(info["symbol"], timeframe, 500)
+        candles = _closed_strategy_candles(await get_candles(info["symbol"], timeframe, 500), timeframe)
         train, holdout = walk_forward_slices(candles, float(payload.get("train_ratio", 0.7)))
         training = run_backtest(train, strategy)
         validation = run_backtest(holdout, strategy)

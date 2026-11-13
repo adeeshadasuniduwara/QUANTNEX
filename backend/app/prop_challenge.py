@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from .database import SessionLocal, get_db
 from .models import Preference, User
+from .mt5_session import MT5_LOCK
 
 router = APIRouter(prefix="/api/v1/prop-challenge", tags=["prop-firm-challenge"])
 _STATE_KEY = "prop_challenge_state"
@@ -162,34 +163,36 @@ def _mt5_module():
 
 def _disconnect_mt5() -> None:
     global _mt5_connected, _mt5_login, _mt5_server, _mt5_terminal_path
-    if _mt5 is not None and _mt5_connected:
-        try:
-            _mt5.shutdown()
-        except Exception:
-            pass
-    _mt5_connected = False
-    _mt5_login = None
-    _mt5_server = None
-    _mt5_terminal_path = None
+    with MT5_LOCK:
+        if _mt5 is not None and _mt5_connected:
+            try:
+                _mt5.shutdown()
+            except Exception:
+                pass
+        _mt5_connected = False
+        _mt5_login = None
+        _mt5_server = None
+        _mt5_terminal_path = None
 
 
 def _mt5_account():
     global _mt5_last_error
-    if not _mt5_connected or _mt5 is None:
-        return None
-    try:
-        account = _mt5.account_info()
-        if account is None:
-            _mt5_last_error = "MT5 account information is unavailable."
+    with MT5_LOCK:
+        if not _mt5_connected or _mt5 is None:
             return None
-        if int(account.trade_mode) != int(_mt5.ACCOUNT_TRADE_MODE_DEMO):
-            _mt5_last_error = "Account mode changed; only DEMO accounts are allowed."
-            _disconnect_mt5()
+        try:
+            account = _mt5.account_info()
+            if account is None:
+                _mt5_last_error = "MT5 account information is unavailable."
+                return None
+            if int(account.trade_mode) != int(_mt5.ACCOUNT_TRADE_MODE_DEMO):
+                _mt5_last_error = "Account mode changed; only DEMO accounts are allowed."
+                _disconnect_mt5()
+                return None
+            return account
+        except Exception:
+            _mt5_last_error = "MT5 connection check failed."
             return None
-        return account
-    except Exception:
-        _mt5_last_error = "MT5 connection check failed."
-        return None
 
 
 def _close_all_demo_positions() -> dict:
@@ -305,12 +308,13 @@ def _monitor_mt5_once_unlocked() -> None:
 
 
 def _monitor_mt5_once() -> None:
-    # asyncio.to_thread cannot stop a running thread when its awaiting task is
-    # cancelled. Serialize the DB section so restore can wait for it to finish.
+    # Acquire the guardian/DB lock first so restore can wait for a thread that
+    # is queued behind an active market-data read on the shared terminal.
     if not _guardian_monitor_lock.acquire(blocking=False):
         return
     try:
-        _monitor_mt5_once_unlocked()
+        with MT5_LOCK:
+            _monitor_mt5_once_unlocked()
     finally:
         _guardian_monitor_lock.release()
 
@@ -412,24 +416,25 @@ def connect_mt5(payload: MT5ConnectRequest, user: User = Depends(_workspace_user
     package = _mt5_module()
     if package is None:
         raise HTTPException(status_code=503, detail="MT5 bridge unavailable. On Windows, install MetaTrader 5 and the MetaTrader5 Python package in the QUANTNEX backend environment.")
-    _disconnect_mt5()
-    password = payload.password.get_secret_value()
-    args = {"login": int(payload.login), "password": password, "server": payload.server, "timeout": 60000}
-    if payload.terminal_path:args["path"] = payload.terminal_path
-    try:initialized = package.initialize(**args)
-    except Exception:initialized = False
-    finally:
-        password = ""
-        args["password"] = ""
-    if not initialized:
-        _mt5_last_error = "MT5 initialize failed. Check terminal path, login, password, server and terminal availability."
-        raise HTTPException(status_code=400, detail=_mt5_last_error)
-    account = package.account_info()
-    if account is None or int(account.trade_mode) != int(package.ACCOUNT_TRADE_MODE_DEMO):
-        package.shutdown();_mt5_last_error = "Only MT5 DEMO accounts are permitted. REAL and CONTEST accounts are blocked."
-        raise HTTPException(status_code=403, detail=_mt5_last_error)
-    _mt5_connected = True;_mt5_login = int(account.login);_mt5_server = str(account.server)
-    _mt5_terminal_path = payload.terminal_path;_mt5_last_error = None
+    with MT5_LOCK:
+        _disconnect_mt5()
+        password = payload.password.get_secret_value()
+        args = {"login": int(payload.login), "password": password, "server": payload.server, "timeout": 60000}
+        if payload.terminal_path:args["path"] = payload.terminal_path
+        try:initialized = package.initialize(**args)
+        except Exception:initialized = False
+        finally:
+            password = ""
+            args["password"] = ""
+        if not initialized:
+            _mt5_last_error = "MT5 initialize failed. Check terminal path, login, password, server and terminal availability."
+            raise HTTPException(status_code=400, detail=_mt5_last_error)
+        account = package.account_info()
+        if account is None or int(account.trade_mode) != int(package.ACCOUNT_TRADE_MODE_DEMO):
+            package.shutdown();_mt5_last_error = "Only MT5 DEMO accounts are permitted. REAL and CONTEST accounts are blocked."
+            raise HTTPException(status_code=403, detail=_mt5_last_error)
+        _mt5_connected = True;_mt5_login = int(account.login);_mt5_server = str(account.server)
+        _mt5_terminal_path = payload.terminal_path;_mt5_last_error = None
     challenge["starting_balance"] = float(account.balance);challenge["balance"] = float(account.balance)
     challenge["equity"] = float(account.equity);challenge["daily_start_equity"] = float(account.equity)
     challenge["daily_reset_date"] = _now_for(challenge).date().isoformat()

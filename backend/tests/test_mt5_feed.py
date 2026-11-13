@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -17,8 +17,10 @@ class FakeMT5:
 
     def __init__(self):
         self.stopped = False
+        self.initialize_calls = 0
 
     def initialize(self, **kwargs):
+        self.initialize_calls += 1
         return True
 
     def shutdown(self):
@@ -56,6 +58,9 @@ def test_mt5_status_is_explicitly_read_only(monkeypatch):
     assert result["connected"] is True
     assert result["mode"] == "read_only_market_data"
     assert result["orders_enabled"] is False
+    # A feed read must not close a terminal session already owned by another service.
+    assert fake.stopped is False
+    assert fake.initialize_calls == 0
 
 
 def test_mt5_quote_has_bid_ask_and_freshness(monkeypatch):
@@ -104,13 +109,16 @@ def test_signal_engine_uses_mt5_when_explicitly_enabled(monkeypatch):
         assert symbol == "XAUUSD.a"
         assert interval == "15m"
         assert limit == 250
-        return [{"time": "2026-01-01T00:00:00+00:00", "open": 1, "high": 2,
-                 "low": 0.5, "close": 1.5, "volume": 12}]
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        return [{"time": (start + timedelta(minutes=15 * i)).isoformat(),
+                 "open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 12}
+                for i in range(210)]
 
     monkeypatch.setattr(signal_engine, "QUANTNEX_MT5_ENABLED", True)
     monkeypatch.setattr(signal_engine, "QUANTNEX_MT5_GOLD_SYMBOL", "XAUUSD.a")
     monkeypatch.setattr(mt5_feed, "get_candles", fake_candles)
     rows = asyncio.run(signal_engine.fetch_candles("15min", 250, "XAUUSD"))
+    assert len(rows) == 210
     assert rows[0]["close"] == 1.5
 
 
@@ -140,3 +148,29 @@ def test_mt5_api_routes_expose_read_only_contract(monkeypatch):
     assert result.json()["mode"] == "read_only_market_data"
     assert result.json()["orders_enabled"] is False
     assert result.json()["count"] == 210
+
+def test_mt5_feed_closes_only_a_session_it_initialized(monkeypatch):
+    class ColdMT5(FakeMT5):
+        def __init__(self):
+            super().__init__()
+            self.initialized = False
+
+        def initialize(self, **kwargs):
+            self.initialize_calls += 1
+            self.initialized = True
+            return True
+
+        def terminal_info(self):
+            return SimpleNamespace(connected=True) if self.initialized else None
+
+    fake = ColdMT5()
+    monkeypatch.setattr(feed, "_mt5", lambda: fake)
+    asyncio.run(feed.get_status())
+    assert fake.stopped is True
+    assert fake.initialize_calls == 1
+
+
+def test_mt5_feed_and_prop_guardian_share_the_same_terminal_lock():
+    from app import prop_challenge
+
+    assert prop_challenge.MT5_LOCK is feed.MT5_LOCK

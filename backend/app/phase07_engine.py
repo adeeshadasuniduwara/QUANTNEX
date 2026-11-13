@@ -11,7 +11,7 @@ from datetime import datetime, timezone, date, timedelta
 from typing import Any
 import httpx
 from .config import TWELVE_DATA_API_KEY, FINNHUB_API_KEY
-from .signal_engine import inspect_tf
+from .signal_engine import closed_candles, inspect_tf
 
 BINANCE = "https://api.binance.com"
 TWELVE = "https://api.twelvedata.com"
@@ -110,6 +110,10 @@ async def scan_market_signal(symbol: str, threshold: int=6) -> dict:
     info=market_info(symbol)
     frames=["15m","1h","4h"]
     results=await asyncio.gather(*(get_candles(info["symbol"],tf,250) for tf in frames))
+    results=[closed_candles(rows,tf) for rows,tf in zip(results,frames)]
+    if any(len(rows)<210 for rows in results):
+        counts=", ".join(f"{tf}: {len(rows)}" for tf,rows in zip(frames,results))
+        raise IntelligenceDataError("Not enough fully closed candles for reliable market analysis ("+counts+").")
     analysis={tf:inspect_tf(results[i]) for i,tf in enumerate(frames)}
     sides=[]
     for tf,data in analysis.items():

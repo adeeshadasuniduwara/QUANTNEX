@@ -71,7 +71,7 @@ td{font-size:10px}
  display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
  min-height:34px;margin:10px 0 8px;padding:7px 9px;
  border:1px solid #293441;border-radius:7px;background:#111820;color:#aeb9c7;
- font:600 10px/1.2 inherit;cursor:pointer;transition:background .16s,border-color .16s,color .16s
+ font-family:inherit;font-size:10px;font-weight:600;line-height:1.2;cursor:pointer;transition:background .16s,border-color .16s,color .16s
 }
 .qx-sidebar-toggle:hover{background:#1b2632;border-color:#46576a;color:#f2f6fa}
 .qx-sidebar-toggle svg{width:15px;height:15px;flex:0 0 15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}

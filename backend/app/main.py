@@ -252,6 +252,16 @@ def list_journal(limit: int = 100, user: User = Depends(local_workspace), db: Se
 
 @app.post("/api/v1/journal", response_model=TradeResponse, status_code=201)
 def create_journal(payload: TradeCreate, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    if payload.client_ref:
+        marker = db.scalar(select(JournalImport).where(
+            JournalImport.user_id == user.id,
+            JournalImport.source_ref == payload.client_ref,
+        ))
+        if marker is not None:
+            existing = db.get(Trade, marker.trade_id)
+            if existing is not None:
+                return existing
+            raise HTTPException(status_code=409, detail="This journal submission was already processed and then deleted.")
     created_at = payload.created_at
     if created_at is not None:
         created_at = (created_at.replace(tzinfo=timezone.utc) if created_at.tzinfo is None
@@ -261,6 +271,9 @@ def create_journal(payload: TradeCreate, user: User = Depends(local_workspace), 
                  outcome=payload.outcome, pnl=payload.pnl, notes=payload.notes)
     db.add(item)
     db.flush()
+    if payload.client_ref:
+        db.add(JournalImport(user_id=user.id, source_id="web-create",
+                             source_ref=payload.client_ref, trade_id=item.id))
     db.add(WalletTransaction(user_id=user.id, transaction_type="trade_pnl", amount=payload.pnl,
                              description=f"{payload.symbol} {payload.direction.upper()} journal P&L", trade_id=item.id))
     record_audit_event(db, "journal.created", {"trade_id": item.id, "symbol": item.symbol, "direction": item.direction, "pnl": item.pnl})

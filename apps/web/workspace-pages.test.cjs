@@ -54,3 +54,28 @@ for (const feature of ["bullish_fvg", "bearish_fvg", "bullish_order_block", "bea
 assert.match(chartClient, /api\/v1\/charts\/candles/, "Chart must use the local historical candle API");
 assert.match(chartClient, /api\/v1\/quantnex-view\/analyze/, "Chart must use the QUANTNEX VIEW analysis API");
 console.log("QUANTNEX VIEW checks passed: local candles, signal plan levels, structure, liquidity and OB/BB/FVG/SR overlays.");
+
+const polish = fs.readFileSync("apps/web/workspace-polish.js", "utf8");
+const polishCss = fs.readFileSync("apps/web/workspace-polish.css", "utf8");
+assert.ok(html.includes('href="workspace-polish.css?v=20261113-1"'), "Professional workspace stylesheet must load");
+assert.ok(html.includes('src="workspace-polish.js?v=20261113-1"'), "Professional navigation script must load");
+assert.match(polish, /qxNavSearch/, "Sidebar tool search must be available");
+assert.match(polish, /aria-expanded/, "Sidebar groups must be keyboard-accessible toggles");
+assert.match(polish, /createElementNS/, "Navigation icons must use consistent SVG artwork");
+assert.match(polishCss, /\.qx-nav-search/, "Sidebar search must be styled");
+assert.match(polishCss, /\.qx-nav-icon svg/, "Sidebar SVG icons must share a consistent size and stroke");
+console.log("Professional workspace navigation checks passed.");
+
+const app = fs.readFileSync("apps/web/app.js", "utf8");
+const welcomeJs = fs.readFileSync("apps/web/welcome-whats-new.js", "utf8");
+const welcomeCss = fs.readFileSync("apps/web/welcome-whats-new.css", "utf8");
+assert.ok(html.includes('href="welcome-whats-new.css?v=20261113-1"'), "Welcome stylesheet must load");
+assert.ok(html.includes('src="welcome-whats-new.js?v=20261113-1"'), "Welcome script must load");
+assert.match(welcomeJs, /quantnex\.onboarding\.firstRun/, "First-run guide completion must persist");
+assert.match(welcomeJs, /quantnex\.onboarding\.lastSeenRelease/, "Last-seen release must persist");
+assert.match(welcomeJs, /showRelease/, "Updater release changes must have a display flow");
+assert.match(welcomeJs, /replay/, "Users must be able to replay the welcome guide");
+assert.match(welcomeCss, /prefers-reduced-motion/, "Onboarding must respect reduced-motion preferences");
+assert.match(app, /QuantnexOnboarding\?\.showRelease/, "Updater must pass release changes to What's New");
+console.log("Welcome and release onboarding checks passed.");
+

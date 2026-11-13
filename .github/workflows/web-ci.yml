@@ -44,7 +44,9 @@ jobs:
           node apps/web/sidebar-scroll.test.cjs
           node apps/web/navigation.test.cjs
       - name: Validate local updater Python syntax
-        run: python -m py_compile apps/web/quantnex_local_server.py
+        run: |
+          python -m py_compile apps/web/quantnex_local_server.py
+          python -m unittest discover -s tests -p 'test_*.py'
       - name: Verify local-only wallet and updater UI
         run: |
           grep -q 'id="qxSignalIntelligence"' apps/web/index.html

@@ -74,6 +74,7 @@ def test_mt5_candles_are_normalized_and_sorted(monkeypatch):
     assert len(rows) == 220
     assert rows[0]["time"] < rows[-1]["time"]
     assert set(("open", "high", "low", "close", "volume")) <= set(rows[0])
+    assert rows[0]["volume"] == 100
 
 
 def test_mt5_rejects_unsupported_timeframe():
@@ -92,3 +93,50 @@ def test_mt5_import_failure_is_actionable(monkeypatch):
     monkeypatch.setattr(feed, "_mt5", missing)
     with pytest.raises(feed.MT5FeedError, match="not installed"):
         asyncio.run(feed.get_status())
+
+
+
+def test_signal_engine_uses_mt5_when_explicitly_enabled(monkeypatch):
+    import app.signal_engine as signal_engine
+    import app.mt5_feed as mt5_feed
+
+    async def fake_candles(symbol, interval, limit):
+        assert symbol == "XAUUSD.a"
+        assert interval == "15m"
+        assert limit == 250
+        return [{"time": "2026-01-01T00:00:00+00:00", "open": 1, "high": 2,
+                 "low": 0.5, "close": 1.5, "volume": 12}]
+
+    monkeypatch.setattr(signal_engine, "QUANTNEX_MT5_ENABLED", True)
+    monkeypatch.setattr(signal_engine, "QUANTNEX_MT5_GOLD_SYMBOL", "XAUUSD.a")
+    monkeypatch.setattr(mt5_feed, "get_candles", fake_candles)
+    rows = asyncio.run(signal_engine.fetch_candles("15min", 250, "XAUUSD"))
+    assert rows[0]["close"] == 1.5
+
+
+def test_mt5_api_routes_expose_read_only_contract(monkeypatch):
+    from fastapi.testclient import TestClient
+    import app.mt5_feed as mt5_feed
+    from app.main import app
+
+    async def status():
+        return {"connected": True, "mode": "read_only_market_data", "orders_enabled": False}
+
+    async def quote(symbol):
+        return {"symbol": symbol, "bid": 2300.1, "ask": 2300.2, "stale": False}
+
+    async def candles(symbol, interval, limit):
+        return [{"time": "2026-01-01T00:00:00+00:00", "open": 1, "high": 2,
+                 "low": 0.5, "close": 1.5, "volume": 10}] * 210
+
+    monkeypatch.setattr(mt5_feed, "get_status", status)
+    monkeypatch.setattr(mt5_feed, "get_quote", quote)
+    monkeypatch.setattr(mt5_feed, "get_candles", candles)
+    client = TestClient(app)
+    assert client.get("/api/v1/market/mt5/status").json()["orders_enabled"] is False
+    assert client.get("/api/v1/market/mt5/quote?symbol=XAUUSD").json()["bid"] == 2300.1
+    result = client.get("/api/v1/market/mt5/candles?symbol=XAUUSD&interval=15m&limit=500")
+    assert result.status_code == 200
+    assert result.json()["mode"] == "read_only_market_data"
+    assert result.json()["orders_enabled"] is False
+    assert result.json()["count"] == 210

@@ -160,4 +160,4 @@ console.log("QUANTNEX backtest load and stale-response checks passed.");
 
 assert.doesNotMatch(nativeChart, /goldTimer|scan\(\)/, "The native chart must not reference the removed scan function.");
 
-assert.match(chartIntel, /apiRequest\("\/api\/v1\/charts\/quote\?symbol=XAUUSD"\)/, "XAUUSD chart must use a provider-matched quote endpoint.");
+assert.match(nativeChart, /apiRequest\("\/api\/v1\/charts\/quote\?symbol=XAUUSD&interval=/, "XAUUSD chart must use a provider-matched quote endpoint.");

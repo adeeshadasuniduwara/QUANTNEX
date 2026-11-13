@@ -75,7 +75,7 @@ function updateDismissed(sha){
 function rememberUpdateDismissed(sha){
   try{sessionStorage.setItem("quantnex.updateNoticeDismissed",sha);}catch{}
 }
-function renderUpdateDetails(result){
+function renderUpdateDetails(result,announce=true){
   const details=$("webUpdateDetails"),summary=$("webUpdateSummary"),list=$("webUpdateChanges"),meta=$("webUpdateMeta");
   const messages=Array.isArray(result.changes)?result.changes.filter(Boolean).slice(0,8):[];
   summary.textContent=result.latest_message||"A new QUANTNEX source update is available.";
@@ -93,7 +93,7 @@ function renderUpdateDetails(result){
   if(!messages.length){const item=document.createElement("li");item.textContent="Workspace improvements and fixes.";modalList.append(item);}
   $("webUpdateModalMeta").textContent=meta.textContent;
   $("webUpdateModalVersion").textContent=result.latest||"Latest version";
-  window.QuantnexOnboarding?.showRelease(result);
+  if(announce)window.QuantnexOnboarding?.showRelease(result);
 }
 function openUpdateModal(result){
   if(window.QuantnexOnboarding?.isReleaseOpen())return;
@@ -191,12 +191,12 @@ async function checkLocalUpdate(options={}){
     if(result.release_notes)releaseNotesLink.href=result.release_notes;
     if(result.update_available){
       latestUpdateCommit=result.commit_sha||result.latest||"";
-      renderUpdateDetails(result);
-      status.textContent="New update released: "+result.latest+". Review the changes and choose when to install.";
+      renderUpdateDetails(result,false);
+      status.textContent="New update detected: "+result.latest+". QUANTNEX is installing it automatically…";
       if(installButton)installButton.hidden=false;
-      if(!updateDismissed(latestUpdateCommit)){
-        openUpdateModal(result);
-      }
+      // Startup and five-minute background checks install the pinned main commit
+      // automatically. The existing manual button remains available if a retry is needed.
+      await installLatestCommit();
     }else{
       latestUpdateCommit="";
       $("webUpdateDetails").hidden=true;

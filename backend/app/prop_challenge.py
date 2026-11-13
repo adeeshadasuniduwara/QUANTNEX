@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import threading
 from datetime import datetime, timezone
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -247,7 +248,10 @@ def _mt5_trading_days(challenge: dict) -> list[str]:
         return list(challenge.get("trading_days", []))
 
 
-def _monitor_mt5_once() -> None:
+_guardian_monitor_lock = threading.Lock()
+
+
+def _monitor_mt5_once_unlocked() -> None:
     if not _mt5_connected:
         return
     account = _mt5_account()
@@ -298,6 +302,23 @@ def _monitor_mt5_once() -> None:
         print("[QUANTNEX] Prop Guardian monitor error: " + type(exc).__name__, flush=True)
     finally:
         db.close()
+
+
+def _monitor_mt5_once() -> None:
+    # asyncio.to_thread cannot stop a running thread when its awaiting task is
+    # cancelled. Serialize the DB section so restore can wait for it to finish.
+    if not _guardian_monitor_lock.acquire(blocking=False):
+        return
+    try:
+        _monitor_mt5_once_unlocked()
+    finally:
+        _guardian_monitor_lock.release()
+
+
+def wait_for_mt5_guardian_idle() -> None:
+    """Block the caller until any in-flight MT5 guardian DB write has finished."""
+    with _guardian_monitor_lock:
+        pass
 
 
 async def mt5_guardian_worker() -> None:

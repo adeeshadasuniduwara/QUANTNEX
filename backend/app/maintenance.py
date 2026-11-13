@@ -74,6 +74,58 @@ def _prune_backups(backup_dir: Path, keep: int = BACKUP_RETENTION, protect: set[
             old.with_suffix(old.suffix + ".sha256").unlink(missing_ok=True)
             removed += 1
     return removed
+def backup_overview(backup_dir: Path = BACKUP_DIR) -> dict:
+    """Return lightweight health metadata without hashing retained database files."""
+    if not backup_dir.exists():
+        return {"count": 0, "latest": None, "latest_verified": False,
+                "verification_note": "No local backup is available."}
+    files = sorted(backup_dir.glob("quantnex-*.sqlite3"),
+                   key=lambda item: item.stat().st_mtime, reverse=True)
+    if not files:
+        return {"count": 0, "latest": None, "latest_verified": False,
+                "verification_note": "No local backup is available."}
+    latest = files[0]
+    manifest = latest.with_suffix(latest.suffix + ".sha256")
+    manifest_present = False
+    try:
+        digest = manifest.read_text(encoding="ascii").strip().split()[0].lower()
+        manifest_present = latest.is_file() and latest.stat().st_size > 0 and bool(re.fullmatch(r"[0-9a-f]{64}", digest))
+    except (OSError, ValueError, IndexError):
+        manifest_present = False
+    return {
+        "count": len(files),
+        "latest": datetime.fromtimestamp(latest.stat().st_mtime, timezone.utc).isoformat(),
+        "latest_verified": manifest_present,
+        "verification_note": "Manifest indicates the backup passed integrity and SHA-256 checks when created; full verification is performed on request and before restore.",
+    }
+
+
+def _latest_backup_is_fresh(backup_dir: Path = BACKUP_DIR, now: float | None = None) -> bool:
+    """Cheap freshness check; full verification remains mandatory before restore.
+
+    The manifest is written only after a successful integrity and hash pass.
+    Avoid repeatedly hashing every retained database during hourly polling.
+    """
+    if not backup_dir.exists():
+        return False
+    files = sorted(backup_dir.glob("quantnex-*.sqlite3"),
+                   key=lambda item: item.stat().st_mtime, reverse=True)
+    if not files:
+        return False
+    latest = files[0]
+    manifest = latest.with_suffix(latest.suffix + ".sha256")
+    try:
+        if not latest.is_file() or latest.stat().st_size <= 0 or not manifest.is_file():
+            return False
+        digest = manifest.read_text(encoding="ascii").strip().split()[0].lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", digest):
+            return False
+        age = (time.time() if now is None else now) - latest.stat().st_mtime
+        return 0 <= age < 86400
+    except (OSError, ValueError, IndexError):
+        return False
+
+
 def create_backup(database_url: str, backup_dir: Path = BACKUP_DIR, prune: bool = True) -> dict:
     source_path = sqlite_database_path(database_url)
     if not source_path.is_file():
@@ -87,11 +139,15 @@ def create_backup(database_url: str, backup_dir: Path = BACKUP_DIR, prune: bool 
             source.execute("PRAGMA busy_timeout=20000")
             with closing(sqlite3.connect(str(destination), timeout=20)) as target:
                 source.backup(target, pages=256, sleep=0.05)
+        # Verify once, then persist the digest; verify_backup() would repeat
+        # both full-file operations unnecessarily.
         _integrity_check(destination)
-        _write_manifest(destination, _sha256(destination))
+        digest = _sha256(destination)
+        _write_manifest(destination, digest)
         if prune:
             _prune_backups(backup_dir)
-        return verify_backup(filename, backup_dir)
+        return {"filename": filename, "sha256": digest,
+                "size_bytes": destination.stat().st_size, "verified": True}
     except Exception:
         destination.unlink(missing_ok=True)
         destination.with_suffix(destination.suffix + ".sha256").unlink(missing_ok=True)
@@ -149,11 +205,9 @@ async def daily_backup_worker() -> None:
     while True:
         try:
             if DATABASE_URL.startswith("sqlite:///"):
-                backups = list_backups()
-                latest_verified = next((item for item in backups if item.get("verified") is True), None)
-                latest_path = _safe_backup_path(latest_verified["filename"], BACKUP_DIR) if latest_verified else None
-                due = latest_path is None or (time.time() - latest_path.stat().st_mtime) >= 86400
-                if due:
+                # Full verification happens on creation and before restore.
+                # Do not re-hash every retained database during hourly polling.
+                if not _latest_backup_is_fresh():
                     result = create_backup(DATABASE_URL)
                     with SessionLocal() as db:
                         record_audit_event(db, "backup.daily_created",

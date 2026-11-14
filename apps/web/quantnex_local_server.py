@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 import threading
 import urllib.request
@@ -307,6 +308,17 @@ def supervisor_managed() -> bool:
     return os.getenv("QUANTNEX_SUPERVISED", "").strip() == "1"
 
 
+def ensure_supervisor_mode() -> None:
+    """Route standalone server launches through the full API + source-update supervisor."""
+    if supervisor_managed():
+        return
+    launcher = ROOT / "run_quantnex_services.py"
+    if not launcher.is_file():
+        raise RuntimeError("The QUANTNEX supervisor is missing. Restore run_quantnex_services.py and launch again.")
+    print("[QUANTNEX] Starting the full workspace supervisor (Backend + Web + automatic source updates)…", flush=True)
+    os.execv(sys.executable, [sys.executable, str(launcher)])
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(WEB), **kwargs)
@@ -402,6 +414,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    ensure_supervisor_mode()
     print(f"QUANTNEX Web: http://{HOST}:{PORT}", flush=True)
     print("Keep this CMD window open while updates are installed.", flush=True)
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()

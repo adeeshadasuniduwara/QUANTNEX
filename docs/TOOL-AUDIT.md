@@ -182,4 +182,4 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - For channels, the bot must be an administrator with can_post_messages=true. For groups/supergroups, the bot must be a member with permission to send.
 - No token is stored until all checks pass; responses return destination type/title but never the token.
 - Added mocked API tests for bot-self rejection, unresolved private destination, channel posting permission denial, verified private chat and authorized channel.
-- **Status:** CI pending. Real bot delivery still requires the user's actual Telegram account/chat and repository secret correction; no token values are requested or exposed.
+- **Status:** PASS — Telegram destination mock tests, Backend CI, Backend/Web CI (Python 3.12/3.14), Web checks and Windows EXE build/artifact upload all passed for PR #125. Real bot delivery still requires the user's actual Telegram account/chat and repository secret correction; no token values are requested or exposed.

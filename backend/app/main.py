@@ -1355,7 +1355,8 @@ def update_personal_goal(goal_id: int, payload: dict, user: User = Depends(local
     if "target_amount" in payload:
         try: target=float(payload["target_amount"])
         except (TypeError,ValueError): raise HTTPException(status_code=422,detail="Target amount must be numeric.")
-        if target<=0 or target>1000000000000: raise HTTPException(status_code=422,detail="Target amount must be positive.")
+        if not math.isfinite(target) or target<=0 or target>1000000000000:
+            raise HTTPException(status_code=422,detail="Target amount must be finite, positive and within the supported limit.")
         goal.target_amount=target
     if "target_date" in payload:
         try: goal.target_date=datetime.fromisoformat(str(payload["target_date"]).replace("Z","+00:00")) if payload["target_date"] else None
@@ -1365,8 +1366,13 @@ def update_personal_goal(goal_id: int, payload: dict, user: User = Depends(local
         if image_url and (len(image_url)>2048 or not image_url.startswith("https://")):
             raise HTTPException(status_code=422,detail="Goal image must be an HTTPS image URL.")
         goal.image_url=image_url
+    current_contributions=float(db.scalar(select(func.coalesce(func.sum(GoalContribution.amount),0)).where(
+        GoalContribution.goal_id==goal.id,GoalContribution.user_id==user.id)) or 0)
+    current_saved=float(goal.initial_amount or 0)+current_contributions
+    if current_saved>=goal.target_amount and goal.achieved_at is None:
+        goal.achieved_at=datetime.now(timezone.utc)
     db.commit()
-    return {"updated":True,"id":goal.id}
+    return {"updated":True,"id":goal.id,"achieved":bool(goal.achieved_at)}
 
 
 @app.post("/api/v1/goals/{goal_id}/contributions")
@@ -1380,8 +1386,8 @@ def add_goal_contribution(goal_id: int, payload: dict, user: User = Depends(loca
     try: amount=float(payload.get("amount"))
     except (TypeError,ValueError): raise HTTPException(status_code=422,detail="Contribution amount must be numeric.")
     currency=str(payload.get("currency",goal.currency)).upper()
-    if not (0<amount<=1000000000) or currency!=goal.currency:
-        raise HTTPException(status_code=422,detail="Contribution must be positive and use the goal currency.")
+    if not math.isfinite(amount) or not (0<amount<=1000000000) or currency!=goal.currency:
+        raise HTTPException(status_code=422,detail="Contribution must be finite, positive and use the goal currency.")
     note=str(payload.get("note","")).strip()
     if len(note)>240: raise HTTPException(status_code=422,detail="Contribution note is too long.")
     row=GoalContribution(goal_id=goal.id,user_id=user.id,amount=amount,currency=currency,

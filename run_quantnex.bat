@@ -11,7 +11,7 @@ echo  [1] Start Windows Desktop + Auto Updates
 echo  [2] Start Web + Backend (ONE CMD)
 echo  [3] Start Desktop + Web + Backend (ONE CMD)
 echo  [4] Start Local Backend API only
-echo  [5] Open Web folder
+echo  [5] Open Web source folder (not a full launch)
 echo  [6] Start packaged Windows EXE
 echo.
 choice /c 123456 /n /m "Select an option: "
@@ -63,6 +63,7 @@ call run_backend.bat
 goto end
 
 :folder
+echo This opens source files only. For live feeds and full automatic updates, choose option 2 or 3.
 start "" "%~dp0apps\web"
 goto end
 

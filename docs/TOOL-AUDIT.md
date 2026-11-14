@@ -69,7 +69,7 @@ These CI results establish that the tested code passed in GitHub's runner. They 
 - Added `PUT /api/v1/journal/{trade_id}`. The route validates the full replacement payload, normalizes timestamps to UTC, writes the journal row and audit event in one database transaction, and publishes the journal change event.
 - If the journal row already has a linked `trade_pnl` wallet transaction, its amount and description are reconciled atomically. Legacy imported history with no wallet transaction remains excluded from the wallet; editing old history does not create a cash movement.
 - Delete continues to remove an existing linked P&L transaction; the create/update/delete test checks the balance returns to its starting value. Invalid non-finite P&L is rejected without mutating either record.
-- Web contract tests cover date/edit/cancel controls, PUT wiring, matching-row cache replacement and distinction between HTTP validation errors and offline queuing.
+- Web contract tests cover date/edit/cancel controls, PUT wiring, matching-row cache replacement, startup/offline recovery wiring and distinction between HTTP validation errors and offline queuing.
 - Evidence level: backend TestClient exercises API create/list/update/delete, timestamp normalization, wallet linkage, legacy no-wallet behavior and invalid-input rollback. Web CI exercises syntax and static UI/API contract tests. A real browser download, browser storage failure, browser restart, Excel/LibreOffice opening and user's device persistence remain **PARTIAL / device-level verification required**.
 
 ## Audit status vocabulary

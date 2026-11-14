@@ -456,6 +456,9 @@ window.addEventListener("quantnex:workspace-resync",()=>syncJournal());
 window.addEventListener("quantnex:workspace-event",event=>{
   if(event.detail?.type==="journal.changed")syncJournal();
 });
+// Recover and reconcile queued rows on every workspace startup, not only after
+// a later browser "online" event or event-stream reconnect.
+syncJournal();
 async function refreshWallet(){
   const [summary,transactions]=await Promise.all([apiRequest("/api/v1/wallet/summary"),apiRequest("/api/v1/wallet/transactions?limit=100")]);
   $("walletBalance").textContent=money(summary.balance);$("walletDeposits").textContent=money(summary.deposits);$("walletWithdrawals").textContent=money(summary.withdrawals);$("walletPnl").textContent=money(summary.trading_pnl);renderWalletTransactions(transactions);

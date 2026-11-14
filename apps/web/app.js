@@ -294,15 +294,12 @@ async function checkLocalUpdate(options={}){
         latestUpdateCommit=result.commit_sha||result.latest||"";
         renderUpdateDetails(result,false);
         watchSupervisorUpdate(latestUpdateCommit);
-        if(!silent){
-          status.textContent="Update detected. Sending an immediate check to the QUANTNEX supervisor…";
-          const queued=await fetch("/__quantnex/check-now",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
-          const receipt=await queued.json().catch(()=>({}));
-          if(!queued.ok)throw new Error(receipt.error||"The supervisor could not accept the update check.");
-          status.textContent="Update detected ("+result.latest+"). The supervisor will install it and refresh this workspace after the safe restart.";
-        }else{
-          status.textContent=result.message||"A source update is waiting for the supervisor's next safe check.";
-        }
+        if(!silent)status.textContent="Update detected. Sending an immediate check to the QUANTNEX supervisor…";
+        const queued=await fetch("/__quantnex/check-now",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+        const receipt=await queued.json().catch(()=>({}));
+        if(!queued.ok&&queued.status!==409)throw new Error(receipt.error||"The supervisor could not accept the update check.");
+        if(!silent)status.textContent="Update detected ("+result.latest+"). The supervisor will install it and refresh this workspace after the safe restart.";
+        else status.textContent=result.message||"A source update is waiting for the supervisor's safe restart.";
       }else{
         latestUpdateCommit="";
         $("webUpdateDetails").hidden=true;

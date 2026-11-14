@@ -119,4 +119,4 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - Added Windows `validate_wallet_amount` and used it before posting; it rejects malformed, NaN, infinite, zero, negative and over-limit values.
 - Aligned Web validation with the backend maximum and clearer user feedback.
 - Added backend API regression coverage proving invalid amounts return HTTP 422 and leave the wallet summary unchanged; added Windows unit coverage for client validation.
-- **Status:** CI pending. This verifies local bookkeeping only; deposits and withdrawals are not bank/payment transactions.
+- **Status:** PASS — Backend CI (Python 3.12/3.14), Backend/Web CI, Web CI, Windows wallet/chart unit tests and Windows EXE build/artifact upload all passed for PR #116. This verifies local bookkeeping only; deposits and withdrawals are not bank/payment transactions.

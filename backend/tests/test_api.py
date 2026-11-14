@@ -177,6 +177,43 @@ def test_local_wallet_ledger_deposits_withdrawals_and_journal_pnl():
     assert round(summary_after_delete["balance"] - before["balance"], 2) == 400.0
 
 
+def test_wallet_request_idempotency_prevents_duplicate_ledger_entries_after_lost_responses():
+    client = TestClient(app)
+    before = client.get("/api/v1/wallet/summary").json()
+    deposit = {
+        "transaction_type": "deposit", "amount": 250.0,
+        "description": "Opening balance", "client_ref": "wallet-deposit-idempotency-2026-01",
+    }
+    first = client.post("/api/v1/wallet/transactions", json=deposit)
+    retry = client.post("/api/v1/wallet/transactions", json=deposit)
+    assert first.status_code == retry.status_code == 201
+    assert first.json()["id"] == retry.json()["id"]
+    assert round(client.get("/api/v1/wallet/summary").json()["balance"] - before["balance"], 2) == 250.0
+
+    conflicting = {**deposit, "amount": 300.0}
+    assert client.post("/api/v1/wallet/transactions", json=conflicting).status_code == 409
+    assert round(client.get("/api/v1/wallet/summary").json()["balance"] - before["balance"], 2) == 250.0
+
+    withdrawal = {
+        "transaction_type": "withdrawal", "amount": 75.0,
+        "description": "Cash withdrawal", "client_ref": "wallet-withdraw-idempotency-2026-01",
+    }
+    first_withdrawal = client.post("/api/v1/wallet/transactions", json=withdrawal)
+    retry_withdrawal = client.post("/api/v1/wallet/transactions", json=withdrawal)
+    assert first_withdrawal.status_code == retry_withdrawal.status_code == 201
+    assert first_withdrawal.json()["id"] == retry_withdrawal.json()["id"]
+    summary = client.get("/api/v1/wallet/summary").json()
+    assert round(summary["balance"] - before["balance"], 2) == 175.0
+    transactions = client.get("/api/v1/wallet/transactions?limit=500").json()
+    assert len([row for row in transactions if row["description"] in {"Opening balance", "Cash withdrawal"}]) == 2
+
+    invalid_ref = client.post("/api/v1/wallet/transactions", json={
+        "transaction_type": "deposit", "amount": 10.0, "client_ref": "short",
+    })
+    assert invalid_ref.status_code == 422
+    assert client.get("/api/v1/wallet/summary").json() == summary
+
+
 def test_wallet_rejects_non_finite_and_out_of_range_amounts_without_mutating_balance():
     client = TestClient(app)
     before = client.get("/api/v1/wallet/summary").json()

@@ -99,7 +99,7 @@ Phase 07 adds a multi-market intelligence layer while preserving the local-only,
 - Crypto: BTCUSDT, ETHUSDT and SOLUSDT through public Binance Spot ticker, kline and order-book endpoints.
 - Gold and Forex: XAUUSD, EURUSD, GBPUSD and USDJPY through the configured Twelve Data API key.
 - Economic calendar: optional Finnhub calendar feed using `FINNHUB_API_KEY`. Without the key, the page clearly reports that the provider is not configured; no calendar events are fabricated.
-- Order book: real Binance Spot depth snapshots for supported crypto pairs only. Gold/Forex depth is reported unsupported rather than simulated.
+- Order book: real Binance Spot depth snapshots for supported crypto pairs. Optional XAUUSD broker Depth of Market is available through the local read-only MT5 bridge when QUANTNEX_MT5_ENABLED=true and the broker exposes DOM; Forex depth remains unsupported. Missing depth is reported unavailable rather than simulated.
 
 ### Signal analysis
 - Multi-timeframe technical analysis uses 15m, 1h and 4h candles, EMA structure, MACD, RSI, ADX, BOS/MSS and liquidity-sweep context.

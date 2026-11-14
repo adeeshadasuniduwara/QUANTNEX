@@ -40,7 +40,7 @@ def fetch_chart_data(symbol, urlopen=None):
         url = "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=15m&limit=60"
         provider = "Binance Spot"
     elif normalized == "XAUUSD":
-        url = "http://127.0.0.1:8000/api/v1/market/mt5/candles?symbol=XAUUSD&interval=15m&limit=250"
+        url = "http://127.0.0.1:8000/api/v1/market/mt5/candles?interval=15m&limit=250"
         provider = "MetaTrader 5 local terminal"
     else:
         raise ValueError("Windows charts support BTCUSDT and XAUUSD.")

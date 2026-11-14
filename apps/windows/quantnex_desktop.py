@@ -1,5 +1,6 @@
 from __future__ import annotations
 import base64, hashlib, json, math, os, shutil, sqlite3, subprocess, sys, threading, urllib.error, urllib.parse, urllib.request, webbrowser
+from contextlib import closing
 from datetime import datetime
 import uuid
 from pathlib import Path
@@ -189,17 +190,48 @@ def stage_verified_release_exe(asset_url, checksum_url, destination, urlopen=Non
 class TradeJournal:
     def __init__(self):
         self.path = app_data() / "journal.sqlite3"
-        with sqlite3.connect(self.path) as db:
-            db.execute("""CREATE TABLE IF NOT EXISTS trades(
-                id INTEGER PRIMARY KEY, created TEXT NOT NULL, symbol TEXT NOT NULL,
-                side TEXT NOT NULL, outcome TEXT NOT NULL, pnl REAL NOT NULL, notes TEXT NOT NULL)""")
+        with closing(sqlite3.connect(self.path)) as db:
+            with db:
+                db.execute("""CREATE TABLE IF NOT EXISTS trades(
+                    id INTEGER PRIMARY KEY, created TEXT NOT NULL, symbol TEXT NOT NULL,
+                    side TEXT NOT NULL, outcome TEXT NOT NULL, pnl REAL NOT NULL, notes TEXT NOT NULL,
+                    sync_status TEXT NOT NULL DEFAULT 'PENDING', client_ref TEXT UNIQUE)""")
+                columns = {row[1] for row in db.execute("PRAGMA table_info(trades)")}
+                if "sync_status" not in columns:
+                    # Old rows have unknown sync history; do not replay them into wallet P&L.
+                    db.execute("ALTER TABLE trades ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'UNKNOWN'")
+                if "client_ref" not in columns:
+                    db.execute("ALTER TABLE trades ADD COLUMN client_ref TEXT")
+
     def add(self, symbol, side, outcome, pnl, notes):
-        with sqlite3.connect(self.path) as db:
-            db.execute("INSERT INTO trades(created,symbol,side,outcome,pnl,notes) VALUES(?,?,?,?,?,?)",
-                (datetime.now().astimezone().isoformat(timespec="seconds"), symbol.upper(), side, outcome, pnl, notes))
+        client_ref = "windows_" + str(uuid.uuid4())
+        with closing(sqlite3.connect(self.path)) as db:
+            with db:
+                cursor = db.execute(
+                    "INSERT INTO trades(created,symbol,side,outcome,pnl,notes,sync_status,client_ref) VALUES(?,?,?,?,?,?, 'PENDING', ?)",
+                    (datetime.now().astimezone().isoformat(timespec="seconds"), symbol.upper(), side, outcome, pnl, notes, client_ref))
+                return cursor.lastrowid
+
+    def mark_synced(self, local_id):
+        with closing(sqlite3.connect(self.path)) as db:
+            with db:
+                db.execute("UPDATE trades SET sync_status='SYNCED' WHERE id=?", (int(local_id),))
+
+    def pending(self):
+        with closing(sqlite3.connect(self.path)) as db:
+            return db.execute(
+                "SELECT id,client_ref,symbol,side,outcome,pnl,notes FROM trades WHERE sync_status='PENDING' ORDER BY id ASC"
+            ).fetchall()
+
+    def unknown_sync_count(self):
+        with closing(sqlite3.connect(self.path)) as db:
+            return db.execute("SELECT COUNT(*) FROM trades WHERE sync_status='UNKNOWN'").fetchone()[0]
+
     def recent(self):
-        with sqlite3.connect(self.path) as db:
-            return db.execute("SELECT created,symbol,side,outcome,pnl FROM trades ORDER BY id DESC LIMIT 100").fetchall()
+        with closing(sqlite3.connect(self.path)) as db:
+            return db.execute(
+                "SELECT created,symbol,side,outcome,pnl,sync_status FROM trades ORDER BY id DESC LIMIT 100"
+            ).fetchall()
 
 class App(tk.Tk):
     def __init__(self):
@@ -209,6 +241,7 @@ class App(tk.Tk):
         self._app_icon = tk.PhotoImage(data=base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAABUUlEQVR42u2bvQ4DIQyDb+f9H5W53aobigiQOD/YElsP8He0AuI+D0VRFEVR1KZaax/PdqXpd+u9/1po4++JjppWnyHMSwyfAJk96wZAw/gMhOQZuHkL4yMQ0s/DACDMvyGEAaD1fV79oYQCQP6qS/pfBW8CwNL4bKzVF6AOAGn+35jSuajtFFeWJmLXJ5mP6lY5inm3s0Jm8wSgBSCreVMAGcyrAMj89s0AZDF/BQDzfQABJFj+plthxEHnegAWR+d0AE76LgNgt/+0ALQgpAagASE9gFMIJQCcQIACiAah5FZ4ZcyyZwHpuC4AokCQzC39jdBqkbTkneBJDbLMrfBuLbLUtbgrgOgQzAsjUWqDcADSVYA+LEGWf4QS+UkCxTQi45UQGaVFzFOkUTJC0v6gOUF0SswtQxwlJ+geoPZOiqZIjqOM8w8LFEVRFEXt6gvb1Kw0LPnuxQAAAABJRU5ErkJggg=="))
         self.iconphoto(True, self._app_icon)
         self.journal = TradeJournal()
+        self._journal_sync_running = False
         self.update_check_running = False
         self.update_timer_id = None
         self.staged_update = None
@@ -310,29 +343,34 @@ class App(tk.Tk):
             else: ttk.Entry(cell,textvariable=var,width=16).pack(pady=4)
         ttk.Label(self.journal_tab,text="Notes").pack(anchor="w")
         self.notes=tk.Text(self.journal_tab,height=3,wrap="word",font=("Segoe UI",10)); self.notes.pack(fill="x",pady=5)
-        ttk.Button(self.journal_tab,text="Save trade",style="Accent.TButton",command=self._save).pack(anchor="w",pady=8)
-        self.journal_sync_status=ttk.Label(self.journal_tab,text="Local journal. New trades sync automatically to the local QUANTNEX workspace when its API is running.",style="Muted.TLabel")
+        actions=ttk.Frame(self.journal_tab); actions.pack(fill="x",pady=8)
+        ttk.Button(actions,text="Save trade",style="Accent.TButton",command=self._save).pack(side="left")
+        ttk.Button(actions,text="Sync pending trades",command=self._sync_pending_journal_trades).pack(side="left",padx=8)
+        self.journal_sync_status=ttk.Label(self.journal_tab,text="New trades sync automatically to the local QUANTNEX workspace. Older entries with unknown sync history are not automatically replayed.",style="Muted.TLabel",wraplength=850)
         self.journal_sync_status.pack(anchor="w",pady=(0,6))
-        cols=("date","symbol","side","outcome","pnl"); self.table=ttk.Treeview(self.journal_tab,columns=cols,show="headings",height=9)
-        for c,label,w in zip(cols,["Date","Symbol","Side","Outcome","P&L ($)"],[190,110,90,110,100]):
+        cols=("date","symbol","side","outcome","pnl","sync"); self.table=ttk.Treeview(self.journal_tab,columns=cols,show="headings",height=9)
+        for c,label,w in zip(cols,["Date","Symbol","Side","Outcome","P&L ($)","Sync"],[180,100,80,100,90,90]):
             self.table.heading(c,text=label); self.table.column(c,width=w,anchor="w")
         self.table.pack(fill="both",expand=True); self._refresh()
+        self.after(2500,self._sync_pending_journal_trades)
 
     def _save(self):
         try:
             symbol=self.trade["Symbol"].get().strip()
             if not symbol or len(symbol)>20: raise ValueError("Enter a symbol up to 20 characters.")
             pnl=float(self.trade["P&L ($)"].get())
+            if not math.isfinite(pnl): raise ValueError("P&L must be a finite number.")
             direction=self.trade["Direction"].get(); outcome=self.trade["Outcome"].get()
             notes=self.notes.get("1.0","end").strip()[:500]
-            self.journal.add(symbol,direction,outcome,pnl,notes)
+            local_id=self.journal.add(symbol,direction,outcome,pnl,notes)
             self.notes.delete("1.0","end"); self._refresh()
-            self._sync_journal_trade(symbol,direction,outcome,pnl,notes)
+            self._sync_journal_trade(local_id)
         except ValueError as e: messagebox.showerror("Invalid trade",str(e))
 
     def _refresh(self):
         for item in self.table.get_children(): self.table.delete(item)
-        for row in self.journal.recent(): self.table.insert("","end",values=(row[0],row[1],row[2],row[3],f"{row[4]:.2f}"))
+        for row in self.journal.recent():
+            self.table.insert("","end",values=(row[0],row[1],row[2],row[3],f"{row[4]:.2f}",row[5]))
 
     def _charts(self):
         ttk.Label(self.charts, text="Live Market Charts", font=("Segoe UI", 18, "bold")).pack(anchor="w")
@@ -516,17 +554,50 @@ class App(tk.Tk):
                 self.after(0,lambda:self.account_status.configure(text=message))
         threading.Thread(target=worker,daemon=True).start()
 
-    def _sync_journal_trade(self,symbol,direction,outcome,pnl,notes):
+    def _sync_journal_trade(self, local_id):
+        self._sync_pending_journal_trades()
+
+    def _sync_pending_journal_trades(self):
+        if self._journal_sync_running:
+            return
+        pending=self.journal.pending()
+        unknown=self.journal.unknown_sync_count()
+        if not pending:
+            message="No pending new trades."
+            if unknown:
+                message+=f" {unknown} older entries have unknown sync history and were not re-sent, to avoid duplicate wallet P&L."
+            self.journal_sync_status.configure(text=message)
+            self._refresh()
+            return
+        self._journal_sync_running=True
         base=self._api_base()
-        payload={"symbol":symbol,"direction":direction.lower(),"outcome":outcome.lower(),"pnl":pnl,"notes":notes}
-        self.journal_sync_status.configure(text="Trade saved locally. Syncing it to the local QUANTNEX wallet…")
+        self.journal_sync_status.configure(text=f"Syncing {len(pending)} pending local trade(s) to the QUANTNEX workspace…")
         def worker():
-            try:
-                self._api_request("POST","/api/v1/journal",payload,base=base)
-                self.after(0,lambda:self.journal_sync_status.configure(text="Trade saved locally and synced to the local workspace; wallet P&L updated."))
-            except Exception as exc:
-                message="Trade saved locally; local API sync is unavailable: "+str(exc)
-                self.after(0,lambda:self.journal_sync_status.configure(text=message))
+            synced=0
+            errors=[]
+            for local_id,client_ref,symbol,side,outcome,pnl,notes in pending:
+                payload={
+                    "symbol":symbol,"direction":side.lower(),"outcome":outcome.lower(),
+                    "pnl":pnl,"notes":notes,"client_ref":client_ref,
+                }
+                try:
+                    self._api_request("POST","/api/v1/journal",payload,base=base)
+                    self.journal.mark_synced(local_id)
+                    synced+=1
+                except Exception as exc:
+                    errors.append(str(exc))
+            def finish():
+                self._journal_sync_running=False
+                self._refresh()
+                remaining=len(self.journal.pending())
+                message=f"Synced {synced} trade(s). {remaining} remain pending."
+                if errors:
+                    message+=" Last error: "+errors[-1]
+                unknown_now=self.journal.unknown_sync_count()
+                if unknown_now:
+                    message+=f" {unknown_now} older entries have unknown sync history and were not automatically re-sent."
+                self.journal_sync_status.configure(text=message)
+            self.after(0,finish)
         threading.Thread(target=worker,daemon=True).start()
 
     def _device(self):

@@ -21,7 +21,7 @@ CI build artifacts are temporary and retained for 30 days. Use GitHub Releases f
 ## Applications
 
 - Web: responsive local browser workspace with QUANTNEX VIEW first-party charts, live crypto/Gold market data, multi-timeframe signal analysis, local journal and wallet, paper trading, risk tools, strategy research and Telegram controls.
-- Windows: desktop workspace with position sizing, a local SQLite journal, Binance BTCUSDT candles, installation ID and a wallet shared with the local backend when it is running. No login or registration.
+- Windows: desktop workspace with position sizing, a local SQLite journal with visible pending/synced state and idempotent retry to the local backend, Binance BTCUSDT and optional MT5 XAUUSD candles, installation ID and a wallet shared with the local backend when it is running. No login or registration.
 - Android: native application starter.
 - Backend: loopback-only FastAPI service for the local journal, wallet ledger, preferences, optional AI gateway, Twelve Data XAU/USD analysis and Telegram bot command / price-level alert worker.
 

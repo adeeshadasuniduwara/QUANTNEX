@@ -8,6 +8,7 @@ import httpx
 from datetime import datetime, timezone
 from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -48,6 +49,31 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="QUANTNEX Local API",
               description="Loopback-only local workspace API. No user login or remote account system.",
               version="0.8.0", lifespan=lifespan)
+
+def _safe_validation_json(value):
+    """Make Pydantic validation details safe for strict JSON responses."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value).lower()
+    if value is None or isinstance(value, (str, int, bool)):
+        return value
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "replace")
+    if isinstance(value, dict):
+        return {str(key): _safe_validation_json(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_safe_validation_json(item) for item in value]
+    return str(value)
+
+
+@app.exception_handler(RequestValidationError)
+async def safe_request_validation_error(_request: Request, exc: RequestValidationError):
+    # Pydantic may include NaN/Infinity in the rejected input. JSON does not
+    # permit those numeric values, so serialize them as strings in the 422 body.
+    return JSONResponse(
+        status_code=422,
+        content={"detail": _safe_validation_json(exc.errors())},
+    )
+
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials=False,
                    allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Content-Type"])
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])

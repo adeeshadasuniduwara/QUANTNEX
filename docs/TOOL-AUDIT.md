@@ -9,7 +9,7 @@
 - **Web workspace:** Overview, QUANTNEX VIEW, Position Calculator, Trade Journal, Account & Wallet, Signal Lab, Updates, Market Intelligence, Data Reliability, AI Signal Center, Order Flow & Liquidity, News Intelligence, Paper Trading, Paper Autopilot, Performance Lab, Risk Management, Watchlist, Forex/Crypto/Gold desks, Price Alerts, Economic Calendar, Trade History, Strategy Library, Portfolio Monitor, Integrations, Goals & Certificates, AI Strategy Laboratory, Prop Firm Challenge, System Security and Support.
 - **Android:** native shell for the hosted Web workspace, Overview, Chart, Trading Room, Journal and Updates; release updater verifies APK SHA256 before opening Android's package installer.
 - **Backend:** loopback-only FastAPI service for local Web persistence, wallet ledger, preferences, signal tools, paper trading, market data, Telegram integration, backup and maintenance.
-- **Windows is a supported host environment for the Web + Backend launcher only. There is no Windows desktop application, executable, installer or EXE release pipeline.**
+- **Windows is a supported host environment for the Web + Backend launcher only. The current source and workflows contain no Windows desktop application, executable build or installer pipeline.**
 
 ## Tool audit matrix
 

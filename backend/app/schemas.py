@@ -120,7 +120,7 @@ class SignalSettingsRequest(BaseModel):
     primary: str = Field(default="5", pattern="^(1|5|15|30|50|60)$")
     trend: str = Field(default="60", pattern="^(15|30|60|240)$")
     enabled: list[str] = Field(default_factory=lambda: ["60","30","15","5","1"], max_length=6)
-    risk_percent: float = Field(default=1.0, gt=0, le=5)
+    risk_percent: float = Field(default=1.0, gt=0, le=5, allow_inf_nan=False)
     min_score: int = Field(default=7, ge=6, le=10)
     @field_validator("enabled")
     @classmethod

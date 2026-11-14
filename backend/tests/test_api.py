@@ -1,4 +1,5 @@
 import json
+import math
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import Session
@@ -95,6 +96,10 @@ def test_wallet_rejects_non_finite_and_out_of_range_amounts_without_mutating_bal
             headers={"Content-Type": "application/json"},
         )
         assert response.status_code == 422, amount
+        detail = response.json()["detail"]
+        assert isinstance(detail, list) and detail
+        if isinstance(amount, float) and not math.isfinite(amount):
+            assert detail[0]["input"] == str(amount).lower()
     after = client.get("/api/v1/wallet/summary").json()
     assert after == before
 

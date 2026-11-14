@@ -60,6 +60,19 @@ class WalletTransaction(Base):
     trade_id: Mapped[int | None] = mapped_column(Integer, nullable=True, unique=True, index=True)
 
 
+class WalletTransactionRequest(Base):
+    """Idempotency ledger for wallet requests whose HTTP response may be lost."""
+    __tablename__ = "wallet_transaction_requests"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    client_ref: Mapped[str] = mapped_column(String(64))
+    payload_hash: Mapped[str] = mapped_column(String(64))
+    transaction_id: Mapped[int] = mapped_column(ForeignKey("wallet_transactions.id", ondelete="CASCADE"), unique=True)
+    __table_args__ = (
+        UniqueConstraint("user_id", "client_ref", name="uq_wallet_request_reference"),
+    )
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

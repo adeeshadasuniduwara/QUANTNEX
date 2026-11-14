@@ -350,6 +350,44 @@ def create_journal(payload: TradeCreate, user: User = Depends(local_workspace), 
     event_hub.publish("wallet.changed", "wallet", "journal_pnl_recorded", {"trade_id": item.id})
     return item
 
+@app.put("/api/v1/journal/{trade_id}", response_model=TradeResponse)
+def update_journal(trade_id: int, payload: TradeCreate,
+                   user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    item = db.scalar(select(Trade).where(Trade.id == trade_id, Trade.user_id == user.id))
+    if item is None:
+        raise HTTPException(status_code=404, detail="Journal entry not found.")
+    created_at = payload.created_at
+    if created_at is not None:
+        created_at = (created_at.replace(tzinfo=timezone.utc) if created_at.tzinfo is None
+                      else created_at.astimezone(timezone.utc))
+        item.created_at = created_at
+    item.symbol = payload.symbol
+    item.direction = payload.direction
+    item.outcome = payload.outcome
+    item.pnl = payload.pnl
+    item.notes = payload.notes
+    # Only reconcile a wallet row that already exists. Imported historical
+    # journal entries deliberately have no wallet transaction and stay that way.
+    linked = db.scalar(select(WalletTransaction).where(
+        WalletTransaction.user_id == user.id,
+        WalletTransaction.trade_id == trade_id,
+    ))
+    if linked is not None:
+        linked.amount = payload.pnl
+        linked.description = f"{payload.symbol} {payload.direction.upper()} journal P&L"
+    record_audit_event(db, "journal.updated", {
+        "trade_id": trade_id, "symbol": item.symbol,
+        "direction": item.direction, "pnl": item.pnl,
+        "wallet_reconciled": linked is not None,
+    })
+    db.commit()
+    db.refresh(item)
+    event_hub.publish("journal.changed", "journal", "updated", {"trade_id": trade_id})
+    if linked is not None:
+        event_hub.publish("wallet.changed", "wallet", "journal_pnl_updated", {"trade_id": trade_id})
+    return item
+
+
 @app.post("/api/v1/journal/import", response_model=LegacyJournalImportResponse)
 def import_legacy_journal(payload: LegacyJournalImportRequest,
                           user: User = Depends(local_workspace),

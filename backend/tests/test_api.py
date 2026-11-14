@@ -506,18 +506,25 @@ def test_chart_quote_uses_twelve_data_provider_when_mt5_is_disabled(monkeypatch)
 
 def test_chart_quote_marks_twelve_data_price_stale_for_short_timeframes(monkeypatch):
     from datetime import datetime, timedelta, timezone
-    from app import phase07_engine
+    from app import phase07_engine, market_data
 
     async def fake_quote(_symbol):
         stamp = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
         return {"symbol": "XAUUSD", "kind": "gold", "price": 2345.6,
                 "provider": "Twelve Data", "source_timestamp": stamp, "timestamp": datetime.now(timezone.utc).isoformat()}
 
+    async def fresh_indicative_quote(_client, _symbol):
+        return 2344.5
+
     monkeypatch.setattr(main_module, "QUANTNEX_MT5_ENABLED", False)
     monkeypatch.setattr(phase07_engine, "get_quote", fake_quote)
+    monkeypatch.setattr(market_data, "_gold_api_price", fresh_indicative_quote)
     response = TestClient(app).get("/api/v1/charts/quote?symbol=XAUUSD&interval=1m")
     assert response.status_code == 200
-    assert response.json()["stale"] is True
+    assert response.json()["price"] == 2344.5
+    assert response.json()["provider"] == "Gold-API indicative spot (quote only)"
+    assert response.json()["quote_only"] is True
+    assert response.json()["stale"] is False
     assert response.json()["stale_after_seconds"] == 120
 
 def test_smart_open_gold_quote_uses_chart_provider(monkeypatch):

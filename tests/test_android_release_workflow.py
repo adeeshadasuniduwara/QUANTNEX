@@ -22,7 +22,7 @@ class AndroidReleaseWorkflowTests(unittest.TestCase):
 
     def test_local_data_and_secrets_are_ignored(self):
         ignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
-        for pattern in ("logs/", "data/", "**/.env", "!**/.env.example", "apps/android/*.p12"):
+        for pattern in ("logs/", "data/", "**/.env", "!**/.env.example", "apps/android/*.p12", "*.exe", "*.msi"):
             self.assertIn(pattern, ignore)
 
     def test_windows_desktop_build_workflow_is_retired(self):

@@ -209,4 +209,4 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - Root cause hardening: the static HTML still carried legacy Unicode glyphs inside each navigation link while the workspace enhancement replaces link contents with an SVG icon and a label. Remove the legacy glyph markup so even a cached/failed enhancement cannot display a second icon; bump both the stylesheet and script cache keys so clients fetch the current one-icon renderer.
 - Correct the label CSS so the global legacy `nav-link span` fixed icon width does not constrain the generated text label.
 - Add regression assertions for absence of legacy icon spans and cache invalidation.
-- **Status:** Pending CI and merge. This is a source-level regression fix; visual confirmation in the user's browser still requires loading the updated build.
+- **Status:** MERGED — PR #128 (`db93d8561f16a18adcb9cd2ab8cd31ad28942013`). Web CI, Backend/Web CI (Python 3.12/3.14), and Windows Build all passed on the final PR head. This is a source-level regression fix; visual confirmation in the user's browser still requires loading the updated build.

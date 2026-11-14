@@ -31,7 +31,7 @@
 | Prop Firm Challenge | Virtual challenge routes and MT5 DEMO monitoring/guardian | Implemented; MT5 requires local demo terminal/account | Test virtual mode; live terminal test only with a user-authorized DEMO account |
 | Web source updater | Local Web updater, periodic source check, staged file replacement and backups described in README | Implemented in code; device-level behavior not yet verified | Test checksum/archive/path validation, rollback, data preservation and reload |
 | Windows EXE updater | GitHub Releases check, SHA256 verification, user-confirmed install and EXE backup | Implemented; not fully automatic | Test release asset/checksum, install/restart/rollback and local data preservation |
-| Android release updater | Checks latest GitHub Release and invokes Android package installer | Implemented; user approval and production signing required | Verify signed APK artifact, same-key upgrade path, notification permission and install flow |
+| Android release updater | Checks latest GitHub Release, downloads APK and opens Android package installer | Integrity gap found and fixed in Update 004; CI pending | Require both APK and SHA256 manifest, verify exact asset digest before installer, block/remove failed or mismatched downloads; still needs signed release/device test |
 | Telegram bot / alerts | Connect/test/send, auto-signal and report APIs; encrypted local credentials | Implemented but external setup required | Verify bot can message the target chat; prior recorded attempt failed HTTP 403: bot cannot send messages to the bot |
 | Telegram release notifications | GitHub Actions workflow and release workflow | Workflow exists; delivery not confirmed | Verify correct chat ID, bot membership/admin permission, workflow trigger and successful Telegram API response |
 | Windows native tools | Calculator, local SQLite journal, Charts and Wallet/Backend views | Partial desktop capability | Exercise each screen and backend-unavailable behavior; README says bot monitor is not connected |
@@ -53,7 +53,7 @@
 - Added invalid-input cases for blank fields, nonnumeric/negative/zero amounts and unsupported/blank currency.
 - Found and fixed a backend validation bug: explicitly supplied empty strings and zero amounts were replaced by defaults before validation. Defaults now apply only when fields are omitted; explicitly invalid values return HTTP 422.
 - Existing UI contract test checks the demo form, endpoint wiring and preview flow.
-- **Status:** CI pending. Do not mark this flow passed until the new backend test suite and Web tests complete successfully.
+- **Status:** PASS — backend tests passed on Python 3.12 and 3.14; Web checks passed; Windows EXE build and artifact upload passed. PR #109 merged as `de233f8`.
 
 ## Audit status vocabulary
 
@@ -64,3 +64,13 @@
 - **NOT IMPLEMENTED:** no functional implementation found.
 
 This report is a living audit record. Update it as each flow is exercised, repaired and verified; do not convert static code inspection into a PASS claim.
+
+## Update 004 — Android release APK integrity
+
+- Static audit found the Android updater previously downloaded the APK and immediately opened the installer without checking the release's `SHA256SUMS.txt`.
+- Added release-asset selection that requires both the APK and checksum manifest, accepts only HTTPS assets hosted on `github.com`, and matches the manifest entry to the exact APK filename.
+- Added streaming SHA-256 verification with a 150 MB safety limit. Download failures, missing/malformed checksum entries and mismatches block installation and remove the downloaded APK.
+- Added user-visible error feedback instead of silently swallowing download/install failures.
+- Added JVM tests for release asset selection, missing manifest, URL validation, valid digest, wrong digest and filename mismatch.
+- Updated Android documentation to explain the integrity gate and its trust boundary.
+- **Status:** CI pending. Device-level installer testing and a production-signed release remain external verification items.

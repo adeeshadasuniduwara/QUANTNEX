@@ -100,4 +100,4 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - Gold requests omit the broker symbol query so the backend's configured QUANTNEX_MT5_GOLD_SYMBOL (including broker suffixes such as XAUUSD.a) is honored.
 - Gold data is accepted only when the backend response explicitly confirms read-only market-data mode and orders_enabled=false. Missing backend, terminal, symbol or provider data is shown as an actionable unavailable state.
 - Added a pure chart-data adapter and Windows-only unittest coverage for Binance data, MT5 data, configured broker symbol, read-only enforcement, provider errors and unsupported symbols. Windows CI now runs these tests before building the EXE.
-- **Status:** CI pending. Real Windows desktop display and the user's MT5 terminal still require device-level verification.
+- **Status:** PASS — Windows unit tests, Windows EXE build/artifact upload, Backend CI (Python 3.12/3.14), Backend/Web CI and Web checks all passed for PR #114. Real Windows desktop display and the user's MT5 terminal still require device-level verification.

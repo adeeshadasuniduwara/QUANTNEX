@@ -238,7 +238,7 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - Status: MERGED — PR #130 (merge commit 8212a1289a1db4a35793150133468a7952eeef10). Web CI, Backend CI, Backend/Web CI (Python 3.12/3.14), and Windows Build all passed on the final PR head. Source-level fixes are now on main. No claim that the user's installed copy has already updated or that live market providers have been reached from the user's laptop.
 
 
-## Update 015 — Spreadsheet-safe journal CSV export
+## Update 019 — Spreadsheet-safe journal CSV export
 
 - Audited the Web Journal CSV export path and found that quoting CSV fields alone does not prevent spreadsheet formula injection when a user-controlled symbol, direction, outcome or note begins with formula characters.
 - Added a shared CSV serializer that quotes and escapes every cell and prefixes formula-like text cells (including leading whitespace/control characters followed by =, +, - or @) with a text marker. Finite numeric P&L values remain numeric, including legitimate negative P&L.

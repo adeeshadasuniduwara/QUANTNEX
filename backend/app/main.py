@@ -1466,32 +1466,14 @@ def verify_goal_certificate(goal_id: int, user: User = Depends(local_workspace),
 # Phases 12–20 local paper platform APIs. All automated orders remain simulated.
 @app.get("/api/v1/paper-engine")
 async def paper_engine_status(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
-    from .phase12_20_engine import DEFAULT_SETTINGS, normalize_settings, risk_snapshot
-    from .phase07_engine import get_quote, IntelligenceDataError
-    from .phase10_engine import assess_quote
+    from .phase12_20_engine import DEFAULT_SETTINGS, normalize_settings, risk_snapshot, open_position_risk_snapshot
     raw = _preference(db, user.id, "paper_autopilot_settings", "")
     try:
         settings = normalize_settings(json.loads(raw)) if raw else normalize_settings(DEFAULT_SETTINGS)
     except (ValueError, TypeError, json.JSONDecodeError):
         settings = normalize_settings(DEFAULT_SETTINGS)
     trades = list(db.scalars(select(PaperTrade).where(PaperTrade.user_id == user.id)))
-    unrealized_pnl = 0.0
-    unpriced_open_position = False
-    for position in (item for item in trades if item.status == "OPEN"):
-        try:
-            quote = await get_quote(position.symbol)
-            health = assess_quote(quote)
-            if not health.get("trading_safe"):
-                unpriced_open_position = True
-                continue
-            mark = float(quote["price"])
-            floating = (mark - position.entry_price) * position.quantity * (1 if position.side == "BUY" else -1)
-            if not math.isfinite(mark) or mark <= 0 or not math.isfinite(floating):
-                unpriced_open_position = True
-                continue
-            unrealized_pnl += floating
-        except (IntelligenceDataError, httpx.HTTPError, ValueError, TypeError, KeyError):
-            unpriced_open_position = True
+    unrealized_pnl, unpriced_open_position = await open_position_risk_snapshot(trades)
     risk = risk_snapshot(
         trades, settings, unrealized_pnl=unrealized_pnl,
         unpriced_open_position=unpriced_open_position,

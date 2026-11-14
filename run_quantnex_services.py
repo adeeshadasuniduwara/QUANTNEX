@@ -196,7 +196,32 @@ def consume_manual_update_request() -> bool:
 
 
 def restart_launcher() -> None:
-    os.execv(sys.executable, [sys.executable, str(Path(__file__).resolve())])
+    """Restart safely on Windows even when the workspace path contains spaces.
+
+    Do not use os.execv here: Windows command-line reconstruction can mishandle
+    script paths with spaces in some Python launcher/runtime combinations.
+    Popen receives an argv list (not a shell command string), preserving the
+    complete script path as one argument.
+    """
+    script = Path(__file__).resolve()
+    command = [sys.executable, str(script)]
+    print("[RESTART] Python: " + sys.executable, flush=True)
+    print("[RESTART] Script: " + str(script), flush=True)
+    try:
+        subprocess.Popen(
+            command,
+            cwd=str(ROOT),
+            stdin=None,
+            stdout=None,
+            stderr=None,
+            close_fds=False,
+            creationflags=0,
+        )
+    except OSError as exc:
+        raise RuntimeError(
+            f"Could not restart QUANTNEX from '{script}': {type(exc).__name__}: {exc}"
+        ) from exc
+    raise SystemExit(0)
 
 
 def main() -> int:

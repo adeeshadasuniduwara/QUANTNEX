@@ -128,4 +128,4 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - Added tests that send raw JSON NaN/Infinity values and verify HTTP 422 responses without creating a challenge, recording a virtual trade or changing signal settings.
 - Added a trailing-drawdown scenario: after a new equity peak, a fall to the trailing floor must fail the virtual challenge while remaining above the daily-loss floor.
 - Existing MT5 REAL/CONTEST account rejection remains unchanged; real terminal testing is not performed in CI.
-- **Status:** CI pending. Physical MT5 verification remains restricted to a user-authorized DEMO account and broker terminal.
+- **Status:** PASS — Backend CI (Python 3.12/3.14, 178 tests each), Backend/Web CI, Web CI and Windows EXE build/artifact upload all passed for PR #117. Physical MT5 verification remains restricted to a user-authorized DEMO account and broker terminal.

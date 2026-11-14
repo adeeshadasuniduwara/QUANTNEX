@@ -122,16 +122,37 @@ def main() -> int:
             print("[AUTO UPDATE] Restarting launcher with the new source…", flush=True)
             restart_launcher()
 
-        python = prepare_backend()
-        api = start_process("API", [str(python), "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000", "--log-level", "info"], BACKEND)
-        web_env = os.environ.copy()
-        web_env["QUANTNEX_SUPERVISED"] = "1"
-        web = start_process("WEB", [sys.executable, str(WEB_SERVER)], ROOT, env=web_env)
-        if args.desktop:
-            start_process("DESKTOP", [str(python), str(ROOT / "apps" / "windows" / "quantnex_desktop.py")], ROOT)
+        try:
+            python = prepare_backend()
+            api = start_process("API", [str(python), "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000", "--log-level", "info"], BACKEND)
+            web_env = os.environ.copy()
+            web_env["QUANTNEX_SUPERVISED"] = "1"
+            web = start_process("WEB", [sys.executable, str(WEB_SERVER)], ROOT, env=web_env)
+            if args.desktop:
+                start_process("DESKTOP", [str(python), str(ROOT / "apps" / "windows" / "quantnex_desktop.py")], ROOT)
 
-        wait_for_url("http://127.0.0.1:8000/health", "Backend API · http://127.0.0.1:8000", api)
-        wait_for_url("http://127.0.0.1:5500/", "Web workspace · http://127.0.0.1:5500", web)
+            wait_for_url("http://127.0.0.1:8000/health", "Backend API · http://127.0.0.1:8000", api)
+            wait_for_url("http://127.0.0.1:5500/", "Web workspace · http://127.0.0.1:5500", web)
+        except Exception:
+            # A newly applied source revision is not trusted until both local
+            # services pass their startup health checks. Restore the last known
+            # working files before retrying, without touching user data.
+            stop_all()
+            try:
+                from quantnex_updater import rollback_last_update
+                if rollback_last_update(ROOT):
+                    print("[AUTO UPDATE] New source failed startup health checks; restored the previous version.", flush=True)
+                    restart_launcher()
+            except Exception as rollback_error:
+                print(f"[AUTO UPDATE] Automatic rollback could not complete: {rollback_error}", flush=True)
+            raise
+
+        try:
+            from quantnex_updater import confirm_update
+            if confirm_update(ROOT):
+                print("[AUTO UPDATE] Startup health checks passed; rollback checkpoint confirmed.", flush=True)
+        except Exception as confirm_error:
+            print(f"[AUTO UPDATE] Startup confirmation deferred: {confirm_error}", flush=True)
         webbrowser.open("http://127.0.0.1:5500/")
         print("\nQUANTNEX is running. Keep this single CMD window open.", flush=True)
         print("Automatic GitHub update checks run every 5 minutes. Updated source restarts services automatically.", flush=True)

@@ -110,4 +110,4 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - SHA256 is calculated incrementally and must match the exact QUANTNEX.exe manifest filename. Only then is the temporary file atomically moved into the staged path.
 - Failed/oversized/mismatched downloads remove the partial file and preserve any previously staged verified EXE.
 - Added Windows tests for URL trust, exact filename matching, successful atomic staging, checksum mismatch, previous staged file preservation, size limits and no-network rejection of untrusted URLs.
-- **Status:** CI pending. Actual EXE replacement, restart and rollback still require a packaged Windows-device test.
+- **Status:** PASS — Windows updater unit tests, Windows EXE build/artifact upload, backend tests and Web checks passed for PR #115. Actual EXE replacement, restart and rollback still require a packaged Windows-device test.

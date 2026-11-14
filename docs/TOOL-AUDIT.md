@@ -165,4 +165,4 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - The route now catches both provider transport and provider-payload errors and returns an actionable HTTP 502 without exposing the API key.
 - Economic calendar normalization now discards malformed non-dictionary rows before sorting, preventing unexpected provider rows from causing attribute errors.
 - Added tests for missing-key explicit-unconfigured response, invalid-key actionable 502, malformed event filtering, chronological sorting and 30-day horizon clamp.
-- **Status:** CI pending. A real Finnhub event feed still requires the user's FINNHUB_API_KEY and provider quota; no synthetic events are shown.
+- **Status:** PASS — Backend CI schema checks, Backend/Web CI (Python 3.12/3.14) and Web syntax checks all passed for PR #122. A real Finnhub event feed still requires the user's FINNHUB_API_KEY and provider quota; no synthetic events are shown.

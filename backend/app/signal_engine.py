@@ -4,7 +4,7 @@ Scores are rule-based confluence counts, never estimated win probabilities.
 """
 from __future__ import annotations
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import math
 import time
 from typing import Any
@@ -76,45 +76,106 @@ def _normalize_gold_candles(values: list[dict[str, Any]]) -> list[dict[str, Any]
             continue
     return [normalized[key] for key in sorted(normalized)]
 
-async def fetch_candles(interval: str, outputsize: int = 320, symbol: str = "XAUUSD") -> list[dict[str, Any]]:
+async def _fetch_coinbase_candles(symbol: str, interval: str, requested: int) -> list[dict[str, Any]]:
+    """Public BTC/ETH/SOL USD candles used only when Binance history is unreachable."""
+    products = {"BTCUSDT": "BTC-USD", "ETHUSDT": "ETH-USD", "SOLUSDT": "SOL-USD"}
+    product = products.get(symbol)
+    granularities = {"1min": 60, "5min": 300, "15min": 900, "1h": 3600}
+    granularity = granularities.get(interval)
+    if not product or granularity is None:
+        raise MarketDataError("Coinbase fallback supports BTCUSDT, ETHUSDT and SOLUSDT at 1m, 5m, 15m or 1h.")
+    count = min(max(int(requested), 210), 300)
+    end = datetime.now(timezone.utc)
+    begin = end - timedelta(seconds=granularity * (count + 2))
+    params = {
+        "granularity": granularity,
+        "start": begin.isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "end": end.isoformat(timespec="seconds").replace("+00:00", "Z"),
+    }
+    async with httpx.AsyncClient(timeout=httpx.Timeout(18, connect=5), follow_redirects=True,
+                                 headers={"User-Agent": "QUANTNEX-Market-Data"}) as client:
+        response = await client.get(f"https://api.exchange.coinbase.com/products/{product}/candles", params=params)
+        response.raise_for_status()
+        payload = response.json()
+    if not isinstance(payload, list):
+        raise MarketDataError("Coinbase returned an unexpected candle response.")
+    candles = []
+    for row in payload:
+        try:
+            # Coinbase Exchange order: [time, low, high, open, close, volume].
+            stamp = datetime.fromtimestamp(int(row[0]), timezone.utc).isoformat()
+            low, high, op, close, volume = (float(row[i]) for i in (1, 2, 3, 4, 5))
+            if not all(math.isfinite(value) for value in (low, high, op, close, volume)):
+                continue
+            if min(low, high, op, close) <= 0 or volume < 0 or high < max(op, close, low) or low > min(op, close, high):
+                continue
+            candles.append({"time": stamp, "open": op, "high": high, "low": low,
+                            "close": close, "volume": volume})
+        except (IndexError, TypeError, ValueError, OverflowError):
+            continue
+    candles.sort(key=lambda item: item["time"])
+    candles = closed_candles(candles, interval)
+    if len(candles) < 210:
+        raise MarketDataError(f"Coinbase returned only {len(candles)} valid closed {interval} candles; 210 are required.")
+    return candles[-count:]
+
+
+async def fetch_candles_with_provider(interval: str, outputsize: int = 320,
+                                      symbol: str = "XAUUSD") -> tuple[list[dict[str, Any]], str]:
+    """Fetch validated candles and return the actual provider used for the chart."""
     symbol = str(symbol).upper()
     if symbol in CRYPTO_SYMBOLS:
         binance_interval = BINANCE_INTERVALS.get(interval)
         if not binance_interval:
             raise MarketDataError(f"Unsupported Binance candle interval: {interval}.")
-        requested = min(max(outputsize, 210), 3200)
-        interval_ms = {"1m":60000,"5m":300000,"15m":900000,"30m":1800000,"1h":3600000,"4h":14400000}[binance_interval]
-        rows = []
-        end_time = None
-        async with httpx.AsyncClient(timeout=18) as client:
-            while len(rows) < requested:
-                limit = min(1000, requested - len(rows))
-                params = {"symbol":symbol,"interval":binance_interval,"limit":limit}
-                if end_time is not None:
-                    params["endTime"] = end_time
-                response = await client.get("https://api.binance.com/api/v3/klines", params=params)
-                response.raise_for_status()
-                payload = response.json()
-                if not isinstance(payload, list) or not payload:
-                    break
-                rows = payload + rows
-                end_time = int(payload[0][0]) - 1
-                if len(payload) < limit:
-                    break
-        candles=[]
-        for row in rows[-requested:]:
+        requested = min(max(int(outputsize), 210), 3200)
+        try:
+            interval_ms = {"1m":60000,"5m":300000,"15m":900000,"30m":1800000,"1h":3600000,"4h":14400000}[binance_interval]
+            rows = []
+            end_time = None
+            async with httpx.AsyncClient(timeout=httpx.Timeout(18, connect=5)) as client:
+                while len(rows) < requested:
+                    limit = min(1000, requested - len(rows))
+                    params = {"symbol":symbol,"interval":binance_interval,"limit":limit}
+                    if end_time is not None:
+                        params["endTime"] = end_time
+                    response = await client.get("https://api.binance.com/api/v3/klines", params=params)
+                    response.raise_for_status()
+                    payload = response.json()
+                    if not isinstance(payload, list) or not payload:
+                        raise MarketDataError("Binance returned no candle rows.")
+                    rows = payload + rows
+                    end_time = int(payload[0][0]) - 1
+                    if len(payload) < limit:
+                        break
+            candles=[]
+            for row in rows[-requested:]:
+                try:
+                    stamp=datetime.fromtimestamp(int(row[0])/1000, timezone.utc).isoformat()
+                    op, high, low, close, volume = (float(row[i]) for i in (1, 2, 3, 4, 5))
+                    if not all(math.isfinite(value) for value in (op, high, low, close, volume)):
+                        continue
+                    if min(op, high, low, close) <= 0 or volume < 0 or high < max(op, close, low) or low > min(op, close, high):
+                        continue
+                    candles.append({"time":stamp,"open":op,"high":high,"low":low,"close":close,"volume":volume})
+                except (IndexError,TypeError,ValueError,OverflowError):
+                    continue
+            candles = closed_candles(candles, interval)
+            if len(candles) < 210:
+                raise MarketDataError(f"Not enough CLOSED {symbol} {interval} Binance candles ({len(candles)} received).")
+            return candles, "Binance Spot"
+        except (httpx.HTTPError, MarketDataError, ValueError, TypeError, IndexError) as binance_error:
             try:
-                stamp=datetime.fromtimestamp(int(row[0])/1000, timezone.utc).isoformat()
-                candles.append({"time":stamp,"open":float(row[1]),"high":float(row[2]),
-                                "low":float(row[3]),"close":float(row[4]),"volume":float(row[5])})
-            except (IndexError,TypeError,ValueError,OverflowError):
-                continue
-        candles = closed_candles(candles, interval)
-        if len(candles) < 210:
-            raise MarketDataError(f"Not enough CLOSED {symbol} {interval} Binance candles for stable indicator calculations ({len(candles)} received).")
-        return candles
+                candles = await _fetch_coinbase_candles(symbol, interval, requested)
+                return candles, "Coinbase Exchange fallback"
+            except (httpx.HTTPError, MarketDataError, ValueError, TypeError) as coinbase_error:
+                raise MarketDataError(
+                    f"Binance candles unavailable ({binance_error}); Coinbase fallback unavailable ({coinbase_error})."
+                ) from coinbase_error
+
     if symbol != "XAUUSD":
         raise MarketDataError("Supported crypto markets: "+", ".join(sorted(CRYPTO_SYMBOLS))+"; gold: XAUUSD.")
+    mt5_error = None
     if QUANTNEX_MT5_ENABLED:
         from .mt5_feed import get_candles as get_mt5_candles, MT5FeedError
         try:
@@ -122,30 +183,39 @@ async def fetch_candles(interval: str, outputsize: int = 320, symbol: str = "XAU
             candles = closed_candles(candles, interval)
             if len(candles) < 210:
                 raise MarketDataError(f"Not enough CLOSED MT5 {interval} XAUUSD candles ({len(candles)} received).")
-            return candles
+            return candles, "MetaTrader 5 local terminal"
         except MT5FeedError as exc:
-            raise MarketDataError(str(exc)) from exc
+            mt5_error = str(exc)
     if not TWELVE_DATA_API_KEY:
-        raise MarketDataError("Gold market data is not configured. Enable QUANTNEX_MT5_ENABLED or add TWELVE_DATA_API_KEY to backend/.env.")
+        detail = "Gold historical candles require a connected MT5 terminal with QUANTNEX_MT5_ENABLED=true or a TWELVE_DATA_API_KEY in backend/.env."
+        if mt5_error:
+            detail += " MT5 detail: " + mt5_error
+        raise MarketDataError(detail)
     requested = min(max(int(outputsize), 210), 5000)
     cache_key = (symbol, interval, requested)
     cached = _GOLD_CANDLE_CACHE.get(cache_key)
     if cached and time.monotonic() - cached[0] < _GOLD_CANDLE_CACHE_TTL:
-        return [dict(row) for row in cached[1]]
+        return [dict(row) for row in cached[1]], "Twelve Data (cached)"
     async with httpx.AsyncClient(timeout=18) as client:
         response = await client.get(BASE, params={"symbol":"XAU/USD","interval":interval,
             "outputsize":requested,"timezone":"UTC","apikey":TWELVE_DATA_API_KEY})
         response.raise_for_status()
         payload = response.json()
-    if payload.get("status") == "error" or not isinstance(payload.get("values"), list):
-        raise MarketDataError(str(payload.get("message") or payload.get("code") or "Provider returned no candle data."))
+    if not isinstance(payload, dict) or payload.get("status") == "error" or not isinstance(payload.get("values"), list):
+        detail = payload.get("message") or payload.get("code") if isinstance(payload, dict) else "Provider returned an invalid candle response."
+        raise MarketDataError(str(detail or "Provider returned no candle data."))
     candles = _normalize_gold_candles(payload["values"])
     candles = closed_candles(candles, interval)
     if len(candles) < 210:
         raise MarketDataError(f"Not enough valid CLOSED {interval} XAUUSD candles for stable indicator calculations ({len(candles)} received).")
     candles = candles[-requested:]
     _GOLD_CANDLE_CACHE[cache_key] = (time.monotonic(), candles)
-    return [dict(row) for row in candles]
+    return [dict(row) for row in candles], "Twelve Data"
+
+
+async def fetch_candles(interval: str, outputsize: int = 320, symbol: str = "XAUUSD") -> list[dict[str, Any]]:
+    candles, _provider = await fetch_candles_with_provider(interval, outputsize, symbol)
+    return candles
 
 def aggregate_minutes(candles: list[dict[str, Any]], minutes: int) -> list[dict[str, Any]]:
     """Aggregate 1-minute UTC candles into fixed minute bars."""

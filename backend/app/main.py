@@ -160,7 +160,7 @@ def local_workspace(db: Session = Depends(get_db)) -> User:
 @app.get("/api/v1/charts/candles")
 async def chart_candles(symbol: str = "BTCUSDT", interval: str = "15m", limit: int = 500):
     """Historical OHLC candles for the first-party QUANTNEX VIEW chart."""
-    from .signal_engine import fetch_candles_with_provider, MarketDataError, CRYPTO_SYMBOLS, BINANCE_INTERVALS
+    from .signal_engine import fetch_candles_with_provider, MarketDataError, CRYPTO_SYMBOLS
     allowed_intervals = {"1m":"1min","5m":"5min","15m":"15min","30m":"30min","1h":"1h","4h":"4h"}
     symbol = symbol.upper()
     if symbol not in CRYPTO_SYMBOLS and symbol != "XAUUSD":

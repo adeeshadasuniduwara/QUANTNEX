@@ -166,3 +166,11 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - Added a download link that uses the exact generated PDF Blob URL, becomes visible only after preview generation succeeds, and assigns a clear filename. Demo files are explicitly named `QUANTNEX-Demo-Certificate-NOT-VALID.pdf`; they remain sample-only and are not represented as valid achievements.
 - Added Web UI contract tests for the download control, blob URL wiring, visibility and demo filename.
 - **Status:** implementation and static contract tests added; CI must pass before merge. Physical browser download testing remains device-level verification.
+
+
+## Update 015 — Spreadsheet-safe journal CSV export
+
+- Audited the Web Journal CSV export path and found that quoting CSV fields alone does not prevent spreadsheet formula injection when a user-controlled symbol, direction, outcome or note begins with formula characters.
+- Added a shared CSV serializer that quotes and escapes every cell and prefixes formula-like text cells (including leading whitespace/control characters followed by =, +, - or @) with a text marker. Finite numeric P&L values remain numeric, including legitimate negative P&L.
+- Added Node tests for formula-like inputs, leading whitespace, quotes/commas/newlines and numeric negative P&L. Web CI now runs this test.
+- **Status:** code and unit tests added; CI pending. Real browser/Excel interoperability remains a separate device-level check.

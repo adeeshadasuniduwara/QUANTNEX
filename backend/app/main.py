@@ -1465,20 +1465,24 @@ def verify_goal_certificate(goal_id: int, user: User = Depends(local_workspace),
 
 # Phases 12–20 local paper platform APIs. All automated orders remain simulated.
 @app.get("/api/v1/paper-engine")
-def paper_engine_status(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
-    from .phase12_20_engine import DEFAULT_SETTINGS, normalize_settings
+async def paper_engine_status(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .phase12_20_engine import DEFAULT_SETTINGS, normalize_settings, risk_snapshot, open_position_risk_snapshot
     raw = _preference(db, user.id, "paper_autopilot_settings", "")
     try:
         settings = normalize_settings(json.loads(raw)) if raw else normalize_settings(DEFAULT_SETTINGS)
     except (ValueError, TypeError, json.JSONDecodeError):
         settings = normalize_settings(DEFAULT_SETTINGS)
     trades = list(db.scalars(select(PaperTrade).where(PaperTrade.user_id == user.id)))
-    from .phase12_20_engine import risk_snapshot
-    return {"settings": settings, "risk": risk_snapshot(trades, settings),
+    unrealized_pnl, unpriced_open_position = await open_position_risk_snapshot(trades)
+    risk = risk_snapshot(
+        trades, settings, unrealized_pnl=unrealized_pnl,
+        unpriced_open_position=unpriced_open_position,
+    )
+    return {"settings": settings, "risk": risk,
             "last_error": _preference(db, user.id, "paper_autopilot_last_error"),
             "last_block": json.loads(_preference(db, user.id, "paper_autopilot_last_block", "[]") or "[]"),
             "worker": "LOCAL_BACKGROUND_WORKER", "mode": "PAPER_ONLY",
-            "note": "Automatic mode is opt-in and runs only while this local QUANTNEX API is running. No broker orders."}
+            "note": "Risk status includes current provider marks for open paper positions. Unpriced/stale positions block new automatic entries. Automatic mode is opt-in and runs only while this local QUANTNEX API is running. No broker orders."}
 
 
 @app.put("/api/v1/paper-engine")

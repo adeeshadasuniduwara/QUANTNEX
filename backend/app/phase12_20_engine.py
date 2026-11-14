@@ -60,6 +60,33 @@ def normalize_settings(raw: dict | None) -> dict:
     return value
 
 
+async def open_position_risk_snapshot(trades: list[Any]) -> tuple[float, bool]:
+    """Return current provider-marked floating P&L and whether any open position is unpriced."""
+    from .phase07_engine import get_quote, IntelligenceDataError
+    from .phase10_engine import assess_quote
+
+    unrealized_pnl = 0.0
+    unpriced_open_position = False
+    for position in (item for item in trades if item.status == "OPEN"):
+        try:
+            quote = await get_quote(position.symbol)
+            health = assess_quote(quote)
+            if not health.get("trading_safe"):
+                unpriced_open_position = True
+                continue
+            mark = float(quote["price"])
+            floating = (mark - float(position.entry_price)) * float(position.quantity) * (
+                1 if position.side == "BUY" else -1
+            )
+            if not math.isfinite(mark) or mark <= 0 or not math.isfinite(floating):
+                unpriced_open_position = True
+                continue
+            unrealized_pnl += floating
+        except (IntelligenceDataError, httpx.HTTPError, ValueError, TypeError, KeyError):
+            unpriced_open_position = True
+    return unrealized_pnl, unpriced_open_position
+
+
 def risk_snapshot(trades: list[Any], settings: dict, now: datetime | None = None,
                   unrealized_pnl: float = 0.0, unpriced_open_position: bool = False) -> dict:
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
@@ -75,7 +102,7 @@ def risk_snapshot(trades: list[Any], settings: dict, now: datetime | None = None
         cumulative += float(trade.realized_pnl or 0)
         peak = max(peak, cumulative)
         max_drawdown = max(max_drawdown, peak - cumulative)
-    equity = float(settings["paper_equity"]) + cumulative
+    equity = float(settings["paper_equity"]) + cumulative + float(unrealized_pnl)
     current_drawdown = max(0.0, peak - (cumulative + float(unrealized_pnl)))
     max_drawdown = max(max_drawdown, current_drawdown)
     daily_limit = float(settings["paper_equity"]) * float(settings["max_daily_loss_percent"]) / 100
@@ -103,7 +130,7 @@ def risk_snapshot(trades: list[Any], settings: dict, now: datetime | None = None
         "entry_allowed": not blocks,
         "blocks": blocks,
         "timezone": "UTC",
-        "note": "Risk guard uses persisted paper-ledger realized P&L; it is not a broker balance or prop-firm guarantee.",
+        "note": "Risk guard combines persisted paper-ledger realized P&L with current provider-marked unrealized P&L; it is not a broker balance or prop-firm guarantee.",
     }
 
 

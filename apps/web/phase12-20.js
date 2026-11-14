@@ -36,7 +36,7 @@ function fillForm(s){const v=s.settings||s;settings=v;
  $("paperEngineToggle").textContent=enabled?"Pause paper mode":"Start paper mode";
  const risk=s.risk||{};
  const root=$("paperEngineRiskCards");root.replaceChildren();
- [["Entry gate",risk.entry_allowed===false?"BLOCKED":"READY"],["Daily realized P&L",money(risk.realized_plus_unrealized_pnl_today_utc)],["Daily loss stop",money(risk.daily_loss_limit)],["Observed drawdown",money(risk.max_drawdown_observed)],["Open positions",(risk.open_positions??0)+" / "+(risk.max_open_positions??v.max_open_positions??3)]].forEach(([k,val])=>{
+ [["Entry gate",risk.entry_allowed===false?"BLOCKED":"READY"],["Daily P&L incl. floating",money(risk.realized_plus_unrealized_pnl_today_utc)],["Daily loss stop",money(risk.daily_loss_limit)],["Observed drawdown",money(risk.max_drawdown_observed)],["Open positions",(risk.open_positions??0)+" / "+(risk.max_open_positions??v.max_open_positions??3)]].forEach(([k,val])=>{
   const card=document.createElement("article");card.className="workspace-page-card";const label=document.createElement("span");label.textContent=k;const strong=document.createElement("strong");strong.textContent=val;card.append(label,strong);root.append(card);
  });
  if(risk.blocks?.length)status("Risk Guardian blocked new entries: "+risk.blocks.join(", ")+".",true);

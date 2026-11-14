@@ -1,4 +1,4 @@
-name: QUANTNEX Telegram Release Announcements
+name: QUANTNEX Telegram Update Notifications
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ jobs:
   announce:
     runs-on: ubuntu-latest
     steps:
-      - name: Send Telegram release announcement
+      - name: Send Telegram update announcement
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -35,26 +35,78 @@ jobs:
           import urllib.error
           import urllib.request
 
+          token = os.environ["TELEGRAM_BOT_TOKEN"]
+          chat_id = os.environ["TELEGRAM_CHAT_ID"].strip()
+
+          def telegram_api(method, payload=None):
+              url = "https://api.telegram.org/bot" + token + "/" + method
+              data = json.dumps(payload).encode("utf-8") if payload is not None else None
+              request = urllib.request.Request(
+                  url,
+                  data=data,
+                  headers={"Content-Type": "application/json"} if data is not None else {},
+                  method="POST" if data is not None else "GET",
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=20) as response:
+                      result = json.loads(response.read().decode("utf-8"))
+              except urllib.error.HTTPError as exc:
+                  raw = exc.read().decode("utf-8", "replace")
+                  try:
+                      detail = json.loads(raw).get("description") or raw[:300]
+                  except (ValueError, AttributeError):
+                      detail = raw[:300] or str(exc.reason)
+                  raise SystemExit(
+                      "Telegram " + method + " failed (HTTP " + str(exc.code) + "): " + detail
+                  ) from None
+              except urllib.error.URLError as exc:
+                  raise SystemExit("Telegram network request failed: " + str(exc.reason)) from None
+              if not result.get("ok"):
+                  raise SystemExit(
+                      "Telegram " + method + " was rejected: "
+                      + str(result.get("description") or "unknown Telegram API error")
+                  )
+              return result.get("result") or {}
+
+          # Validate the destination before attempting to send a public update.
+          bot = telegram_api("getMe")
+          bot_id = str(bot.get("id") or "")
+          if chat_id.lstrip("-").isdigit() and chat_id == bot_id:
+              raise SystemExit(
+                  "TELEGRAM_CHAT_ID points to the bot's own ID. Set it to your private chat ID "
+                  "after sending /start to the bot, or to the target group/channel ID after "
+                  "adding the bot with permission to post."
+              )
+          chat = telegram_api("getChat", {"chat_id": chat_id})
+          if bot_id and str(chat.get("id") or "") == bot_id:
+              raise SystemExit(
+                  "TELEGRAM_CHAT_ID resolves to the bot itself. Use your private chat ID or "
+                  "a group/channel ID where the bot is allowed to post."
+              )
+
           repo = os.environ["REPO"]
           if os.environ["EVENT_NAME"] == "workflow_dispatch":
               title = "Telegram notification test"
               tag = "Configuration test"
-              release_url = "https://github.com/" + repo
-              intro = "The QUANTNEX Telegram release notification is connected."
+              target_url = "https://github.com/" + repo
+              link_label = "Open QUANTNEX repository"
+              intro = "The QUANTNEX Telegram update notification is connected."
           elif os.environ["EVENT_NAME"] == "push":
               sha = os.environ.get("COMMIT_SHA", "")
               title = html.escape((os.environ.get("COMMIT_MESSAGE") or "QUANTNEX source update").splitlines()[0][:160])
               tag = "main@" + sha[:7]
-              release_url = "https://github.com/" + repo + "/commit/" + sha
+              target_url = "https://github.com/" + repo + "/commit/" + sha
+              link_label = "View source update"
               intro = (
                   "A new QUANTNEX update has been merged into the official main branch.\n"
-                  "The running source-based workspace will download changed files and apply the update automatically.\n"
+                  "The running source-based workspace can download and apply the update automatically.\n"
                   "🔒 Local wallet, journal, settings and credentials remain on this computer."
               )
           else:
               title = html.escape(os.environ.get("RELEASE_NAME") or os.environ.get("RELEASE_TAG") or "New release")
               tag = html.escape(os.environ.get("RELEASE_TAG") or "Release")
-              release_url = os.environ.get("RELEASE_URL") or ("https://github.com/" + repo + "/releases")
+              target_url = os.environ.get("RELEASE_URL") or ("https://github.com/" + repo + "/releases")
+              link_label = "Open release &amp; downloads"
               intro = "A new QUANTNEX version has been published."
 
           message = (
@@ -62,44 +114,16 @@ jobs:
               + "<b>" + title + "</b>\n"
               + "Version: <code>" + tag + "</code>\n\n"
               + intro + "\n\n"
-              + '<a href="' + release_url + '">Open release &amp; downloads</a>\n'
+              + '<a href="' + target_url + '">' + link_label + '</a>\n'
               + '<a href="https://github.com/' + repo + '">QUANTNEX GitHub</a>\n\n'
               + "<i>Official automated update notification</i>"
           )
 
-          payload = json.dumps({
-              "chat_id": os.environ["TELEGRAM_CHAT_ID"],
+          telegram_api("sendMessage", {
+              "chat_id": chat_id,
               "text": message,
               "parse_mode": "HTML",
               "disable_web_page_preview": False
-          }).encode("utf-8")
-          request = urllib.request.Request(
-              "https://api.telegram.org/bot" + os.environ["TELEGRAM_BOT_TOKEN"] + "/sendMessage",
-              data=payload,
-              headers={"Content-Type": "application/json"},
-              method="POST"
-          )
-          try:
-              with urllib.request.urlopen(request, timeout=20) as response:
-                  result = json.loads(response.read().decode("utf-8"))
-          except urllib.error.HTTPError as exc:
-              raw = exc.read().decode("utf-8", "replace")
-              try:
-                  detail = json.loads(raw).get("description") or raw[:300]
-              except (ValueError, AttributeError):
-                  detail = raw[:300] or str(exc.reason)
-              raise SystemExit(
-                  f"Telegram sendMessage failed (HTTP {exc.code}): {detail}. "
-                  "Check TELEGRAM_CHAT_ID and confirm the bot can message that chat "
-                  "(the user must start it with /start, or the bot must be added to the group)."
-              ) from None
-          except urllib.error.URLError as exc:
-              raise SystemExit(f"Telegram network request failed: {exc.reason}") from None
-
-          if not result.get("ok"):
-              raise SystemExit(
-                  "Telegram API rejected the announcement: "
-                  + str(result.get("description") or "unknown Telegram API error")
-              )
+          })
           print("Telegram announcement sent successfully.")
           PY

@@ -640,7 +640,9 @@ async def connect_telegram_bot(payload: TelegramConnectRequest, user: User = Dep
                 member=member_data.get("result",{})
                 member_status=str(member.get("status",""))
                 if chat_type=="channel":
-                    if member_status not in {"administrator","creator"} or member.get("can_post_messages") is not True:
+                    if member_status=="creator":
+                        pass
+                    elif member_status!="administrator" or member.get("can_post_messages") is not True:
                         raise HTTPException(status_code=422,detail="The bot must be a channel administrator with permission to post messages.")
                 elif member_status not in {"member","administrator","creator"} and not (
                     member_status=="restricted" and member.get("can_send_messages") is True

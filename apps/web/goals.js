@@ -125,6 +125,14 @@
     frame.src=certificatePreviewUrl;
     wrap.hidden=false;
     frame.title=filename;
+    const download=$("goalCertificateDownload");
+    if(download){
+      download.href=certificatePreviewUrl;
+      download.download=filename.toLowerCase().includes("demo")
+        ?"QUANTNEX-Demo-Certificate-NOT-VALID.pdf"
+        :"QUANTNEX-Achievement.pdf";
+      download.hidden=false;
+    }
     wrap.scrollIntoView({behavior:"smooth",block:"nearest"});
   }
   $("goalDemoCertificate")?.addEventListener("click",async()=>{

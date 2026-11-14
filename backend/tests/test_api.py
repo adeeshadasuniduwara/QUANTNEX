@@ -392,6 +392,56 @@ def test_lowering_goal_target_to_existing_savings_marks_achieved_and_certificate
     assert verification.json()["verified"] is False
 
 
+def test_economic_calendar_without_finnhub_key_is_explicitly_unconfigured(monkeypatch):
+    from app import phase07_engine
+    monkeypatch.setattr(phase07_engine, "FINNHUB_API_KEY", "")
+    response = TestClient(app).get("/api/v1/intelligence/news")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["configured"] is False
+    assert payload["provider"] == "Finnhub"
+    assert payload["events"] == []
+    assert "FINNHUB_API_KEY" in payload["note"]
+
+
+def test_economic_calendar_invalid_provider_key_returns_actionable_502(monkeypatch):
+    from app import phase07_engine
+    monkeypatch.setattr(phase07_engine, "FINNHUB_API_KEY", "test-key")
+
+    async def provider_error(_client, _url, _params):
+        raise phase07_engine.IntelligenceDataError("Invalid Finnhub API key")
+
+    monkeypatch.setattr(phase07_engine, "_get_json", provider_error)
+    response = TestClient(app).get("/api/v1/intelligence/news")
+    assert response.status_code == 502
+    assert "FINNHUB_API_KEY" in response.json()["detail"]
+    assert "quota" in response.json()["detail"]
+
+
+def test_economic_calendar_filters_malformed_rows_and_clamps_horizon(monkeypatch):
+    from datetime import date
+    from app import phase07_engine
+    monkeypatch.setattr(phase07_engine, "FINNHUB_API_KEY", "test-key")
+    captured = {}
+
+    async def provider_rows(_client, _url, params):
+        captured.update(params)
+        return {"economicCalendar": [
+            None,
+            "not-an-event",
+            {"time": "2026-11-20T12:00:00Z", "event": "Later"},
+            {"time": "2026-11-15T12:00:00Z", "event": "Earlier"},
+        ]}
+
+    monkeypatch.setattr(phase07_engine, "_get_json", provider_rows)
+    response = TestClient(app).get("/api/v1/intelligence/news?days=999")
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload["events"]) == 2
+    assert [event["event"] for event in payload["events"]] == ["Earlier", "Later"]
+    assert (date.fromisoformat(captured["to"]) - date.fromisoformat(captured["from"])).days == 30
+
+
 def test_demo_certificate_preview_does_not_require_an_achieved_goal():
     client = TestClient(app)
     response = client.post("/api/v1/goals/demo-certificate", json={

@@ -103,7 +103,7 @@ def risk_snapshot(trades: list[Any], settings: dict, now: datetime | None = None
         "entry_allowed": not blocks,
         "blocks": blocks,
         "timezone": "UTC",
-        "note": "Risk guard uses persisted paper-ledger realized P&L; it is not a broker balance or prop-firm guarantee.",
+        "note": "Risk guard combines persisted paper-ledger realized P&L with current provider-marked unrealized P&L; it is not a broker balance or prop-firm guarantee.",
     }
 
 

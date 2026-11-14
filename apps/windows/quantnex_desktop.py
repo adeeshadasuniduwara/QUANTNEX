@@ -192,14 +192,39 @@ class TradeJournal:
         with sqlite3.connect(self.path) as db:
             db.execute("""CREATE TABLE IF NOT EXISTS trades(
                 id INTEGER PRIMARY KEY, created TEXT NOT NULL, symbol TEXT NOT NULL,
-                side TEXT NOT NULL, outcome TEXT NOT NULL, pnl REAL NOT NULL, notes TEXT NOT NULL)""")
+                side TEXT NOT NULL, outcome TEXT NOT NULL, pnl REAL NOT NULL, notes TEXT NOT NULL,
+                sync_status TEXT NOT NULL DEFAULT 'PENDING')""")
+            columns = {row[1] for row in db.execute("PRAGMA table_info(trades)")}
+            if "sync_status" not in columns:
+                # Old rows have unknown sync history; do not replay them into wallet P&L.
+                db.execute("ALTER TABLE trades ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'UNKNOWN'")
+
     def add(self, symbol, side, outcome, pnl, notes):
         with sqlite3.connect(self.path) as db:
-            db.execute("INSERT INTO trades(created,symbol,side,outcome,pnl,notes) VALUES(?,?,?,?,?,?)",
+            cursor = db.execute(
+                "INSERT INTO trades(created,symbol,side,outcome,pnl,notes,sync_status) VALUES(?,?,?,?,?,?, 'PENDING')",
                 (datetime.now().astimezone().isoformat(timespec="seconds"), symbol.upper(), side, outcome, pnl, notes))
+            return cursor.lastrowid
+
+    def mark_synced(self, local_id):
+        with sqlite3.connect(self.path) as db:
+            db.execute("UPDATE trades SET sync_status='SYNCED' WHERE id=?", (int(local_id),))
+
+    def pending(self):
+        with sqlite3.connect(self.path) as db:
+            return db.execute(
+                "SELECT id,symbol,side,outcome,pnl,notes FROM trades WHERE sync_status='PENDING' ORDER BY id ASC"
+            ).fetchall()
+
+    def unknown_sync_count(self):
+        with sqlite3.connect(self.path) as db:
+            return db.execute("SELECT COUNT(*) FROM trades WHERE sync_status='UNKNOWN'").fetchone()[0]
+
     def recent(self):
         with sqlite3.connect(self.path) as db:
-            return db.execute("SELECT created,symbol,side,outcome,pnl FROM trades ORDER BY id DESC LIMIT 100").fetchall()
+            return db.execute(
+                "SELECT created,symbol,side,outcome,pnl,sync_status FROM trades ORDER BY id DESC LIMIT 100"
+            ).fetchall()
 
 class App(tk.Tk):
     def __init__(self):

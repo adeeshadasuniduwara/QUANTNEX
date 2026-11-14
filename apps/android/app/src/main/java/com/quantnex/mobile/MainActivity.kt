@@ -58,6 +58,7 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = darkColorScheme(background=Bg, surface=Panel, primary=Accent, onPrimary=Bg, onSurface=Color.White)) {
                 QuantnexApp(
                     savedUrl = getSharedPreferences(PREFS, MODE_PRIVATE).getString("url", "") ?: "",
+                    journalPreferences = getSharedPreferences(PREFS, MODE_PRIVATE),
                     onSaveUrl = { getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("url", it).apply() },
                     onWebView = { webView = it },
                     onNavigate = { key -> webView?.evaluateJavascript("(function(){var a=document.querySelector('a[href=\\\"#$key\\\"]');if(a)a.click();else location.hash='#$key';})();", null) },
@@ -133,6 +134,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun QuantnexApp(
     savedUrl: String,
+    journalPreferences: SharedPreferences,
     onSaveUrl: (String) -> Unit,
     onWebView: (WebView) -> Unit,
     onNavigate: (String) -> Unit,
@@ -202,7 +204,7 @@ private fun QuantnexApp(
                 TextButton(onClick={ onUpdate(apk) }) { Text("UPDATE", color=Accent) }
             }
         }
-        if (url.isBlank() || active == "overview" || active == "tradingview") {
+        if (url.isBlank() || active == "overview" || active == "tradingview" || active == "journal") {
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (active) {
                     "overview" -> NativeDashboardScreen(
@@ -212,7 +214,7 @@ private fun QuantnexApp(
                     )
                     "tradingview" -> NativeChartScreen()
                     "trading-room" -> NativeFeaturePlaceholder("TRADING ROOM", "Live market discussion, market context and trading-room tools will be integrated in a later native phase.")
-                    "journal" -> NativeFeaturePlaceholder("TRADE JOURNAL", "Your local trade journal and wallet tools will be connected after the secure data-sync architecture is ready.")
+                    "journal" -> NativeJournalScreen(preferences = journalPreferences)
                     else -> NativeFeaturePlaceholder("MORE TOOLS", "Updates, settings, prop-firm challenges and the remaining QUANTNEX toolkit will be added progressively.")
                 }
             }

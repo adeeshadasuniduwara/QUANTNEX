@@ -2,7 +2,7 @@
 
 **A trading workspace for Android and Web.**
 
-QUANTNEX combines market charts, trading utilities, trade records, paper trading, risk tools and secure local integrations. The project is focused on two user-facing products: the responsive Web workspace and the native Android APK. There is no Windows desktop executable or installer. A Windows computer may be used as the local host for the Web workspace and its Backend API.
+QUANTNEX combines market charts, trading utilities, trade records, paper trading, risk tools and secure local integrations. The project is focused on two user-facing products: the responsive Web workspace and the native Android APK. The current source and build workflows do not produce a Windows desktop executable or installer. A Windows computer may be used as the local host for the Web workspace and its Backend API.
 
 ## Download
 

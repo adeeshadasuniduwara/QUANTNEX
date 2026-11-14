@@ -145,12 +145,11 @@ def stage_verified_release_exe(asset_url, checksum_url, destination, urlopen=Non
             advertised = headers.get("Content-Length")
             if advertised:
                 try:
-                    if int(advertised) > max_bytes:
-                        raise ValueError("Release EXE exceeds the 200 MB safety limit.")
-                except (TypeError, ValueError) as exc:
-                    if isinstance(exc, ValueError) and "safety limit" in str(exc):
-                        raise
+                    advertised_size = int(advertised)
+                except (TypeError, ValueError):
                     raise ValueError("Release EXE has an invalid Content-Length header.") from None
+                if advertised_size > max_bytes:
+                    raise ValueError("Release EXE exceeds the 200 MB safety limit.")
             while True:
                 chunk = response.read(1024 * 1024)
                 if not chunk:

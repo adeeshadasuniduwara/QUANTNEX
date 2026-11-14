@@ -36,8 +36,10 @@ goto end
 :backend
 echo.
 echo Starting QUANTNEX Backend API only...
+set "QUANTNEX_NO_PAUSE=1"
 call run_backend.bat
 set "APP_EXIT=%ERRORLEVEL%"
+set "QUANTNEX_NO_PAUSE="
 if not "%APP_EXIT%"=="0" goto failed
 goto end
 

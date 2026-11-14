@@ -24,7 +24,7 @@
 | QUANTNEX VIEW | First-party chart UI and candles/quote/analysis/backtest APIs | Implemented; provider-dependent | Test supported symbols/timeframes, empty/stale/provider errors, overlays and chart interactions |
 | Signal Lab / Signal Center | Signal settings, scan APIs and Web UI | Implemented; Update 010 adds finite risk-percent validation; rule-based confluence is not win probability | Exercise valid/invalid scans, non-finite risk settings, settings persistence and unavailable market feeds |
 | Market Intelligence / Order Flow / News | Market, order-book, signal and news APIs; UI panels | PARTIAL — crypto depth uses Binance; Update 006 adds read-only XAUUSD depth via MT5 when configured | Gold depth requires an enabled local MT5 terminal and a broker that exposes DOM; otherwise UI must show unavailable, never synthetic depth. Forex depth remains provider-dependent; news requires Finnhub key |
-| Paper Trading / Autopilot | Paper-trade CRUD, close, summary, paper-engine and worker routes | Implemented in code; simulation only | Exercise open/close, P&L, risk limits, restart persistence and worker stop/start |
+| Paper Trading / Autopilot | Paper-trade CRUD, close, summary, paper-engine and worker routes | Update 011 makes the status/risk dashboard include provider-marked floating P&L and blocks entries for unpriced open positions | Exercise open/close, realized/floating P&L, risk limits, restart persistence and worker stop/start; paper-only, no broker orders |
 | Risk Management / Portfolio | Position-size, guardian, stress, portfolio and smart-open routes | Implemented in code | Boundary tests, unsafe trade rejection and no real order side effects |
 | Strategy Laboratory | Replay, backtest, optimize, forward evaluation, research and walk-forward routes | Implemented in code | Test deterministic fixtures, invalid parameters, result persistence and empty history |
 | Performance Analytics | Intelligence and advanced performance routes | Implemented in code; ledger-derived estimates | Verify calculations, time boundaries, empty states and no unsupported performance claims |
@@ -129,3 +129,13 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - Added a trailing-drawdown scenario: after a new equity peak, a fall to the trailing floor must fail the virtual challenge while remaining above the daily-loss floor.
 - Existing MT5 REAL/CONTEST account rejection remains unchanged; real terminal testing is not performed in CI.
 - **Status:** PASS — Backend CI (Python 3.12/3.14, 178 tests each), Backend/Web CI, Web CI and Windows EXE build/artifact upload all passed for PR #117. Physical MT5 verification remains restricted to a user-authorized DEMO account and broker terminal.
+
+## Update 011 — Paper Autopilot floating-risk status
+
+- Audit found the background paper worker included floating P&L and unpriced-open-position blocks when deciding whether new entries were allowed, but the Paper Engine status endpoint called the same risk calculator without those values. The UI could therefore show a READY gate while the worker correctly blocked entries.
+- Extracted a shared asynchronous open-position risk snapshot that uses current provider quotes and the existing data-health gate.
+- Paper Engine status now includes floating P&L and marks any stale/unavailable/unpriced open position as unsafe; the risk gate blocks new automatic entries in that state.
+- Paper equity estimate now includes realized plus current unrealized P&L, so subsequent risk sizing uses the current estimated equity.
+- Updated the UI label to "Daily P&L incl. floating" to match the metric.
+- Added unit and API tests for floating loss, current equity estimate, daily loss blocking, unpriced-position blocking and quote-unavailable behavior.
+- **Status:** CI pending. All data is indicative paper-ledger/provider data only; no broker order is placed.

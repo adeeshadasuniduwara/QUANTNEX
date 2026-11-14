@@ -604,23 +604,65 @@ async def connect_telegram_bot(payload: TelegramConnectRequest, user: User = Dep
         raise HTTPException(status_code=422,detail="Use a numeric chat ID or @channel username.")
     try:
         async with httpx.AsyncClient(timeout=12) as client:
-            response=await client.get("https://api.telegram.org/bot"+payload.bot_token+"/getMe")
-            data=response.json()
-        if response.status_code>=400 or not data.get("ok"):
-            raise HTTPException(status_code=422,detail="Telegram rejected this bot token. Check BotFather token.")
-    except httpx.HTTPError:
-        raise HTTPException(status_code=502,detail="Could not reach Telegram to verify the bot.")
-    bot=data.get("result",{})
+            bot_response=await client.get("https://api.telegram.org/bot"+payload.bot_token+"/getMe")
+            bot_data=bot_response.json()
+            if bot_response.status_code>=400 or not isinstance(bot_data,dict) or not bot_data.get("ok"):
+                raise HTTPException(status_code=422,detail="Telegram rejected this bot token. Check the BotFather token.")
+            bot=bot_data.get("result",{})
+            chat_response=await client.get(
+                "https://api.telegram.org/bot"+payload.bot_token+"/getChat",
+                params={"chat_id":payload.chat_id.strip()},
+            )
+            chat_data=chat_response.json()
+            if chat_response.status_code>=400 or not isinstance(chat_data,dict) or not chat_data.get("ok"):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Telegram cannot resolve this destination. Send /start to your bot or add it to the intended group/channel, then check the chat ID.",
+                )
+            chat=chat_data.get("result",{})
+            if str(chat.get("id",""))==str(bot.get("id","")):
+                raise HTTPException(
+                    status_code=422,
+                    detail="This chat ID points to the bot itself. Use your private chat ID or the intended group/channel ID.",
+                )
+            chat_type=str(chat.get("type",""))
+            if chat_type in {"channel","group","supergroup"}:
+                member_response=await client.get(
+                    "https://api.telegram.org/bot"+payload.bot_token+"/getChatMember",
+                    params={"chat_id":chat.get("id"),"user_id":bot.get("id")},
+                )
+                member_data=member_response.json()
+                if member_response.status_code>=400 or not isinstance(member_data,dict) or not member_data.get("ok"):
+                    raise HTTPException(
+                        status_code=422,
+                        detail="Telegram could not verify the bot's membership in this group/channel. Add the bot and check its permissions.",
+                    )
+                member=member_data.get("result",{})
+                member_status=str(member.get("status",""))
+                if chat_type=="channel":
+                    if member_status not in {"administrator","creator"} or member.get("can_post_messages") is not True:
+                        raise HTTPException(status_code=422,detail="The bot must be a channel administrator with permission to post messages.")
+                elif member_status not in {"member","administrator","creator"} and not (
+                    member_status=="restricted" and member.get("can_send_messages") is True
+                ):
+                    raise HTTPException(status_code=422,detail="The bot is not allowed to send messages in this group.")
+            elif chat_type!="private":
+                raise HTTPException(status_code=422,detail="Choose a private chat, group, supergroup or channel as the Telegram destination.")
+    except HTTPException:
+        raise
+    except (httpx.HTTPError,ValueError):
+        raise HTTPException(status_code=502,detail="Could not verify the Telegram bot and destination. Check your connection and try again.")
     _save_preference(db,user.id,"telegram_bot_token_enc",encrypt_secret(payload.bot_token))
     _save_preference(db,user.id,"telegram_chat_id",payload.chat_id.strip())
     _save_preference(db,user.id,"telegram_bot_username",bot.get("username",""))
     _save_preference(db,user.id,"telegram_bot_display_name",payload.display_name.strip() or bot.get("first_name","QUANTNEX Bot"))
-    record_audit_event(db, "telegram.connected", {"bot_username": bot.get("username", "")})
+    record_audit_event(db, "telegram.connected", {"bot_username": bot.get("username", ""), "destination_type": chat_type})
     db.commit()
     event_hub.publish("integration.changed", "telegram", "connected", {"bot_username": bot.get("username", "")})
     return {"connected":True,"bot_username":bot.get("username"),"chat_id":payload.chat_id.strip(),
+            "destination_type":chat_type,"destination_title":chat.get("title") or chat.get("first_name"),
             "commands":["/help","/timeframes","/settf 5","/settrend 60","/setanalysis 1,5,15,30,60","/scan BTCUSDT","/scan ETHUSDT","/scan SOLUSDT","/scan XAUUSD","/status"],
-            "note":"The local API must remain running for bot commands and TP1/SL level alerts."}
+            "note":"The bot and destination were verified. The local API must remain running for bot commands and TP1/SL level alerts."}
 
 @app.get("/api/v1/telegram/status")
 def telegram_status(user: User = Depends(local_workspace), db: Session = Depends(get_db)):

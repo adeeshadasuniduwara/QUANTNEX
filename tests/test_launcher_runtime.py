@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import subprocess
+import io
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -46,6 +47,39 @@ class LauncherRuntimeTests(unittest.TestCase):
         self.assertIn("APP_EXIT", batch)
         self.assertIn("!ERRORLEVEL!", batch)
         self.assertNotIn("%ERRORLEVEL%", batch)
+
+    def test_run_checked_replays_child_output_for_diagnostics(self):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        completed = subprocess.CompletedProcess([], 0, stdout="pip output", stderr="pip warning")
+        with patch.object(launcher.subprocess, "run", return_value=completed):
+            with patch("sys.stdout", stdout), patch("sys.stderr", stderr):
+                launcher.run_checked(["python", "-m", "pip"], Path("."), "Install")
+        self.assertIn("pip output", stdout.getvalue())
+        self.assertIn("pip warning", stderr.getvalue())
+
+    def test_prepare_backend_repairs_a_partial_venv(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            backend = root / "backend"
+            backend.mkdir()
+            (backend / "requirements.txt").write_text("fastapi", encoding="utf-8")
+            venv = backend / ".venv"
+            venv.mkdir()
+            (venv / "partial-file").write_text("incomplete", encoding="utf-8")
+            interpreter = venv / "Scripts" / "python.exe"
+
+            def fake_run(command, cwd, label):
+                if label == "Create backend virtual environment":
+                    interpreter.parent.mkdir(parents=True, exist_ok=True)
+                    interpreter.write_bytes(b"test-interpreter")
+
+            with patch.object(launcher, "BACKEND", backend), \
+                 patch.object(launcher, "VENV_DIR", venv), \
+                 patch.object(launcher, "VENV_PYTHON", interpreter), \
+                 patch.object(launcher, "run_checked", side_effect=fake_run) as run:
+                self.assertEqual(launcher.prepare_backend(), interpreter)
+            self.assertFalse((venv / "partial-file").exists())
+            self.assertEqual(run.call_count, 3)
 
     def test_log_tee_writes_to_each_destination(self):
         class Sink:

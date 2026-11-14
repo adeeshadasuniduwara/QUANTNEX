@@ -58,24 +58,50 @@ def configure_logging() -> None:
 
 
 def run_checked(command: list[str], cwd: Path, label: str) -> None:
-    print(f"\n[SETUP] {label}", flush=True)
+    print(f"\\n[SETUP] {label}", flush=True)
     print("[COMMAND] " + subprocess.list2cmdline(command), flush=True)
     try:
-        result = subprocess.run(command, cwd=cwd, check=False)
+        # Replay child output through Tee so pip/venv/bootstrap diagnostics are
+        # captured in launcher.log as well as shown in the console.
+        result = subprocess.run(
+            command, cwd=cwd, check=False, capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+        )
     except OSError as exc:
         raise RuntimeError(f"{label} could not run: {exc}") from exc
+    if result.stdout:
+        print(result.stdout.rstrip(), flush=True)
+    if result.stderr:
+        print(result.stderr.rstrip(), file=sys.stderr, flush=True)
     if result.returncode:
-        raise RuntimeError(f"{label} failed with exit code {result.returncode}. See {LOG_FILE} for details.")
-
+        raise RuntimeError(
+            f"{label} failed with exit code {result.returncode}. "
+            f"Full command output is recorded in {LOG_FILE}."
+        )
 
 def prepare_backend() -> Path:
-    """Create an isolated backend environment and install its declared dependencies."""
-    if not VENV_PYTHON.exists():
+    """Create or repair an isolated backend environment and install dependencies."""
+    if sys.version_info < (3, 11):
+        raise RuntimeError(
+            f"Python 3.11 or newer is required; launcher selected {sys.version.split()[0]}. "
+            "Install Python 3.12 or 3.14 and retry."
+        )
+    if not BACKEND.is_dir():
+        raise RuntimeError(f"Backend source folder is missing: {BACKEND}")
+    if not (BACKEND / "requirements.txt").is_file():
+        raise RuntimeError(f"Backend dependency file is missing: {BACKEND / 'requirements.txt'}")
+
+    # A cancelled first install can leave a half-created venv. Rebuild only
+    # this generated environment folder; never touch user data or databases.
+    if VENV_DIR.exists() and not VENV_PYTHON.is_file():
+        print(f"[SETUP] Repairing incomplete virtual environment: {VENV_DIR}", flush=True)
+        shutil.rmtree(VENV_DIR)
+    if not VENV_PYTHON.is_file():
         run_checked([sys.executable, "-m", "venv", str(VENV_DIR)],
                     BACKEND, "Create backend virtual environment")
     if not VENV_PYTHON.is_file():
-        raise RuntimeError(f"Backend Python environment is incomplete: {VENV_PYTHON} is missing.")
-    print("\n[SETUP] Check backend dependencies (retry enabled; first run may take a few minutes)", flush=True)
+        raise RuntimeError(f"Python environment creation did not produce: {VENV_PYTHON}")
+    print("\\n[SETUP] Check backend dependencies (retry enabled; first run may take a few minutes)", flush=True)
     run_checked(
         [str(VENV_PYTHON), "-m", "pip", "install", "--disable-pip-version-check",
          "--retries", "3", "--timeout", "30", "-r", "requirements.txt"],
@@ -84,7 +110,6 @@ def prepare_backend() -> Path:
     run_checked([str(VENV_PYTHON), "bootstrap.py"], BACKEND,
                 "Run automatic configuration and startup diagnostics")
     return VENV_PYTHON
-
 
 def stream_output(name: str, process: subprocess.Popen) -> None:
     assert process.stdout is not None

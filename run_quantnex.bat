@@ -2,6 +2,8 @@
 setlocal EnableExtensions EnableDelayedExpansion
 title QUANTNEX Web + Backend Launcher
 cd /d "%~dp0"
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
 
 echo.
 echo  =========================================
@@ -22,12 +24,12 @@ echo.
 echo Starting QUANTNEX Web + Backend supervisor...
 where py >nul 2>nul
 if not errorlevel 1 (
-  py -3 run_quantnex_services.py
+  py -3 -u run_quantnex_services.py
   set "APP_EXIT=!ERRORLEVEL!"
 ) else (
   where python >nul 2>nul
   if errorlevel 1 goto python_missing
-  python run_quantnex_services.py
+  python -u run_quantnex_services.py
   set "APP_EXIT=!ERRORLEVEL!"
 )
 if not "%APP_EXIT%"=="0" goto failed
@@ -70,4 +72,9 @@ pause
 exit /b 1
 
 :end
+echo.
+echo QUANTNEX launcher process has ended with exit code %APP_EXIT%.
+echo If this was unexpected, send logs\launcher.log for diagnosis.
+echo This window will remain open until you press a key.
+pause
 endlocal

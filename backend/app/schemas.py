@@ -67,7 +67,7 @@ class AIChatResponse(BaseModel):
 
 class WalletTransactionCreate(BaseModel):
     transaction_type: str
-    amount: float = Field(gt=0, le=1000000000)
+    amount: float = Field(gt=0, le=1000000000, allow_inf_nan=False)
     description: str = Field(default="", max_length=240)
     @field_validator("transaction_type")
     @classmethod

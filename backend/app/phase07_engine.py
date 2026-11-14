@@ -215,6 +215,8 @@ async def get_economic_calendar(days: int=7) -> dict:
             {"from":start,"to":end,"token":FINNHUB_API_KEY})
     if not isinstance(data,dict):
         raise httpx.HTTPError("Finnhub returned an unexpected calendar response.")
+    if data.get("error"):
+        raise IntelligenceDataError(str(data.get("error")))
     events=data.get("economicCalendar",[])
     if not isinstance(events,list):
         events=[]

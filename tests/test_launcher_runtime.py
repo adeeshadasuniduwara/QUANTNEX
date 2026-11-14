@@ -37,6 +37,8 @@ class LauncherRuntimeTests(unittest.TestCase):
         self.assertNotIn("QUANTNEX.exe", batch)
         self.assertIn("pause", batch.lower())
         self.assertIn("APP_EXIT", batch)
+        self.assertIn("!ERRORLEVEL!", batch)
+        self.assertNotIn("%ERRORLEVEL%", batch)
 
     def test_log_tee_writes_to_each_destination(self):
         class Sink:

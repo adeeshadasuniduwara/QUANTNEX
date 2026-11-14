@@ -86,8 +86,7 @@ $("saveTrade").addEventListener("click",async()=>{
 });
 $("exportJournal").addEventListener("click",()=>{
   const rows=journalRowsCache;if(!rows.length){window.alert("There are no journal records to export yet.");return;}
-  const quote=value=>'"'+String(value??"").replaceAll('"','""')+'"';
-  const csv=[["Date","Symbol","Direction","Outcome","PnL","Notes"],...rows.map(t=>[t.date,t.symbol,t.direction,t.outcome,t.pnl,t.notes])].map(row=>row.map(quote).join(",")).join("\r\n");
+  const csv=window.QuantnexJournalExport.toCsv(rows);
   const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),link=document.createElement("a");link.href=url;link.download="quantnex-trading-journal.csv";link.click();URL.revokeObjectURL(url);
 });
 renderJournal();

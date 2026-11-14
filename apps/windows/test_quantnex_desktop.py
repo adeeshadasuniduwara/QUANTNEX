@@ -197,5 +197,15 @@ class WindowsUpdaterIntegrityTests(unittest.TestCase):
 
 
 
+
+class WindowsWalletValidationTests(unittest.TestCase):
+    def test_accepts_only_finite_positive_wallet_amounts_within_api_limit(self):
+        self.assertEqual(desktop.validate_wallet_amount("10.25"), 10.25)
+        for value in ("", "not-a-number", "0", "-1", "nan", "inf", "-inf", "1000000001"):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    desktop.validate_wallet_amount(value)
+
+
 if __name__ == "__main__":
     unittest.main()

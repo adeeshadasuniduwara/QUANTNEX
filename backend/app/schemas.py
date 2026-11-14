@@ -69,6 +69,7 @@ class WalletTransactionCreate(BaseModel):
     transaction_type: str
     amount: float = Field(gt=0, le=1000000000, allow_inf_nan=False)
     description: str = Field(default="", max_length=240)
+    client_ref: str | None = Field(default=None, min_length=16, max_length=64, pattern="^[A-Za-z0-9_-]+$")
     @field_validator("transaction_type")
     @classmethod
     def valid_transaction_type(cls, value):

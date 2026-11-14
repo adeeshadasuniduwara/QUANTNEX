@@ -91,4 +91,4 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - No order placement or position-management functions are used. Forex depth remains unsupported until a provider is configured.
 - Added tests for level normalization, ordering, subscription release, invalid limits, unsupported terminal capability, configured Gold routing and the API route.
 - Updated the Web status text to describe the configured provider rather than assuming Binance.
-- **Status:** CI pending. A real Gold DOM snapshot still requires the user's Windows MT5 terminal and a broker that exposes market depth for its Gold symbol.
+- **Status:** PASS — Backend CI (Python 3.12/3.14), Backend/Web CI, Web CI and Windows Build all passed for PR #113, including EXE build and artifact upload. A real Gold DOM snapshot still requires the user's Windows MT5 terminal and a broker that exposes market depth for its Gold symbol.

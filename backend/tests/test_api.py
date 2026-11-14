@@ -409,7 +409,7 @@ def test_economic_calendar_invalid_provider_key_returns_actionable_502(monkeypat
     monkeypatch.setattr(phase07_engine, "FINNHUB_API_KEY", "test-key")
 
     async def provider_error(_client, _url, _params):
-        raise phase07_engine.IntelligenceDataError("Invalid Finnhub API key")
+        return {"error": "Invalid Finnhub API key"}
 
     monkeypatch.setattr(phase07_engine, "_get_json", provider_error)
     response = TestClient(app).get("/api/v1/intelligence/news")

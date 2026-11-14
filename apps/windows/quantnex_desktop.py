@@ -1,5 +1,5 @@
 from __future__ import annotations
-import base64, hashlib, json, math, os, shutil, sqlite3, subprocess, sys, threading, urllib.error, urllib.request, webbrowser
+import base64, hashlib, json, math, os, shutil, sqlite3, subprocess, sys, threading, urllib.error, urllib.parse, urllib.request, webbrowser
 from datetime import datetime
 import uuid
 from pathlib import Path
@@ -88,6 +88,93 @@ def fetch_chart_data(symbol, urlopen=None):
     if not candles:
         raise RuntimeError("The selected provider returned no valid candles.")
     return candles[-60:], candles[-1]["close"], provider
+
+
+def is_trusted_release_asset_url(value):
+    try:
+        parsed = urllib.parse.urlparse(str(value))
+        return (
+            parsed.scheme.lower() == "https"
+            and parsed.hostname.lower() == "github.com"
+            and parsed.username is None
+            and parsed.password is None
+            and parsed.port in (None, 443)
+            and "/releases/download/" in parsed.path
+        )
+    except (TypeError, ValueError, AttributeError):
+        return False
+
+
+def expected_release_checksum(checksum_text, file_name):
+    for line in str(checksum_text).splitlines():
+        fields = line.strip().split()
+        if len(fields) < 2 or fields[1].lstrip("*") != file_name:
+            continue
+        digest = fields[0].lower()
+        if len(digest) == 64 and all(char in "0123456789abcdef" for char in digest):
+            return digest
+    return None
+
+
+def verify_release_file(path, checksum_text, file_name):
+    expected = expected_release_checksum(checksum_text, file_name)
+    if not expected:
+        return False
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest().lower() == expected
+
+
+def stage_verified_release_exe(asset_url, checksum_url, destination, urlopen=None,
+                               max_bytes=200 * 1024 * 1024, min_bytes=100000):
+    """Download to a temporary file and atomically stage only an exact SHA256 match."""
+    if not is_trusted_release_asset_url(asset_url) or not is_trusted_release_asset_url(checksum_url):
+        raise ValueError("Release EXE and checksum must use official HTTPS GitHub release asset URLs.")
+    opener = urlopen or urllib.request.urlopen
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    partial = destination.with_name(destination.name + ".part")
+    partial.unlink(missing_ok=True)
+    try:
+        request = urllib.request.Request(asset_url, headers={"User-Agent": "QUANTNEX-Desktop"})
+        total = 0
+        with opener(request, timeout=45) as response, partial.open("wb") as output:
+            headers = getattr(response, "headers", {}) or {}
+            advertised = headers.get("Content-Length")
+            if advertised:
+                try:
+                    if int(advertised) > max_bytes:
+                        raise ValueError("Release EXE exceeds the 200 MB safety limit.")
+                except (TypeError, ValueError) as exc:
+                    if isinstance(exc, ValueError) and "safety limit" in str(exc):
+                        raise
+                    raise ValueError("Release EXE has an invalid Content-Length header.") from None
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    raise ValueError("Release EXE exceeds the 200 MB safety limit.")
+                output.write(chunk)
+        if total < min_bytes:
+            raise ValueError("Downloaded EXE failed the minimum file-size check.")
+
+        checksum_request = urllib.request.Request(checksum_url, headers={"User-Agent": "QUANTNEX-Desktop"})
+        with opener(checksum_request, timeout=15) as response:
+            manifest = response.read(16385)
+        if len(manifest) > 16384:
+            raise ValueError("Release checksum manifest exceeds the 16 KB safety limit.")
+        checksum_text = manifest.decode("utf-8")
+        if not verify_release_file(partial, checksum_text, "QUANTNEX.exe"):
+            raise ValueError("Update SHA256 verification failed. The downloaded file was rejected.")
+        partial.replace(destination)
+        return destination
+    except Exception:
+        partial.unlink(missing_ok=True)
+        raise
 
 
 class TradeJournal:
@@ -574,21 +661,7 @@ class App(tk.Tk):
                 self._set_update_status("Version "+latest+" is available, but its EXE or SHA256 checksum is missing.")
                 return
             staged=app_data()/"updates"/"QUANTNEX.exe"
-            staged.parent.mkdir(parents=True,exist_ok=True)
-            download=urllib.request.Request(asset["browser_download_url"],headers={"User-Agent":"QUANTNEX-Desktop"})
-            with urllib.request.urlopen(download,timeout=45) as response, staged.open("wb") as output:
-                shutil.copyfileobj(response,output)
-            if staged.stat().st_size < 100000:
-                staged.unlink(missing_ok=True)
-                raise ValueError("Downloaded file failed the basic size check.")
-            checksum_req=urllib.request.Request(checksum_asset["browser_download_url"],headers={"User-Agent":"QUANTNEX-Desktop"})
-            with urllib.request.urlopen(checksum_req,timeout=15) as response:
-                checksum_text=response.read().decode("utf-8")
-            expected=next((line.split()[0].lower() for line in checksum_text.splitlines() if "quantnex.exe" in line.lower()),"")
-            actual=hashlib.sha256(staged.read_bytes()).hexdigest().lower()
-            if not expected or actual != expected:
-                staged.unlink(missing_ok=True)
-                raise ValueError("Update SHA256 verification failed. The downloaded file was rejected.")
+            stage_verified_release_exe(asset["browser_download_url"],checksum_asset["browser_download_url"],staged)
             self.staged_update=staged
             self.after(0,lambda:self.install_button.configure(text="Install "+latest+" & restart"))
             self.after(0,lambda:self.install_button.pack(anchor="w",pady=(10,0)))

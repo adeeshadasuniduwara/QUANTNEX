@@ -74,6 +74,23 @@ class AutomaticUpdateTests(unittest.TestCase):
         self.assertEqual(result["latest"], "main@" + latest_sha[:7])
         self.assertTrue(result["update_available"])
 
+
+    def test_web_updater_reads_full_source_marker_for_zip_installs(self):
+        import importlib.util
+        module_path = ROOT / "apps" / "web" / "quantnex_local_server.py"
+        spec = importlib.util.spec_from_file_location("quantnex_installed_revision_test", module_path)
+        updater = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(updater)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            web_marker = root / "web-version.json"
+            source_marker = root / "source-version.json"
+            source_sha = "d" * 40
+            source_marker.write_text(json.dumps({"commit_sha": source_sha}), encoding="utf-8")
+            with patch.object(updater, "VERSION_FILE", web_marker), \
+                 patch.object(updater, "SOURCE_STATE_FILE", source_marker):
+                self.assertEqual(updater.installed_revision(), source_sha)
+
     def test_manual_check_request_is_atomically_queued_for_supervisor(self):
         import importlib.util
         module_path = ROOT / "apps" / "web" / "quantnex_local_server.py"

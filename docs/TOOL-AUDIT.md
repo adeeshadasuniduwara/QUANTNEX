@@ -201,3 +201,12 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - Preserve the existing ZIP extraction limits (20 MB per file, 80 MB total, 1,500 files), path traversal checks and backup/rollback behavior.
 - Added unit tests for advertised oversize, streaming oversize, invalid length, empty archive, valid archive and traversal/Windows path syntax.
 - **Status:** PASS — Web CI, Backend CI (Python 3.12/3.14), Backend/Web CI, Windows backend tests and Windows EXE build/artifact upload all passed for PR #127. Full updater install/rollback/reload remains a packaged Windows device verification item.
+
+
+## Sidebar duplicate-icon hotfix — 2026-11-14
+
+- User reported that every item in the left navigation appeared with two icons.
+- Root cause hardening: the static HTML still carried legacy Unicode glyphs inside each navigation link while the workspace enhancement replaces link contents with an SVG icon and a label. Remove the legacy glyph markup so even a cached/failed enhancement cannot display a second icon; bump both the stylesheet and script cache keys so clients fetch the current one-icon renderer.
+- Correct the label CSS so the global legacy `nav-link span` fixed icon width does not constrain the generated text label.
+- Add regression assertions for absence of legacy icon spans and cache invalidation.
+- **Status:** Pending CI and merge. This is a source-level regression fix; visual confirmation in the user's browser still requires loading the updated build.

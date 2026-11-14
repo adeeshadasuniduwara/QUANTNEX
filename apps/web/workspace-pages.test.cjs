@@ -60,8 +60,8 @@ console.log("QUANTNEX VIEW checks passed: local candles, signal plan levels, str
 
 const polish = fs.readFileSync("apps/web/workspace-polish.js", "utf8");
 const polishCss = fs.readFileSync("apps/web/workspace-polish.css", "utf8");
-assert.ok(html.includes('href="workspace-polish.css?v=20261113-sidebar1"'), "Professional workspace stylesheet must load");
-assert.ok(html.includes('src="workspace-polish.js?v=20261113-sidebar1"'), "Professional navigation script must load");
+assert.ok(html.includes('href="workspace-polish.css?v=20261114-single-icon2"'), "Professional workspace stylesheet must load");
+assert.ok(html.includes('src="workspace-polish.js?v=20261114-single-icon2"'), "Professional navigation script must load");
 assert.match(polish, /qxNavSearch/, "Sidebar tool search must be available");
 assert.match(polish, /aria-expanded/, "Sidebar groups must be keyboard-accessible toggles");
 assert.match(polish, /createElementNS/, "Navigation icons must use consistent SVG artwork");

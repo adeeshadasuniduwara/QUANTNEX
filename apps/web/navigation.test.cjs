@@ -23,5 +23,12 @@ assert.match(polish, /sidebar\.classList\.toggle\("is-collapsed"/, "Sidebar cont
 assert.match(polish, /a\.replaceChildren\(icon,text\)/, "Each navigation item must contain exactly one icon and one label.");
 assert.match(polishCss, /\.sidebar\.is-collapsed~\.main/, "Collapsed sidebar must expand the main workspace width.");
 assert.match(polishCss, /max-width:none/, "Collapsed workspace must use the available full width.");
-assert.match(html, /workspace-polish\.js\?v=20261113-sidebar1/, "Navigation script cache must refresh for the new sidebar.");
+assert.match(html, /workspace-polish\.js\?v=20261114-single-icon2/, "Navigation script cache must refresh for the new sidebar.");
 console.log("QUANTNEX collapsible sidebar and full-width workspace checks passed.");
+
+const legacyGlyphLinks = [...html.matchAll(/<a class="nav-link[^"]*" href="#[^"]+"><span>/g)];
+assert.equal(legacyGlyphLinks.length, 0, "Static navigation must not retain legacy glyph icons beside generated SVG icons.");
+assert.match(html, /workspace-polish\.js\?v=20261114-single-icon2/, "Single-icon navigation fix must invalidate cached sidebar script.");
+assert.match(polishCss, /\.qx-nav-label\{width:auto;text-align:left;/, "Navigation labels must not inherit the legacy fixed-width icon styling.");
+assert.match(html, /workspace-polish\.css\?v=20261114-single-icon2/, "Sidebar stylesheet cache must refresh for the corrected label sizing.");
+console.log("Sidebar regression checks passed: no legacy glyphs, one generated SVG icon and refreshed assets.");

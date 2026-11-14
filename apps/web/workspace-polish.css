@@ -103,7 +103,7 @@ td{font-size:10px}
 .nav-link{font-size:10.5px;gap:8px}
 .qx-nav-icon{flex-basis:17px;width:17px;height:17px}
 .qx-nav-icon svg{width:15px;height:15px;stroke-width:1.55}
-.qx-nav-label{font-size:10.5px;line-height:1.25}
+.qx-nav-label{width:auto;text-align:left;font-size:10.5px;line-height:1.25}
 @media(max-width:720px){
  .sidebar:not(.is-collapsed){width:238px!important;z-index:20;box-shadow:12px 0 35px #0009}
  .sidebar:not(.is-collapsed)~.main{margin-left:68px;width:calc(100% - 68px)}

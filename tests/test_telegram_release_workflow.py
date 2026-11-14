@@ -30,6 +30,14 @@ class TelegramReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("after sending /start to the bot", self.workflow)
         self.assertNotIn('print(token)', self.workflow)
 
+    def test_group_and_channel_destinations_require_verified_bot_permissions(self):
+        self.assertIn('telegram_api("getChatMember"', self.workflow)
+        self.assertIn('"user_id": int(bot_id)', self.workflow)
+        self.assertIn('member.get("can_post_messages") is True', self.workflow)
+        self.assertIn('member.get("can_send_messages") is True', self.workflow)
+        self.assertIn("The bot must be a channel administrator with Post Messages permission.", self.workflow)
+        self.assertIn("The bot is not allowed to send messages in this group.", self.workflow)
+
     def test_source_update_link_is_not_mislabeled_as_a_release(self):
         self.assertIn('link_label = "View source update"', self.workflow)
         self.assertIn('link_label = "Open release &amp; downloads"', self.workflow)

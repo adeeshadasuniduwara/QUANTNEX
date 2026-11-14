@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.Build
 import android.content.pm.PackageManager
 import android.webkit.*
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
@@ -63,7 +64,7 @@ class MainActivity : ComponentActivity() {
                     onWebView = { webView = it },
                     onNavigate = { key -> webView?.evaluateJavascript("(function(){var a=document.querySelector('a[href=\\\"#$key\\\"]');if(a)a.click();else location.hash='#$key';})();", null) },
                     onReload = { webView?.reload() },
-                    onUpdate = { url -> downloadApk(url) },
+                    onUpdate = { asset -> downloadApk(asset) },
                     checkUpdate = { fetchRelease() },
                     lastNotifiedTag = getSharedPreferences(PREFS, MODE_PRIVATE).getString(UPDATE_PREF, "") ?: "",
                     installedVersion = packageManager.getPackageInfo(packageName, 0).versionName ?: "0",
@@ -107,11 +108,17 @@ class MainActivity : ComponentActivity() {
             .build()
         (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(7303, notification)
     }
-    private fun downloadApk(url: String) {
+    private fun downloadApk(asset: AndroidApkReleaseAsset) {
+        if (!AndroidReleaseVerifier.isTrustedReleaseAssetUrl(asset.downloadUrl) ||
+            !AndroidReleaseVerifier.isTrustedReleaseAssetUrl(asset.checksumUrl)
+        ) {
+            Toast.makeText(this, "Update blocked: untrusted download source.", Toast.LENGTH_LONG).show()
+            return
+        }
         try {
-            val request = DownloadManager.Request(Uri.parse(url))
+            val request = DownloadManager.Request(Uri.parse(asset.downloadUrl))
                 .setTitle("QUANTNEX Android update")
-                .setDescription("Downloading the latest QUANTNEX APK")
+                .setDescription("Downloading and verifying the latest QUANTNEX APK")
                 .setMimeType("application/vnd.android.package-archive")
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 .setDestinationInExternalFilesDir(this, android.os.Environment.DIRECTORY_DOWNLOADS, "QUANTNEX-update.apk")
@@ -121,13 +128,67 @@ class MainActivity : ComponentActivity() {
                 override fun onReceive(context: Context, intent: Intent) {
                     if (intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L) != id) return
                     unregisterReceiver(this)
-                    val apk = manager.getUriForDownloadedFile(id) ?: return
-                    startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(apk, "application/vnd.android.package-archive").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                    val successful = manager.query(DownloadManager.Query().setFilterById(id)).use { cursor ->
+                        cursor.moveToFirst() &&
+                            cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) == DownloadManager.STATUS_SUCCESSFUL
+                    }
+                    if (!successful) {
+                        manager.remove(id)
+                        Toast.makeText(this@MainActivity, "APK download failed. No update was installed.", Toast.LENGTH_LONG).show()
+                        return
+                    }
+                    val apk = manager.getUriForDownloadedFile(id)
+                    if (apk == null) {
+                        manager.remove(id)
+                        Toast.makeText(this@MainActivity, "Downloaded APK could not be opened.", Toast.LENGTH_LONG).show()
+                        return
+                    }
+                    Thread {
+                        val verified = try {
+                            val connection = URL(asset.checksumUrl).openConnection() as HttpURLConnection
+                            try {
+                                connection.connectTimeout = 10000
+                                connection.readTimeout = 10000
+                                connection.setRequestProperty("User-Agent", "QUANTNEX-Android")
+                                if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+                                    error("Checksum download failed.")
+                                }
+                                val checksumText = connection.inputStream.bufferedReader().use { it.readText() }
+                                require(checksumText.length <= 16384) { "Checksum file is too large." }
+                                val actual = contentResolver.openInputStream(apk)?.use {
+                                    AndroidReleaseVerifier.sha256(it)
+                                } ?: error("Downloaded APK is unavailable.")
+                                AndroidReleaseVerifier.verifySha256(actual, checksumText, asset.fileName)
+                            } finally {
+                                connection.disconnect()
+                            }
+                        } catch (_: Exception) {
+                            false
+                        }
+                        runOnUiThread {
+                            if (verified) {
+                                try {
+                                    startActivity(
+                                        Intent(Intent.ACTION_VIEW)
+                                            .setDataAndType(apk, "application/vnd.android.package-archive")
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    )
+                                } catch (_: Exception) {
+                                    Toast.makeText(this@MainActivity, "APK verified, but Android could not open the installer.", Toast.LENGTH_LONG).show()
+                                }
+                            } else {
+                                manager.remove(id)
+                                Toast.makeText(this@MainActivity, "APK checksum verification failed. Update was blocked.", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }.start()
                 }
             }
             if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), Context.RECEIVER_EXPORTED)
             else @Suppress("DEPRECATION") registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
-        } catch (_: Exception) { }
+        } catch (error: Exception) {
+            Toast.makeText(this, "Could not start QUANTNEX update: " + (error.message ?: "unknown error"), Toast.LENGTH_LONG).show()
+        }
     }
 }
 
@@ -139,7 +200,7 @@ private fun QuantnexApp(
     onWebView: (WebView) -> Unit,
     onNavigate: (String) -> Unit,
     onReload: () -> Unit,
-    onUpdate: (String) -> Unit,
+    onUpdate: (AndroidApkReleaseAsset) -> Unit,
     checkUpdate: suspend () -> JSONObject?,
     lastNotifiedTag: String,
     installedVersion: String,
@@ -158,7 +219,7 @@ private fun QuantnexApp(
     LaunchedEffect(Unit) {
         while (true) {
             val latest = withContext(Dispatchers.IO) { checkUpdate() }
-            if (latest != null && apkUrl(latest).isNotBlank()) {
+            if (latest != null && AndroidReleaseVerifier.findApkAsset(latest) != null) {
                 val tag = latest.optString("tag_name")
                 if (tag.isNotBlank()) {
                     if (notifiedTag.isBlank()) {
@@ -195,13 +256,13 @@ private fun QuantnexApp(
             IconButton(onClick={ editUrl=url; showSettings=true }) { Icon(Icons.Default.Settings, "Workspace settings", tint=Color.White) }
         }
         release?.let { data ->
-            val apk = apkUrl(data)
-            if (apk.isNotBlank()) Row(Modifier.fillMaxWidth().padding(horizontal=12.dp, vertical=4.dp).background(Color(0xFF16372F), RoundedCornerShape(12.dp)).padding(10.dp), verticalAlignment=Alignment.CenterVertically) {
+            val asset = AndroidReleaseVerifier.findApkAsset(data)
+            if (asset != null) Row(Modifier.fillMaxWidth().padding(horizontal=12.dp, vertical=4.dp).background(Color(0xFF16372F), RoundedCornerShape(12.dp)).padding(10.dp), verticalAlignment=Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("New QUANTNEX version: " + data.optString("tag_name"), color=Color.White, fontSize=12.sp, fontWeight=FontWeight.Bold)
-                    Text("Download and approve the Android update.", color=Color(0xFFB6D8CE), fontSize=10.sp)
+                    Text("Download, verify SHA256 and approve the Android update.", color=Color(0xFFB6D8CE), fontSize=10.sp)
                 }
-                TextButton(onClick={ onUpdate(apk) }) { Text("UPDATE", color=Accent) }
+                TextButton(onClick={ onUpdate(asset) }) { Text("UPDATE", color=Accent) }
             }
         }
         if (url.isBlank() || active == "overview" || active == "tradingview" || active == "journal") {
@@ -261,13 +322,14 @@ private fun QuantnexApp(
     }
     if (showUpdatePopup && release != null) {
         val updateData = release!!
+        val updateAsset = AndroidReleaseVerifier.findApkAsset(updateData)
         AlertDialog(
             onDismissRequest = { showUpdatePopup = false },
             containerColor = Panel,
             title = { Text("New update released!", color = Color.White, fontWeight = FontWeight.Bold) },
-            text = { Text("QUANTNEX " + updateData.optString("tag_name") + " is available. Download the latest Android update now?", color = Muted) },
+            text = { Text("QUANTNEX " + updateData.optString("tag_name") + " is available. The APK checksum will be verified before Android's installer opens.", color = Muted) },
             confirmButton = {
-                TextButton(onClick = { showUpdatePopup = false; onUpdate(apkUrl(updateData)) }) {
+                if (updateAsset != null) TextButton(onClick = { showUpdatePopup = false; onUpdate(updateAsset) }) {
                     Text("DOWNLOAD NOW", color = Accent, fontWeight = FontWeight.Bold)
                 }
             },
@@ -283,11 +345,3 @@ private fun QuantnexApp(
     )
 }
 
-private fun apkUrl(release: JSONObject): String {
-    val assets=release.optJSONArray("assets") ?: return ""
-    for(i in 0 until assets.length()) {
-        val a=assets.optJSONObject(i) ?: continue
-        if(a.optString("name").endsWith(".apk", true)) return a.optString("browser_download_url")
-    }
-    return ""
-}

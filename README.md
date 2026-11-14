@@ -6,7 +6,7 @@ QUANTNEX combines market charts, trading utilities, trade records, paper trading
 
 ## Download
 
-- **Android APK:** [Download the latest signed QUANTNEX APK](https://github.com/adeeshadasuniduwara/QUANTNEX/releases/latest/download/QUANTNEX-Android.apk)
+- **Android APK:** [Open GitHub Releases](https://github.com/adeeshadasuniduwara/QUANTNEX/releases) and download `QUANTNEX-Android.apk` from the latest signed Android release. The previous v0.6.0 release predates the Android-only release pipeline.
 - **Release notes and SHA256:** [Latest GitHub Release](https://github.com/adeeshadasuniduwara/QUANTNEX/releases/latest)
 - **Web workspace:** Run the local Web + Backend launcher as described below, or host the Web workspace on an HTTPS origin reachable by the Android phone.
 

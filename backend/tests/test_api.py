@@ -304,6 +304,81 @@ def test_chart_candle_endpoint_reports_source_freshness(monkeypatch):
 
 
 
+def test_goal_target_update_rejects_nan_and_does_not_mutate_goal():
+    client = TestClient(app)
+    created = client.post("/api/v1/goals", json={
+        "title": "Finite target validation",
+        "target_amount": 100,
+        "initial_amount": 0,
+        "currency": "USD",
+    })
+    assert created.status_code == 200
+    goal_id = created.json()["id"]
+    response = client.put(
+        f"/api/v1/goals/{goal_id}",
+        content=json.dumps({"target_amount": float("nan")}, allow_nan=True),
+        headers={"Content-Type": "application/json"},
+    )
+    assert response.status_code == 422
+    goal = next(item for item in client.get("/api/v1/goals").json()["goals"] if item["id"] == goal_id)
+    assert goal["target_amount"] == 100
+    assert goal["saved_amount"] == 0
+
+
+def test_goal_contribution_rejects_nan_without_changing_saved_amount():
+    client = TestClient(app)
+    created = client.post("/api/v1/goals", json={
+        "title": "Finite contribution validation",
+        "target_amount": 100,
+        "initial_amount": 0,
+        "currency": "USD",
+    })
+    assert created.status_code == 200
+    goal_id = created.json()["id"]
+    response = client.post(
+        f"/api/v1/goals/{goal_id}/contributions",
+        content=json.dumps({"amount": float("nan"), "confirmed_available_real_funds": True}, allow_nan=True),
+        headers={"Content-Type": "application/json"},
+    )
+    assert response.status_code == 422
+    goal = next(item for item in client.get("/api/v1/goals").json()["goals"] if item["id"] == goal_id)
+    assert goal["saved_amount"] == 0
+
+
+def test_lowering_goal_target_to_existing_savings_marks_achieved_and_certificate_verifies():
+    client = TestClient(app)
+    created = client.post("/api/v1/goals", json={
+        "title": "Goal certificate state consistency",
+        "target_amount": 100,
+        "initial_amount": 20,
+        "confirmed_available_real_funds": True,
+        "currency": "USD",
+    })
+    assert created.status_code == 200
+    goal_id = created.json()["id"]
+    contribution = client.post(f"/api/v1/goals/{goal_id}/contributions", json={
+        "amount": 60, "confirmed_available_real_funds": True, "currency": "USD",
+    })
+    assert contribution.status_code == 200
+    assert contribution.json()["saved_amount"] == 80
+    assert contribution.json()["achieved"] is False
+
+    locked = client.post(f"/api/v1/goals/{goal_id}/certificate", json={"display_name": "Test Trader"})
+    assert locked.status_code == 409
+
+    updated = client.put(f"/api/v1/goals/{goal_id}", json={"target_amount": 75})
+    assert updated.status_code == 200
+    assert updated.json()["achieved"] is True
+    goal = next(item for item in client.get("/api/v1/goals").json()["goals"] if item["id"] == goal_id)
+    assert goal["achieved"] is True
+
+    certificate = client.post(f"/api/v1/goals/{goal_id}/certificate", json={"display_name": "Test Trader"})
+    assert certificate.status_code == 200
+    assert certificate.headers["content-type"].startswith("application/pdf")
+    assert certificate.content.startswith(b"%PDF")
+    assert client.get(f"/api/v1/goals/{goal_id}/certificate/verify").json()["verified"] is True
+
+
 def test_demo_certificate_preview_does_not_require_an_achieved_goal():
     client = TestClient(app)
     response = client.post("/api/v1/goals/demo-certificate", json={

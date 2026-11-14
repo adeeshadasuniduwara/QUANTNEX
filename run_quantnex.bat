@@ -1,71 +1,73 @@
 @echo off
-setlocal
-title QUANTNEX Launcher
+setlocal EnableExtensions EnableDelayedExpansion
+title QUANTNEX Web + Backend Launcher
 cd /d "%~dp0"
+
 echo.
 echo  =========================================
 echo             QUANTNEX WORKSPACE
 echo  =========================================
 echo.
-echo  [1] Start Windows Desktop + Auto Updates
-echo  [2] Start Web + Backend (ONE CMD)
-echo  [3] Start Desktop + Web + Backend (ONE CMD)
-echo  [4] Start Local Backend API only
-echo  [5] Open Web source folder (not a full launch)
-echo  [6] Start packaged Windows EXE
+echo  [1] Start Web + Backend + Auto Updates
+echo  [2] Start Backend API only
+echo  [3] Open Web source folder
 echo.
-choice /c 123456 /n /m "Select an option: "
-if errorlevel 6 goto packaged
-if errorlevel 5 goto folder
-if errorlevel 4 goto backend
-if errorlevel 3 goto both
-if errorlevel 2 goto web
-if errorlevel 1 goto desktop
-
-:desktop
-where py >nul 2>nul
-if not errorlevel 1 (
-  py run_quantnex_services.py --desktop
-  goto end
-)
-python run_quantnex_services.py --desktop
-goto end
-
-:packaged
-if exist "dist\QUANTNEX.exe" (
-  start "" "dist\QUANTNEX.exe"
-) else (
-  echo Packaged EXE not found. Run option 1 to start the source version.
-  pause
-)
-goto end
+choice /c 123 /n /m "Select an option: "
+if errorlevel 3 goto folder
+if errorlevel 2 goto backend
+if errorlevel 1 goto web
 
 :web
+echo.
+echo Starting QUANTNEX Web + Backend supervisor...
 where py >nul 2>nul
 if not errorlevel 1 (
-  py run_quantnex_services.py
+  py -3 run_quantnex_services.py
+  set "APP_EXIT=!ERRORLEVEL!"
 ) else (
+  where python >nul 2>nul
+  if errorlevel 1 goto python_missing
   python run_quantnex_services.py
+  set "APP_EXIT=!ERRORLEVEL!"
 )
-goto end
-
-:both
-where py >nul 2>nul
-if not errorlevel 1 (
-  py run_quantnex_services.py --desktop
-) else (
-  python run_quantnex_services.py --desktop
-)
+if not "%APP_EXIT%"=="0" goto failed
 goto end
 
 :backend
+echo.
+echo Starting QUANTNEX Backend API only...
+set "QUANTNEX_NO_PAUSE=1"
 call run_backend.bat
+set "APP_EXIT=!ERRORLEVEL!"
+set "QUANTNEX_NO_PAUSE="
+if not "%APP_EXIT%"=="0" goto failed
 goto end
 
 :folder
-echo This opens source files only. For live feeds and full automatic updates, choose option 2 or 3.
+echo.
+echo This opens source files only. It does not start the API or live feeds.
 start "" "%~dp0apps\web"
 goto end
+
+:python_missing
+echo.
+echo ERROR: Python 3.11 or newer was not found.
+echo Install Python from https://www.python.org/downloads/ and enable Add Python to PATH.
+goto failed
+
+:failed
+echo.
+echo =========================================
+echo QUANTNEX did not start successfully.
+echo The error is shown above.
+echo =========================================
+echo.
+echo If the full launcher started, diagnostic log:
+echo %~dp0logs\launcher.log
+echo.
+echo This window will stay open. Copy the error above before closing it.
+pause
+exit /b 1
 
 :end
 endlocal

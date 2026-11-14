@@ -6,10 +6,12 @@ on:
     paths:
       - "apps/android/**"
       - ".github/workflows/android-build.yml"
+      - ".github/workflows/release.yml"
   pull_request:
     paths:
       - "apps/android/**"
       - ".github/workflows/android-build.yml"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
 
 permissions:

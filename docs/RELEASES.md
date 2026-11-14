@@ -1,29 +1,41 @@
-# QUANTNEX Windows Releases
+# QUANTNEX Android Releases
 
-## First release
+QUANTNEX publishes Android APK releases only. The release workflow does not build, attach or publish Windows executables.
 
-The Windows app checks the GitHub Releases API for the latest published release. A normal commit, pull request, Actions build artifact, or source ZIP is not a published release.
+## One-time signing setup
 
-After the release workflow has reached the default branch:
+Every production APK must use the same private PKCS#12 signing keystore. If the signing key changes, Android will reject an in-place update and the user will have to uninstall the old app first.
+
+Configure these GitHub repository Actions secrets:
+- `ANDROID_KEYSTORE_BASE64`: base64-encoded PKCS#12 keystore.
+- `ANDROID_KEYSTORE_PASSWORD`: keystore password.
+- `ANDROID_KEY_ALIAS`: signing key alias.
+- `ANDROID_KEY_PASSWORD`: signing key password.
+
+Never commit the keystore or its passwords. If a signing key is lost, previously installed production APKs cannot be updated with a different key.
+
+## Publish a release
+
+After the signing secrets are configured and the Android build has passed:
 
 1. Open the repository's **Actions** tab.
-2. Select **QUANTNEX Publish Release**.
-3. Choose **Run workflow**.
-4. Enter the version **v0.6.0** for the first release.
-5. Run the workflow and wait for the Windows build and release-publishing steps to complete.
-6. Open **Releases** and confirm that the release contains both `QUANTNEX.exe` and `SHA256SUMS.txt`.
+2. Select **QUANTNEX Android Release**.
+3. Choose **Run workflow** and enter a version such as `v1.0.0`, or push a version tag beginning with `v`.
+4. Wait for the signed APK build and checksum verification to complete.
+5. Open **Releases** and confirm that the assets are `QUANTNEX-Android.apk` and `SHA256SUMS.txt`.
 
-The workflow can also publish automatically when a `v*` tag is pushed.
+The release workflow fails early if signing credentials are missing. It intentionally does not publish an unsigned or differently signed APK as a production update.
 
-## Update behavior
+## Android update behavior
 
-- Source checkout: the desktop app fast-forwards a clean Git working tree from `main`.
-- Source ZIP: the app downloads and validates the latest `main` source ZIP to the Downloads folder. It does not overwrite the running folder.
-- Packaged EXE: the app downloads the latest published `QUANTNEX.exe`, checks its SHA256 against `SHA256SUMS.txt`, then offers installation and restart.
-- If no GitHub Release exists, the packaged EXE reports that no release is available. This is expected until the first versioned release is published.
+- The app checks GitHub's latest release on launch and every five minutes while its workspace is active.
+- An update is offered only when the release contains an APK asset and `SHA256SUMS.txt`.
+- The app verifies the SHA-256 digest for the exact APK filename before opening Android's package installer.
+- Android requires the user to approve installation. Ordinary apps cannot silently self-install.
+- If the checksum is missing or invalid, the download fails, or the signature is incompatible, installation must not proceed.
 
 ## Telegram announcements
 
-Telegram announcements are optional. Configure the repository Actions secrets `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`. The bot must be an administrator of the target channel with permission to post messages. If either secret is absent, the release still publishes and the Telegram step skips safely.
+Telegram announcements are optional. Configure `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` Actions secrets if the release should be announced. The bot must be allowed to post in the target chat/channel.
 
-Never put bot tokens or API credentials in source files, commits, issues, or chat messages. If a token was exposed, revoke it with BotFather and create a replacement before configuring the repository secret.
+Never put bot tokens, API credentials or signing keys in source files, commits, issues or chat messages.

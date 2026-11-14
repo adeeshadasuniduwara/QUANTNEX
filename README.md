@@ -1,69 +1,77 @@
 # QUANTNEX
 
-**A modern trading workspace for Windows, Android and Web.**
+**A trading workspace for Android and Web.**
 
-QUANTNEX brings trading utilities, trade records and secure integrations together in one evolving application. The Web and Windows workspaces are designed for single-computer local use. QUANTNEX does not require a user login or cloud account.
+QUANTNEX combines market charts, trading utilities, trade records, paper trading, risk tools and secure local integrations. The project is focused on two user-facing products: the responsive Web workspace and the native Android APK. The current source and build workflows do not produce a Windows desktop executable or installer. A Windows computer may be used as the local host for the Web workspace and its Backend API.
 
-## Download QUANTNEX
+## Download
 
-### Windows EXE automatic updates
+- **Android APK:** [Open GitHub Releases](https://github.com/adeeshadasuniduwara/QUANTNEX/releases) and download `QUANTNEX-Android.apk` from the latest signed Android release. The previous v0.6.0 release predates the Android-only release pipeline.
+- **Release notes and SHA256:** [Latest GitHub Release](https://github.com/adeeshadasuniduwara/QUANTNEX/releases/latest)
+- **Web workspace:** Run the local Web + Backend launcher as described below, or host the Web workspace on an HTTPS origin reachable by the Android phone.
 
-Download the latest packaged build from [GitHub Releases](https://github.com/adeeshadasuniduwara/QUANTNEX/releases). The packaged Windows desktop app checks the official GitHub Releases channel at startup and every five minutes while it remains open. When a newer release is available, it downloads the published `QUANTNEX.exe` and verifies its SHA256 checksum before enabling **Install & restart**. The external Windows updater waits for QUANTNEX to close, backs up the currently installed EXE, replaces it, and relaunches the app. If replacement or launch fails, it attempts to restore the previous EXE. The local journal, device ID, wallet and settings are stored separately under `%LOCALAPPDATA%\QUANTNEX` and are not overwritten by the EXE update. Updates require a published GitHub Release containing `QUANTNEX.exe` and `SHA256SUMS.txt`; a source commit or CI artifact alone is not a published EXE update.
+Android updates are checked against the latest GitHub Release. The app verifies the APK SHA256 against the release checksum manifest before opening Android's package installer. Android requires the user to approve installation; silent self-install is not available. Production APKs must use the same private signing keystore for every release so installed copies can update in place.
 
-## Android
+## Products
 
-[Download QUANTNEX for Android (.APK)](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/43185377710)
+- **Web:** responsive browser workspace with QUANTNEX VIEW charts, live crypto/Gold market data, multi-timeframe signal analysis, browser-local journal, wallet, paper trading, risk tools, strategy research and Telegram controls.
+- **Android:** native app shell that loads the hosted QUANTNEX Web workspace and provides Android navigation, workspace settings and verified APK update checks.
+- **Backend:** loopback-only FastAPI service for the local Web workspace, journal, wallet ledger, preferences, optional AI gateway, XAU/USD analysis and Telegram bot command / price-level alert worker.
 
-Download app-debug.apk from the Artifacts section. This is an early Android starter build, not yet feature-complete.
+The Android app needs an HTTPS Web workspace URL reachable from the phone. A `127.0.0.1` URL on a Windows computer is not reachable from an Android phone. The Android app does not expose or tunnel the local-only Backend API. Personal browser journal data remains in that browser profile.
 
-CI build artifacts are temporary and retained for 30 days. Use GitHub Releases for stable public downloads.
+## Run the Web workspace on Windows
 
-## Applications
+1. Install Python 3.11 or newer and make sure the Python launcher (`py`) or `python` is available in PATH.
+2. Download or clone this repository.
+3. Run `run_quantnex.bat` from the repository root.
+4. Choose **1 — Start Web + Backend + Auto Updates**.
+5. Keep the Command Prompt window open while using QUANTNEX. The browser opens at [http://127.0.0.1:5500](http://127.0.0.1:5500).
 
-- Web: responsive local browser workspace with QUANTNEX VIEW first-party charts, live crypto/Gold market data, multi-timeframe signal analysis, local journal and wallet, paper trading, risk tools, strategy research and Telegram controls.
-- Windows: desktop workspace with position sizing, a local SQLite journal with visible pending/synced state and idempotent retry to the local backend, Binance BTCUSDT and optional MT5 XAUUSD candles, installation ID and a wallet shared with the local backend when it is running. No login or registration.
-- Android: native application starter.
-- Backend: loopback-only FastAPI service for the local journal, wallet ledger, preferences, optional AI gateway, Twelve Data XAU/USD analysis and Telegram bot command / price-level alert worker.
+The first start creates an isolated Python environment, installs Backend dependencies and runs a configuration/database preflight. This can take several minutes. Startup output is shown in the console and saved to `logs/launcher.log`. If startup fails, the launcher stays open and displays the error instead of silently closing. Do not open `apps/web/index.html` directly: API-backed features require the trusted local Web origin.
 
-## Run from source on Windows
+Launcher options:
+- **1:** Web + Backend with automatic source updates (recommended).
+- **2:** Backend API only.
+- **3:** Open Web source files; this does not start the services.
 
-From the repository root, run run_quantnex.bat. Option 1 starts the Windows Desktop source app; option 2 starts the local Backend API and Web updater together (recommended for the complete browser workspace); option 3 starts Desktop + Backend + Web together; option 4 starts the Backend API only; option 5 opens the Web source folder; option 6 starts the packaged EXE when present. Use option 2 or 3 for the full Web experience. Do not open apps/web/index.html directly: API-backed features require the trusted local origin served at http://127.0.0.1:5500.
+## Backend and local-data safety
 
-## Backend
+See [backend/README.md](backend/README.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The local API has no login, registration, password, JWT or remote account routes. It creates one local workspace identity internally so journal, wallet, signal settings and encrypted Telegram configuration can be stored consistently. On first startup, a SQLite backup is saved under `data/backups` before legacy account records are consolidated into that workspace and old password hashes are cleared.
 
-See backend/README.md and docs/ARCHITECTURE.md. The local API has no login, registration, password, JWT or remote account routes. It creates one local workspace identity internally so journal, wallet, signal settings and encrypted Telegram configuration can be stored consistently. On first startup, a SQLite backup is saved under data/backups before legacy account records are consolidated into that workspace and old password hashes are cleared. The API listens on 127.0.0.1 only and accepts the local Web origin; do not expose it to a network. Web browser journal entries remain in that browser profile; Windows journal entries remain in the local Windows data folder. Android is not connected to this local-only backend.
+The API listens on `127.0.0.1` only and accepts the local Web origin. Do not expose it to a LAN or the public internet. Never commit API keys, passwords, signing keys or broker tokens.
 
-## Current capability and safety
+## Market data and trading safety
 
-The calculator uses broker-specific pip values entered by the user. The web journal stores data in that browser; the Windows journal stores data locally. QUANTNEX VIEW renders first-party charts using TradingView Lightweight Charts (the rendering library, not a hosted TradingView widget). Crypto OHLC candles use Binance Spot, with Coinbase Exchange fallback for BTC/ETH/SOL on supported intervals. XAUUSD historical candles use the local read-only MT5 terminal when enabled or the Twelve Data OHLC feed configured server-side in backend/.env. If neither historical provider is available, the chart can still show a clearly labelled Gold-API indicative live quote; that quote is not OHLC history or an executable broker price. The rule-based 0–10 confluence score is not a win probability. EMA, MACD, RSI, ADX, ATR, swing structure, liquidity sweep and heuristic OB / Breaker / FVG / iFVG / premium-discount zones are included. The Reaper indicator is not active because its exact formula/source has not been confirmed. Telegram commands and approximate once-per-minute TP/SL price-level alerts require a connected bot, a configured market-data key and the local API to remain running. These alerts do not modify broker orders. The Windows Charts tab now offers BTCUSDT candles from Binance and XAUUSD candles from the local read-only MT5 API when the backend is running and MT5 is configured; the Gold TradingView button still opens the external OANDA:XAUUSD chart. The Windows installation ID is a random local identifier, not a login credential. Broker connections and automated order execution are not enabled. Never commit API keys, passwords, signing keys or broker tokens. QUANTNEX is configured for local single-computer use, not public deployment; do not expose its loopback API.
+QUANTNEX VIEW renders first-party charts using TradingView Lightweight Charts (the rendering library, not a hosted TradingView widget). Crypto OHLC candles use Binance Spot, with Coinbase Exchange fallback for BTC/ETH/SOL on supported intervals. XAUUSD historical candles use the optional local read-only MT5 terminal when enabled or the Twelve Data OHLC feed configured server-side in `backend/.env`. If neither historical provider is available, the chart can show a clearly labelled Gold-API indicative live quote; that quote is not OHLC history or an executable broker price.
 
-## GitHub source updates
+The Overview displays BTC/USD and XAU/USD spot estimates with provider fallbacks, plus indicative LKR/gram and LKR/8g conversions using a daily USD/LKR reference rate. The LKR conversion is not a jeweller's retail quote; purity, taxes and dealer premiums are excluded.
 
-When the Web workspace is started from run_quantnex.bat → **Start Web + Backend** (option 2) or **Start Desktop + Web + Backend** (option 3), run_quantnex_services.py supervises the full local source tree. It checks the official main branch at startup and every five minutes, downloads the archive pinned to the exact commit SHA, validates it, backs up changed source files, and atomically installs the update. The Updates panel reports the actual installed and latest main@SHA revisions; **Check for updates** can request an immediate supervisor check. If an update is applied, the supervisor restarts the services, confirms startup health, and the browser refreshes. Failed startup checks trigger automatic source rollback. The updater preserves local data, .env files, Python virtual environments and other user data. If the local user has connected a Telegram bot, the updater sends a private update-installed notification through the existing encrypted local Telegram integration; no bot token is placed in GitHub or source code. Keep the single QUANTNEX CMD window open behind the browser. If apps/web/quantnex_local_server.py is launched standalone without the supervisor, its legacy Web-only updater updates only apps/web; use launcher option 2 or 3 for full-source updates.
+The rule-based 0–10 confluence score is not a win probability. EMA, MACD, RSI, ADX, ATR, swing structure, liquidity sweep and heuristic OB / Breaker / FVG / iFVG / premium-discount zones are included. Reaper is not active because its exact formula/source has not been confirmed. Telegram commands and approximate once-per-minute TP/SL price-level alerts require a connected bot, a configured market-data key and the local API to remain running. These alerts do not modify broker orders. Broker connections and automated order execution are not enabled.
+
+The local API can optionally read MT5 DEMO data on a supported Windows host when explicitly configured. This is a Backend data integration, not a Windows desktop application. MT5 DEMO monitoring is best-effort and does not guarantee broker-side loss limits.
+
+## Source updates
+
+When started with launcher option 1, `run_quantnex_services.py` supervises the local source tree. It checks the official `main` branch at startup and every five minutes, downloads the archive pinned to the exact commit SHA, validates it, backs up changed source files, and atomically installs the update. The Updates panel reports installed and latest `main@SHA` revisions; **Check for updates** can request an immediate supervisor check. If an update is applied, the supervisor restarts the services, confirms startup health and the browser refreshes. Failed startup checks trigger automatic source rollback.
+
+The updater preserves local data, `.env` files, Python virtual environments and other user data. If the local user has connected a Telegram bot, the updater can send a private update-installed notification through the existing encrypted local Telegram integration. Keep the single QUANTNEX Command Prompt window open behind the browser.
+
+The source updater updates the Web and Backend source. Android APK releases are separate: the Android app checks GitHub Releases, verifies the signed APK checksum and asks the user to approve installation.
 
 ## Shared Economic News (optional Cloudflare Worker)
 
-QUANTNEX can use one centrally hosted Finnhub economic-calendar feed for all installations. The read-only Worker lives in `services/shared-news`; its Finnhub key is stored as a Cloudflare Worker secret, never in the Web bundle or GitHub source. Deploy and connect it using [the Shared News Service guide](docs/SHARED-NEWS-SERVICE.md). Until the Worker is deployed and its public URL is configured in `apps/web/shared-news-config.js`, installations continue using their existing local Finnhub backend configuration. Wallet, journal, preferences and other personal workspace data remain local.
+QUANTNEX can use one centrally hosted Finnhub economic-calendar feed for all installations. The read-only Worker lives in `services/shared-news`; its Finnhub key is stored as a Cloudflare Worker secret, never in the Web bundle or GitHub source. Deploy and connect it using [the Shared News Service guide](docs/SHARED-NEWS-SERVICE.md). Until the Worker is deployed and its public URL is configured in `apps/web/shared-news-config.js`, installations continue using their existing local Finnhub Backend configuration. Wallet, journal and preferences remain local.
 
-## Telegram release announcements
+## Android release process
 
-QUANTNEX includes an optional GitHub Actions workflow that announces published releases in an official Telegram channel. Create a bot with @BotFather, add it to the channel as an administrator with Post Messages permission, then configure repository Actions secrets TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID. See docs/TELEGRAM-RELEASE-NOTIFICATIONS.md.
+The Android release workflow publishes only `QUANTNEX-Android.apk` and `SHA256SUMS.txt`. It does not build or publish Windows executables. Configure these repository Actions secrets before publishing: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. The same private PKCS#12 keystore must be retained for every production release. See [docs/RELEASES.md](docs/RELEASES.md).
 
-## Live market overview, Signal Lab and Telegram Auto Signals
+Telegram release announcements are optional. Configure `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` Actions secrets if announcements are wanted.
 
-- The Overview displays BTC/USD and XAU/USD spot estimates from keyless Gold-API feeds with provider fallbacks, plus indicative LKR/gram and LKR/8g conversions using a daily USD/LKR reference rate. The LKR conversion is a spot-price estimate, not a local jeweller's retail quote; purity, taxes and dealer premiums are excluded.
-- QUANTNEX VIEW is a dedicated first-party chart workspace with BTCUSDT/ETHUSDT/SOLUSDT and XAUUSD selection, multiple chart types, intervals, volume and local drawing tools.
-- The Signal Lab retains XAUUSD multi-timeframe analysis and adds directional quality gates for primary/trend EMA bias, selected-timeframe consensus, MACD direction, ADX strength and RSI range. Scores remain rule-count confluence, not win probability.
-- The local user creates a Telegram bot through @BotFather, then connects its token and destination chat to the QUANTNEX workspace. Tokens are encrypted in the local database using a key derived from QUANTNEX_SECRET_KEY.
-- Auto Signals are opt-in for the local workspace. When enabled, the local API scans XAUUSD at the selected interval (minimum 60 seconds), requires at least 8/10 confluence plus directional filters, and sends only a new primary-timeframe candle signal to the connected local bot. It does not place trades.
-- Start Web + Backend using `run_quantnex.bat` option 2 to launch both the local API and Web updater. Keep the single CMD window open behind the browser. Configure `TWELVE_DATA_API_KEY` in `backend/.env` for Gold, USD/LKR and signal analysis; BTC ticker uses Binance public market data.
-- The laptop must remain powered on, connected to the internet and running the QUANTNEX API for Auto Signals. A VPS can host the same API process for continuous operation. The browser itself does not need to stay open once Auto Signals are saved.
-- Reaper is not implemented because its exact formula/source has not been provided. There is no broker execution, automatic SL movement, or verified win-rate calculation.
+## Important limitations
 
-## Prop Firm Challenge Simulator
-
-- Practice evaluation rules using a local virtual account or optional Windows MT5 DEMO monitoring.
-- Configure profit target, daily maximum loss, maximum overall loss, minimum trading days, daily reset timezone and static or trailing drawdown.
-- MT5 mode accepts DEMO accounts only. On a rule breach the local guardian attempts to close open demo positions and locks the challenge; this is best-effort protection, not a broker-guaranteed loss limit.
-- Virtual mode records manually entered closed P&L and does not create orders.
-- Sidebar navigation supports grouped views and short fade transitions; reduced-motion preferences are respected.
+- Android currently hosts the Web workspace; it does not connect to the computer's loopback-only Backend.
+- The laptop/host must remain powered on, connected to the internet and running the QUANTNEX API for local Telegram Auto Signals.
+- No broker order placement or verified win-rate calculation is implemented.
+- QUANTNEX is designed for local single-computer use, not public Backend deployment. Do not expose the loopback API.

@@ -26,7 +26,7 @@ def test_user_data_and_secrets_are_never_updated():
         "data/quantnex.db",
         "backend/.venv/Lib/site-packages/example.py",
         "logs/app.log",
-        "dist/QUANTNEX.exe",
+        "dist/QUANTNEX-Android.apk",
         "../outside.py",
         "/absolute/path.py",
     ):

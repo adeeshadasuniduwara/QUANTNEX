@@ -10,7 +10,7 @@ Create a safe, lightweight starting point for QUANTNEX across Web, Android and W
 - [x] Responsive static web dashboard prototype
 - [x] Native Android Jetpack Compose starter screen
 - [x] Shared API/security contract
-- [ ] Windows desktop shell
+- [ ] Android native application shell
 - [ ] Automated build and test workflows
 - [ ] First signed Android APK release
 

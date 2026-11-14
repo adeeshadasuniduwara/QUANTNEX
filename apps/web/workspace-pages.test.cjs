@@ -91,6 +91,8 @@ assert.match(app, /apiRequest\("\/api\/v1\/journal\/import"/, "Legacy browser jo
 assert.match(app, /saveTrades\(journalRowsCache\)/, "The browser must retain a recoverable journal cache.");
 assert.match(app, /source_ref:row\.client_ref/, "Offline journal retries must use stable idempotency references.");
 assert.match(app, /window\.addEventListener\("online"/, "Offline journal rows must sync when the browser reconnects.");
+assert.match(app, /Recover and reconcile queued rows on every workspace startup/, "Offline journal recovery must run on initial workspace startup.");
+assert.match(app, /syncJournal\(\);\nasync function refreshWallet\(/, "Initial journal recovery must run without waiting for a reconnect event.");
 assert.ok(html.includes('id="journalStatus"'), "The journal must expose database synchronization status.");
 assert.ok(!html.includes("Records are stored in this browser only."), "Journal copy must not imply browser-only persistence.");
 console.log("Database-backed journal and legacy recovery checks passed.");

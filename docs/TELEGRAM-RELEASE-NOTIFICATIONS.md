@@ -29,6 +29,14 @@ In the QUANTNEX repository, open **Settings → Secrets and variables → Action
 
 The bot must be an administrator with permission to post in a channel. For a group, add the bot and make sure it can send messages.
 
+### Choose the correct destination
+
+- For a private chat, open your bot in Telegram and send `/start` first. Use your personal numeric chat ID, not the bot's own numeric ID.
+- For a channel, use its public `@channelusername` or private numeric chat ID. Add the bot as an administrator and grant **Post Messages** permission.
+- For a group/supergroup, add the bot and confirm it is allowed to send messages.
+- QUANTNEX's local Telegram connection now checks `getMe`, `getChat` and (for groups/channels) `getChatMember`. A destination that resolves to the bot itself or lacks posting permission is rejected before credentials are saved.
+- Never paste bot tokens into chat, screenshots or source files. Keep them only in the encrypted local integration or GitHub Actions secret store.
+
 ## 4. Test the connection
 
 Open **Actions → QUANTNEX Telegram Release Announcements → Run workflow** and run it on `main`. If both secrets are configured, the bot sends a test message. If not, the workflow safely skips.

@@ -234,6 +234,7 @@ class App(tk.Tk):
         self._app_icon = tk.PhotoImage(data=base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAABUUlEQVR42u2bvQ4DIQyDb+f9H5W53aobigiQOD/YElsP8He0AuI+D0VRFEVR1KZaax/PdqXpd+u9/1po4++JjppWnyHMSwyfAJk96wZAw/gMhOQZuHkL4yMQ0s/DACDMvyGEAaD1fV79oYQCQP6qS/pfBW8CwNL4bKzVF6AOAGn+35jSuajtFFeWJmLXJ5mP6lY5inm3s0Jm8wSgBSCreVMAGcyrAMj89s0AZDF/BQDzfQABJFj+plthxEHnegAWR+d0AE76LgNgt/+0ALQgpAagASE9gFMIJQCcQIACiAah5FZ4ZcyyZwHpuC4AokCQzC39jdBqkbTkneBJDbLMrfBuLbLUtbgrgOgQzAsjUWqDcADSVYA+LEGWf4QS+UkCxTQi45UQGaVFzFOkUTJC0v6gOUF0SswtQxwlJ+geoPZOiqZIjqOM8w8LFEVRFEXt6gvb1Kw0LPnuxQAAAABJRU5ErkJggg=="))
         self.iconphoto(True, self._app_icon)
         self.journal = TradeJournal()
+        self._journal_sync_running = False
         self.update_check_running = False
         self.update_timer_id = None
         self.staged_update = None
@@ -550,6 +551,8 @@ class App(tk.Tk):
         self._sync_pending_journal_trades()
 
     def _sync_pending_journal_trades(self):
+        if self._journal_sync_running:
+            return
         pending=self.journal.pending()
         unknown=self.journal.unknown_sync_count()
         if not pending:
@@ -559,6 +562,7 @@ class App(tk.Tk):
             self.journal_sync_status.configure(text=message)
             self._refresh()
             return
+        self._journal_sync_running=True
         base=self._api_base()
         self.journal_sync_status.configure(text=f"Syncing {len(pending)} pending local trade(s) to the QUANTNEX workspace…")
         def worker():
@@ -576,6 +580,7 @@ class App(tk.Tk):
                 except Exception as exc:
                     errors.append(str(exc))
             def finish():
+                self._journal_sync_running=False
                 self._refresh()
                 remaining=len(self.journal.pending())
                 message=f"Synced {synced} trade(s). {remaining} remain pending."

@@ -40,8 +40,8 @@ internal object AndroidReleaseVerifier {
 
     fun isTrustedReleaseAssetUrl(value: String): Boolean {
         val uri = try { URI(value) } catch (_: Exception) { return false }
-        return uri.scheme.equals("https", ignoreCase = true) &&
-            uri.host.equals("github.com", ignoreCase = true) &&
+        return uri.scheme?.equals("https", ignoreCase = true) == true &&
+            uri.host?.equals("github.com", ignoreCase = true) == true &&
             uri.userInfo == null && (uri.port == -1 || uri.port == 443)
     }
 

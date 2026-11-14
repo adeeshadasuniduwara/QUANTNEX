@@ -1,7 +1,7 @@
 """Resilient, cached public market overview feeds for QUANTNEX.
 
 BTC and XAU spot prices use Gold-API's keyless real-time endpoint first.
-BTC falls back to Binance; XAU falls back to Twelve Data when configured.
+BTC falls back through Binance, Coinbase Exchange and CoinGecko; XAU falls back to Twelve Data when configured.
 USD/LKR uses the keyless daily ExchangeRate-API feed, then Twelve Data.
 These are indicative prices, not executable quotes.
 """
@@ -18,6 +18,7 @@ from .config import TWELVE_DATA_API_KEY
 
 GOLD_API = "https://api.gold-api.com/price"
 BINANCE_API = "https://api.binance.com/api/v3/ticker/price"
+COINBASE_TICKER_API = "https://api.exchange.coinbase.com/products/BTC-USD/ticker"
 FX_API = "https://open.er-api.com/v6/latest/USD"
 CACHE_SECONDS = 25.0
 _FX_CACHE_SECONDS = 3600.0
@@ -87,17 +88,24 @@ async def _btc_price(client: httpx.AsyncClient) -> tuple[float | None, str]:
             return _store("btc", value), "Binance BTCUSDT fallback"
         except (httpx.HTTPError, KeyError, TypeError, ValueError):
             try:
-                payload = await _json(
-                    client,
-                    "https://api.coingecko.com/api/v3/simple/price",
-                    params={"ids": "bitcoin", "vs_currencies": "usd"},
-                )
-                value = float(payload["bitcoin"]["usd"])
+                payload = await _json(client, COINBASE_TICKER_API)
+                value = float(payload["price"])
                 if value <= 0:
-                    raise ValueError("Invalid CoinGecko BTC price.")
-                return _store("btc", value), "CoinGecko BTC/USD fallback"
+                    raise ValueError("Invalid Coinbase BTC price.")
+                return _store("btc", value), "Coinbase Exchange BTC-USD fallback"
             except (httpx.HTTPError, KeyError, TypeError, ValueError):
-                return None, "unavailable"
+                try:
+                    payload = await _json(
+                        client,
+                        "https://api.coingecko.com/api/v3/simple/price",
+                        params={"ids": "bitcoin", "vs_currencies": "usd"},
+                    )
+                    value = float(payload["bitcoin"]["usd"])
+                    if value <= 0:
+                        raise ValueError("Invalid CoinGecko BTC price.")
+                    return _store("btc", value), "CoinGecko BTC/USD fallback"
+                except (httpx.HTTPError, KeyError, TypeError, ValueError):
+                    return None, "unavailable"
 
 
 async def _gold_price(client: httpx.AsyncClient) -> tuple[float | None, str]:

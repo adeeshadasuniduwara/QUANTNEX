@@ -247,6 +247,33 @@ async function installLatestCommit(){
 modalInstallButton?.addEventListener("click",()=>installLatestCommit().catch(error=>showUpdateToast(error.message)));
 installButton?.addEventListener("click",()=>installLatestCommit().catch(error=>showUpdateToast(error.message)));
 
+let supervisorWatchTarget="";
+function watchSupervisorUpdate(target){
+  if(!target||supervisorWatchTarget===target)return;
+  supervisorWatchTarget=target;
+  const deadline=Date.now()+180000;
+  const poll=async()=>{
+    if(supervisorWatchTarget!==target)return;
+    if(Date.now()>deadline){supervisorWatchTarget="";return;}
+    try{
+      const response=await fetch("/__quantnex/check",{cache:"no-store"});
+      if(response.ok){
+        const state=await response.json();
+        if(state.managed_by_supervisor&&!state.update_available&&state.installed===state.latest){
+          supervisorWatchTarget="";
+          sessionStorage.setItem("quantnex.webUpdateComplete","1");
+          sessionStorage.setItem("quantnex.webUpdateVersion",state.latest||target);
+          sessionStorage.setItem("quantnex.webUpdateHeadline","Automatic full-source update");
+          window.location.replace(window.location.pathname+"?updated="+Date.now());
+          return;
+        }
+      }
+    }catch{}
+    window.setTimeout(poll,5000);
+  };
+  window.setTimeout(poll,5000);
+}
+
 async function checkLocalUpdate(options={}){
   if(updateChecking||updatePolling)return;
   updateChecking=true;
@@ -259,11 +286,25 @@ async function checkLocalUpdate(options={}){
     if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||"Local updater is not running.");}
     const result=await response.json();
     if(result.managed_by_supervisor){
-      $("webInstalledVersion").textContent=result.installed||"Supervisor managed";
-      releaseVersionLabel.textContent=result.latest||"Automatic source updates";
-      $("webUpdateDetails").hidden=true;
+      $("webInstalledVersion").textContent=result.installed||"Source revision unavailable";
+      releaseVersionLabel.textContent=result.latest||"GitHub main unavailable";
+      if(result.release_notes)releaseNotesLink.href=result.release_notes;
       if(installButton)installButton.hidden=true;
-      status.textContent=result.message||"Full source updates are handled by the QUANTNEX supervisor.";
+      if(result.update_available){
+        latestUpdateCommit=result.commit_sha||result.latest||"";
+        renderUpdateDetails(result,false);
+        watchSupervisorUpdate(latestUpdateCommit);
+        if(!silent)status.textContent="Update detected. Sending an immediate check to the QUANTNEX supervisor…";
+        const queued=await fetch("/__quantnex/check-now",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+        const receipt=await queued.json().catch(()=>({}));
+        if(!queued.ok&&queued.status!==409)throw new Error(receipt.error||"The supervisor could not accept the update check.");
+        if(!silent)status.textContent="Update detected ("+result.latest+"). The supervisor will install it and refresh this workspace after the safe restart.";
+        else status.textContent=result.message||"A source update is waiting for the supervisor's safe restart.";
+      }else{
+        latestUpdateCommit="";
+        $("webUpdateDetails").hidden=true;
+        status.textContent=result.message||"QUANTNEX source is up to date.";
+      }
       return;
     }
     $("webInstalledVersion").textContent=result.installed||"Unknown";
@@ -284,7 +325,10 @@ async function checkLocalUpdate(options={}){
       status.textContent="You are using the latest QUANTNEX version ("+result.latest+").";
     }
   }catch(error){
-    if(!silent)status.textContent="Update check failed safely: "+error.message;
+    if(!silent){
+      status.textContent="Update check failed safely: "+error.message+" · Start QUANTNEX with run_quantnex.bat (Web + Backend) and retry.";
+      showUpdateToast("Update check failed: "+error.message);
+    }
   }finally{
     updateChecking=false;
     progress.hidden=true;

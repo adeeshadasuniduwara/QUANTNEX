@@ -8,6 +8,31 @@ def test_gold_spot_conversion_to_lkr_per_gram():
     assert round(value, 2) == round(3000.0 / 31.1034768 * 300.0, 2)
 
 
+
+def test_bitcoin_overview_falls_back_to_coinbase_when_gold_api_and_binance_fail(monkeypatch):
+    import asyncio
+    import httpx
+    import app.market_data as market_data
+
+    async def gold_unavailable(_client, _symbol):
+        raise httpx.ConnectError("Gold-API unavailable")
+    async def json_provider(_client, url, **_kwargs):
+        if url == market_data.BINANCE_API:
+            raise httpx.ConnectError("Binance unavailable")
+        if url == market_data.COINBASE_TICKER_API:
+            return {"price": "67000.25"}
+        raise AssertionError("Unexpected provider: " + url)
+
+    monkeypatch.setattr(market_data, "_gold_api_price", gold_unavailable)
+    monkeypatch.setattr(market_data, "_json", json_provider)
+    market_data._cache.pop("btc", None)
+    async def run():
+        async with httpx.AsyncClient() as client:
+            return await market_data._btc_price(client)
+    value, source = asyncio.run(run())
+    assert value == 67000.25
+    assert source == "Coinbase Exchange BTC-USD fallback"
+
 def test_market_overview_combines_provider_fallbacks(monkeypatch):
     import app.market_data as market_data
 

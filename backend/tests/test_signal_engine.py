@@ -71,6 +71,77 @@ def test_binance_crypto_candles_use_public_klines(monkeypatch):
     assert result[-1]["volume"] == 12.5
 
 
+
+def test_bitcoin_uses_coinbase_candles_when_binance_is_unavailable(monkeypatch):
+    import asyncio
+    import httpx
+    from app import signal_engine
+
+    start = int(datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp())
+    rows = []
+    for index in reversed(range(220)):
+        price = 65000.0 + index
+        rows.append([start + index * 900, str(price - 2), str(price + 3),
+                     str(price), str(price + 1), "0.25"])
+
+    def handler(request):
+        if request.url.host == "api.binance.com":
+            return httpx.Response(503, json={"msg": "temporarily unavailable"})
+        assert request.url.host == "api.exchange.coinbase.com"
+        assert request.url.path == "/products/BTC-USD/candles"
+        assert request.url.params["granularity"] == "900"
+        return httpx.Response(200, json=rows)
+
+    original_client = httpx.AsyncClient
+    transport = httpx.MockTransport(handler)
+    def mock_client(*args, **kwargs):
+        return original_client(*args, transport=transport, **kwargs)
+    monkeypatch.setattr(signal_engine.httpx, "AsyncClient", mock_client)
+
+    candles, provider = asyncio.run(signal_engine.fetch_candles_with_provider("15min", 220, "BTCUSDT"))
+    assert len(candles) == 220
+    assert provider == "Coinbase Exchange fallback"
+    assert candles[0]["open"] == 65000.0
+    assert candles[-1]["close"] == 65220.0
+
+
+def test_gold_uses_twelve_data_when_enabled_mt5_feed_fails(monkeypatch):
+    import asyncio
+    import httpx
+    from app import signal_engine, mt5_feed
+
+    signal_engine._GOLD_CANDLE_CACHE.clear()
+    monkeypatch.setattr(signal_engine, "QUANTNEX_MT5_ENABLED", True)
+    monkeypatch.setattr(signal_engine, "TWELVE_DATA_API_KEY", "test-api-key")
+    async def unavailable(*_args, **_kwargs):
+        raise mt5_feed.MT5FeedError("demo terminal is not connected")
+    monkeypatch.setattr(mt5_feed, "get_candles", unavailable)
+
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    values = []
+    for index in reversed(range(220)):
+        stamp = start + timedelta(minutes=index)
+        price = 2300.0 + index * 0.1
+        values.append({"datetime": stamp.isoformat(), "open": str(price),
+                       "high": str(price + 0.3), "low": str(price - 0.2),
+                       "close": str(price + 0.1)})
+
+    def handler(request):
+        assert request.url.host == "api.twelvedata.com"
+        assert request.url.params["symbol"] == "XAU/USD"
+        return httpx.Response(200, json={"values": values})
+
+    original_client = httpx.AsyncClient
+    transport = httpx.MockTransport(handler)
+    def mock_client(*args, **kwargs):
+        return original_client(*args, transport=transport, **kwargs)
+    monkeypatch.setattr(signal_engine.httpx, "AsyncClient", mock_client)
+
+    candles, provider = asyncio.run(signal_engine.fetch_candles_with_provider("1min", 220, "XAUUSD"))
+    assert len(candles) == 220
+    assert provider == "Twelve Data"
+    assert candles[-1]["close"] > candles[0]["close"]
+
 def test_telegram_scan_command_supports_crypto_symbols(monkeypatch):
     import asyncio
     from app import telegram_worker

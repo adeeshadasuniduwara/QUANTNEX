@@ -160,7 +160,7 @@ def local_workspace(db: Session = Depends(get_db)) -> User:
 @app.get("/api/v1/charts/candles")
 async def chart_candles(symbol: str = "BTCUSDT", interval: str = "15m", limit: int = 500):
     """Historical OHLC candles for the first-party QUANTNEX VIEW chart."""
-    from .signal_engine import fetch_candles, MarketDataError, CRYPTO_SYMBOLS, BINANCE_INTERVALS
+    from .signal_engine import fetch_candles_with_provider, MarketDataError, CRYPTO_SYMBOLS
     allowed_intervals = {"1m":"1min","5m":"5min","15m":"15min","30m":"30min","1h":"1h","4h":"4h"}
     symbol = symbol.upper()
     if symbol not in CRYPTO_SYMBOLS and symbol != "XAUUSD":
@@ -168,8 +168,7 @@ async def chart_candles(symbol: str = "BTCUSDT", interval: str = "15m", limit: i
     if interval not in allowed_intervals or not 210 <= limit <= 1000:
         raise HTTPException(status_code=422, detail="Choose a supported interval and 210–1000 candles.")
     try:
-        candles = await fetch_candles(allowed_intervals[interval], limit, symbol)
-        provider = "Binance Spot" if symbol in CRYPTO_SYMBOLS else ("MetaTrader 5 local terminal" if QUANTNEX_MT5_ENABLED else "Twelve Data")
+        candles, provider = await fetch_candles_with_provider(allowed_intervals[interval], limit, symbol)
         rows = candles[-limit:]
         source_timestamp = None
         age_seconds = None
@@ -209,30 +208,50 @@ async def chart_quote(symbol: str = "XAUUSD", interval: str = "15m"):
     stale_after_seconds = max(120, interval_seconds[interval] * 2)
     from .phase07_engine import get_quote as get_twelve_data_quote, IntelligenceDataError
     from .mt5_feed import get_quote as get_mt5_quote, MT5FeedError
-    try:
-        if QUANTNEX_MT5_ENABLED:
+    provider_errors = []
+    if QUANTNEX_MT5_ENABLED:
+        try:
             quote = await get_mt5_quote(QUANTNEX_MT5_GOLD_SYMBOL)
             bid, ask = float(quote["bid"]), float(quote["ask"])
             price = float(quote["last"]) if quote.get("last") else (bid + ask) / 2
-            return {"symbol": "XAUUSD", "price": price, "provider": quote["provider"],
-                    "source_timestamp": quote.get("source_timestamp"),
-                    "timestamp": quote.get("fetch_timestamp") or datetime.now(timezone.utc).isoformat(),
-                    "stale": bool(quote.get("stale")) or float(quote.get("age_seconds") or 0) > stale_after_seconds,
-                    "stale_after_seconds": stale_after_seconds, "spread": quote.get("spread")}
+            stale = bool(quote.get("stale")) or float(quote.get("age_seconds") or 0) > stale_after_seconds
+            if not stale:
+                return {"symbol": "XAUUSD", "price": price, "provider": quote["provider"],
+                        "source_timestamp": quote.get("source_timestamp"),
+                        "timestamp": quote.get("fetch_timestamp") or datetime.now(timezone.utc).isoformat(),
+                        "stale": False, "stale_after_seconds": stale_after_seconds,
+                        "spread": quote.get("spread")}
+            provider_errors.append("MT5: quote is stale for the selected chart timeframe.")
+        except (MT5FeedError, ValueError, KeyError) as exc:
+            provider_errors.append("MT5: " + str(exc))
+    try:
         quote = await get_twelve_data_quote("XAUUSD")
         from .phase10_engine import assess_quote
         health = assess_quote(quote)
-        return {"symbol": "XAUUSD", "price": quote["price"], "provider": quote["provider"],
-                "source_timestamp": quote.get("source_timestamp"),
-                "timestamp": quote.get("timestamp") or datetime.now(timezone.utc).isoformat(),
-                "stale": not health["trading_safe"] or health["age_seconds"] is None or health["age_seconds"] > stale_after_seconds,
-                "stale_after_seconds": stale_after_seconds, "data_health": health}
-    except (MT5FeedError, IntelligenceDataError) as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        stale = not health["trading_safe"] or health["age_seconds"] is None or health["age_seconds"] > stale_after_seconds
+        if not stale:
+            return {"symbol": "XAUUSD", "price": quote["price"], "provider": quote["provider"],
+                    "source_timestamp": quote.get("source_timestamp"),
+                    "timestamp": quote.get("timestamp") or datetime.now(timezone.utc).isoformat(),
+                    "stale": False, "stale_after_seconds": stale_after_seconds, "data_health": health}
+        provider_errors.append("Twelve Data: quote is stale or not safe for the selected chart timeframe.")
+    except (IntelligenceDataError, httpx.HTTPError) as exc:
+        provider_errors.append("Twelve Data: " + str(exc))
     except (ValueError, KeyError) as exc:
-        raise HTTPException(status_code=503, detail="The configured Gold quote is invalid.") from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail="The configured Gold quote provider is unavailable.") from exc
+        provider_errors.append("Twelve Data returned an invalid quote: " + str(exc))
+    # Gold-API is an indicative spot-price fallback only. It does not provide OHLC
+    # history and must never be treated as a trading or broker execution quote.
+    try:
+        from .market_data import _gold_api_price
+        async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=4.0), follow_redirects=True) as client:
+            price = await _gold_api_price(client, "XAU")
+        return {"symbol": "XAUUSD", "price": price, "provider": "Gold-API indicative spot (quote only)",
+                "source_timestamp": None, "timestamp": datetime.now(timezone.utc).isoformat(),
+                "stale": False, "stale_after_seconds": stale_after_seconds, "quote_only": True,
+                "note": "Indicative quote only; historical candles require a connected MT5 terminal or Twelve Data API key."}
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+        provider_errors.append("Gold-API: " + str(exc))
+    raise HTTPException(status_code=503, detail="Gold quote unavailable. " + " | ".join(provider_errors))
 
 
 @app.get("/api/v1/quantnex-view/strategies")

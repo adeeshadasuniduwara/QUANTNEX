@@ -210,3 +210,29 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - Correct the label CSS so the global legacy `nav-link span` fixed icon width does not constrain the generated text label.
 - Add regression assertions for absence of legacy icon spans and cache invalidation.
 - **Status:** MERGED — PR #128 (`db93d8561f16a18adcb9cd2ab8cd31ad28942013`). Web CI, Backend/Web CI (Python 3.12/3.14), and Windows Build all passed on the final PR head. This is a source-level regression fix; visual confirmation in the user's browser still requires loading the updated build.
+
+
+## Update and live-feed recovery audit — 2026-11-14
+
+### Reproduced source-level causes
+
+- The local Web updater's QUANTNEX_SUPERVISED=1 branch returned placeholder values (Supervisor managed / Automatic source updates) instead of reading the full-source updater state in data/quantnex_update_state.json. The Updates screen therefore could not identify the installed main@SHA revision or compare it to GitHub main.
+- The Web updater's legacy installed-revision lookup only read data/quantnex_web_version.json, which is not written by the full-source ZIP/supervisor updater. ZIP installs could consequently appear as an unknown source revision.
+- In supervisor mode the Web button only read status; it had no request path to ask the running launcher to check immediately. The launcher itself only checked on startup and every five minutes.
+- BTC chart history and live stream were Binance-only. If Binance REST or WebSocket connectivity failed, there was no alternate crypto provider.
+- Gold OHLC history correctly required either an enabled, connected read-only MT5 feed or a Twelve Data API key. However, MT5 failure prevented Twelve Data fallback, and the chart did not display the keyless indicative Gold-API quote if OHLC history was unavailable.
+
+### Fixes in progress (PR pending)
+
+- Report actual installed and latest full-source revisions in supervisor mode; read the full-source state marker for ZIP installs.
+- Add a same-origin manual-check request endpoint and have the launcher consume the queued request, perform the existing safe updater, and restart only when an update was applied.
+- Make the Updates UI show real revisions and an actionable status instead of silent placeholder values.
+- Add public Coinbase Exchange REST candle fallback and Coinbase ticker WebSocket fallback for BTC after Binance connectivity failures. Show the actual history provider.
+- Add MT5-to-Twelve-Data failover for Gold history/quotes. If no OHLC provider is configured, still show a keyless indicative Gold-API quote while clearly labelling that historical candles need MT5 or Twelve Data. Never fabricate candles or treat the indicative quote as an executable broker price.
+- Add regression tests for source version detection, manual check queue, Coinbase BTC fallback, MT5-to-Twelve Data fallback, and Gold quote-only chart visibility.
+
+### Release / verification boundary
+
+- The latest published GitHub Release observed during this audit is still v0.6.0, with QUANTNEX.exe and SHA256SUMS.txt. Merging source changes does not publish a new Windows EXE release. A new release build must complete before the packaged EXE updater can receive a newer binary.
+- This PR can be validated by GitHub CI and source-level tests. A real local MT5 terminal/broker connection, the user's provider credentials/network, and the installed Windows/ZIP runtime are not available to this audit environment; those require a post-download smoke test. Gold historical candles will remain explicitly unavailable until the user has an enabled MT5 feed or a valid Twelve Data key.
+- Status: PR and CI pending. No claim that the user's installed copy has already updated or that live market providers have been reached from the user's laptop.

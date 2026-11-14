@@ -75,7 +75,7 @@ assert.match(css, /\.web-update-dialog/, "The update dialog must have dedicated 
 console.log("QUANTNEX automatic update and private Telegram notification checks passed.");
 
 assert.doesNotMatch(html, /(?:cdn\.jsdelivr\.net|unpkg\.com)\/.*lightweight-charts/, "QUANTNEX VIEW must not load an external TradingView chart engine");
-assert.match(nativeChart, /new WebSocket\("wss:\/\/stream\.binance\.com:9443\/ws\/"\+stream\)/, "Native chart must stream Binance live kline candles");
+assert.match(nativeChart, /new WebSocket\(useCoinbase\?"wss:\/\/ws-feed\.exchange\.coinbase\.com":"wss:\/\/stream\.binance\.com:9443\/ws\/"\+stream\)/, "Native chart must prefer Binance live klines and retain the Coinbase fallback.");
 assert.match(nativeChart, /scheduleReconnect\(/, "Native chart must reconnect its live candle feed");
 assert.match(nativeChart, /HISTORY FEED ERROR/, "Native chart history errors must be visible");
 assert.match(chartIntel, /Signal analysis unavailable: /, "Chart Intelligence must expose the analysis API cause");
@@ -129,7 +129,7 @@ assert.match(app, /setInterval\(\(\)=>\{if\(isWorkspaceViewActive\("paper-tradin
 assert.match(app, /function stopBookFeed\(/, "Order-book sockets and timers must be cleaned up when leaving their workspace.");
 console.log("QUANTNEX active-workspace polling and cleanup checks passed.");
 
-assert.match(html, /app\.js\?v=20261114-journal-db1/, "Workspace polling fixes must invalidate the cached app.js asset.");
+assert.match(html, /app\.js\?v=20261114-updater-feedfix1/, "Workspace polling fixes must invalidate the cached app.js asset.");
 
 
 assert.match(nativeChart, /isChartViewActive/, "QUANTNEX VIEW history, analysis and live ticks must be scoped to the visible chart workspace.");
@@ -137,7 +137,7 @@ assert.match(nativeChart, /quantnex:view-changed/, "Chart feed must start on cha
 assert.match(nativeChart, /if\(!isChartViewActive\(\)\|\|selected\(\)\.symbol!==pick\.symbol/, "Late chart history responses must not update a hidden or stale chart.");
 assert.match(chartIntel, /isTradingViewActive/, "Chart intelligence analysis and backtests must pause outside QUANTNEX VIEW.");
 assert.match(chartIntel, /backtestBusy/, "Chart intelligence must prevent overlapping backtest requests.");
-assert.match(html, /quantnex-view-chart\.js\?v=20261113-analysis-dedupe1/, "Chart lifecycle fix must invalidate the cached chart bundle.");
+assert.match(html, /quantnex-view-chart\.js\?v=20261114-coinbase-goldfeed1/, "Chart lifecycle fix must invalidate the cached chart bundle.");
 assert.match(html, /quantnex-view-intelligence\.js\?v=20261113-visible-intel1/, "Chart intelligence fix must invalidate the cached intelligence bundle.");
 console.log("QUANTNEX VIEW active-page lifecycle checks passed.");
 

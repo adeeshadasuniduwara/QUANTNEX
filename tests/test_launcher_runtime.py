@@ -82,17 +82,21 @@ class LauncherRuntimeTests(unittest.TestCase):
             self.assertEqual(run.call_count, 3)
 
     def test_restart_uses_argument_list_for_workspace_paths_with_spaces(self):
-        with patch.object(launcher, "ROOT", Path("C:/Users/test/Downloads/New folder/QUANTNEX")):
-            script = Path("C:/Users/test/Downloads/New folder/QUANTNEX/run_quantnex_services.py")
-            with patch.object(launcher, "__file__", str(script)), \
+        with tempfile.TemporaryDirectory(prefix="New folder ") as directory:
+            root = Path(directory) / "QUANTNEX"
+            root.mkdir()
+            script = root / "run_quantnex_services.py"
+            script.write_text("# test", encoding="utf-8")
+            with patch.object(launcher, "ROOT", root), \
+                 patch.object(launcher, "__file__", str(script)), \
                  patch.object(launcher.subprocess, "Popen") as popen:
                 with self.assertRaises(SystemExit) as stopped:
                     launcher.restart_launcher()
         self.assertEqual(stopped.exception.code, 0)
         args, kwargs = popen.call_args
         self.assertEqual(args[0][0], launcher.sys.executable)
-        self.assertEqual(args[0][1], str(script))
-        self.assertEqual(kwargs["cwd"], str(Path("C:/Users/test/Downloads/New folder/QUANTNEX")))
+        self.assertEqual(args[0][1], str(script.resolve()))
+        self.assertEqual(kwargs["cwd"], str(root))
         self.assertNotIn("shell", kwargs)
 
     def test_log_tee_writes_to_each_destination(self):

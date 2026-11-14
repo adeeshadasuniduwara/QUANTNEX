@@ -1,5 +1,5 @@
 from __future__ import annotations
-import base64, hashlib, json, os, shutil, sqlite3, subprocess, sys, threading, urllib.error, urllib.request, webbrowser
+import base64, hashlib, json, math, os, shutil, sqlite3, subprocess, sys, threading, urllib.error, urllib.request, webbrowser
 from datetime import datetime
 import uuid
 from pathlib import Path
@@ -31,6 +31,64 @@ def calculate_position_size(equity, risk_percent, stop_pips, pip_value):
         raise ValueError("Use positive values; risk must be above 0 and at most 100%.")
     risk_amount = equity * risk_percent / 100
     return risk_amount, risk_amount / (stop_pips * pip_value)
+
+def fetch_chart_data(symbol, urlopen=None):
+    """Fetch real BTC Binance candles or read-only Gold candles from the local MT5 API."""
+    normalized = str(symbol or "").strip().upper()
+    opener = urlopen or urllib.request.urlopen
+    if normalized == "BTCUSDT":
+        url = "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=15m&limit=60"
+        provider = "Binance Spot"
+    elif normalized == "XAUUSD":
+        url = "http://127.0.0.1:8000/api/v1/market/mt5/candles?interval=15m&limit=250"
+        provider = "MetaTrader 5 local terminal"
+    else:
+        raise ValueError("Windows charts support BTCUSDT and XAUUSD.")
+
+    request = urllib.request.Request(url, headers={"User-Agent": "QUANTNEX-Desktop"})
+    try:
+        with opener(request, timeout=12) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", "replace")
+        try:
+            detail = json.loads(raw).get("detail") or raw[:240]
+        except (ValueError, AttributeError):
+            detail = raw[:240] or str(exc.reason)
+        raise RuntimeError(str(detail)) from None
+
+    if normalized == "BTCUSDT":
+        if not isinstance(payload, list):
+            raise RuntimeError("Binance returned an unexpected candle response.")
+        rows = payload
+    else:
+        if not isinstance(payload, dict):
+            raise RuntimeError("The local MT5 API returned an unexpected candle response.")
+        if payload.get("orders_enabled") is not False or payload.get("mode") != "read_only_market_data":
+            raise RuntimeError("The Gold chart source did not confirm read-only market-data mode.")
+        rows = payload.get("candles")
+        if not isinstance(rows, list):
+            raise RuntimeError("The local MT5 API did not return a candle list.")
+
+    candles = []
+    for row in rows:
+        try:
+            if normalized == "BTCUSDT":
+                values = [float(row[index]) for index in (1, 2, 3, 4)]
+            else:
+                values = [float(row[key]) for key in ("open", "high", "low", "close")]
+            if not all(math.isfinite(value) and value > 0 for value in values):
+                continue
+            open_price, high, low, close = values
+            if high < max(open_price, close, low) or low > min(open_price, close, high):
+                continue
+            candles.append({"open": open_price, "high": high, "low": low, "close": close})
+        except (KeyError, IndexError, TypeError, ValueError, OverflowError):
+            continue
+    if not candles:
+        raise RuntimeError("The selected provider returned no valid candles.")
+    return candles[-60:], candles[-1]["close"], provider
+
 
 class TradeJournal:
     def __init__(self):
@@ -182,11 +240,15 @@ class App(tk.Tk):
 
     def _charts(self):
         ttk.Label(self.charts, text="Live Market Charts", font=("Segoe UI", 18, "bold")).pack(anchor="w")
-        ttk.Label(self.charts, text="BTCUSDT candles stream from Binance public market data. Gold opens the live OANDA:XAUUSD TradingView chart.", style="Muted.TLabel", wraplength=850).pack(anchor="w", pady=(4,12))
+        ttk.Label(self.charts, text="Select BTCUSDT for Binance Spot candles or XAUUSD for read-only candles from your local MT5 broker feed.", style="Muted.TLabel", wraplength=850).pack(anchor="w", pady=(4,12))
         top = ttk.Frame(self.charts); top.pack(fill="x", pady=(0,10))
-        self.btc_quote = ttk.Label(top, text="BTCUSDT  •  Connecting…", font=("Segoe UI", 14, "bold"))
-        self.btc_quote.pack(side="left")
-        self.chart_status = ttk.Label(top, text="15m · Binance public feed", style="Muted.TLabel")
+        self.chart_symbol = tk.StringVar(value="BTCUSDT")
+        self.chart_selector = ttk.Combobox(top, textvariable=self.chart_symbol, values=["BTCUSDT", "XAUUSD"], state="readonly", width=10)
+        self.chart_selector.pack(side="left", padx=(0,12))
+        self.chart_selector.bind("<<ComboboxSelected>>", lambda _event: self._refresh_chart())
+        self.chart_quote = ttk.Label(top, text="BTCUSDT  •  Connecting…", font=("Segoe UI", 14, "bold"))
+        self.chart_quote.pack(side="left")
+        self.chart_status = ttk.Label(top, text="15m · Binance Spot feed", style="Muted.TLabel")
         self.chart_status.pack(side="right")
         self.chart_canvas = tk.Canvas(self.charts, height=390, bg="#090909", highlightthickness=1, highlightbackground="#303030")
         self.chart_canvas.pack(fill="both", expand=True)
@@ -202,30 +264,33 @@ class App(tk.Tk):
             self.after(5000, self._refresh_chart)
             return
         self._chart_loading = True
+        symbol = self.chart_symbol.get()
         def worker():
             try:
-                request = urllib.request.Request(
-                    "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=15m&limit=60",
-                    headers={"User-Agent":"QUANTNEX-Desktop"})
-                with urllib.request.urlopen(request, timeout=10) as response:
-                    rows = json.loads(response.read().decode("utf-8"))
-                candles = [{"open":float(x[1]),"high":float(x[2]),"low":float(x[3]),"close":float(x[4])} for x in rows]
-                price = candles[-1]["close"] if candles else None
-                self.after(0, lambda:self._chart_loaded(candles, price, None))
+                candles, price, provider = fetch_chart_data(symbol)
+                self.after(0, lambda: self._chart_loaded(candles, price, None, symbol, provider))
             except Exception as exc:
-                self.after(0, lambda message=str(exc):self._chart_loaded([], None, message))
+                message = str(exc)
+                self.after(0, lambda: self._chart_loaded([], None, message, symbol, None))
         threading.Thread(target=worker, daemon=True).start()
 
-    def _chart_loaded(self, candles, price, error):
+    def _chart_loaded(self, candles, price, error, symbol, provider):
         self._chart_loading = False
+        if symbol != self.chart_symbol.get():
+            self.after(0, self._refresh_chart)
+            return
         if error:
-            self.chart_status.configure(text="Feed unavailable · retrying")
+            self.chart_status.configure(text=f"{symbol} feed unavailable · retrying")
+            self.chart_quote.configure(text=symbol)
             self.chart_canvas.delete("all")
-            self.chart_canvas.create_text(20, 24, anchor="nw", fill="#aaaaaa",
-                text="Could not load Binance candles. Check your internet connection and try again.")
+            if symbol == "XAUUSD":
+                message = "Gold MT5 feed unavailable. Start the local QUANTNEX backend, set QUANTNEX_MT5_ENABLED=true and check your broker symbol. Details: " + error
+            else:
+                message = "Could not load Binance BTCUSDT candles. Check your internet connection. Details: " + error
+            self.chart_canvas.create_text(20, 24, anchor="nw", fill="#aaaaaa", width=max(self.chart_canvas.winfo_width()-40, 300), text=message)
         else:
-            self.chart_status.configure(text="LIVE · Binance · 15m candles")
-            self.btc_quote.configure(text=f"BTCUSDT  ${price:,.2f}" if price else "BTCUSDT")
+            self.chart_status.configure(text=f"LIVE · {provider} · 15m candles")
+            self.chart_quote.configure(text=f"{symbol}  ${price:,.2f}" if price else symbol)
             self._draw_candles(candles)
         self.after(15000, self._refresh_chart)
 

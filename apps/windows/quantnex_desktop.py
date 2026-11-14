@@ -193,17 +193,20 @@ class TradeJournal:
             db.execute("""CREATE TABLE IF NOT EXISTS trades(
                 id INTEGER PRIMARY KEY, created TEXT NOT NULL, symbol TEXT NOT NULL,
                 side TEXT NOT NULL, outcome TEXT NOT NULL, pnl REAL NOT NULL, notes TEXT NOT NULL,
-                sync_status TEXT NOT NULL DEFAULT 'PENDING')""")
+                sync_status TEXT NOT NULL DEFAULT 'PENDING', client_ref TEXT UNIQUE)""")
             columns = {row[1] for row in db.execute("PRAGMA table_info(trades)")}
             if "sync_status" not in columns:
                 # Old rows have unknown sync history; do not replay them into wallet P&L.
                 db.execute("ALTER TABLE trades ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'UNKNOWN'")
+            if "client_ref" not in columns:
+                db.execute("ALTER TABLE trades ADD COLUMN client_ref TEXT")
 
     def add(self, symbol, side, outcome, pnl, notes):
+        client_ref = "windows:" + str(uuid.uuid4())
         with sqlite3.connect(self.path) as db:
             cursor = db.execute(
-                "INSERT INTO trades(created,symbol,side,outcome,pnl,notes,sync_status) VALUES(?,?,?,?,?,?, 'PENDING')",
-                (datetime.now().astimezone().isoformat(timespec="seconds"), symbol.upper(), side, outcome, pnl, notes))
+                "INSERT INTO trades(created,symbol,side,outcome,pnl,notes,sync_status,client_ref) VALUES(?,?,?,?,?,?, 'PENDING', ?)",
+                (datetime.now().astimezone().isoformat(timespec="seconds"), symbol.upper(), side, outcome, pnl, notes, client_ref))
             return cursor.lastrowid
 
     def mark_synced(self, local_id):
@@ -213,7 +216,7 @@ class TradeJournal:
     def pending(self):
         with sqlite3.connect(self.path) as db:
             return db.execute(
-                "SELECT id,symbol,side,outcome,pnl,notes FROM trades WHERE sync_status='PENDING' ORDER BY id ASC"
+                "SELECT id,client_ref,symbol,side,outcome,pnl,notes FROM trades WHERE sync_status='PENDING' ORDER BY id ASC"
             ).fetchall()
 
     def unknown_sync_count(self):
@@ -568,10 +571,10 @@ class App(tk.Tk):
         def worker():
             synced=0
             errors=[]
-            for local_id,symbol,side,outcome,pnl,notes in pending:
+            for local_id,client_ref,symbol,side,outcome,pnl,notes in pending:
                 payload={
                     "symbol":symbol,"direction":side.lower(),"outcome":outcome.lower(),
-                    "pnl":pnl,"notes":notes,"client_ref":f"windows:{local_id}",
+                    "pnl":pnl,"notes":notes,"client_ref":client_ref,
                 }
                 try:
                     self._api_request("POST","/api/v1/journal",payload,base=base)

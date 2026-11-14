@@ -82,6 +82,8 @@ def test_demo_certificate_api_rejects_invalid_inputs():
         {"display_name": "Audit User", "goal_title": "Sample", "achievement_text": "Preview", "target_amount": "not-a-number"},
         {"display_name": "Audit User", "goal_title": "Sample", "achievement_text": "Preview", "currency": "BTC"},
         {"display_name": "Audit User", "goal_title": "Sample", "achievement_text": "Preview", "target_amount": -1},
+        {"display_name": "Audit User", "goal_title": "Sample", "achievement_text": "Preview", "target_amount": 0},
+        {"display_name": "Audit User", "goal_title": "Sample", "achievement_text": "Preview", "currency": ""},
     ]
     for payload in invalid_payloads:
         response = client.post("/api/v1/goals/demo-certificate", json=payload)

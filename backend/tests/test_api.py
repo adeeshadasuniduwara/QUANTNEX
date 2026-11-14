@@ -1,3 +1,4 @@
+import json
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import Session
@@ -85,9 +86,14 @@ def test_wallet_rejects_non_finite_and_out_of_range_amounts_without_mutating_bal
     before = client.get("/api/v1/wallet/summary").json()
     invalid_amounts = [0, -1, float("nan"), float("inf"), float("-inf"), 1000000001]
     for amount in invalid_amounts:
-        response = client.post("/api/v1/wallet/transactions", json={
+        payload = {
             "transaction_type": "deposit", "amount": amount, "description": "invalid amount test"
-        })
+        }
+        response = client.post(
+            "/api/v1/wallet/transactions",
+            content=json.dumps(payload, allow_nan=True),
+            headers={"Content-Type": "application/json"},
+        )
         assert response.status_code == 422, amount
     after = client.get("/api/v1/wallet/summary").json()
     assert after == before

@@ -33,7 +33,7 @@
 | Windows EXE updater | GitHub Releases check, SHA256 verification, user-confirmed install and EXE backup | PASS — Update 008 Windows updater tests and EXE build/artifact upload passed | Requires official HTTPS GitHub release URLs, exact QUANTNEX.exe checksum entry, max 200 MB, 16 KB manifest, temp-file cleanup and preserve prior staged EXE on failure; real install/restart/rollback remains external |
 | Android release updater | Checks latest GitHub Release, downloads APK and opens Android package installer | PASS — Update 004 Android unit tests and debug APK build passed | Requires APK + SHA256 manifest, validates HTTPS GitHub asset URLs, verifies exact APK digest before installer, blocks/removes mismatches; physical-device and production-signed release test remain external |
 | Telegram bot / alerts | Connect/test/send, auto-signal and report APIs; encrypted local credentials | Update 016 adds getMe/getChat destination validation and group/channel posting-permission checks before storing credentials; actual delivery remains externally blocked until destination is corrected | The local app now rejects the bot's own ID, unresolved destinations and channels without admin/post rights. GitHub release secret TELEGRAM_CHAT_ID still needs the user's private chat ID after /start or intended group/channel ID; never expose the token |
-| Telegram release notifications | GitHub Actions workflow with getMe/getChat preflight | Workflow and diagnostics exist; actual send still not confirmed | Correct repository secret TELEGRAM_CHAT_ID (current value resolves to the bot itself), verify bot membership/post rights, then run the workflow and confirm Telegram API success |
+| Telegram release notifications | GitHub Actions workflow with getMe/getChat/getChatMember preflight | Update 017 adds bot membership and posting-permission checks before send; actual send still not confirmed | Correct repository secret TELEGRAM_CHAT_ID (current value resolves to the bot itself), verify bot membership/post rights, then run the workflow and confirm Telegram API success |
 | Windows native tools | Calculator, local SQLite journal, Charts and Wallet/Backend views | PARTIAL — Updates 007/009/012 add Gold chart, wallet validation and durable idempotent journal sync | Chart adapter, wallet validation, journal migration/pending-sync and API idempotency have tests; real desktop display, wallet flow and journal CRUD parity still need device-level verification |
 | Android native tools | Overview, chart, journal and update shell | Partial feature parity | Exercise each screen on emulator/device; verify release signing and remaining Trading Room/Updates flows |
 
@@ -183,3 +183,12 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - No token is stored until all checks pass; responses return destination type/title but never the token.
 - Added mocked API tests for bot-self rejection, unresolved private destination, channel posting permission denial, verified private chat and authorized channel.
 - **Status:** PASS — Telegram destination mock tests, Backend CI, Backend/Web CI (Python 3.12/3.14), Web checks and Windows EXE build/artifact upload all passed for PR #125. Real bot delivery still requires the user's actual Telegram account/chat and repository secret correction; no token values are requested or exposed.
+
+## Update 017 — GitHub Release Telegram permission preflight
+
+- The GitHub release workflow already resolved the bot and destination but did not verify that the bot could actually post to a group/channel before attempting the announcement.
+- Added getChatMember preflight for group, supergroup and channel destinations.
+- Channels require administrator status with can_post_messages=true (or creator status); groups/supergroups require membership and send permission.
+- Private destinations remain supported and the bot-self check remains in place.
+- Added workflow contract tests for getChatMember, channel posting permission and group send permission.
+- **Status:** PASS — GitHub workflow contract tests and Web syntax checks passed for PR #126. Actual delivery still depends on the repository owner's TELEGRAM_CHAT_ID secret and a valid Telegram destination.

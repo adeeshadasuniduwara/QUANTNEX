@@ -84,6 +84,27 @@ jobs:
                   "a group/channel ID where the bot is allowed to post."
               )
 
+          chat_type = str(chat.get("type") or "")
+          if chat_type in ("channel", "group", "supergroup"):
+              member = telegram_api("getChatMember", {
+                  "chat_id": chat.get("id"),
+                  "user_id": int(bot_id),
+              })
+              member_status = str(member.get("status") or "")
+              if chat_type == "channel":
+                  if member_status != "creator" and not (
+                      member_status == "administrator" and member.get("can_post_messages") is True
+                  ):
+                      raise SystemExit(
+                          "The bot must be a channel administrator with Post Messages permission."
+                      )
+              elif member_status not in ("member", "administrator", "creator") and not (
+                  member_status == "restricted" and member.get("can_send_messages") is True
+              ):
+                  raise SystemExit("The bot is not allowed to send messages in this group.")
+          elif chat_type != "private":
+              raise SystemExit("Choose a private chat, group, supergroup or channel as TELEGRAM_CHAT_ID.")
+
           repo = os.environ["REPO"]
           if os.environ["EVENT_NAME"] == "workflow_dispatch":
               title = "Telegram notification test"

@@ -20,6 +20,11 @@ class AndroidReleaseWorkflowTests(unittest.TestCase):
         self.assertNotIn("apps/windows", workflow)
         self.assertNotIn("windows-latest", workflow)
 
+    def test_local_data_and_secrets_are_ignored(self):
+        ignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+        for pattern in ("logs/", "data/", "**/.env", "!**/.env.example", "apps/android/*.p12"):
+            self.assertIn(pattern, ignore)
+
     def test_windows_desktop_build_workflow_is_retired(self):
         self.assertFalse((ROOT / ".github" / "workflows" / "windows-build.yml").exists())
         self.assertFalse((ROOT / "apps" / "windows").exists())

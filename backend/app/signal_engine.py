@@ -130,7 +130,6 @@ async def fetch_candles_with_provider(interval: str, outputsize: int = 320,
             raise MarketDataError(f"Unsupported Binance candle interval: {interval}.")
         requested = min(max(int(outputsize), 210), 3200)
         try:
-            interval_ms = {"1m":60000,"5m":300000,"15m":900000,"30m":1800000,"1h":3600000,"4h":14400000}[binance_interval]
             rows = []
             end_time = None
             async with httpx.AsyncClient(timeout=httpx.Timeout(18, connect=5)) as client:
@@ -184,7 +183,7 @@ async def fetch_candles_with_provider(interval: str, outputsize: int = 320,
             if len(candles) < 210:
                 raise MarketDataError(f"Not enough CLOSED MT5 {interval} XAUUSD candles ({len(candles)} received).")
             return candles, "MetaTrader 5 local terminal"
-        except MT5FeedError as exc:
+        except (MT5FeedError, MarketDataError) as exc:
             mt5_error = str(exc)
     if not TWELVE_DATA_API_KEY:
         detail = "Gold historical candles require a connected MT5 terminal with QUANTNEX_MT5_ENABLED=true or a TWELVE_DATA_API_KEY in backend/.env."

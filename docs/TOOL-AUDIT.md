@@ -34,7 +34,7 @@
 | Android release updater | Checks latest GitHub Release, downloads APK and opens Android package installer | PASS — Update 004 Android unit tests and debug APK build passed | Requires APK + SHA256 manifest, validates HTTPS GitHub asset URLs, verifies exact APK digest before installer, blocks/removes mismatches; physical-device and production-signed release test remain external |
 | Telegram bot / alerts | Connect/test/send, auto-signal and report APIs; encrypted local credentials | EXTERNAL BLOCKER — push notifications failed twice with HTTP 403: bot cannot send messages to the bot | TELEGRAM_CHAT_ID currently resolves to the bot itself or an invalid target. Set it to the user's private chat ID after /start, or a group/channel ID where the bot has posting permission; do not expose the bot token |
 | Telegram release notifications | GitHub Actions workflow and release workflow | Workflow exists; delivery not confirmed | Verify correct chat ID, bot membership/admin permission, workflow trigger and successful Telegram API response |
-| Windows native tools | Calculator, local SQLite journal, Charts and Wallet/Backend views | Partial desktop capability | Exercise each screen and backend-unavailable behavior; README says bot monitor is not connected |
+| Windows native tools | Calculator, local SQLite journal, Charts and Wallet/Backend views | PARTIAL — Update 007 adds selectable BTCUSDT Binance and XAUUSD local MT5 candles | Verify Windows UI chart selection, backend-offline errors and configured broker symbol; native wallet/journal screens still need dedicated UI-level tests |
 | Android native tools | Overview, chart, journal and update shell | Partial feature parity | Exercise each screen on emulator/device; verify release signing and remaining Trading Room/Updates flows |
 
 ## Confirmed external prerequisites / boundaries
@@ -92,3 +92,12 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - Added tests for level normalization, ordering, subscription release, invalid limits, unsupported terminal capability, configured Gold routing and the API route.
 - Updated the Web status text to describe the configured provider rather than assuming Binance.
 - **Status:** PASS — Backend CI (Python 3.12/3.14), Backend/Web CI, Web CI and Windows Build all passed for PR #113, including EXE build and artifact upload. A real Gold DOM snapshot still requires the user's Windows MT5 terminal and a broker that exposes market depth for its Gold symbol.
+
+## Update 007 — Windows Desktop BTC/Gold chart selection
+
+- Static tool audit found the Windows Charts tab only fetched Binance BTCUSDT candles; the Gold button merely opened an external TradingView page.
+- Added a BTCUSDT/XAUUSD selector. BTC uses Binance Spot candles; XAUUSD uses the loopback-only backend MT5 candles endpoint.
+- Gold requests omit the broker symbol query so the backend's configured QUANTNEX_MT5_GOLD_SYMBOL (including broker suffixes such as XAUUSD.a) is honored.
+- Gold data is accepted only when the backend response explicitly confirms read-only market-data mode and orders_enabled=false. Missing backend, terminal, symbol or provider data is shown as an actionable unavailable state.
+- Added a pure chart-data adapter and Windows-only unittest coverage for Binance data, MT5 data, configured broker symbol, read-only enforcement, provider errors and unsupported symbols. Windows CI now runs these tests before building the EXE.
+- **Status:** CI pending. Real Windows desktop display and the user's MT5 terminal still require device-level verification.

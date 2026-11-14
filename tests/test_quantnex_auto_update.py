@@ -106,6 +106,8 @@ class AutomaticUpdateTests(unittest.TestCase):
 
     def test_supervisor_ui_uses_real_versions_and_manual_check_endpoint(self):
         self.assertIn('fetch("/__quantnex/check-now"', APP)
+        self.assertIn("watchSupervisorUpdate(latestUpdateCommit)", APP)
+        self.assertIn("quantnex.webUpdateComplete", APP)
         self.assertIn('result.installed||"Source revision unavailable"', APP)
         self.assertIn("supervisor_update_status()", UPDATER)
         self.assertIn("SUPERVISOR_CHECK_FILE", UPDATER)

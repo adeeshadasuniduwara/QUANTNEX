@@ -6,7 +6,7 @@ QUANTNEX is developed as one evolving application. New capabilities extend the e
 
 - Monorepo for Web, Android, Windows and shared backend.
 - Responsive monochrome Web workspace with calculator and local trade journal.
-- Windows desktop workspace with calculator, local SQLite journal and update checking.
+- Android APK and Web workspace with shared chart, journal and update experiences.
 - FastAPI authentication, user-isolated journal and preferences APIs.
 - Wallet ledger API: authenticated manual deposits and withdrawals, balance validation, transaction history and summary.
 - API journal P&L automatically creates a linked wallet ledger entry; deleting that journal record removes the linked P&L entry.

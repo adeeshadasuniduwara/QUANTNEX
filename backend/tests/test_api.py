@@ -34,6 +34,82 @@ def test_health_and_local_journal_flow():
     assert deleted.status_code == 204
 
 
+def test_journal_update_reconciles_only_an_existing_wallet_pnl_record():
+    client = TestClient(app)
+    before = client.get("/api/v1/wallet/summary").json()
+    created = client.post("/api/v1/journal", json={
+        "symbol": "xauusd", "direction": "BUY", "outcome": "Win",
+        "pnl": 25.50, "notes": "before edit",
+        "created_at": "2026-11-14T12:00:00+05:30",
+        "client_ref": "journal-edit-flow-2026-001",
+    })
+    assert created.status_code == 201
+    trade_id = created.json()["id"]
+    assert round(client.get("/api/v1/wallet/summary").json()["balance"] - before["balance"], 2) == 25.50
+
+    updated = client.put(f"/api/v1/journal/{trade_id}", json={
+        "symbol": "BTCUSDT", "direction": "sell", "outcome": "loss",
+        "pnl": -7.75, "notes": "corrected trade details",
+        "created_at": "2026-11-13T12:00:00+05:30",
+    })
+    assert updated.status_code == 200
+    assert updated.json()["symbol"] == "BTCUSDT"
+    assert updated.json()["direction"] == "sell"
+    assert updated.json()["outcome"] == "loss"
+    assert updated.json()["pnl"] == -7.75
+    assert updated.json()["notes"] == "corrected trade details"
+    assert updated.json()["created_at"].startswith("2026-11-13T06:30:00")
+
+    rows = client.get("/api/v1/journal?limit=500").json()
+    assert next(row for row in rows if row["id"] == trade_id)["pnl"] == -7.75
+    transactions = client.get("/api/v1/wallet/transactions?limit=500").json()
+    linked = [row for row in transactions if row["trade_id"] == trade_id]
+    assert len(linked) == 1
+    assert linked[0]["amount"] == -7.75
+    assert linked[0]["description"] == "BTCUSDT SELL journal P&L"
+    after_update = client.get("/api/v1/wallet/summary").json()
+    assert round(after_update["balance"] - before["balance"], 2) == -7.75
+
+    invalid = client.put(
+        f"/api/v1/journal/{trade_id}",
+        content=json.dumps({
+            "symbol": "ETHUSDT", "direction": "buy", "outcome": "win",
+            "pnl": float("nan"), "notes": "must not be saved",
+        }, allow_nan=True),
+        headers={"Content-Type": "application/json"},
+    )
+    assert invalid.status_code == 422
+    unchanged = next(row for row in client.get("/api/v1/journal?limit=500").json()
+                     if row["id"] == trade_id)
+    assert unchanged["symbol"] == "BTCUSDT" and unchanged["pnl"] == -7.75
+    assert client.get("/api/v1/wallet/summary").json() == after_update
+
+    assert client.delete(f"/api/v1/journal/{trade_id}").status_code == 204
+    assert client.get("/api/v1/wallet/summary").json() == before
+
+    # Legacy imports intentionally have no wallet row; editing one must not
+    # silently convert historical journal P&L into a current balance movement.
+    imported = client.post("/api/v1/journal/import", json={
+        "source_id": "journal-edit-legacy-source-2026",
+        "rows": [{
+            "source_ref": "journal-edit-legacy-row-2026",
+            "date": "2024-04-02", "symbol": "EURUSD",
+            "direction": "buy", "outcome": "win", "pnl": 10.0,
+            "notes": "legacy no-wallet row",
+        }],
+    })
+    assert imported.status_code == 200 and imported.json()["imported"] == 1
+    legacy = next(row for row in client.get("/api/v1/journal?limit=500").json()
+                  if row["notes"] == "legacy no-wallet row")
+    legacy_update = client.put(f"/api/v1/journal/{legacy['id']}", json={
+        "symbol": "EURUSD", "direction": "buy", "outcome": "win",
+        "pnl": 99.0, "notes": "legacy edited without wallet impact",
+    })
+    assert legacy_update.status_code == 200
+    assert client.get("/api/v1/wallet/summary").json() == before
+    assert client.delete(f"/api/v1/journal/{legacy['id']}").status_code == 204
+
+
 def test_signal_settings_reject_non_finite_risk_without_mutating_preferences():
     client = TestClient(app)
     before = client.get("/api/v1/signals/settings").json()

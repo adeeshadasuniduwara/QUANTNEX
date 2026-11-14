@@ -1,6 +1,6 @@
 # QUANTNEX Full Tool Audit
 
-**Audit refreshed:** 2026-11-14  
+**Audit refreshed:** 2026-11-15  
 **Product scope:** Android APK + Web workspace + supporting local Backend.  
 **Method:** Trace each user-facing Web/Android tool through UI, API/service/provider and persistence. Static inventory is not proof that an external provider is reachable from a user's device.
 
@@ -17,7 +17,8 @@
 |---|---|---|---|
 | Web Overview | BTC/USD, XAU/USD and USD/LKR provider-backed estimates with explicit source/status fields | Implemented; provider-dependent | Verify user's network/provider reachability and freshness on device |
 | QUANTNEX VIEW | First-party chart UI; Binance candles and Coinbase fallback for supported crypto; Gold history via configured MT5 or Twelve Data | Implemented; provider-dependent | Test all symbol/timeframe combinations, stale/empty/error states and overlays on device |
-| Web journal | Browser-local journal and CSV export; separate Backend journal APIs | Implemented with separate storage paths | Exercise add/edit/delete/export, reload and duplicate protection |
+| Web journal CRUD | Browser recovery cache plus local SQLite GET/POST/PUT/DELETE API; offline creates import idempotently; edits reconcile an existing linked wallet P&L row | **PARTIAL** — backend API lifecycle and UI wiring regression tests; physical browser/restart path not yet exercised | Verify real browser add/edit/delete, offline recovery, reload/restart and multi-tab behavior |
+| Journal CSV export | Spreadsheet-safe CSV serializer and download action | **PARTIAL** — formula-injection, quoting, newline and numeric-P&L unit tests pass; actual spreadsheet interoperability is unverified | Open a downloaded CSV in supported spreadsheet apps on a user device |
 | Wallet ledger | Backend deposit/withdrawal/summary APIs and Web UI | Local record ledger only; not a bank/payment integration | Test amount boundaries, NaN/Infinity/over-limit inputs, reload and journal P&L linkage |
 | Signal Lab / Signal Center | Signal settings and scan APIs; rule-based confluence score | Implemented; not a win probability | Exercise valid/invalid scans, settings persistence and unavailable market feeds |
 | Market Intelligence / Order Flow / News | Market, order-book, signal and news APIs | Partial/provider-dependent | Gold depth needs local MT5 + broker DOM; Forex depth needs a configured provider; Finnhub news needs a valid key |
@@ -61,6 +62,15 @@ These CI results establish that the tested code passed in GitHub's runner. They 
 - Added regression tests for launcher exit-code handling, persistent log output, Android-only release assets, signing requirements and ignored local data/secrets.
 - Backend CI passed on Python 3.12 and 3.14; the Python 3.12 suite reported 196 passed. Backend/Web CI and Web CI passed. Android debug APK build and artifact upload passed.
 - A real Windows first-run install and physical Android signed-release update still require device-level verification. The historical v0.6.0 GitHub Release retains its old EXE asset until manually removed; no current workflow builds another one.
+
+## Update 020 — Web Journal edit and wallet reconciliation
+
+- Added a visible date field, per-row Edit action, and Cancel edit control. Existing entries can be edited without creating a duplicate; unsynced browser-recovery rows can be corrected locally before their first import.
+- Added `PUT /api/v1/journal/{trade_id}`. The route validates the full replacement payload, normalizes timestamps to UTC, writes the journal row and audit event in one database transaction, and publishes the journal change event.
+- If the journal row already has a linked `trade_pnl` wallet transaction, its amount and description are reconciled atomically. Legacy imported history with no wallet transaction remains excluded from the wallet; editing old history does not create a cash movement.
+- Delete continues to remove an existing linked P&L transaction; the create/update/delete test checks the balance returns to its starting value. Invalid non-finite P&L is rejected without mutating either record.
+- Web contract tests cover date/edit/cancel controls, PUT wiring, matching-row cache replacement, startup/offline recovery wiring and distinction between HTTP validation errors and offline queuing.
+- Evidence level: backend TestClient exercises API create/list/update/delete, timestamp normalization, wallet linkage, legacy no-wallet behavior and invalid-input rollback. Web CI exercises syntax and static UI/API contract tests. A real browser download, browser storage failure, browser restart, Excel/LibreOffice opening and user's device persistence remain **PARTIAL / device-level verification required**.
 
 ## Audit status vocabulary
 

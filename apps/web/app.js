@@ -28,29 +28,59 @@ function mapServerTrade(item){
     pnl:Number(item.pnl)||0,notes:String(item.notes||"")};
 }
 let journalRowsCache=loadTrades();
+journalRowsCache.forEach(row=>{if(!row.id&&!row.client_ref)row.client_ref=newJournalRef();});
+let editingJournalKey=null;
+const journalRowKey=row=>row.id!=null?"id:"+row.id:"ref:"+String(row.client_ref||"");
+if($("tradeDate")&&!$("tradeDate").value)$("tradeDate").value=new Date().toLocaleDateString("en-CA");
+function cancelJournalEdit(){
+  editingJournalKey=null;
+  $("saveTrade").textContent="Save trade";
+  $("cancelJournalEdit").hidden=true;
+  $("tradeDate").value=new Date().toLocaleDateString("en-CA");
+  $("symbol").value="";
+  $("direction").value="Buy";
+  $("outcome").value="Win";
+  $("pnl").value="";
+  $("notes").value="";
+}
+function beginJournalEdit(trade){
+  editingJournalKey=journalRowKey(trade);
+  $("tradeDate").value=trade.date||new Date().toLocaleDateString("en-CA");
+  $("symbol").value=trade.symbol||"";
+  $("direction").value=trade.direction||"Buy";
+  $("outcome").value=trade.outcome||"Win";
+  $("pnl").value=String(trade.pnl??"");
+  $("notes").value=trade.notes||"";
+  $("saveTrade").textContent="Update trade";
+  $("cancelJournalEdit").hidden=false;
+  $("journal").scrollIntoView({behavior:"smooth",block:"start"});
+  $("symbol").focus({preventScroll:true});
+  setJournalStatus("Editing "+(trade.symbol||"journal")+" · Save to apply the changes.");
+}
+$("cancelJournalEdit").addEventListener("click",cancelJournalEdit);
 function renderJournal(){
   const rows=journalRowsCache, body=$("journalRows");
   body.replaceChildren();
   if(!rows.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=6;td.className="empty-row";td.textContent="No journal records yet.";tr.append(td);body.append(tr);}
-  rows.slice().reverse().forEach((trade,index)=>{
+  rows.slice().reverse().forEach(trade=>{
     const tr=document.createElement("tr");
     [trade.date,trade.symbol,trade.direction,trade.outcome,money(Number(trade.pnl))].forEach(value=>{const td=document.createElement("td");td.textContent=value;tr.append(td);});
-    const action=document.createElement("td"),button=document.createElement("button");button.className="delete-btn";button.textContent="Delete";button.setAttribute("aria-label","Delete journal record");
-    button.addEventListener("click",async()=>{
-      const target=journalRowsCache[journalRowsCache.length-1-index];
-      if(target?.id){
-        try{await apiRequest("/api/v1/journal/"+target.id,{method:"DELETE"});}
+    const action=document.createElement("td");
+    const edit=document.createElement("button");edit.className="secondary-btn compact-btn";edit.textContent="Edit";edit.setAttribute("aria-label","Edit journal record "+trade.symbol);
+    edit.addEventListener("click",()=>beginJournalEdit(trade));
+    const remove=document.createElement("button");remove.className="delete-btn";remove.textContent="Delete";remove.setAttribute("aria-label","Delete journal record "+trade.symbol);
+    remove.addEventListener("click",async()=>{
+      const key=journalRowKey(trade);
+      if(trade.id!=null){
+        try{await apiRequest("/api/v1/journal/"+trade.id,{method:"DELETE"});}
         catch(error){setJournalStatus("Could not delete journal record: "+error.message,true);return;}
       }
-      if(target?.id){
-        journalRowsCache=journalRowsCache.filter(row=>row.id!==target.id);
-      }else{
-        const current=journalRowsCache.slice();current.splice(current.length-1-index,1);journalRowsCache=current;
-      }
+      journalRowsCache=journalRowsCache.filter(row=>journalRowKey(row)!==key);
+      if(editingJournalKey===key)cancelJournalEdit();
       try{saveTrades(journalRowsCache);}catch{}
       renderJournal();setJournalStatus("Journal record deleted.");
     });
-    action.append(button);tr.append(action);
+    action.append(edit,remove);tr.append(action);
   });
   $("metricTrades").textContent=String(rows.length);
   $("metricPnl").textContent=money(rows.reduce((sum,t)=>sum+Number(t.pnl||0),0));
@@ -61,29 +91,51 @@ $("calculate").addEventListener("click",()=>{
   const amount=equity*risk/100,lots=amount/(stop*pip);
   out.replaceChildren();const strong=document.createElement("strong");strong.textContent=lots.toFixed(3)+" lots";out.append(strong,document.createTextNode("Risk amount "+money(amount)+" · Estimated stop loss "+money(lots*stop*pip)));
 });
-$("saveTrade").addEventListener("click",async()=>{
-  const symbol=$("symbol").value.trim().toUpperCase(),pnl=Number($("pnl").value);
-  if(!symbol||symbol.length>20||$("pnl").value.trim()===""||!Number.isFinite(pnl)){window.alert("Enter a valid symbol and P&L amount.");return;}
-  const trade={client_ref:newJournalRef(),record_wallet:true,date:new Date().toLocaleDateString("en-CA"),symbol,direction:$("direction").value,outcome:$("outcome").value,pnl,notes:$("notes").value.trim()};
+async function saveJournalTrade(){
+  const date=$("tradeDate").value,symbol=$("symbol").value.trim().toUpperCase(),pnl=Number($("pnl").value);
+  const dateValue=date?new Date(date+"T12:00:00"):null;
+  if(!dateValue||Number.isNaN(dateValue.getTime())||!symbol||symbol.length>20||$("pnl").value.trim()===""||!Number.isFinite(pnl)){
+    setJournalStatus("Enter a valid date, symbol and finite P&L amount.",true);return;
+  }
+  const direction=$("direction").value,outcome=$("outcome").value,notes=$("notes").value.trim();
+  const payload={symbol,direction:direction.toLowerCase(),outcome:outcome.toLowerCase(),pnl,notes,created_at:dateValue.toISOString()};
+  if(editingJournalKey){
+    const key=editingJournalKey,existing=journalRowsCache.find(row=>journalRowKey(row)===key);
+    if(!existing){setJournalStatus("The journal record is no longer in the local list. Refresh and try again.",true);cancelJournalEdit();return;}
+    let updated;
+    if(existing.id!=null){
+      let saved;
+      try{saved=await apiRequest("/api/v1/journal/"+existing.id,{method:"PUT",body:JSON.stringify(payload)});}
+      catch(error){setJournalStatus("Could not update journal record: "+error.message,true);return;}
+      updated=mapServerTrade(saved);
+    }else{
+      updated={...existing,date,symbol,direction,outcome,pnl,notes};
+    }
+    journalRowsCache=journalRowsCache.map(row=>journalRowKey(row)===key?updated:row);
+    try{saveTrades(journalRowsCache);}catch{}
+    renderJournal();setJournalStatus(existing.id!=null?"Trade updated in the local QUANTNEX database.":"Offline trade updated in the browser recovery copy; it will sync when the backend is available.");
+    cancelJournalEdit();
+    return;
+  }
+  const trade={client_ref:newJournalRef(),record_wallet:true,date,symbol,direction,outcome,pnl,notes};
   let saved;
   try{
-    saved=await apiRequest("/api/v1/journal",{method:"POST",body:JSON.stringify({
-      symbol:trade.symbol,direction:trade.direction.toLowerCase(),outcome:trade.outcome.toLowerCase(),pnl:trade.pnl,notes:trade.notes,
-      created_at:new Date(trade.date+"T12:00:00").toISOString(),client_ref:trade.client_ref
-    })});
+    saved=await apiRequest("/api/v1/journal",{method:"POST",body:JSON.stringify({...payload,client_ref:trade.client_ref})});
   }catch(error){
+    if(error.status){setJournalStatus("Trade could not be saved: "+error.message,true);return;}
     journalRowsCache.push(trade);
     try{saveTrades(journalRowsCache);}catch{}
     renderJournal();setJournalStatus("Backend unavailable. Trade is safely queued in the browser recovery copy for later sync.",true);
-    $("symbol").value="";$("pnl").value="";$("notes").value="";
+    cancelJournalEdit();
     return;
   }
   const savedRow=mapServerTrade(saved);
   if(!journalRowsCache.some(row=>row.id===savedRow.id))journalRowsCache.push(savedRow);
   try{saveTrades(journalRowsCache);}catch{}
   renderJournal();setJournalStatus("Trade saved to the local QUANTNEX database.");
-  $("symbol").value="";$("pnl").value="";$("notes").value="";
-});
+  cancelJournalEdit();
+}
+$("saveTrade").addEventListener("click",saveJournalTrade);
 $("exportJournal").addEventListener("click",()=>{
   const rows=journalRowsCache;if(!rows.length){window.alert("There are no journal records to export yet.");return;}
   const csv=window.QuantnexJournalExport.toCsv(rows);
@@ -348,7 +400,7 @@ async function apiRequest(path, options={}){
   const headers={"Accept":"application/json",...(options.body?{"Content-Type":"application/json"}:{}),...(options.headers||{})};
   const response=await fetch("http://127.0.0.1:8000"+path,{...options,headers,cache:"no-store"});
   const payload=response.status===204?null:await response.json().catch(()=>null);
-  if(!response.ok) throw new Error(payload?.detail||("API request failed ("+response.status+")."));
+  if(!response.ok){const detail=payload?.detail,message=typeof detail==="string"?detail:detail?.message||("API request failed ("+response.status+").");const error=new Error(message);error.status=response.status;throw error;}
   return payload;
 }
 let journalSyncing=false;
@@ -404,6 +456,9 @@ window.addEventListener("quantnex:workspace-resync",()=>syncJournal());
 window.addEventListener("quantnex:workspace-event",event=>{
   if(event.detail?.type==="journal.changed")syncJournal();
 });
+// Recover and reconcile queued rows on every workspace startup, not only after
+// a later browser "online" event or event-stream reconnect.
+syncJournal();
 async function refreshWallet(){
   const [summary,transactions]=await Promise.all([apiRequest("/api/v1/wallet/summary"),apiRequest("/api/v1/wallet/transactions?limit=100")]);
   $("walletBalance").textContent=money(summary.balance);$("walletDeposits").textContent=money(summary.deposits);$("walletWithdrawals").textContent=money(summary.withdrawals);$("walletPnl").textContent=money(summary.trading_pnl);renderWalletTransactions(transactions);

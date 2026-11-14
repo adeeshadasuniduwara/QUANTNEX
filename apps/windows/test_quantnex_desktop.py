@@ -200,6 +200,39 @@ class WindowsUpdaterIntegrityTests(unittest.TestCase):
 
 
 
+
+    def test_new_local_trades_are_pending_then_persist_as_synced(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(desktop, "app_data", return_value=Path(directory)):
+            journal = desktop.TradeJournal()
+            local_id = journal.add("XAUUSD", "Buy", "Win", 25.0, "test note")
+            pending = journal.pending()
+            self.assertEqual(len(pending), 1)
+            self.assertEqual(pending[0][0], local_id)
+            self.assertEqual(journal.unknown_sync_count(), 0)
+
+            journal.mark_synced(local_id)
+            self.assertEqual(journal.pending(), [])
+            restarted = desktop.TradeJournal()
+            self.assertEqual(restarted.recent()[0][5], "SYNCED")
+
+    def test_legacy_rows_are_unknown_and_not_automatically_replayed(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(desktop, "app_data", return_value=Path(directory)):
+            database = Path(directory) / "journal.sqlite3"
+            with sqlite3.connect(database) as db:
+                db.execute("""CREATE TABLE trades(
+                    id INTEGER PRIMARY KEY, created TEXT NOT NULL, symbol TEXT NOT NULL,
+                    side TEXT NOT NULL, outcome TEXT NOT NULL, pnl REAL NOT NULL, notes TEXT NOT NULL)""")
+                db.execute(
+                    "INSERT INTO trades(created,symbol,side,outcome,pnl,notes) VALUES(?,?,?,?,?,?)",
+                    ("2026-11-14T00:00:00+00:00", "BTCUSDT", "Buy", "Win", 10.0, "old row")
+                )
+
+            journal = desktop.TradeJournal()
+            self.assertEqual(journal.pending(), [])
+            self.assertEqual(journal.unknown_sync_count(), 1)
+            self.assertEqual(journal.recent()[0][5], "UNKNOWN")
+
+
 class WindowsWalletValidationTests(unittest.TestCase):
     def test_accepts_only_finite_positive_wallet_amounts_within_api_limit(self):
         self.assertEqual(desktop.validate_wallet_amount("10.25"), 10.25)

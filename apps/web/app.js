@@ -451,7 +451,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
       $id("goldLkrNote").textContent=data.note+" "+data.gold_calculation;
     }catch(error){
       ["btcLivePrice","goldLivePrice","goldLkrGram","goldLkrEight","usdLkrRate"].forEach(id=>{if($id(id))$id(id).textContent="Feed unavailable";});
-      if($id("btcLiveUpdated"))$id("btcLiveUpdated").textContent="Start QUANTNEX API · "+error.message;
+      if($id("btcLiveUpdated"))$id("btcLiveUpdated").textContent=(location.protocol==="file:"?"Do not open index.html directly. Run run_quantnex.bat → option 2 or 3. ":"Start run_quantnex.bat → option 2 or 3 to launch the Backend + Web supervisor. ")+error.message;
       if($id("goldLkrNote"))$id("goldLkrNote").textContent="BTC and Gold use keyless fallback providers; USD/LKR uses a daily reference rate. Check that the local QUANTNEX API is running.";
     }
   }

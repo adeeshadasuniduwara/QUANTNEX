@@ -11,7 +11,7 @@ const rows=[{
 const csv=toCsv(rows);
 assert.ok(csv.includes("'=HYPERLINK("),"Formula-like symbols must be forced to text.");
 assert.ok(csv.includes("'+CMD|"),"Formula-like direction values must be forced to text.");
-assert.ok(csv.includes("  '@SUM(1,2)"),"Leading whitespace must not bypass formula protection.");
+assert.ok(csv.includes("'  @SUM(1,2)"),"Leading whitespace must not bypass formula protection.");
 assert.ok(csv.includes("\"\"quoted\"\"\r\nsecond line\""),"Quotes and newlines must remain correctly escaped.");
 assert.ok(csv.includes(',"-12.5",'),"Legitimate negative numeric P&L must remain numeric.");
 assert.throws(()=>toCsv([]),/no journal records/i);

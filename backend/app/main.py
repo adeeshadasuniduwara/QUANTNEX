@@ -214,22 +214,27 @@ async def chart_quote(symbol: str = "XAUUSD", interval: str = "15m"):
             quote = await get_mt5_quote(QUANTNEX_MT5_GOLD_SYMBOL)
             bid, ask = float(quote["bid"]), float(quote["ask"])
             price = float(quote["last"]) if quote.get("last") else (bid + ask) / 2
-            return {"symbol": "XAUUSD", "price": price, "provider": quote["provider"],
-                    "source_timestamp": quote.get("source_timestamp"),
-                    "timestamp": quote.get("fetch_timestamp") or datetime.now(timezone.utc).isoformat(),
-                    "stale": bool(quote.get("stale")) or float(quote.get("age_seconds") or 0) > stale_after_seconds,
-                    "stale_after_seconds": stale_after_seconds, "spread": quote.get("spread")}
+            stale = bool(quote.get("stale")) or float(quote.get("age_seconds") or 0) > stale_after_seconds
+            if not stale:
+                return {"symbol": "XAUUSD", "price": price, "provider": quote["provider"],
+                        "source_timestamp": quote.get("source_timestamp"),
+                        "timestamp": quote.get("fetch_timestamp") or datetime.now(timezone.utc).isoformat(),
+                        "stale": False, "stale_after_seconds": stale_after_seconds,
+                        "spread": quote.get("spread")}
+            provider_errors.append("MT5: quote is stale for the selected chart timeframe.")
         except MT5FeedError as exc:
             provider_errors.append("MT5: " + str(exc))
     try:
         quote = await get_twelve_data_quote("XAUUSD")
         from .phase10_engine import assess_quote
         health = assess_quote(quote)
-        return {"symbol": "XAUUSD", "price": quote["price"], "provider": quote["provider"],
-                "source_timestamp": quote.get("source_timestamp"),
-                "timestamp": quote.get("timestamp") or datetime.now(timezone.utc).isoformat(),
-                "stale": not health["trading_safe"] or health["age_seconds"] is None or health["age_seconds"] > stale_after_seconds,
-                "stale_after_seconds": stale_after_seconds, "data_health": health}
+        stale = not health["trading_safe"] or health["age_seconds"] is None or health["age_seconds"] > stale_after_seconds
+        if not stale:
+            return {"symbol": "XAUUSD", "price": quote["price"], "provider": quote["provider"],
+                    "source_timestamp": quote.get("source_timestamp"),
+                    "timestamp": quote.get("timestamp") or datetime.now(timezone.utc).isoformat(),
+                    "stale": False, "stale_after_seconds": stale_after_seconds, "data_health": health}
+        provider_errors.append("Twelve Data: quote is stale or not safe for the selected chart timeframe.")
     except (IntelligenceDataError, httpx.HTTPError) as exc:
         provider_errors.append("Twelve Data: " + str(exc))
     except (ValueError, KeyError) as exc:

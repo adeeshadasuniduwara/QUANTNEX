@@ -522,7 +522,7 @@ def test_journal_creation_normalizes_timezone_aware_local_dates():
 def test_windows_journal_sync_is_idempotent_when_http_response_is_lost():
     client = TestClient(app)
     before = client.get("/api/v1/wallet/summary").json()
-    client_ref = "windows:17"
+    client_ref = "windows_12345678-1234-1234-1234-123456789012"
     payload = {
         "symbol": "XAUUSD",
         "direction": "buy",

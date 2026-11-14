@@ -1,39 +1,20 @@
-# OS / editor
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
-*.iml
-
-# Secrets and local configuration
-.env
-.env.*
-!.env.example
-*.keystore
-*.jks
-secrets/
-local.properties
-
-# Python
 __pycache__/
 *.py[cod]
 .venv/
 venv/
-.pytest_cache/
-
-# Android / Gradle
-.gradle/
+**/.venv/
+**/venv/
 **/build/
-.cxx/
 .externalNativeBuild/
-
-# Node / web tooling
-node_modules/
 dist/
-coverage/
-
-# Local data and logs
-data/
 logs/
-*.sqlite3
+data/
 *.db
+*.sqlite
+*.sqlite3
+**/.env
+**/.env.*
+!**/.env.example
+apps/android/*.p12
+*.jks
+*.keystore

@@ -1,3 +1,4 @@
+import json
 from fastapi.testclient import TestClient
 from app.main import app
 
@@ -67,4 +68,77 @@ def test_mt5_bridge_is_unavailable_off_windows_without_fake_connection():
         })
         assert response.status_code == 503
         assert "Windows" in response.json()["detail"]
+    _reset(client)
+
+
+def _post_json_allow_nonfinite(client, path, payload):
+    return client.post(
+        path,
+        content=json.dumps(payload, allow_nan=True),
+        headers={"Content-Type": "application/json"},
+    )
+
+
+def test_prop_challenge_rejects_non_finite_limits_without_creating_state():
+    client = TestClient(app)
+    _reset(client)
+    base = {
+        "mode": "virtual", "starting_balance": 10000,
+        "profit_target_pct": 10, "daily_loss_pct": 5,
+        "max_loss_pct": 10, "minimum_trading_days": 2,
+        "timezone": "Asia/Colombo", "drawdown_type": "static",
+    }
+    for field in ("starting_balance", "profit_target_pct", "daily_loss_pct", "max_loss_pct"):
+        for invalid in (float("nan"), float("inf"), float("-inf")):
+            payload = dict(base)
+            payload[field] = invalid
+            response = _post_json_allow_nonfinite(client, "/api/v1/prop-challenge/challenge", payload)
+            assert response.status_code == 422, (field, invalid)
+            assert response.json()["detail"]
+            assert client.get("/api/v1/prop-challenge/state").json()["challenge"] is None
+    _reset(client)
+
+
+def test_virtual_practice_rejects_non_finite_pnl_without_recording_trade():
+    client = TestClient(app)
+    _reset(client)
+    created = client.post("/api/v1/prop-challenge/challenge", json={
+        "mode": "virtual", "starting_balance": 10000,
+        "profit_target_pct": 10, "daily_loss_pct": 5,
+        "max_loss_pct": 10, "minimum_trading_days": 1,
+        "timezone": "Asia/Colombo", "drawdown_type": "static",
+    })
+    assert created.status_code == 201
+    for invalid in (float("nan"), float("inf"), float("-inf")):
+        response = _post_json_allow_nonfinite(
+            client, "/api/v1/prop-challenge/virtual-trades",
+            {"symbol": "XAUUSD", "pnl": invalid},
+        )
+        assert response.status_code == 422
+        assert response.json()["detail"]
+    state = client.get("/api/v1/prop-challenge/state").json()
+    assert state["challenge"]["status"] == "ACTIVE"
+    assert state["recent_trades"] == []
+    _reset(client)
+
+
+def test_virtual_prop_challenge_trailing_drawdown_uses_peak_equity():
+    client = TestClient(app)
+    _reset(client)
+    created = client.post("/api/v1/prop-challenge/challenge", json={
+        "mode": "virtual", "starting_balance": 10000,
+        "profit_target_pct": 50, "daily_loss_pct": 8,
+        "max_loss_pct": 10, "minimum_trading_days": 1,
+        "timezone": "Asia/Colombo", "drawdown_type": "trailing",
+    })
+    assert created.status_code == 201
+    profit = client.post("/api/v1/prop-challenge/virtual-trades", json={"symbol": "XAUUSD", "pnl": 500})
+    assert profit.status_code == 201
+    assert profit.json()["challenge"]["status"] == "ACTIVE"
+    assert profit.json()["metrics"]["peak_equity"] == 10500
+    loss = client.post("/api/v1/prop-challenge/virtual-trades", json={"symbol": "XAUUSD", "pnl": -1000})
+    assert loss.status_code == 201
+    assert loss.json()["challenge"]["status"] == "FAILED"
+    assert loss.json()["challenge"]["status_reason"] == "Maximum overall loss breached."
+    assert loss.json()["metrics"]["max_loss_floor"] == 9500
     _reset(client)

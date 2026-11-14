@@ -30,10 +30,10 @@ _mt5_last_error: str | None = None
 
 class ChallengeCreate(BaseModel):
     mode: Literal["virtual", "mt5_demo"] = "virtual"
-    starting_balance: float = Field(gt=0, le=100_000_000)
-    profit_target_pct: float = Field(default=10, gt=0, le=100)
-    daily_loss_pct: float = Field(default=5, gt=0, le=50)
-    max_loss_pct: float = Field(default=10, gt=0, le=90)
+    starting_balance: float = Field(gt=0, le=100_000_000, allow_inf_nan=False)
+    profit_target_pct: float = Field(default=10, gt=0, le=100, allow_inf_nan=False)
+    daily_loss_pct: float = Field(default=5, gt=0, le=50, allow_inf_nan=False)
+    max_loss_pct: float = Field(default=10, gt=0, le=90, allow_inf_nan=False)
     minimum_trading_days: int = Field(default=5, ge=0, le=365)
     timezone: str = Field(default="Asia/Colombo", min_length=1, max_length=64)
     drawdown_type: Literal["static", "trailing"] = "static"
@@ -57,7 +57,7 @@ class ChallengeCreate(BaseModel):
 
 
 class VirtualTradeResult(BaseModel):
-    pnl: float = Field(ge=-100_000_000, le=100_000_000)
+    pnl: float = Field(ge=-100_000_000, le=100_000_000, allow_inf_nan=False)
     symbol: str = Field(default="XAUUSD", min_length=1, max_length=20)
 
 

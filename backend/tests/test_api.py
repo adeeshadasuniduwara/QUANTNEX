@@ -34,6 +34,25 @@ def test_health_and_local_journal_flow():
     assert deleted.status_code == 204
 
 
+def test_signal_settings_reject_non_finite_risk_without_mutating_preferences():
+    client = TestClient(app)
+    before = client.get("/api/v1/signals/settings").json()
+    for invalid in (float("nan"), float("inf"), float("-inf")):
+        payload = {
+            "primary": before["primary"], "trend": before["trend"],
+            "enabled": before["enabled"], "risk_percent": invalid,
+            "min_score": before["min_score"],
+        }
+        response = client.put(
+            "/api/v1/signals/settings",
+            content=json.dumps(payload, allow_nan=True),
+            headers={"Content-Type": "application/json"},
+        )
+        assert response.status_code == 422
+        assert response.json()["detail"]
+    assert client.get("/api/v1/signals/settings").json() == before
+
+
 def test_login_and_registration_routes_are_removed():
     client = TestClient(app)
     assert client.post("/api/v1/auth/register", json={}).status_code == 404

@@ -22,13 +22,13 @@
 | Web journal | UI, local browser journal, CSV export; backend journal API also exists | Implemented with distinct local/browser and API storage paths | Exercise add/edit/delete/export, reload and data consistency |
 | Wallet ledger | Backend deposit/withdrawal/summary APIs and Web/Windows UI | Implemented as a local record ledger, not a payment/bank integration; Update 009 adds explicit finite amount validation | Test deposit/withdrawal boundaries, NaN/Infinity/over-limit inputs, reload and journal P&L linkage; no actual payment rails are connected |
 | QUANTNEX VIEW | First-party chart UI and candles/quote/analysis/backtest APIs | Implemented; provider-dependent | Test supported symbols/timeframes, empty/stale/provider errors, overlays and chart interactions |
-| Signal Lab / Signal Center | Signal settings, scan APIs and Web UI | Implemented; rule-based confluence, not win probability | Exercise valid/invalid scans, settings persistence and unavailable market feeds |
+| Signal Lab / Signal Center | Signal settings, scan APIs and Web UI | Implemented; Update 010 adds finite risk-percent validation; rule-based confluence is not win probability | Exercise valid/invalid scans, non-finite risk settings, settings persistence and unavailable market feeds |
 | Market Intelligence / Order Flow / News | Market, order-book, signal and news APIs; UI panels | PARTIAL — crypto depth uses Binance; Update 006 adds read-only XAUUSD depth via MT5 when configured | Gold depth requires an enabled local MT5 terminal and a broker that exposes DOM; otherwise UI must show unavailable, never synthetic depth. Forex depth remains provider-dependent; news requires Finnhub key |
 | Paper Trading / Autopilot | Paper-trade CRUD, close, summary, paper-engine and worker routes | Implemented in code; simulation only | Exercise open/close, P&L, risk limits, restart persistence and worker stop/start |
 | Risk Management / Portfolio | Position-size, guardian, stress, portfolio and smart-open routes | Implemented in code | Boundary tests, unsafe trade rejection and no real order side effects |
 | Strategy Laboratory | Replay, backtest, optimize, forward evaluation, research and walk-forward routes | Implemented in code | Test deterministic fixtures, invalid parameters, result persistence and empty history |
 | Performance Analytics | Intelligence and advanced performance routes | Implemented in code; ledger-derived estimates | Verify calculations, time boundaries, empty states and no unsupported performance claims |
-| Prop Firm Challenge | Virtual challenge routes and MT5 DEMO monitoring/guardian | Implemented; MT5 requires local demo terminal/account | Test virtual mode; live terminal test only with a user-authorized DEMO account |
+| Prop Firm Challenge | Virtual challenge routes and MT5 DEMO monitoring/guardian | Update 010 adds finite limits/P&L validation and trailing drawdown regression tests | Verify virtual daily/overall loss, minimum days and trailing drawdown; MT5 requires a local terminal and explicitly DEMO account; no real account is allowed |
 | Web source updater | Local Web updater, periodic source check, staged file replacement and backups described in README | Implemented in code; device-level behavior not yet verified | Test checksum/archive/path validation, rollback, data preservation and reload |
 | Windows EXE updater | GitHub Releases check, SHA256 verification, user-confirmed install and EXE backup | Update 008 hardens asset URL validation, bounded streaming download and atomic staging; CI pending | Require official HTTPS GitHub release URLs, exact QUANTNEX.exe checksum entry, max 200 MB, 16 KB manifest, temp-file cleanup and preserve prior staged EXE on failure; still needs real install/restart/rollback test |
 | Android release updater | Checks latest GitHub Release, downloads APK and opens Android package installer | PASS — Update 004 Android unit tests and debug APK build passed | Requires APK + SHA256 manifest, validates HTTPS GitHub asset URLs, verifies exact APK digest before installer, blocks/removes mismatches; physical-device and production-signed release test remain external |
@@ -120,3 +120,12 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - Aligned Web validation with the backend maximum and clearer user feedback.
 - Added backend API regression coverage proving invalid amounts return HTTP 422 and leave the wallet summary unchanged; added Windows unit coverage for client validation.
 - **Status:** PASS — Backend CI (Python 3.12/3.14), Backend/Web CI, Web CI, Windows wallet/chart unit tests and Windows EXE build/artifact upload all passed for PR #116. This verifies local bookkeeping only; deposits and withdrawals are not bank/payment transactions.
+
+## Update 010 — Prop Firm and Signal Risk Input Safety
+
+- Added explicit `allow_inf_nan=False` validation to Prop Challenge starting balance, profit target, daily loss, max loss and virtual-trade P&L.
+- Added the same finite-number constraint to Signal Lab risk percentage.
+- Added tests that send raw JSON NaN/Infinity values and verify HTTP 422 responses without creating a challenge, recording a virtual trade or changing signal settings.
+- Added a trailing-drawdown scenario: after a new equity peak, a fall to the trailing floor must fail the virtual challenge while remaining above the daily-loss floor.
+- Existing MT5 REAL/CONTEST account rejection remains unchanged; real terminal testing is not performed in CI.
+- **Status:** PASS — Backend CI (Python 3.12/3.14, 178 tests each), Backend/Web CI, Web CI and Windows EXE build/artifact upload all passed for PR #117. Physical MT5 verification remains restricted to a user-authorized DEMO account and broker terminal.

@@ -215,9 +215,12 @@ async def get_economic_calendar(days: int=7) -> dict:
             {"from":start,"to":end,"token":FINNHUB_API_KEY})
     if not isinstance(data,dict):
         raise httpx.HTTPError("Finnhub returned an unexpected calendar response.")
+    if data.get("error"):
+        raise IntelligenceDataError(str(data.get("error")))
     events=data.get("economicCalendar",[])
     if not isinstance(events,list):
         events=[]
+    events=[item for item in events if isinstance(item,dict)]
     events=sorted(events,key=lambda item:str(item.get("time") or item.get("date") or ""))
     return {"configured":True,"provider":"Finnhub","from":start,"to":end,"events":events[:500],
             "timestamp":datetime.now(timezone.utc).isoformat(),

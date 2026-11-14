@@ -889,11 +889,14 @@ async def intelligence_signal_scan(payload: dict, user: User = Depends(local_wor
 
 @app.get("/api/v1/intelligence/news")
 async def intelligence_news(days: int = 7, user: User = Depends(local_workspace)):
-    from .phase07_engine import get_economic_calendar
+    from .phase07_engine import get_economic_calendar, IntelligenceDataError
     try:
         return await get_economic_calendar(days)
-    except httpx.HTTPError:
-        raise HTTPException(status_code=502,detail="Economic calendar provider is temporarily unavailable.")
+    except (httpx.HTTPError, IntelligenceDataError):
+        raise HTTPException(
+            status_code=502,
+            detail="Finnhub economic calendar is unavailable. Check FINNHUB_API_KEY, provider quota and network connection.",
+        )
 
 @app.post("/api/v1/intelligence/risk/calculate")
 def intelligence_risk_calculate(payload: dict, user: User = Depends(local_workspace)):

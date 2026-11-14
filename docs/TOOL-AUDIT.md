@@ -50,7 +50,8 @@
 
 - Added TestClient coverage for the actual demo certificate endpoint.
 - Tests assert HTTP 200, PDF content type and signature, non-cacheable demo filename, minimum output size, and that previewing a demo does not create a real goal.
-- Added invalid-input cases for blank fields, nonnumeric/negative amounts and unsupported currency.
+- Added invalid-input cases for blank fields, nonnumeric/negative/zero amounts and unsupported/blank currency.
+- Found and fixed a backend validation bug: explicitly supplied empty strings and zero amounts were replaced by defaults before validation. Defaults now apply only when fields are omitted; explicitly invalid values return HTTP 422.
 - Existing UI contract test checks the demo form, endpoint wiring and preview flow.
 - **Status:** CI pending. Do not mark this flow passed until the new backend test suite and Web tests complete successfully.
 

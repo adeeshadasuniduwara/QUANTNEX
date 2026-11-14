@@ -7,6 +7,8 @@ venv/
 **/build/
 .externalNativeBuild/
 dist/
+*.exe
+*.msi
 logs/
 data/
 *.db

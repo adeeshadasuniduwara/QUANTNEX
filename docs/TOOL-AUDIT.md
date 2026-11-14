@@ -206,7 +206,7 @@ This report is a living audit record. Update it as each flow is exercised, repai
 ## Sidebar duplicate-icon hotfix — 2026-11-14
 
 - User reported that every item in the left navigation appeared with two icons.
-- Root cause hardening: the static HTML still carried legacy Unicode glyphs inside each navigation link while the workspace enhancement replaces link contents with an SVG icon and a label. Remove the legacy glyph markup so even a cached/failed enhancement cannot display a second icon; bump the script cache key so clients fetch the current one-icon renderer.
+- Root cause hardening: the static HTML still carried legacy Unicode glyphs inside each navigation link while the workspace enhancement replaces link contents with an SVG icon and a label. Remove the legacy glyph markup so even a cached/failed enhancement cannot display a second icon; bump both the stylesheet and script cache keys so clients fetch the current one-icon renderer.
 - Correct the label CSS so the global legacy `nav-link span` fixed icon width does not constrain the generated text label.
 - Add regression assertions for absence of legacy icon spans and cache invalidation.
 - **Status:** Pending CI and merge. This is a source-level regression fix; visual confirmation in the user's browser still requires loading the updated build.

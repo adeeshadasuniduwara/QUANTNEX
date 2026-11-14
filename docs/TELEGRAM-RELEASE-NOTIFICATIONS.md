@@ -27,7 +27,7 @@ In the QUANTNEX repository, open **Settings → Secrets and variables → Action
 - `TELEGRAM_BOT_TOKEN`: the token from BotFather.
 - `TELEGRAM_CHAT_ID`: the public channel username (e.g. `@YourChannelUsername`) or the numeric ID of a private channel/group.
 
-The bot must be an administrator with permission to post in a channel. For a group, add the bot and make sure it can send messages.
+The bot must be an administrator with permission to post in a channel. For a group, add the bot and make sure it can send messages. The GitHub workflow now checks this with Telegram's getChatMember API before attempting to send.
 
 ### Choose the correct destination
 

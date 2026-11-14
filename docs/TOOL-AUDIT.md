@@ -157,4 +157,4 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - Fixed a state consistency gap: if a user lowers an unachieved goal's target below already saved funds, the goal is now marked achieved immediately rather than showing 100% progress while certificate generation remains locked.
 - Added API tests for NaN target/contribution rejection without balance mutation, achieved-goal gating, target-lowering achievement, real certificate PDF generation/verification and tamper detection.
 - Updated the audit matrix to reflect the already-passed Windows updater CI and new goal/certificate coverage.
-- **Status:** CI pending. Real certificate PDF rendering/download still needs a UI/device-level check; the HMAC verifies local workspace record integrity, not a public authority's credential.
+- **Status:** PASS — Backend CI (Python 3.12/3.14), Backend/Web CI, Web checks and Windows EXE build/artifact upload all passed for PR #120. Real certificate PDF rendering/download still needs a UI/device-level check; the HMAC verifies local workspace record integrity, not a public authority's credential.

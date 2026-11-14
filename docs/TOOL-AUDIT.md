@@ -31,8 +31,8 @@
 | Prop Firm Challenge | Virtual challenge routes and MT5 DEMO monitoring/guardian | Implemented; MT5 requires local demo terminal/account | Test virtual mode; live terminal test only with a user-authorized DEMO account |
 | Web source updater | Local Web updater, periodic source check, staged file replacement and backups described in README | Implemented in code; device-level behavior not yet verified | Test checksum/archive/path validation, rollback, data preservation and reload |
 | Windows EXE updater | GitHub Releases check, SHA256 verification, user-confirmed install and EXE backup | Implemented; not fully automatic | Test release asset/checksum, install/restart/rollback and local data preservation |
-| Android release updater | Checks latest GitHub Release, downloads APK and opens Android package installer | Integrity gap found and fixed in Update 004; CI pending | Require both APK and SHA256 manifest, verify exact asset digest before installer, block/remove failed or mismatched downloads; still needs signed release/device test |
-| Telegram bot / alerts | Connect/test/send, auto-signal and report APIs; encrypted local credentials | Implemented but external setup required | Verify bot can message the target chat; prior recorded attempt failed HTTP 403: bot cannot send messages to the bot |
+| Android release updater | Checks latest GitHub Release, downloads APK and opens Android package installer | PASS — Update 004 Android unit tests and debug APK build passed | Requires APK + SHA256 manifest, validates HTTPS GitHub asset URLs, verifies exact APK digest before installer, blocks/removes mismatches; physical-device and production-signed release test remain external |
+| Telegram bot / alerts | Connect/test/send, auto-signal and report APIs; encrypted local credentials | EXTERNAL BLOCKER — push notifications failed twice with HTTP 403: bot cannot send messages to the bot | TELEGRAM_CHAT_ID currently resolves to the bot itself or an invalid target. Set it to the user's private chat ID after /start, or a group/channel ID where the bot has posting permission; do not expose the bot token |
 | Telegram release notifications | GitHub Actions workflow and release workflow | Workflow exists; delivery not confirmed | Verify correct chat ID, bot membership/admin permission, workflow trigger and successful Telegram API response |
 | Windows native tools | Calculator, local SQLite journal, Charts and Wallet/Backend views | Partial desktop capability | Exercise each screen and backend-unavailable behavior; README says bot monitor is not connected |
 | Android native tools | Overview, chart, journal and update shell | Partial feature parity | Exercise each screen on emulator/device; verify release signing and remaining Trading Room/Updates flows |
@@ -73,4 +73,12 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - Added user-visible error feedback instead of silently swallowing download/install failures.
 - Added JVM tests for release asset selection, missing manifest, URL validation, valid digest, wrong digest and filename mismatch.
 - Updated Android documentation to explain the integrity gate and its trust boundary.
-- **Status:** CI pending. Device-level installer testing and a production-signed release remain external verification items.
+- **Status:** PASS — Android CI run 43568789183 completed successfully, including JVM unit tests, debug APK build and artifact upload. Device-level installer testing and a production-signed release remain external verification items.
+
+## Update 005 — Telegram destination diagnostics and message correctness
+
+- Confirmed Telegram push workflow failures on main after Update 003 and Update 004: runs 43568542822 and 43568881250 both returned HTTP 403, "Forbidden: the bot can't send messages to the bot."
+- Updated the notification workflow to call Telegram getMe and getChat before sending, detect a destination that resolves to the bot itself, and provide a precise setup instruction without printing credentials.
+- Corrected the push notification's link label: a main-branch source commit is now labeled "View source update", not "Open release & downloads". Release links retain their release label.
+- Added static workflow regression tests for destination preflight, safe credential handling and correct link labels.
+- **Status:** CI pending. Actual delivery remains blocked until the repository secret TELEGRAM_CHAT_ID is corrected and a subsequent workflow run returns a successful Telegram API response.

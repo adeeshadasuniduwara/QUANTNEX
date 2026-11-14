@@ -15,6 +15,7 @@ from pathlib import Path, PurePosixPath
 REPOSITORY = "adeeshadasuniduwara/QUANTNEX"
 BRANCH = "main"
 STATE_RELATIVE = Path("data") / "quantnex_update_state.json"
+ROLLBACK_RELATIVE = Path("data") / "updates" / "last_update.json"
 MAX_FILES = 300
 MAX_FILE_BYTES = 20 * 1024 * 1024
 MAX_TOTAL_BYTES = 100 * 1024 * 1024
@@ -196,6 +197,93 @@ def _bootstrap_snapshot(root: Path, latest_sha: str) -> dict:
             "message": f"Installed the initial official source snapshot ({count} files)."}
 
 
+
+def _write_rollback_manifest(root: Path, previous_sha: str, installed_sha: str,
+                             backup_root: Path, touched: list[Path]) -> None:
+    """Persist the exact pre-update file set so a failed startup can be rolled back."""
+    entries = []
+    seen = set()
+    for relative in touched:
+        key = relative.as_posix()
+        if key in seen:
+            continue
+        seen.add(key)
+        entries.append({"path": key, "existed_before": (backup_root / relative).is_file()})
+    manifest = {
+        "previous_sha": previous_sha,
+        "installed_sha": installed_sha,
+        "backup_dir": backup_root.relative_to(root).as_posix(),
+        "entries": entries,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    path = root / ROLLBACK_RELATIVE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def rollback_last_update(root: Path) -> bool:
+    """Restore the previous source snapshot after the new version fails health checks."""
+    root = root.resolve()
+    manifest_path = root / ROLLBACK_RELATIVE
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        current = _load_state(root).get("commit_sha")
+        previous_sha = manifest.get("previous_sha")
+        installed_sha = manifest.get("installed_sha")
+        if current != installed_sha or not _valid_sha(previous_sha) or not _valid_sha(installed_sha):
+            return False
+        backup_rel = PurePosixPath(manifest.get("backup_dir", ""))
+        if backup_rel.is_absolute() or any(part in ("", ".", "..") for part in backup_rel.parts):
+            return False
+        backup_root = (root / Path(*backup_rel.parts)).resolve()
+        backup_root.relative_to(root)
+        entries = manifest.get("entries")
+        if not isinstance(entries, list) or not entries:
+            return False
+        plan = []
+        for item in entries:
+            relative = _safe_relative(item.get("path"))
+            if relative is None or not isinstance(item.get("existed_before"), bool):
+                return False
+            destination = _safe_destination(root, relative)
+            backup = (backup_root / relative).resolve()
+            backup.relative_to(backup_root)
+            if item["existed_before"] and not backup.is_file():
+                return False
+            plan.append((destination, backup, item["existed_before"]))
+        for destination, backup, existed_before in reversed(plan):
+            if existed_before:
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                temporary = destination.with_name(destination.name + ".quantnex-rollback-tmp")
+                shutil.copy2(backup, temporary)
+                os.replace(temporary, destination)
+            elif destination.exists():
+                destination.unlink()
+        _save_state(root, previous_sha)
+        manifest_path.unlink(missing_ok=True)
+        return True
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError):
+        return False
+
+
+def confirm_update(root: Path) -> bool:
+    """Discard the one-shot rollback marker after both local services pass startup checks."""
+    root = root.resolve()
+    path = root / ROLLBACK_RELATIVE
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        if _load_state(root).get("commit_sha") != manifest.get("installed_sha"):
+            return False
+        path.unlink()
+        return True
+    except FileNotFoundError:
+        return False
+    except (OSError, ValueError, TypeError):
+        return False
+
+
 def check_and_apply(root: Path) -> dict:
     """Apply verified changed source files; caller restarts child services if required."""
     root = root.resolve()
@@ -289,6 +377,7 @@ def check_and_apply(root: Path) -> dict:
                     old = _safe_destination(root, previous_relative)
                     if old.exists():
                         old.unlink()
+        _write_rollback_manifest(root, installed_sha, latest_sha, backup_root, touched)
         _save_state(root, latest_sha)
     except Exception:
         for rel in reversed(touched):
@@ -301,6 +390,7 @@ def check_and_apply(root: Path) -> dict:
                     destination.unlink()
             except OSError:
                 pass
+        (root / ROLLBACK_RELATIVE).unlink(missing_ok=True)
         raise
     finally:
         shutil.rmtree(staged_root, ignore_errors=True)

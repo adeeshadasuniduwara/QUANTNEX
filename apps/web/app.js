@@ -459,6 +459,25 @@ window.addEventListener("quantnex:workspace-event",event=>{
 // Recover and reconcile queued rows on every workspace startup, not only after
 // a later browser "online" event or event-stream reconnect.
 syncJournal();
+function renderWalletTransactions(rows){
+  const body=$("walletRows");if(!body)return;
+  body.replaceChildren();
+  if(!Array.isArray(rows)||!rows.length){
+    const tr=document.createElement("tr"),td=document.createElement("td");
+    td.colSpan=4;td.className="empty-row";td.textContent="No wallet transactions yet.";tr.append(td);body.append(tr);return;
+  }
+  rows.forEach(item=>{
+    const tr=document.createElement("tr"),rawDate=String(item.created_at||"");
+    const parsed=new Date(/[zZ]|[+-]\\d{2}:\\d{2}$/.test(rawDate)?rawDate:rawDate+"Z");
+    const date=Number.isNaN(parsed.getTime())?"—":parsed.toLocaleString();
+    const type=item.transaction_type==="trade_pnl"?"Trading P&L":String(item.transaction_type||"").replace(/^./,c=>c.toUpperCase());
+    const amount=Number(item.amount),amountText=Number.isFinite(amount)?(amount<0?"−":"")+"$"+Math.abs(amount).toFixed(2):"—";
+    [date,type,String(item.description||"—"),amountText].forEach(value=>{
+      const td=document.createElement("td");td.textContent=value;tr.append(td);
+    });
+    body.append(tr);
+  });
+}
 async function refreshWallet(){
   const [summary,transactions]=await Promise.all([apiRequest("/api/v1/wallet/summary"),apiRequest("/api/v1/wallet/transactions?limit=100")]);
   $("walletBalance").textContent=money(summary.balance);$("walletDeposits").textContent=money(summary.deposits);$("walletWithdrawals").textContent=money(summary.withdrawals);$("walletPnl").textContent=money(summary.trading_pnl);renderWalletTransactions(transactions);
@@ -467,15 +486,74 @@ window.addEventListener("quantnex:workspace-event",event=>{
   if(event.detail?.type==="wallet.changed")refreshWallet().catch(error=>setAccountMessage("Wallet refresh failed: "+error.message,true));
 });
 window.addEventListener("quantnex:workspace-resync",()=>refreshWallet().catch(error=>setAccountMessage("Wallet refresh failed: "+error.message,true)));
+const walletPendingKey="quantnex.wallet.pending.v1";
+let walletRequestBusy=false;
+function newWalletRequestRef(){
+  return window.crypto?.randomUUID?.()||("qnx-wallet-"+Date.now()+"-"+Math.random().toString(16).slice(2));
+}
+function readPendingWalletRequest(){
+  try{
+    const value=JSON.parse(localStorage.getItem(walletPendingKey)||"null");
+    if(!value||typeof value.client_ref!=="string"||!value.payload||
+       !["deposit","withdrawal"].includes(value.payload.transaction_type)||
+       !Number.isFinite(Number(value.payload.amount))||Number(value.payload.amount)<=0)return null;
+    return value;
+  }catch{return null;}
+}
+async function submitPendingWalletRequest(pending){
+  if(walletRequestBusy)return;
+  walletRequestBusy=true;
+  const buttons=[$("walletDeposit"),$("walletWithdraw")];
+  buttons.forEach(button=>{button.disabled=true;});
+  let committed=false;
+  try{
+    await apiRequest("/api/v1/wallet/transactions",{method:"POST",body:JSON.stringify({...pending.payload,client_ref:pending.client_ref})});
+    committed=true;
+    await refreshWallet();
+    try{localStorage.removeItem(walletPendingKey);}catch{}
+    const type=pending.payload.transaction_type;
+    const amountInput=$(type==="deposit"?"depositAmount":"withdrawAmount"),descriptionInput=$(type==="deposit"?"depositDescription":"withdrawDescription");
+    if(Number(amountInput.value)===Number(pending.payload.amount)&&descriptionInput.value.trim()===(pending.payload.description||"")){
+      amountInput.value="";descriptionInput.value="";
+    }
+    setAccountMessage(type==="deposit"?"Deposit record saved locally.":"Withdrawal record saved locally.");
+  }catch(error){
+    const conflictingRef=error.status===409&&/reference was already used/i.test(error.message);
+    if(!committed&&error.status>=400&&error.status<500&&!conflictingRef){
+      try{localStorage.removeItem(walletPendingKey);}catch{}
+      setAccountMessage(error.message,true);
+    }else{
+      setAccountMessage("Wallet request is retained locally for a safe retry. The same request reference prevents duplicate records. "+error.message,true);
+    }
+  }finally{
+    buttons.forEach(button=>{button.disabled=false;});
+    walletRequestBusy=false;
+  }
+}
+async function retryPendingWalletRequest(){
+  const pending=readPendingWalletRequest();
+  if(pending)await submitPendingWalletRequest(pending);
+}
 async function recordWalletTransaction(type){
+  const pending=readPendingWalletRequest();
+  if(pending){
+    setAccountMessage("A previous "+pending.payload.transaction_type+" request is still pending. Retrying it safely before starting another transaction.",true);
+    await submitPendingWalletRequest(pending);return;
+  }
   const amountInput=$(type==="deposit"?"depositAmount":"withdrawAmount"),descriptionInput=$(type==="deposit"?"depositDescription":"withdrawDescription"),amount=Number(amountInput.value);
   if(!Number.isFinite(amount)||amount<=0||amount>1000000000){setAccountMessage("Enter a finite amount greater than zero and no more than $1,000,000,000.",true);return;}
-  try{await apiRequest("/api/v1/wallet/transactions",{method:"POST",body:JSON.stringify({transaction_type:type,amount,description:descriptionInput.value.trim()})});amountInput.value="";descriptionInput.value="";await refreshWallet();setAccountMessage(type==="deposit"?"Deposit record saved locally.":"Withdrawal record saved locally.");}
-  catch(error){setAccountMessage(error.message,true);}
+  const pendingRequest={client_ref:newWalletRequestRef(),payload:{transaction_type:type,amount,description:descriptionInput.value.trim()}};
+  try{localStorage.setItem(walletPendingKey,JSON.stringify(pendingRequest));}
+  catch{setAccountMessage("Browser storage is unavailable. No wallet request was sent, to avoid an unsafe duplicate on retry.",true);return;}
+  await submitPendingWalletRequest(pendingRequest);
 }
 $("walletDeposit").addEventListener("click",()=>recordWalletTransaction("deposit"));
 $("walletWithdraw").addEventListener("click",()=>recordWalletTransaction("withdrawal"));
-refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays on this computer.")).catch(error=>setAccountMessage("Local API unavailable: "+error.message,true));
+window.addEventListener("online",()=>retryPendingWalletRequest());
+refreshWallet().then(async()=>{
+  setAccountMessage("Local wallet loaded. Your data stays on this computer.");
+  await retryPendingWalletRequest();
+}).catch(error=>setAccountMessage("Local API unavailable: "+error.message,true));
 
 
 // Resilient market overview. Prices are sourced by the local API with provider fallbacks.

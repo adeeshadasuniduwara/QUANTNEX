@@ -30,4 +30,5 @@ const legacyGlyphLinks = [...html.matchAll(/<a class="nav-link[^"]*" href="#[^"]
 assert.equal(legacyGlyphLinks.length, 0, "Static navigation must not retain legacy glyph icons beside generated SVG icons.");
 assert.match(html, /workspace-polish\.js\?v=20261114-single-icon2/, "Single-icon navigation fix must invalidate cached sidebar script.");
 assert.match(polishCss, /\.qx-nav-label\{width:auto;text-align:left;/, "Navigation labels must not inherit the legacy fixed-width icon styling.");
-console.log("Sidebar regression checks passed: no legacy glyphs, one generated SVG icon and cache-busted script.");
+assert.match(html, /workspace-polish\.css\?v=20261114-single-icon2/, "Sidebar stylesheet cache must refresh for the corrected label sizing.");
+console.log("Sidebar regression checks passed: no legacy glyphs, one generated SVG icon and refreshed assets.");

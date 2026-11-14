@@ -282,7 +282,7 @@ def test_chart_candle_endpoint_reports_source_freshness(monkeypatch):
         assert symbol == "XAUUSD"
         return rows
 
-    monkeypatch.setattr(signal_engine, "fetch_candles", fresh_candles)
+    monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", lambda interval, limit, symbol: fresh_candles(interval, limit, symbol))
     client = TestClient(app)
     fresh = client.get("/api/v1/charts/candles?symbol=XAUUSD&interval=1m&limit=210")
     assert fresh.status_code == 200
@@ -296,7 +296,7 @@ def test_chart_candle_endpoint_reports_source_freshness(monkeypatch):
     async def stale_candles(interval, limit, symbol):
         return stale_rows
 
-    monkeypatch.setattr(signal_engine, "fetch_candles", stale_candles)
+    monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", lambda interval, limit, symbol: stale_candles(interval, limit, symbol))
     stale = client.get("/api/v1/charts/candles?symbol=XAUUSD&interval=1m&limit=210")
     assert stale.status_code == 200
     assert stale.json()["data_health"] == "stale"

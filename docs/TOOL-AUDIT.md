@@ -243,4 +243,4 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - Audited the Web Journal CSV export path and found that quoting CSV fields alone does not prevent spreadsheet formula injection when a user-controlled symbol, direction, outcome or note begins with formula characters.
 - Added a shared CSV serializer that quotes and escapes every cell and prefixes formula-like text cells (including leading whitespace/control characters followed by =, +, - or @) with a text marker. Finite numeric P&L values remain numeric, including legitimate negative P&L.
 - Added Node tests for formula-like inputs, leading whitespace, quotes/commas/newlines and numeric negative P&L. Web CI now runs this test.
-- Status: code and unit tests added on the current main branch; CI pending. Real browser/Excel interoperability remains a separate device-level check.
+- Status: MERGED — PR #133 (merge commit c4feeb377b4f98936940c7fb68e384dcbc9cff0f). Web CI, Backend CI, Backend/Web CI (Python 3.12/3.14), and Windows Build all passed. Real browser/Excel interoperability remains a separate device-level check.

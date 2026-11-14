@@ -10,7 +10,7 @@ import math
 from datetime import datetime, timezone, date, timedelta
 from typing import Any
 import httpx
-from .config import TWELVE_DATA_API_KEY, FINNHUB_API_KEY
+from .config import TWELVE_DATA_API_KEY, FINNHUB_API_KEY, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
 from .signal_engine import closed_candles, inspect_tf
 
 BINANCE = "https://api.binance.com"
@@ -176,8 +176,15 @@ async def scan_market_signal(symbol: str, threshold: int=6) -> dict:
 async def get_order_book(symbol: str, limit: int=20) -> dict:
     info=market_info(symbol)
     if info["kind"]!="crypto":
+        if info["symbol"]=="XAUUSD" and QUANTNEX_MT5_ENABLED:
+            from .mt5_feed import get_order_book as get_mt5_order_book, MT5FeedError
+            try:
+                return await get_mt5_order_book(QUANTNEX_MT5_GOLD_SYMBOL, limit)
+            except MT5FeedError as exc:
+                return {"symbol":info["symbol"],"supported":False,"status":"unavailable",
+                        "provider":"MetaTrader 5 local terminal","reason":str(exc)}
         return {"symbol":info["symbol"],"supported":False,"status":"unavailable",
-                "reason":"This configured provider does not expose executable order-book depth for Gold/Forex. No synthetic depth is shown."}
+                "reason":"This configured provider does not expose order-book depth for this Gold/Forex market. Enable a broker-supported MT5 Gold depth feed or choose a supported crypto market. No synthetic depth is shown."}
     async with httpx.AsyncClient(timeout=12) as client:
         data=await _get_json(client,BINANCE+"/api/v3/depth",{"symbol":info["symbol"],"limit":min(max(limit,5),100)})
     bids=[{"price":float(x[0]),"quantity":float(x[1])} for x in data.get("bids",[])]

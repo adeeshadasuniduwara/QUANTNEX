@@ -378,6 +378,19 @@ def test_lowering_goal_target_to_existing_savings_marks_achieved_and_certificate
     assert certificate.content.startswith(b"%PDF")
     assert client.get(f"/api/v1/goals/{goal_id}/certificate/verify").json()["verified"] is True
 
+    from app.database import SessionLocal
+    from app.models import PersonalGoal
+    db = SessionLocal()
+    try:
+        stored_goal = db.get(PersonalGoal, goal_id)
+        stored_goal.title = "Tampered goal title"
+        db.commit()
+    finally:
+        db.close()
+    verification = client.get(f"/api/v1/goals/{goal_id}/certificate/verify")
+    assert verification.status_code == 200
+    assert verification.json()["verified"] is False
+
 
 def test_demo_certificate_preview_does_not_require_an_achieved_goal():
     client = TestClient(app)

@@ -43,12 +43,12 @@ console.log("QUANTNEX chart redraw performance regression checks passed.");
 
 
 
-assert.ok(html.includes("quantnex-view-chart.js?v=20261113-analysis-dedupe1"), "Shared chart analysis must invalidate the chart bundle cache.");
+assert.ok(html.includes("quantnex-view-chart.js?v=20261114-coinbase-goldfeed1"), "Shared chart analysis must invalidate the chart bundle cache.");
 
 assert.match(js, /quantnex:market-tick/, "Gold chart must consume the shared market tick feed.");
 assert.doesNotMatch(js, /goldTimer|scan\(\)/, "The chart must not call the removed scan function or poll full Gold history every five seconds.");
 
-assert.match(js, /apiRequest\("\/api\/v1\/charts\/quote\?symbol=XAUUSD&interval="\+encodeURIComponent\(pick\.interval\)\+""\)/, "Gold chart must request a timeframe-matched quote from the configured chart-history provider.");
+assert.match(js, /apiRequest\("\/api\/v1\/charts\/quote\?symbol=XAUUSD&interval="\+encodeURIComponent\(pick\.interval\)\)/, "Gold chart must request a timeframe-matched quote from the configured chart-history provider.");
 assert.match(js, /startsWith\("QUANTNEX VIEW · "\)/, "Gold chart must reject overview ticks from a different provider.");
 assert.match(js, /goldQuoteTimer=setInterval\(\(\)=>\{if\(!document\.hidden&&isChartViewActive\(\)&&selected\(\)\.symbol==="XAUUSD"\)loadGoldQuote\(\);\},30000\)/, "Gold quote polling must be scoped to the visible active chart and rate limited.");
 
@@ -61,3 +61,13 @@ assert.match(js, /if\(recovering\)loadHistory\(\)/, "A reconnect must backfill c
 assert.match(js, /const liveTail=candles\.filter\(c=>c\.time>=unique\.at\(-1\)\.time\)/, "REST backfill must preserve newer live candle updates.");
 assert.doesNotMatch(js, /historyTimer=setInterval/, "The chart must not download 1,000 historical candles every minute while a live WebSocket is active.");
 console.log("QUANTNEX chart reconnect backfill and low-polling checks passed.");
+
+
+assert.ok(js.includes("wss://ws-feed.exchange.coinbase.com"), "BTC chart must have a Coinbase public WebSocket fallback.");
+assert.ok(js.includes('channels:["ticker"]'), "Coinbase fallback must subscribe only to public ticker market data.");
+assert.ok(js.includes("reconnectAttempts>=2"), "Coinbase fallback must activate after repeated Binance WebSocket failures.");
+assert.ok(js.includes("quote.quote_only"), "Gold live quote must remain visible when historical candles are not configured.");
+assert.ok(js.includes("GOLD LIVE QUOTE · HISTORICAL CANDLES REQUIRE MT5 OR TWELVE DATA"), "Gold quote-only mode must clearly disclose its historical-candle requirement.");
+assert.match(js, /else\{setStatus\(candles\.length\?"GOLD FEED · MATCHING HISTORY PROVIDER":"GOLD HISTORY UNAVAILABLE · CHECK FEED SETTINGS"/, "Gold quote polling must run even when historical candles are unavailable.");
+
+console.log('QUANTNEX BTC Coinbase failover and Gold quote-only visibility checks passed.');

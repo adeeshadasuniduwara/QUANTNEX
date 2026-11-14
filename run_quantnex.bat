@@ -28,7 +28,7 @@ if not errorlevel 1 (
   where python >nul 2>nul
   if errorlevel 1 goto python_missing
   python run_quantnex_services.py
-  set "APP_EXIT=%ERRORLEVEL%"
+  set "APP_EXIT=!ERRORLEVEL!"
 )
 if not "%APP_EXIT%"=="0" goto failed
 goto end
@@ -38,7 +38,7 @@ echo.
 echo Starting QUANTNEX Backend API only...
 set "QUANTNEX_NO_PAUSE=1"
 call run_backend.bat
-set "APP_EXIT=%ERRORLEVEL%"
+set "APP_EXIT=!ERRORLEVEL!"
 set "QUANTNEX_NO_PAUSE="
 if not "%APP_EXIT%"=="0" goto failed
 goto end

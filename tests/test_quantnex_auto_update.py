@@ -43,10 +43,10 @@ class AutomaticUpdateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             state_file = Path(directory) / "quantnex_update_state.json"
             state_file.write_text(json.dumps({"commit_sha": installed}), encoding="utf-8")
-            with patch.object(updater, "SOURCE_STATE_FILE", state_file), \\
+            with patch.object(updater, "SOURCE_STATE_FILE", state_file), \
                  patch.object(updater, "latest_commit", return_value={
                      "sha": latest_sha, "message": "Fix update status", "html_url": "https://github.com/example/repo/commit/" + latest_sha
-                 }), \\
+                 }), \
                  patch.object(updater, "update_summary", return_value={
                      "changes": ["Fix update status"], "files_changed": 2, "commits_behind": 1
                  }):
@@ -65,7 +65,7 @@ class AutomaticUpdateTests(unittest.TestCase):
         latest_sha = "c" * 40
         with tempfile.TemporaryDirectory() as directory:
             state_file = Path(directory) / "missing.json"
-            with patch.object(updater, "SOURCE_STATE_FILE", state_file), \\
+            with patch.object(updater, "SOURCE_STATE_FILE", state_file), \
                  patch.object(updater, "latest_commit", return_value={
                      "sha": latest_sha, "message": "Initial source sync", "html_url": "https://github.com/example/repo"
                  }):

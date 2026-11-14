@@ -9,7 +9,7 @@ Existing Wallet, completed Trade Journal, Preferences, Telegram configuration an
 ## 2. Runtime layout
 
 ```text
-QUANTNEX Windows Desktop / Local Browser
+QUANTNEX Web Workspace
                  |
                  v
         apps/web (single-page UI)

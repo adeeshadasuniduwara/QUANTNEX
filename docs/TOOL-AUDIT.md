@@ -148,4 +148,4 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - Each new Windows trade stores a unique persistent UUID-based client_ref (windows_<uuid>); the backend's existing idempotency marker ensures a lost response can be retried without creating duplicate journal rows or wallet P&L.
 - Prevent overlapping local sync workers. Failed syncs remain pending and can be retried when the local API is available.
 - Added Windows tests for new pending/synced persistence, legacy-row migration safety and backend idempotency using the Windows client_ref.
-- **Status:** CI pending. Existing UNKNOWN legacy rows require manual review; they are not automatically replayed.
+- **Status:** PASS — Windows journal sync/migration tests, Windows EXE build/artifact upload, Backend CI (Python 3.12/3.14), Backend/Web CI and Web checks all passed for PR #119. Existing UNKNOWN legacy rows require manual review; they are not automatically replayed.

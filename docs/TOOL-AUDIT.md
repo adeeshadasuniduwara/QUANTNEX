@@ -30,7 +30,7 @@
 | Performance Analytics | Intelligence and advanced performance routes | Implemented in code; ledger-derived estimates | Verify calculations, time boundaries, empty states and no unsupported performance claims |
 | Prop Firm Challenge | Virtual challenge routes and MT5 DEMO monitoring/guardian | Implemented; MT5 requires local demo terminal/account | Test virtual mode; live terminal test only with a user-authorized DEMO account |
 | Web source updater | Local Web updater, periodic source check, staged file replacement and backups described in README | Implemented in code; device-level behavior not yet verified | Test checksum/archive/path validation, rollback, data preservation and reload |
-| Windows EXE updater | GitHub Releases check, SHA256 verification, user-confirmed install and EXE backup | Implemented; not fully automatic | Test release asset/checksum, install/restart/rollback and local data preservation |
+| Windows EXE updater | GitHub Releases check, SHA256 verification, user-confirmed install and EXE backup | Update 008 hardens asset URL validation, bounded streaming download and atomic staging; CI pending | Require official HTTPS GitHub release URLs, exact QUANTNEX.exe checksum entry, max 200 MB, 16 KB manifest, temp-file cleanup and preserve prior staged EXE on failure; still needs real install/restart/rollback test |
 | Android release updater | Checks latest GitHub Release, downloads APK and opens Android package installer | PASS — Update 004 Android unit tests and debug APK build passed | Requires APK + SHA256 manifest, validates HTTPS GitHub asset URLs, verifies exact APK digest before installer, blocks/removes mismatches; physical-device and production-signed release test remain external |
 | Telegram bot / alerts | Connect/test/send, auto-signal and report APIs; encrypted local credentials | EXTERNAL BLOCKER — push notifications failed twice with HTTP 403: bot cannot send messages to the bot | TELEGRAM_CHAT_ID currently resolves to the bot itself or an invalid target. Set it to the user's private chat ID after /start, or a group/channel ID where the bot has posting permission; do not expose the bot token |
 | Telegram release notifications | GitHub Actions workflow and release workflow | Workflow exists; delivery not confirmed | Verify correct chat ID, bot membership/admin permission, workflow trigger and successful Telegram API response |
@@ -101,3 +101,13 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - Gold data is accepted only when the backend response explicitly confirms read-only market-data mode and orders_enabled=false. Missing backend, terminal, symbol or provider data is shown as an actionable unavailable state.
 - Added a pure chart-data adapter and Windows-only unittest coverage for Binance data, MT5 data, configured broker symbol, read-only enforcement, provider errors and unsupported symbols. Windows CI now runs these tests before building the EXE.
 - **Status:** PASS — Windows unit tests, Windows EXE build/artifact upload, Backend CI (Python 3.12/3.14), Backend/Web CI and Web checks all passed for PR #114. Real Windows desktop display and the user's MT5 terminal still require device-level verification.
+
+## Update 008 — Windows EXE updater integrity and atomic staging
+
+- Audit found the packaged Windows updater downloaded directly into the final staging path, did not validate the release asset host/path, accepted any checksum line containing the EXE name, and had no upper download-size bound.
+- Added strict HTTPS github.com release-asset URL validation for both EXE and checksum manifest.
+- Download now streams into a .part file with a 200 MB cap and a 100 KB minimum; checksum manifest is capped at 16 KB.
+- SHA256 is calculated incrementally and must match the exact QUANTNEX.exe manifest filename. Only then is the temporary file atomically moved into the staged path.
+- Failed/oversized/mismatched downloads remove the partial file and preserve any previously staged verified EXE.
+- Added Windows tests for URL trust, exact filename matching, successful atomic staging, checksum mismatch, previous staged file preservation, size limits and no-network rejection of untrusted URLs.
+- **Status:** PASS — Windows updater unit tests, Windows EXE build/artifact upload, backend tests and Web checks passed for PR #115. Actual EXE replacement, restart and rollback still require a packaged Windows-device test.

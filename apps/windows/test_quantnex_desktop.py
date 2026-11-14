@@ -1,7 +1,10 @@
+import hashlib
 import io
 import json
+import tempfile
 import unittest
 import urllib.error
+from pathlib import Path
 
 import quantnex_desktop as desktop
 
@@ -86,6 +89,112 @@ class WindowsChartDataTests(unittest.TestCase):
     def test_unsupported_chart_symbol_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "BTCUSDT and XAUUSD"):
             desktop.fetch_chart_data("EURUSD", urlopen=lambda *_args, **_kwargs: self.fail("No network call expected"))
+
+
+class FakeStreamResponse:
+    def __init__(self, body):
+        self.body = body
+        self.offset = 0
+        self.headers = {"Content-Length": str(len(body))}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def read(self, size=-1):
+        if size is None or size < 0:
+            size = len(self.body) - self.offset
+        chunk = self.body[self.offset:self.offset + size]
+        self.offset += len(chunk)
+        return chunk
+
+
+class WindowsUpdaterIntegrityTests(unittest.TestCase):
+    ASSET_URL = "https://github.com/owner/QUANTNEX/releases/download/v1/QUANTNEX.exe"
+    CHECKSUM_URL = "https://github.com/owner/QUANTNEX/releases/download/v1/SHA256SUMS.txt"
+
+    def test_only_https_github_release_asset_urls_are_trusted(self):
+        self.assertTrue(desktop.is_trusted_release_asset_url(self.ASSET_URL))
+        self.assertFalse(desktop.is_trusted_release_asset_url("http://github.com/owner/QUANTNEX/releases/download/v1/QUANTNEX.exe"))
+        self.assertFalse(desktop.is_trusted_release_asset_url("https://example.com/releases/download/v1/QUANTNEX.exe"))
+        self.assertFalse(desktop.is_trusted_release_asset_url("https://github.com/owner/QUANTNEX/blob/main/QUANTNEX.exe"))
+        self.assertFalse(desktop.is_trusted_release_asset_url("https://user:pass@github.com/owner/QUANTNEX/releases/download/v1/QUANTNEX.exe"))
+
+    def test_checksum_matches_exact_filename_only(self):
+        digest = "a" * 64
+        self.assertEqual(desktop.expected_release_checksum(digest + "  QUANTNEX.exe", "QUANTNEX.exe"), digest)
+        self.assertIsNone(desktop.expected_release_checksum(digest + "  old-QUANTNEX.exe", "QUANTNEX.exe"))
+        self.assertIsNone(desktop.expected_release_checksum("bad-hash  QUANTNEX.exe", "QUANTNEX.exe"))
+
+    def test_valid_exe_is_verified_then_atomically_staged(self):
+        payload = b"Q" * 120000
+        digest = hashlib.sha256(payload).hexdigest()
+        manifest = (digest + "  QUANTNEX.exe\n").encode("utf-8")
+        calls = []
+
+        def opener(request, timeout):
+            calls.append(request.full_url)
+            return FakeStreamResponse(payload if request.full_url == self.ASSET_URL else manifest)
+
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / "updates" / "QUANTNEX.exe"
+            destination.parent.mkdir()
+            destination.write_bytes(b"previous verified EXE")
+            result = desktop.stage_verified_release_exe(
+                self.ASSET_URL, self.CHECKSUM_URL, destination,
+                urlopen=opener, max_bytes=200000, min_bytes=100000
+            )
+            self.assertEqual(result, destination)
+            self.assertEqual(destination.read_bytes(), payload)
+            self.assertFalse(destination.with_name("QUANTNEX.exe.part").exists())
+        self.assertEqual(calls, [self.ASSET_URL, self.CHECKSUM_URL])
+
+    def test_checksum_mismatch_preserves_previous_staged_exe(self):
+        payload = b"N" * 120000
+        manifest = ("0" * 64 + "  QUANTNEX.exe\n").encode("utf-8")
+
+        def opener(request, timeout):
+            return FakeStreamResponse(payload if request.full_url == self.ASSET_URL else manifest)
+
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / "QUANTNEX.exe"
+            destination.write_bytes(b"previous verified EXE")
+            with self.assertRaisesRegex(ValueError, "SHA256 verification failed"):
+                desktop.stage_verified_release_exe(
+                    self.ASSET_URL, self.CHECKSUM_URL, destination,
+                    urlopen=opener, max_bytes=200000, min_bytes=100000
+                )
+            self.assertEqual(destination.read_bytes(), b"previous verified EXE")
+            self.assertFalse(destination.with_name("QUANTNEX.exe.part").exists())
+
+    def test_oversized_download_is_rejected_and_partial_removed(self):
+        payload = b"X" * 1000
+
+        def opener(request, timeout):
+            return FakeStreamResponse(payload)
+
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / "QUANTNEX.exe"
+            with self.assertRaisesRegex(ValueError, "200 MB safety limit"):
+                desktop.stage_verified_release_exe(
+                    self.ASSET_URL, self.CHECKSUM_URL, destination,
+                    urlopen=opener, max_bytes=100, min_bytes=1
+                )
+            self.assertFalse(destination.exists())
+            self.assertFalse(destination.with_name("QUANTNEX.exe.part").exists())
+
+    def test_untrusted_url_is_rejected_before_network_access(self):
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / "QUANTNEX.exe"
+            with self.assertRaisesRegex(ValueError, "official HTTPS GitHub"):
+                desktop.stage_verified_release_exe(
+                    "https://example.com/QUANTNEX.exe", self.CHECKSUM_URL, destination,
+                    urlopen=lambda *_args, **_kwargs: self.fail("Network must not be called")
+                )
+            self.assertFalse(destination.exists())
+
 
 
 if __name__ == "__main__":

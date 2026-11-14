@@ -20,7 +20,7 @@
 | Real goal certificate | POST `/api/v1/goals/{goal_id}/certificate`; local integrity fingerprint and verification route | Implemented in backend/UI | Exercise achieved-goal gating, generation, tamper detection and download |
 | Goal creation/contributions | Goal UI and GET/POST/PUT/contribution routes | Implemented in code | Full CRUD, amount validation, persistence and journal import tests |
 | Web journal | UI, local browser journal, CSV export; backend journal API also exists | Implemented with distinct local/browser and API storage paths | Exercise add/edit/delete/export, reload and data consistency |
-| Wallet ledger | Backend deposit/withdrawal/summary APIs and Web UI | Implemented as a local record ledger, not a payment/bank integration | Test balance boundaries, invalid inputs, reload and journal P&L linkage |
+| Wallet ledger | Backend deposit/withdrawal/summary APIs and Web/Windows UI | Implemented as a local record ledger, not a payment/bank integration; Update 009 adds explicit finite amount validation | Test deposit/withdrawal boundaries, NaN/Infinity/over-limit inputs, reload and journal P&L linkage; no actual payment rails are connected |
 | QUANTNEX VIEW | First-party chart UI and candles/quote/analysis/backtest APIs | Implemented; provider-dependent | Test supported symbols/timeframes, empty/stale/provider errors, overlays and chart interactions |
 | Signal Lab / Signal Center | Signal settings, scan APIs and Web UI | Implemented; rule-based confluence, not win probability | Exercise valid/invalid scans, settings persistence and unavailable market feeds |
 | Market Intelligence / Order Flow / News | Market, order-book, signal and news APIs; UI panels | PARTIAL — crypto depth uses Binance; Update 006 adds read-only XAUUSD depth via MT5 when configured | Gold depth requires an enabled local MT5 terminal and a broker that exposes DOM; otherwise UI must show unavailable, never synthetic depth. Forex depth remains provider-dependent; news requires Finnhub key |
@@ -34,7 +34,7 @@
 | Android release updater | Checks latest GitHub Release, downloads APK and opens Android package installer | PASS — Update 004 Android unit tests and debug APK build passed | Requires APK + SHA256 manifest, validates HTTPS GitHub asset URLs, verifies exact APK digest before installer, blocks/removes mismatches; physical-device and production-signed release test remain external |
 | Telegram bot / alerts | Connect/test/send, auto-signal and report APIs; encrypted local credentials | EXTERNAL BLOCKER — push notifications failed twice with HTTP 403: bot cannot send messages to the bot | TELEGRAM_CHAT_ID currently resolves to the bot itself or an invalid target. Set it to the user's private chat ID after /start, or a group/channel ID where the bot has posting permission; do not expose the bot token |
 | Telegram release notifications | GitHub Actions workflow and release workflow | Workflow exists; delivery not confirmed | Verify correct chat ID, bot membership/admin permission, workflow trigger and successful Telegram API response |
-| Windows native tools | Calculator, local SQLite journal, Charts and Wallet/Backend views | PARTIAL — Update 007 adds selectable BTCUSDT Binance and XAUUSD local MT5 candles | Verify Windows UI chart selection, backend-offline errors and configured broker symbol; native wallet/journal screens still need dedicated UI-level tests |
+| Windows native tools | Calculator, local SQLite journal, Charts and Wallet/Backend views | PARTIAL — Update 007 adds selectable BTCUSDT/XAUUSD candles; Update 009 hardens wallet amount input | Chart adapter and wallet validation have unit tests; real desktop display, wallet flow and journal CRUD parity still need device-level verification |
 | Android native tools | Overview, chart, journal and update shell | Partial feature parity | Exercise each screen on emulator/device; verify release signing and remaining Trading Room/Updates flows |
 
 ## Confirmed external prerequisites / boundaries
@@ -111,3 +111,12 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - Failed/oversized/mismatched downloads remove the partial file and preserve any previously staged verified EXE.
 - Added Windows tests for URL trust, exact filename matching, successful atomic staging, checksum mismatch, previous staged file preservation, size limits and no-network rejection of untrusted URLs.
 - **Status:** PASS — Windows updater unit tests, Windows EXE build/artifact upload, backend tests and Web checks passed for PR #115. Actual EXE replacement, restart and rollback still require a packaged Windows-device test.
+
+## Update 009 — Wallet amount validation across API and clients
+
+- Wallet audit confirmed Web already rejected non-finite/non-positive values, but Windows only checked amount <= 0 and could pass NaN/Infinity to the API.
+- Tightened the backend WalletTransactionCreate schema with `allow_inf_nan=False`, retaining the positive and $1,000,000,000 upper bound. CI then exposed a second server-side issue: Pydantic's 422 detail included the rejected NaN value, which Starlette could not serialize as strict JSON. Added a safe RequestValidationError handler that serializes non-finite inputs as strings while preserving HTTP 422.
+- Added Windows `validate_wallet_amount` and used it before posting; it rejects malformed, NaN, infinite, zero, negative and over-limit values.
+- Aligned Web validation with the backend maximum and clearer user feedback.
+- Added backend API regression coverage proving invalid amounts return HTTP 422 and leave the wallet summary unchanged; added Windows unit coverage for client validation.
+- **Status:** PASS — Backend CI (Python 3.12/3.14), Backend/Web CI, Web CI, Windows wallet/chart unit tests and Windows EXE build/artifact upload all passed for PR #116. This verifies local bookkeeping only; deposits and withdrawals are not bank/payment transactions.

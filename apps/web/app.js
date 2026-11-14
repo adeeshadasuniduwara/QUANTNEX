@@ -371,7 +371,7 @@ window.addEventListener("quantnex:workspace-event",event=>{
 window.addEventListener("quantnex:workspace-resync",()=>refreshWallet().catch(error=>setAccountMessage("Wallet refresh failed: "+error.message,true)));
 async function recordWalletTransaction(type){
   const amountInput=$(type==="deposit"?"depositAmount":"withdrawAmount"),descriptionInput=$(type==="deposit"?"depositDescription":"withdrawDescription"),amount=Number(amountInput.value);
-  if(!Number.isFinite(amount)||amount<=0){setAccountMessage("Enter an amount greater than zero.",true);return;}
+  if(!Number.isFinite(amount)||amount<=0||amount>1000000000){setAccountMessage("Enter a finite amount greater than zero and no more than $1,000,000,000.",true);return;}
   try{await apiRequest("/api/v1/wallet/transactions",{method:"POST",body:JSON.stringify({transaction_type:type,amount,description:descriptionInput.value.trim()})});amountInput.value="";descriptionInput.value="";await refreshWallet();setAccountMessage(type==="deposit"?"Deposit record saved locally.":"Withdrawal record saved locally.");}
   catch(error){setAccountMessage(error.message,true);}
 }

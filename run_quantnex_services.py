@@ -19,6 +19,7 @@ VENV_PYTHON = BACKEND / ".venv" / "Scripts" / "python.exe"
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 PROCESSES: list[tuple[str, subprocess.Popen]] = []
 UPDATE_INTERVAL_SECONDS = 300
+UPDATE_REQUEST_FILE = ROOT / "data" / "updates" / "check_requested.json"
 
 
 def run_checked(command: list[str], cwd: Path, label: str) -> None:
@@ -105,6 +106,18 @@ def check_for_automatic_update() -> bool:
         return False
 
 
+def consume_manual_update_request() -> bool:
+    """Consume one browser-requested update check without exposing an update endpoint."""
+    try:
+        if not UPDATE_REQUEST_FILE.is_file():
+            return False
+        UPDATE_REQUEST_FILE.unlink()
+        return True
+    except OSError as exc:
+        print(f"[AUTO UPDATE] Could not consume the manual check request: {exc}", flush=True)
+        return False
+
+
 def restart_launcher() -> None:
     os.execv(sys.executable, [sys.executable, str(Path(__file__).resolve()), *sys.argv[1:]])
 
@@ -164,7 +177,11 @@ def main() -> int:
                 code = process.poll()
                 if code is not None:
                     raise RuntimeError(f"{name} stopped unexpectedly (exit code {code}). See its output above.")
-            if time.monotonic() >= next_update_check:
+            manual_check_requested = consume_manual_update_request()
+            scheduled_check_due = time.monotonic() >= next_update_check
+            if manual_check_requested or scheduled_check_due:
+                if manual_check_requested:
+                    print("\n[AUTO UPDATE] Manual Check for Updates request received.", flush=True)
                 if check_for_automatic_update():
                     print("\n[AUTO UPDATE] Stopping services safely before restart…", flush=True)
                     stop_all()

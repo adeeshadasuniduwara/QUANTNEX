@@ -253,6 +253,7 @@ function watchSupervisorUpdate(target){
   supervisorWatchTarget=target;
   const deadline=Date.now()+180000;
   const poll=async()=>{
+    if(supervisorWatchTarget!==target)return;
     if(Date.now()>deadline){supervisorWatchTarget="";return;}
     try{
       const response=await fetch("/__quantnex/check",{cache:"no-store"});

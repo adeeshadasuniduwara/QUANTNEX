@@ -259,11 +259,28 @@ async function checkLocalUpdate(options={}){
     if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||"Local updater is not running.");}
     const result=await response.json();
     if(result.managed_by_supervisor){
-      $("webInstalledVersion").textContent=result.installed||"Supervisor managed";
-      releaseVersionLabel.textContent=result.latest||"Automatic source updates";
-      $("webUpdateDetails").hidden=true;
+      $("webInstalledVersion").textContent=result.installed||"Source revision unavailable";
+      releaseVersionLabel.textContent=result.latest||"GitHub main unavailable";
+      if(result.release_notes)releaseNotesLink.href=result.release_notes;
       if(installButton)installButton.hidden=true;
-      status.textContent=result.message||"Full source updates are handled by the QUANTNEX supervisor.";
+      if(result.update_available){
+        latestUpdateCommit=result.commit_sha||result.latest||"";
+        renderUpdateDetails(result,false);
+        if(!silent){
+          status.textContent="Update detected. Sending an immediate check to the QUANTNEX supervisor…";
+          const queued=await fetch("/__quantnex/check-now",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+          const receipt=await queued.json().catch(()=>({}));
+          if(!queued.ok)throw new Error(receipt.error||"The supervisor could not accept the update check.");
+          status.textContent="Update detected ("+result.latest+"). The supervisor has been asked to install it and restart safely.";
+          window.setTimeout(()=>checkLocalUpdate({silent:true}),10000);
+        }else{
+          status.textContent=result.message||"A source update is waiting for the supervisor's next safe check.";
+        }
+      }else{
+        latestUpdateCommit="";
+        $("webUpdateDetails").hidden=true;
+        status.textContent=result.message||"QUANTNEX source is up to date.";
+      }
       return;
     }
     $("webInstalledVersion").textContent=result.installed||"Unknown";
@@ -284,7 +301,10 @@ async function checkLocalUpdate(options={}){
       status.textContent="You are using the latest QUANTNEX version ("+result.latest+").";
     }
   }catch(error){
-    if(!silent)status.textContent="Update check failed safely: "+error.message;
+    if(!silent){
+      status.textContent="Update check failed safely: "+error.message+" · Start QUANTNEX with run_quantnex.bat (Web + Backend) and retry.";
+      showUpdateToast("Update check failed: "+error.message);
+    }
   }finally{
     updateChecking=false;
     progress.hidden=true;

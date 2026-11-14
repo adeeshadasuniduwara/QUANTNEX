@@ -23,7 +23,7 @@
 | Wallet ledger | Backend deposit/withdrawal/summary APIs and Web UI | Implemented as a local record ledger, not a payment/bank integration | Test balance boundaries, invalid inputs, reload and journal P&L linkage |
 | QUANTNEX VIEW | First-party chart UI and candles/quote/analysis/backtest APIs | Implemented; provider-dependent | Test supported symbols/timeframes, empty/stale/provider errors, overlays and chart interactions |
 | Signal Lab / Signal Center | Signal settings, scan APIs and Web UI | Implemented; rule-based confluence, not win probability | Exercise valid/invalid scans, settings persistence and unavailable market feeds |
-| Market Intelligence / Order Flow / News | Market, order-book, signal and news APIs; UI panels | Provider-dependent | Verify each provider response, stale/error states, API-key/quota behavior and no fabricated fallback data |
+| Market Intelligence / Order Flow / News | Market, order-book, signal and news APIs; UI panels | PARTIAL — crypto depth uses Binance; Update 006 adds read-only XAUUSD depth via MT5 when configured | Gold depth requires an enabled local MT5 terminal and a broker that exposes DOM; otherwise UI must show unavailable, never synthetic depth. Forex depth remains provider-dependent; news requires Finnhub key |
 | Paper Trading / Autopilot | Paper-trade CRUD, close, summary, paper-engine and worker routes | Implemented in code; simulation only | Exercise open/close, P&L, risk limits, restart persistence and worker stop/start |
 | Risk Management / Portfolio | Position-size, guardian, stress, portfolio and smart-open routes | Implemented in code | Boundary tests, unsafe trade rejection and no real order side effects |
 | Strategy Laboratory | Replay, backtest, optimize, forward evaluation, research and walk-forward routes | Implemented in code | Test deterministic fixtures, invalid parameters, result persistence and empty history |
@@ -78,7 +78,17 @@ This report is a living audit record. Update it as each flow is exercised, repai
 ## Update 005 — Telegram destination diagnostics and message correctness
 
 - Confirmed Telegram push workflow failures on main after Update 003 and Update 004: runs 43568542822 and 43568881250 both returned HTTP 403, "Forbidden: the bot can't send messages to the bot."
-- Updated the notification workflow to call Telegram getMe and getChat before sending, detect a destination that resolves to the bot itself, and provide a precise setup instruction without printing credentials.
+- Updated the notification workflow to call Telegram getMe and getChat before sending, detect a destination that resolves to the bot itself, and provide a precise setup instruction without printing credentials. Post-merge run 43569094937 confirmed this diagnostic.
 - Corrected the push notification's link label: a main-branch source commit is now labeled "View source update", not "Open release & downloads". Release links retain their release label.
 - Added static workflow regression tests for destination preflight, safe credential handling and correct link labels.
-- **Status:** CI pending. Actual delivery remains blocked until the repository secret TELEGRAM_CHAT_ID is corrected and a subsequent workflow run returns a successful Telegram API response.
+- **Status:** PASS — Web CI run 43569054132 passed. The post-merge workflow run 43569094937 confirmed getChat resolves TELEGRAM_CHAT_ID to the bot itself. Actual delivery remains blocked until the repository secret is corrected.
+
+## Update 006 — Gold order-book depth via local MT5
+
+- Audit confirmed the Order Flow UI previously requested Binance order-book depth for all markets, while the backend correctly returned unsupported for Gold/Forex and did not fabricate depth.
+- Added a read-only MT5 market-book adapter for XAUUSD. It subscribes to broker DOM, normalizes BUY/SELL levels, sorts bids/asks, calculates quantity imbalance, and always releases the market-book subscription.
+- When MT5 Gold is enabled, the Gold order-book endpoint now uses the configured broker symbol. If the MT5 package, terminal, symbol or broker DOM is unavailable, the API returns an explicit unavailable reason.
+- No order placement or position-management functions are used. Forex depth remains unsupported until a provider is configured.
+- Added tests for level normalization, ordering, subscription release, invalid limits, unsupported terminal capability, configured Gold routing and the API route.
+- Updated the Web status text to describe the configured provider rather than assuming Binance.
+- **Status:** CI pending. A real Gold DOM snapshot still requires the user's Windows MT5 terminal and a broker that exposes market depth for its Gold symbol.

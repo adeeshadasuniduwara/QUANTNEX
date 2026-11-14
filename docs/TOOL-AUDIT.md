@@ -19,7 +19,7 @@
 | QUANTNEX VIEW | First-party chart UI; Binance candles and Coinbase fallback for supported crypto; Gold history via configured MT5 or Twelve Data | Implemented; provider-dependent | Test all symbol/timeframe combinations, stale/empty/error states and overlays on device |
 | Web journal CRUD | Browser recovery cache plus local SQLite GET/POST/PUT/DELETE API; offline creates import idempotently; edits reconcile an existing linked wallet P&L row | **PARTIAL** — backend API lifecycle and UI wiring regression tests; physical browser/restart path not yet exercised | Verify real browser add/edit/delete, offline recovery, reload/restart and multi-tab behavior |
 | Journal CSV export | Spreadsheet-safe CSV serializer and download action | **PARTIAL** — formula-injection, quoting, newline and numeric-P&L unit tests pass; actual spreadsheet interoperability is unverified | Open a downloaded CSV in supported spreadsheet apps on a user device |
-| Wallet ledger | Backend deposit/withdrawal/summary APIs and Web UI | Local record ledger only; not a bank/payment integration | Test amount boundaries, NaN/Infinity/over-limit inputs, reload and journal P&L linkage |
+| Wallet ledger | Web deposit/withdrawal forms, transaction history, summary API and local SQLite ledger; client_ref retries are idempotent | **PARTIAL** — backend idempotency/balance tests and Web wiring checks; not a bank/payment integration | Verify browser storage/restart retry, rendered history and user's device persistence |
 | Signal Lab / Signal Center | Signal settings and scan APIs; rule-based confluence score | Implemented; not a win probability | Exercise valid/invalid scans, settings persistence and unavailable market feeds |
 | Market Intelligence / Order Flow / News | Market, order-book, signal and news APIs | Partial/provider-dependent | Gold depth needs local MT5 + broker DOM; Forex depth needs a configured provider; Finnhub news needs a valid key |
 | Paper Trading / Autopilot | Paper-trade CRUD, close, summary, risk gates and worker lifecycle | Implemented in paper mode | Verify open/close, realized/floating P&L, risk limits, restart persistence and worker stop/start |
@@ -32,7 +32,7 @@
 | Android APK updater | Latest GitHub Release check, APK download, SHA256 manifest validation and Android package installer | Implemented in Android shell | Verify a signed production update on a physical Android device |
 | Android release pipeline | Signed APK + SHA256-only release workflow; stable PKCS#12 signing key required | Pipeline updated in this branch | Confirm required signing secrets and perform a tagged release build |
 | Telegram bot / alerts | Connect/test/send, Auto Signal and report APIs; encrypted local credentials | Implemented; destination/provider-dependent | Requires a valid bot token, correct destination ID, permissions and live provider access |
-| Telegram release notifications | GitHub Actions announcement workflow | Optional; external secret-dependent | Verify the repository destination secret and actual Telegram delivery |
+| Telegram release notifications | GitHub Actions announcement workflow and destination preflight | **EXTERNAL BLOCKER** — latest main run 43641039355 reports that TELEGRAM_CHAT_ID resolves to the bot itself; no announcement was sent | Set TELEGRAM_CHAT_ID to the user's private chat after /start, or a group/channel where the bot can post; verify a later API success |
 
 ## Backend and API verification
 
@@ -71,6 +71,15 @@ These CI results establish that the tested code passed in GitHub's runner. They 
 - Delete continues to remove an existing linked P&L transaction; the create/update/delete test checks the balance returns to its starting value. Invalid non-finite P&L is rejected without mutating either record.
 - Web contract tests cover date/edit/cancel controls, PUT wiring, matching-row cache replacement, startup/offline recovery wiring and distinction between HTTP validation errors and offline queuing.
 - Evidence level: backend TestClient exercises API create/list/update/delete, timestamp normalization, wallet linkage, legacy no-wallet behavior and invalid-input rollback. Web CI exercises syntax and static UI/API contract tests. A real browser download, browser storage failure, browser restart, Excel/LibreOffice opening and user's device persistence remain **PARTIAL / device-level verification required**.
+
+## Update 021 — Wallet ledger rendering and idempotent submissions
+
+- Added the missing Web transaction-history renderer used by wallet refresh. It safely renders date, transaction type, description and signed amount using text nodes; the old call site had no implementation, so a successful API response could still make the UI report a refresh error.
+- Added a local idempotency-request table and optional validated `client_ref` on wallet writes. The API hashes the normalized transaction payload, returns the original transaction for a same-reference/same-payload retry, and rejects reuse of a reference with different details.
+- The Web UI stores one pending wallet request before sending, disables both submit buttons while it is in flight, and retries the same reference on startup or browser-online recovery. It retains the request if the POST may have committed but the subsequent refresh failed; 4xx validation/insufficient-balance errors are surfaced without silent retry.
+- Added regression coverage for duplicate deposit/withdrawal requests, payload mismatch, one-time balance changes and invalid references. The journal helper copy now correctly describes local database persistence plus browser recovery.
+- Telegram release notifications are now marked **EXTERNAL BLOCKER** in this audit: main run 43641039355 confirms the repository's TELEGRAM_CHAT_ID currently resolves to the bot itself, so the workflow deliberately refuses to send.
+- Evidence level: backend TestClient exercises wallet idempotency and balance invariants; Web CI checks the renderer/retry wiring. Real browser storage recovery and physical device behavior remain **PARTIAL**; wallet records remain local bookkeeping, not verified payments.
 
 ## Audit status vocabulary
 

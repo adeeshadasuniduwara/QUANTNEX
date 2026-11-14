@@ -6,7 +6,7 @@ QUANTNEX has two user-facing products:
 - `apps/web`: responsive browser workspace and loopback Web server.
 - `apps/android`: native Android shell with navigation, workspace settings and verified APK release updates.
 
-The local Backend is a supporting service for the Web workspace. Windows is supported as a host operating system for the local launcher and Backend; there is no Windows desktop app, executable or installer.
+The local Backend is a supporting service for the Web workspace. Windows is supported as a host operating system for the local launcher and Backend; the current source and workflows do not build a Windows desktop app, executable or installer.
 
 ## Repository layout
 

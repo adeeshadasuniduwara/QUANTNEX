@@ -208,6 +208,7 @@ class WindowsUpdaterIntegrityTests(unittest.TestCase):
             pending = journal.pending()
             self.assertEqual(len(pending), 1)
             self.assertEqual(pending[0][0], local_id)
+            self.assertTrue(pending[0][1].startswith("windows:"))
             self.assertEqual(journal.unknown_sync_count(), 0)
 
             journal.mark_synced(local_id)

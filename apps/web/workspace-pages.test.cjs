@@ -114,3 +114,12 @@ assert.match(app, /apiRequest\("\/api\/v1\/journal\/"\+existing\.id,\{method:"PU
 assert.match(app, /journalRowsCache=journalRowsCache\.map\(row=>journalRowKey\(row\)===key\?updated:row\)/, "An edited journal row must replace only its matching cached record.");
 assert.match(app, /if\(error\.status\)\{setJournalStatus\("Trade could not be saved:/, "API validation errors must not be misclassified as offline queued trades.");
 console.log("Web journal create/edit/delete UI wiring checks passed.");
+
+assert.match(app, /function renderWalletTransactions\(rows\)/, "Wallet history must render into the visible transaction table.");
+assert.match(app, /const walletPendingKey="quantnex\.wallet\.pending\.v1"/, "Wallet submissions must keep a browser-persisted idempotency request.");
+assert.match(app, /client_ref:pending\.client_ref/, "Wallet retries must reuse the same API idempotency reference.");
+assert.match(app, /window\.addEventListener\("online",\(\)=>retryPendingWalletRequest\(\)\)/, "Pending wallet submissions must retry after network recovery.");
+assert.match(app, /walletRequestBusy/, "Wallet submission controls must prevent overlapping requests.");
+assert.match(app, /renderWalletTransactions\(transactions\)/, "Wallet refresh must populate the ledger history table.");
+assert.match(html, /The journal is saved in the local QUANTNEX database/, "Wallet help text must accurately describe database-backed journal persistence.");
+console.log("Wallet ledger rendering and idempotent retry wiring checks passed.");

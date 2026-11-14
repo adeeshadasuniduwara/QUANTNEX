@@ -11,6 +11,13 @@ import run_quantnex_services as launcher
 
 
 class LauncherRuntimeTests(unittest.TestCase):
+    def test_backend_venv_python_matches_created_environment(self):
+        expected = launcher.BACKEND / ".venv" / (
+            Path("Scripts") / "python.exe" if launcher.os.name == "nt" else Path("bin") / "python"
+        )
+        self.assertEqual(launcher.VENV_DIR, launcher.BACKEND / ".venv")
+        self.assertEqual(launcher.VENV_PYTHON, expected)
+
     def test_run_checked_reports_a_failed_dependency_install(self):
         with patch.object(launcher.subprocess, "run", return_value=subprocess.CompletedProcess([], 1)):
             with self.assertRaisesRegex(RuntimeError, "exit code 1"):

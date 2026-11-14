@@ -34,7 +34,7 @@
 | Android release updater | Checks latest GitHub Release, downloads APK and opens Android package installer | PASS — Update 004 Android unit tests and debug APK build passed | Requires APK + SHA256 manifest, validates HTTPS GitHub asset URLs, verifies exact APK digest before installer, blocks/removes mismatches; physical-device and production-signed release test remain external |
 | Telegram bot / alerts | Connect/test/send, auto-signal and report APIs; encrypted local credentials | EXTERNAL BLOCKER — push notifications failed twice with HTTP 403: bot cannot send messages to the bot | TELEGRAM_CHAT_ID currently resolves to the bot itself or an invalid target. Set it to the user's private chat ID after /start, or a group/channel ID where the bot has posting permission; do not expose the bot token |
 | Telegram release notifications | GitHub Actions workflow and release workflow | Workflow exists; delivery not confirmed | Verify correct chat ID, bot membership/admin permission, workflow trigger and successful Telegram API response |
-| Windows native tools | Calculator, local SQLite journal, Charts and Wallet/Backend views | PARTIAL — Update 007 adds selectable BTCUSDT/XAUUSD candles; Update 009 hardens wallet amount input | Chart adapter and wallet validation have unit tests; real desktop display, wallet flow and journal CRUD parity still need device-level verification |
+| Windows native tools | Calculator, local SQLite journal, Charts and Wallet/Backend views | PARTIAL — Updates 007/009/012 add Gold chart, wallet validation and durable idempotent journal sync | Chart adapter, wallet validation, journal migration/pending-sync and API idempotency have tests; real desktop display, wallet flow and journal CRUD parity still need device-level verification |
 | Android native tools | Overview, chart, journal and update shell | Partial feature parity | Exercise each screen on emulator/device; verify release signing and remaining Trading Room/Updates flows |
 
 ## Confirmed external prerequisites / boundaries
@@ -139,3 +139,13 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - Updated the UI label to "Daily P&L incl. floating" to match the metric.
 - Added unit and API tests for floating loss, current equity estimate, daily loss blocking, unpriced-position blocking and quote-unavailable behavior.
 - **Status:** PASS — Backend CI (Python 3.12/3.14), Backend/Web CI, Web CI, Windows backend tests and Windows EXE build/artifact upload all passed for PR #118. All data is indicative paper-ledger/provider data only; no broker order is placed.
+
+## Update 012 — Windows Journal durable, idempotent sync
+
+- Audit found Windows journal entries were saved locally and posted once to the local API. If the API was unavailable or the response was lost, there was no durable pending state or retry control; retrying manually could duplicate wallet P&L.
+- Added a sync_status column with migration: new entries are PENDING; successful syncs become SYNCED. Existing rows without sync history are marked UNKNOWN and are deliberately not auto-replayed to avoid duplicate historical wallet P&L.
+- Added a visible Sync column, a Sync pending trades button and a one-time startup retry for new pending entries.
+- Each new Windows trade uses a stable client_ref of windows:<local_trade_id>; the backend's existing idempotency marker ensures a lost response can be retried without creating duplicate journal rows or wallet P&L.
+- Prevent overlapping local sync workers. Failed syncs remain pending and can be retried when the local API is available.
+- Added Windows tests for new pending/synced persistence, legacy-row migration safety and backend idempotency using the Windows client_ref.
+- **Status:** CI pending. Existing UNKNOWN legacy rows require manual review; they are not automatically replayed.

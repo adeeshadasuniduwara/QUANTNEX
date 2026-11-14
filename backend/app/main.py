@@ -222,7 +222,7 @@ async def chart_quote(symbol: str = "XAUUSD", interval: str = "15m"):
                         "stale": False, "stale_after_seconds": stale_after_seconds,
                         "spread": quote.get("spread")}
             provider_errors.append("MT5: quote is stale for the selected chart timeframe.")
-        except MT5FeedError as exc:
+        except (MT5FeedError, ValueError, KeyError) as exc:
             provider_errors.append("MT5: " + str(exc))
     try:
         quote = await get_twelve_data_quote("XAUUSD")

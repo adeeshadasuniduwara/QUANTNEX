@@ -519,10 +519,10 @@ def test_journal_creation_normalizes_timezone_aware_local_dates():
     assert created.json()["created_at"].startswith("2026-11-14T04:00:00")
     assert client.delete(f"/api/v1/journal/{created.json()['id']}").status_code == 204
 
-def test_journal_create_is_idempotent_when_http_response_is_lost():
+def test_windows_journal_sync_is_idempotent_when_http_response_is_lost():
     client = TestClient(app)
     before = client.get("/api/v1/wallet/summary").json()
-    client_ref = "web-create-idempotency-ref-2026"
+    client_ref = "windows:17"
     payload = {
         "symbol": "XAUUSD",
         "direction": "buy",
@@ -530,7 +530,7 @@ def test_journal_create_is_idempotent_when_http_response_is_lost():
         "pnl": 12.50,
         "created_at": "2026-11-14T12:00:00+08:00",
         "client_ref": client_ref,
-        "notes": "idempotent online create",
+        "notes": "Windows local journal sync",
     }
 
     first = client.post("/api/v1/journal", json=payload)

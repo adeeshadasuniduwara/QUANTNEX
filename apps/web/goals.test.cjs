@@ -20,3 +20,9 @@ const demoHandler = js.slice(js.indexOf('$("goalDemoCertificate")'), js.indexOf(
 assert.ok(demoHandler.includes('goalCertificateName'), "Demo preview must use the entered display name.");
 assert.ok(demoHandler.includes('goalDemoTitle') && demoHandler.includes('goalDemoMessage'), "Demo preview must use its dedicated sample fields.");
 assert.ok(!demoHandler.includes('goalCertificateSelect'), "Demo preview must not depend on choosing an achieved goal.");
+
+assert.match(html, /id="goalCertificateDownload"[^>]*download[^>]*hidden/, "Certificate preview must expose a hidden-until-ready PDF download link.");
+assert.match(js, /download\.href=certificatePreviewUrl/, "The download link must use the generated PDF blob, not a guessed URL.");
+assert.match(js, /QUANTNEX-Demo-Certificate-NOT-VALID\.pdf/, "Demo PDF downloads must be clearly named as invalid samples.");
+assert.match(js, /download\.hidden=false/, "The PDF download link must become visible only after a preview is ready.");
+console.log("QUANTNEX certificate PDF download UI contract checks passed.");

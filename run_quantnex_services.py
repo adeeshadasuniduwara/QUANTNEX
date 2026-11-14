@@ -15,7 +15,8 @@ import webbrowser
 ROOT = Path(__file__).resolve().parent
 BACKEND = ROOT / "backend"
 WEB_SERVER = ROOT / "apps" / "web" / "quantnex_local_server.py"
-VENV_PYTHON = BACKEND / (Path("Scripts") / "python.exe" if os.name == "nt" else Path("bin") / "python")
+VENV_DIR = BACKEND / ".venv"
+VENV_PYTHON = VENV_DIR / (Path("Scripts") / "python.exe" if os.name == "nt" else Path("bin") / "python")
 LOG_FILE = ROOT / "logs" / "launcher.log"
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 PROCESSES: list[tuple[str, subprocess.Popen]] = []
@@ -70,7 +71,7 @@ def run_checked(command: list[str], cwd: Path, label: str) -> None:
 def prepare_backend() -> Path:
     """Create an isolated backend environment and install its declared dependencies."""
     if not VENV_PYTHON.exists():
-        run_checked([sys.executable, "-m", "venv", str(BACKEND / ".venv")],
+        run_checked([sys.executable, "-m", "venv", str(VENV_DIR)],
                     BACKEND, "Create backend virtual environment")
     if not VENV_PYTHON.is_file():
         raise RuntimeError(f"Backend Python environment is incomplete: {VENV_PYTHON} is missing.")

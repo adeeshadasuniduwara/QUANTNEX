@@ -80,6 +80,19 @@ def test_local_wallet_ledger_deposits_withdrawals_and_journal_pnl():
     assert round(summary_after_delete["balance"] - before["balance"], 2) == 400.0
 
 
+def test_wallet_rejects_non_finite_and_out_of_range_amounts_without_mutating_balance():
+    client = TestClient(app)
+    before = client.get("/api/v1/wallet/summary").json()
+    invalid_amounts = [0, -1, float("nan"), float("inf"), float("-inf"), 1000000001]
+    for amount in invalid_amounts:
+        response = client.post("/api/v1/wallet/transactions", json={
+            "transaction_type": "deposit", "amount": amount, "description": "invalid amount test"
+        })
+        assert response.status_code == 422, amount
+    after = client.get("/api/v1/wallet/summary").json()
+    assert after == before
+
+
 def test_signal_settings_and_telegram_status_work_without_login():
     client = TestClient(app)
     defaults = client.get("/api/v1/signals/settings")

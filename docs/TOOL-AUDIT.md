@@ -115,7 +115,7 @@ This report is a living audit record. Update it as each flow is exercised, repai
 ## Update 009 — Wallet amount validation across API and clients
 
 - Wallet audit confirmed Web already rejected non-finite/non-positive values, but Windows only checked amount <= 0 and could pass NaN/Infinity to the API.
-- Tightened the backend WalletTransactionCreate schema with `allow_inf_nan=False`, retaining the positive and $1,000,000,000 upper bound.
+- Tightened the backend WalletTransactionCreate schema with `allow_inf_nan=False`, retaining the positive and $1,000,000,000 upper bound. CI then exposed a second server-side issue: Pydantic's 422 detail included the rejected NaN value, which Starlette could not serialize as strict JSON. Added a safe RequestValidationError handler that serializes non-finite inputs as strings while preserving HTTP 422.
 - Added Windows `validate_wallet_amount` and used it before posting; it rejects malformed, NaN, infinite, zero, negative and over-limit values.
 - Aligned Web validation with the backend maximum and clearer user feedback.
 - Added backend API regression coverage proving invalid amounts return HTTP 422 and leave the wallet summary unchanged; added Windows unit coverage for client validation.

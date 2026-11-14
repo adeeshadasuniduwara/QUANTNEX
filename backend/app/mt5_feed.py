@@ -1,8 +1,9 @@
 """Read-only local MetaTrader 5 market-data bridge.
 
-This module deliberately exposes quotes and OHLC candles only. It never imports
-or calls order_send, positions management, account login, or trade APIs.
-MetaTrader5 is an optional Windows-terminal dependency and is imported lazily.
+This module exposes quotes, OHLC candles and broker-provided market depth only.
+It never imports or calls order_send, positions management, account login, or
+trade APIs. MetaTrader5 is an optional Windows-terminal dependency and is
+imported lazily.
 """
 from __future__ import annotations
 
@@ -132,6 +133,82 @@ def _quote_sync(symbol: str) -> dict[str, Any]:
         }
 
 
+def _order_book_sync(symbol: str, limit: int = 20) -> dict[str, Any]:
+    if not 5 <= int(limit) <= 100:
+        raise MT5FeedError("Market-depth limit must be between 5 and 100.")
+    with _feed_session() as mt5:
+        normalized = _symbol(mt5, symbol)
+        add_book = getattr(mt5, "market_book_add", None)
+        get_book = getattr(mt5, "market_book_get", None)
+        release_book = getattr(mt5, "market_book_release", None)
+        if not callable(add_book) or not callable(get_book) or not callable(release_book):
+            raise MT5FeedError("This MetaTrader 5 package does not expose broker market-depth functions.")
+        if not add_book(normalized):
+            code, message = mt5.last_error()
+            raise MT5FeedError(
+                f"Broker market depth is unavailable for {normalized} ({code}: {message}). "
+                "Confirm that the broker provides a Depth of Market feed for this symbol."
+            )
+        try:
+            book = get_book(normalized)
+            if book is None:
+                code, message = mt5.last_error()
+                raise MT5FeedError(
+                    f"MT5 returned no market-depth snapshot for {normalized} ({code}: {message})."
+                )
+            buy_types = {
+                getattr(mt5, "BOOK_TYPE_BUY", 2),
+                getattr(mt5, "BOOK_TYPE_BUY_MARKET", 4),
+            }
+            sell_types = {
+                getattr(mt5, "BOOK_TYPE_SELL", 1),
+                getattr(mt5, "BOOK_TYPE_SELL_MARKET", 3),
+            }
+            bids: list[dict[str, float]] = []
+            asks: list[dict[str, float]] = []
+            for level in book:
+                try:
+                    side = int(getattr(level, "type"))
+                    price = float(getattr(level, "price"))
+                    raw_real = getattr(level, "volume_real", None)
+                    raw_volume = getattr(level, "volume", 0)
+                    volume = float(raw_real if raw_real is not None and float(raw_real) > 0 else raw_volume)
+                    if not all(math.isfinite(value) and value > 0 for value in (price, volume)):
+                        continue
+                    row = {"price": price, "quantity": volume}
+                    if side in buy_types:
+                        bids.append(row)
+                    elif side in sell_types:
+                        asks.append(row)
+                except (AttributeError, TypeError, ValueError, OverflowError):
+                    continue
+            bids.sort(key=lambda item: item["price"], reverse=True)
+            asks.sort(key=lambda item: item["price"])
+            bids, asks = bids[:int(limit)], asks[:int(limit)]
+            if not bids and not asks:
+                raise MT5FeedError(
+                    f"The broker returned no usable bid/ask depth levels for {normalized}."
+                )
+            bid_total = sum(item["quantity"] for item in bids)
+            ask_total = sum(item["quantity"] for item in asks)
+            total = bid_total + ask_total
+            return {
+                "symbol": normalized,
+                "supported": True,
+                "provider": "MetaTrader 5 local terminal",
+                "bids": bids,
+                "asks": asks,
+                "bid_quantity": bid_total,
+                "ask_quantity": ask_total,
+                "imbalance": (bid_total - ask_total) / total if total else 0.0,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "orders_enabled": False,
+                "note": "Broker-provided Depth of Market snapshot. Levels depend on broker coverage; this is not full market-wide liquidity or executed volume.",
+            }
+        finally:
+            release_book(normalized)
+
+
 def _candles_sync(symbol: str, interval: str, limit: int) -> list[dict[str, Any]]:
     if interval not in TIMEFRAMES:
         raise MT5FeedError("Supported MT5 timeframes: 1m, 5m, 15m, 30m, 1h and 4h.")
@@ -186,3 +263,7 @@ async def get_quote(symbol: str = DEFAULT_SYMBOL) -> dict[str, Any]:
 
 async def get_candles(symbol: str = DEFAULT_SYMBOL, interval: str = "15m", limit: int = 500) -> list[dict[str, Any]]:
     return await asyncio.to_thread(_candles_sync, symbol, interval, limit)
+
+
+async def get_order_book(symbol: str = DEFAULT_SYMBOL, limit: int = 20) -> dict[str, Any]:
+    return await asyncio.to_thread(_order_book_sync, symbol, limit)

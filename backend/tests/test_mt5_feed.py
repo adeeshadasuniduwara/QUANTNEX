@@ -174,3 +174,63 @@ def test_mt5_feed_and_prop_guardian_share_the_same_terminal_lock():
     from app import prop_challenge
 
     assert prop_challenge.MT5_LOCK is feed.MT5_LOCK
+
+
+class BookMT5(FakeMT5):
+    BOOK_TYPE_SELL = 1
+    BOOK_TYPE_BUY = 2
+    BOOK_TYPE_SELL_MARKET = 3
+    BOOK_TYPE_BUY_MARKET = 4
+
+    def __init__(self):
+        super().__init__()
+        self.book_released = False
+
+    def market_book_add(self, symbol):
+        return symbol == "XAUUSD"
+
+    def market_book_get(self, symbol):
+        assert symbol == "XAUUSD"
+        return [
+            SimpleNamespace(type=self.BOOK_TYPE_BUY, price=2300.1, volume=3, volume_real=2.5),
+            SimpleNamespace(type=self.BOOK_TYPE_BUY_MARKET, price=2300.2, volume=2, volume_real=2.0),
+            SimpleNamespace(type=self.BOOK_TYPE_SELL, price=2300.4, volume=4, volume_real=3.5),
+            SimpleNamespace(type=self.BOOK_TYPE_SELL_MARKET, price=2300.3, volume=1, volume_real=1.0),
+        ]
+
+    def market_book_release(self, symbol):
+        self.book_released = True
+        return True
+
+
+def test_mt5_order_book_returns_sorted_broker_depth_and_releases_subscription(monkeypatch):
+    fake = BookMT5()
+    monkeypatch.setattr(feed, "_mt5", lambda: fake)
+
+    result = asyncio.run(feed.get_order_book("XAUUSD", 20))
+
+    assert result["supported"] is True
+    assert result["provider"] == "MetaTrader 5 local terminal"
+    assert [row["price"] for row in result["bids"]] == [2300.2, 2300.1]
+    assert [row["price"] for row in result["asks"]] == [2300.3, 2300.4]
+    assert result["bid_quantity"] == 4.5
+    assert result["ask_quantity"] == 4.5
+    assert result["imbalance"] == 0
+    assert result["orders_enabled"] is False
+    assert fake.book_released is True
+
+
+def test_mt5_order_book_reports_when_terminal_has_no_depth_functions(monkeypatch):
+    fake = FakeMT5()
+    monkeypatch.setattr(feed, "_mt5", lambda: fake)
+
+    with pytest.raises(feed.MT5FeedError, match="does not expose broker market-depth"):
+        asyncio.run(feed.get_order_book("XAUUSD", 20))
+
+
+def test_mt5_order_book_rejects_invalid_limit(monkeypatch):
+    fake = BookMT5()
+    monkeypatch.setattr(feed, "_mt5", lambda: fake)
+
+    with pytest.raises(feed.MT5FeedError, match="between 5 and 100"):
+        asyncio.run(feed.get_order_book("XAUUSD", 2))

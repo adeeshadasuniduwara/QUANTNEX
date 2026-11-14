@@ -777,7 +777,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   }
   async function loadBook(){
     const symbol=$("p7BookSymbol").value;
-    $("p7BookNote").textContent="Loading Binance order-book snapshot…";
+    $("p7BookNote").textContent="Loading configured provider order-book snapshot…";
     try{
       const data=await apiRequest("/api/v1/intelligence/market/"+symbol+"/orderbook");
       if(!data.supported){$("p7Bids").replaceChildren();$("p7Asks").replaceChildren();$("p7BookNote").textContent=data.reason;return;}

@@ -18,6 +18,8 @@ WEB = Path(__file__).resolve().parent
 ROOT = WEB.parent.parent
 DATA = ROOT / "data"
 VERSION_FILE = DATA / "quantnex_web_version.json"
+SOURCE_STATE_FILE = DATA / "quantnex_update_state.json"
+SUPERVISOR_CHECK_FILE = DATA / "updates" / "check_requested.json"
 REPO = "adeeshadasuniduwara/QUANTNEX"
 BRANCH = "main"
 HOST, PORT = "127.0.0.1", 5500
@@ -31,6 +33,48 @@ def installed_revision() -> str:
         return value if re.fullmatch(r"[0-9a-f]{40}", str(value)) else ""
     except (OSError, ValueError, AttributeError):
         return ""
+
+
+def supervisor_update_status() -> dict:
+    """Report the real full-source revision instead of placeholder version labels."""
+    installed = ""
+    try:
+        state = json.loads(SOURCE_STATE_FILE.read_text(encoding="utf-8"))
+        candidate = str(state.get("commit_sha", ""))
+        if re.fullmatch(r"[0-9a-f]{40}", candidate):
+            installed = candidate
+    except (OSError, ValueError, AttributeError):
+        pass
+    latest = latest_commit()
+    details = update_summary(installed, latest) if installed else {
+        "changes": [latest["message"]] if latest.get("message") else [],
+        "files_changed": 0,
+        "commits_behind": 1,
+    }
+    update_available = not installed or installed != latest["sha"]
+    return {
+        "installed": "main@" + installed[:7] if installed else "Initial source sync pending",
+        "latest": "main@" + latest["sha"][:7],
+        "latest_message": latest["message"],
+        "update_available": update_available,
+        "managed_by_supervisor": True,
+        "release_notes": latest["html_url"],
+        "commit_sha": latest["sha"],
+        **details,
+        "message": (
+            "A source update is available. The QUANTNEX supervisor will install it and restart the services safely."
+            if update_available else
+            "QUANTNEX source is up to date. Automatic checks continue every five minutes."
+        ),
+    }
+
+
+def queue_supervisor_check() -> None:
+    """Ask the running launcher to perform an immediate safe source check."""
+    SUPERVISOR_CHECK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temporary = SUPERVISOR_CHECK_FILE.with_suffix(".tmp")
+    temporary.write_text(json.dumps({"requested_at": datetime.now(timezone.utc).isoformat()}), encoding="utf-8")
+    temporary.replace(SUPERVISOR_CHECK_FILE)
 
 
 def github_json(url: str) -> dict:
@@ -281,9 +325,10 @@ class Handler(SimpleHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/__quantnex/check":
             if supervisor_managed():
-                self.send_json(200, {"installed": "Supervisor managed", "latest": "Automatic source updates",
-                                     "update_available": False, "managed_by_supervisor": True,
-                                     "message": "Full source updates are handled by the QUANTNEX supervisor."})
+                try:
+                    self.send_json(200, supervisor_update_status())
+                except Exception as exc:
+                    self.send_json(502, {"error": f"Supervisor update status failed: {exc}"})
                 return
             try:
                 latest = latest_commit()
@@ -313,16 +358,27 @@ class Handler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self):
-        if supervisor_managed():
-            self.send_json(409, {"error": "Full source updates are handled by the QUANTNEX supervisor."})
-            return
-        if urlparse(self.path).path != "/__quantnex/install":
-            self.send_json(404, {"error": "Not found"})
-            return
+        path = urlparse(self.path).path
         origin = self.headers.get("Origin")
         allowed_origins = {f"http://{HOST}:{PORT}", f"http://localhost:{PORT}"}
         if origin not in allowed_origins:
             self.send_json(403, {"error": "Only the local QUANTNEX workspace can start an update."})
+            return
+        if path == "/__quantnex/check-now":
+            if not supervisor_managed():
+                self.send_json(409, {"error": "Immediate checks are available only when the QUANTNEX supervisor is running."})
+                return
+            try:
+                queue_supervisor_check()
+                self.send_json(202, {"status": "queued", "message": "An immediate source check was sent to the QUANTNEX supervisor."})
+            except OSError as exc:
+                self.send_json(500, {"error": f"Could not queue the update check: {exc}"})
+            return
+        if supervisor_managed():
+            self.send_json(409, {"error": "Full source updates are handled by the QUANTNEX supervisor."})
+            return
+        if path != "/__quantnex/install":
+            self.send_json(404, {"error": "Not found"})
             return
         try:
             commit = latest_commit()

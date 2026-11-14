@@ -54,12 +54,13 @@ These CI results establish that the tested code passed in GitHub's runner. They 
 - The Backend remains loopback-only and login-free. Do not expose it to a LAN or public internet.
 - No broker order placement or verified win-rate calculation is enabled by this audit.
 
-## Maintenance work in progress
+## Maintenance PR #137 — Android + Web only
 
-- Remove the retired Windows desktop app, Windows EXE build workflow and EXE release steps.
-- Keep the project focused on the Android APK and Web workspace.
-- Harden the Windows-hosted Web + Backend launcher so failed dependency installation or startup diagnostics remain visible and are saved to `logs/launcher.log`.
-- Run full Backend, Web and Android CI on the maintenance pull request before merging.
+- Removed the Windows desktop source tree and Windows EXE build workflow; the Android release workflow now builds and publishes only the signed APK plus SHA256 manifest.
+- Reduced the Windows batch launcher to Web + Backend, Backend-only and source-folder options. Failed startup now keeps the CMD window open and writes diagnostics to `logs/launcher.log`.
+- Added regression tests for launcher exit-code handling, persistent log output, Android-only release assets, signing requirements and ignored local data/secrets.
+- Backend CI passed on Python 3.12 and 3.14; the Python 3.12 suite reported 196 passed. Backend/Web CI and Web CI passed. Android debug APK build and artifact upload passed.
+- A real Windows first-run install and physical Android signed-release update still require device-level verification. The historical v0.6.0 GitHub Release retains its old EXE asset until manually removed; no current workflow builds another one.
 
 ## Audit status vocabulary
 

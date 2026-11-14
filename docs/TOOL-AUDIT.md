@@ -200,4 +200,4 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - Reject invalid/negative Content-Length and empty archives; delete partial archive files on every failure.
 - Preserve the existing ZIP extraction limits (20 MB per file, 80 MB total, 1,500 files), path traversal checks and backup/rollback behavior.
 - Added unit tests for advertised oversize, streaming oversize, invalid length, empty archive, valid archive and traversal/Windows path syntax.
-- **Status:** CI pending. Full updater install/rollback/reload remains a packaged Windows device verification item.
+- **Status:** PASS — Web CI, Backend CI (Python 3.12/3.14), Backend/Web CI, Windows backend tests and Windows EXE build/artifact upload all passed for PR #127. Full updater install/rollback/reload remains a packaged Windows device verification item.

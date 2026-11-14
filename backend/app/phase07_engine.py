@@ -218,6 +218,7 @@ async def get_economic_calendar(days: int=7) -> dict:
     events=data.get("economicCalendar",[])
     if not isinstance(events,list):
         events=[]
+    events=[item for item in events if isinstance(item,dict)]
     events=sorted(events,key=lambda item:str(item.get("time") or item.get("date") or ""))
     return {"configured":True,"provider":"Finnhub","from":start,"to":end,"events":events[:500],
             "timestamp":datetime.now(timezone.utc).isoformat(),

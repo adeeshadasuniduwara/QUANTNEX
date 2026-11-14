@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager
+import hashlib
 import json
 import math
 import re
@@ -18,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, DATABASE_URL, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
 from .database import Base, engine, get_db, SessionLocal
-from .models import AuditEvent, GoalContribution, JournalImport, PaperTrade, PaperTradeEvent, PersonalGoal, Preference, StrategyLabRun, Trade, User, WalletTransaction
+from .models import AuditEvent, GoalContribution, JournalImport, PaperTrade, PaperTradeEvent, PersonalGoal, Preference, StrategyLabRun, Trade, User, WalletTransaction, WalletTransactionRequest
 from .schemas import AIChatRequest, AIChatResponse, LegacyJournalImportRequest, LegacyJournalImportResponse, PreferenceResponse, PreferenceWrite, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TradeCreate, TradeResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
 from .security import decrypt_secret, encrypt_secret
 from .maintenance import daily_backup_worker, record_audit_event
@@ -485,18 +486,64 @@ def wallet_transactions(limit: int = 100, user: User = Depends(local_workspace),
 @app.post("/api/v1/wallet/transactions", response_model=WalletTransactionResponse, status_code=201)
 def create_wallet_transaction(payload: WalletTransactionCreate, user: User = Depends(local_workspace),
                                db: Session = Depends(get_db)):
+    description = payload.description.strip()
+    payload_hash = hashlib.sha256(json.dumps({
+        "transaction_type": payload.transaction_type,
+        "amount": float(payload.amount),
+        "description": description,
+    }, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+    if payload.client_ref:
+        marker = db.scalar(select(WalletTransactionRequest).where(
+            WalletTransactionRequest.user_id == user.id,
+            WalletTransactionRequest.client_ref == payload.client_ref,
+        ))
+        if marker is not None:
+            if marker.payload_hash != payload_hash:
+                raise HTTPException(status_code=409, detail="This wallet request reference was already used for different transaction details.")
+            existing = db.get(WalletTransaction, marker.transaction_id)
+            if existing is not None:
+                return existing
+            raise HTTPException(status_code=409, detail="This wallet request was already processed but its transaction is missing.")
+
     balance = db.scalar(select(func.coalesce(func.sum(WalletTransaction.amount), 0.0))
                         .where(WalletTransaction.user_id == user.id)) or 0.0
     signed_amount = payload.amount if payload.transaction_type == "deposit" else -payload.amount
     if payload.transaction_type == "withdrawal" and payload.amount > balance:
         raise HTTPException(status_code=409, detail="Insufficient wallet balance for this withdrawal.")
     item = WalletTransaction(user_id=user.id, transaction_type=payload.transaction_type,
-                             amount=signed_amount, description=payload.description.strip())
-    db.add(item)
-    record_audit_event(db, "wallet.transaction_created", {"transaction_type": item.transaction_type, "amount": item.amount})
-    db.commit()
+                             amount=signed_amount, description=description)
+    try:
+        db.add(item)
+        db.flush()
+        if payload.client_ref:
+            db.add(WalletTransactionRequest(
+                user_id=user.id, client_ref=payload.client_ref,
+                payload_hash=payload_hash, transaction_id=item.id,
+            ))
+            db.flush()
+        record_audit_event(db, "wallet.transaction_created", {
+            "transaction_type": item.transaction_type, "amount": item.amount,
+            "idempotent_request": bool(payload.client_ref),
+        })
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        if payload.client_ref:
+            marker = db.scalar(select(WalletTransactionRequest).where(
+                WalletTransactionRequest.user_id == user.id,
+                WalletTransactionRequest.client_ref == payload.client_ref,
+            ))
+            if marker is not None:
+                if marker.payload_hash != payload_hash:
+                    raise HTTPException(status_code=409, detail="This wallet request reference was already used for different transaction details.")
+                existing = db.get(WalletTransaction, marker.transaction_id)
+                if existing is not None:
+                    return existing
+        raise HTTPException(status_code=409, detail="A wallet transaction with this request reference already exists.")
     db.refresh(item)
-    event_hub.publish("wallet.changed", "wallet", "transaction_created", {"transaction_id": item.id, "transaction_type": item.transaction_type, "amount": item.amount})
+    event_hub.publish("wallet.changed", "wallet", "transaction_created", {
+        "transaction_id": item.id, "transaction_type": item.transaction_type, "amount": item.amount,
+    })
     return item
 
 @app.get("/api/v1/preferences", response_model=list[PreferenceResponse])

@@ -75,7 +75,7 @@ assert.match(css, /\.web-update-dialog/, "The update dialog must have dedicated 
 console.log("QUANTNEX automatic update and private Telegram notification checks passed.");
 
 assert.doesNotMatch(html, /(?:cdn\.jsdelivr\.net|unpkg\.com)\/.*lightweight-charts/, "QUANTNEX VIEW must not load an external TradingView chart engine");
-assert.match(nativeChart, /new WebSocket\("wss:\/\/stream\.binance\.com:9443\/ws\/"\+stream\)/, "Native chart must stream Binance live kline candles");
+assert.match(nativeChart, /new WebSocket\(useCoinbase\?"wss:\/\/ws-feed\.exchange\.coinbase\.com":"wss:\/\/stream\.binance\.com:9443\/ws\/"\+stream\)/, "Native chart must prefer Binance live klines and retain the Coinbase fallback.");
 assert.match(nativeChart, /scheduleReconnect\(/, "Native chart must reconnect its live candle feed");
 assert.match(nativeChart, /HISTORY FEED ERROR/, "Native chart history errors must be visible");
 assert.match(chartIntel, /Signal analysis unavailable: /, "Chart Intelligence must expose the analysis API cause");

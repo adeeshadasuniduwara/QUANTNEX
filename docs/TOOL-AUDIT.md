@@ -169,7 +169,7 @@ This report is a living audit record. Update it as each flow is exercised, repai
 
 ## Update 015 — Economic News provider error handling
 
-- Audit found Finnhub's `_get_json` raises the custom `IntelligenceDataError` when the provider returns an API-key/quota error payload, but the News API route caught only `httpx.HTTPError`. Invalid-key responses therefore escaped as HTTP 500.
+- Audit found Finnhub can return an API-key error as an `error` field (rather than `status: error`), while the News API route caught only `httpx.HTTPError`. Such responses could be mistaken for an empty calendar; custom `IntelligenceDataError` payload failures could also escape as HTTP 500.
 - The route now catches both provider transport and provider-payload errors and returns an actionable HTTP 502 without exposing the API key.
 - Economic calendar normalization now discards malformed non-dictionary rows before sorting, preventing unexpected provider rows from causing attribute errors.
 - Added tests for missing-key explicit-unconfigured response, invalid-key actionable 502, malformed event filtering, chronological sorting and 30-day horizon clamp.

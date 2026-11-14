@@ -28,11 +28,16 @@ STATE = {"status": "idle", "message": ""}
 
 
 def installed_revision() -> str:
-    try:
-        value = json.loads(VERSION_FILE.read_text(encoding="utf-8")).get("commit_sha", "")
-        return value if re.fullmatch(r"[0-9a-f]{40}", str(value)) else ""
-    except (OSError, ValueError, AttributeError):
-        return ""
+    # Prefer the Web updater marker, then the full-source supervisor marker.
+    # ZIP installs managed by run_quantnex_services.py do not create the legacy Web-only marker.
+    for marker in (VERSION_FILE, SOURCE_STATE_FILE):
+        try:
+            value = json.loads(marker.read_text(encoding="utf-8")).get("commit_sha", "")
+            if re.fullmatch(r"[0-9a-f]{40}", str(value)):
+                return value
+        except (OSError, ValueError, AttributeError):
+            continue
+    return ""
 
 
 def supervisor_update_status() -> dict:

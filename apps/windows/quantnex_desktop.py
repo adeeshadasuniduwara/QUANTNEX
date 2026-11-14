@@ -335,29 +335,34 @@ class App(tk.Tk):
             else: ttk.Entry(cell,textvariable=var,width=16).pack(pady=4)
         ttk.Label(self.journal_tab,text="Notes").pack(anchor="w")
         self.notes=tk.Text(self.journal_tab,height=3,wrap="word",font=("Segoe UI",10)); self.notes.pack(fill="x",pady=5)
-        ttk.Button(self.journal_tab,text="Save trade",style="Accent.TButton",command=self._save).pack(anchor="w",pady=8)
-        self.journal_sync_status=ttk.Label(self.journal_tab,text="Local journal. New trades sync automatically to the local QUANTNEX workspace when its API is running.",style="Muted.TLabel")
+        actions=ttk.Frame(self.journal_tab); actions.pack(fill="x",pady=8)
+        ttk.Button(actions,text="Save trade",style="Accent.TButton",command=self._save).pack(side="left")
+        ttk.Button(actions,text="Sync pending trades",command=self._sync_pending_journal_trades).pack(side="left",padx=8)
+        self.journal_sync_status=ttk.Label(self.journal_tab,text="New trades sync automatically to the local QUANTNEX workspace. Older entries with unknown sync history are not automatically replayed.",style="Muted.TLabel",wraplength=850)
         self.journal_sync_status.pack(anchor="w",pady=(0,6))
-        cols=("date","symbol","side","outcome","pnl"); self.table=ttk.Treeview(self.journal_tab,columns=cols,show="headings",height=9)
-        for c,label,w in zip(cols,["Date","Symbol","Side","Outcome","P&L ($)"],[190,110,90,110,100]):
+        cols=("date","symbol","side","outcome","pnl","sync"); self.table=ttk.Treeview(self.journal_tab,columns=cols,show="headings",height=9)
+        for c,label,w in zip(cols,["Date","Symbol","Side","Outcome","P&L ($)","Sync"],[180,100,80,100,90,90]):
             self.table.heading(c,text=label); self.table.column(c,width=w,anchor="w")
         self.table.pack(fill="both",expand=True); self._refresh()
+        self.after(2500,self._sync_pending_journal_trades)
 
     def _save(self):
         try:
             symbol=self.trade["Symbol"].get().strip()
             if not symbol or len(symbol)>20: raise ValueError("Enter a symbol up to 20 characters.")
             pnl=float(self.trade["P&L ($)"].get())
+            if not math.isfinite(pnl): raise ValueError("P&L must be a finite number.")
             direction=self.trade["Direction"].get(); outcome=self.trade["Outcome"].get()
             notes=self.notes.get("1.0","end").strip()[:500]
-            self.journal.add(symbol,direction,outcome,pnl,notes)
+            local_id=self.journal.add(symbol,direction,outcome,pnl,notes)
             self.notes.delete("1.0","end"); self._refresh()
-            self._sync_journal_trade(symbol,direction,outcome,pnl,notes)
+            self._sync_journal_trade(local_id)
         except ValueError as e: messagebox.showerror("Invalid trade",str(e))
 
     def _refresh(self):
         for item in self.table.get_children(): self.table.delete(item)
-        for row in self.journal.recent(): self.table.insert("","end",values=(row[0],row[1],row[2],row[3],f"{row[4]:.2f}"))
+        for row in self.journal.recent():
+            self.table.insert("","end",values=(row[0],row[1],row[2],row[3],f"{row[4]:.2f}",row[5]))
 
     def _charts(self):
         ttk.Label(self.charts, text="Live Market Charts", font=("Segoe UI", 18, "bold")).pack(anchor="w")
@@ -541,17 +546,46 @@ class App(tk.Tk):
                 self.after(0,lambda:self.account_status.configure(text=message))
         threading.Thread(target=worker,daemon=True).start()
 
-    def _sync_journal_trade(self,symbol,direction,outcome,pnl,notes):
+    def _sync_journal_trade(self, local_id):
+        self._sync_pending_journal_trades()
+
+    def _sync_pending_journal_trades(self):
+        pending=self.journal.pending()
+        unknown=self.journal.unknown_sync_count()
+        if not pending:
+            message="No pending new trades."
+            if unknown:
+                message+=f" {unknown} older entries have unknown sync history and were not re-sent, to avoid duplicate wallet P&L."
+            self.journal_sync_status.configure(text=message)
+            self._refresh()
+            return
         base=self._api_base()
-        payload={"symbol":symbol,"direction":direction.lower(),"outcome":outcome.lower(),"pnl":pnl,"notes":notes}
-        self.journal_sync_status.configure(text="Trade saved locally. Syncing it to the local QUANTNEX wallet…")
+        self.journal_sync_status.configure(text=f"Syncing {len(pending)} pending local trade(s) to the QUANTNEX workspace…")
         def worker():
-            try:
-                self._api_request("POST","/api/v1/journal",payload,base=base)
-                self.after(0,lambda:self.journal_sync_status.configure(text="Trade saved locally and synced to the local workspace; wallet P&L updated."))
-            except Exception as exc:
-                message="Trade saved locally; local API sync is unavailable: "+str(exc)
-                self.after(0,lambda:self.journal_sync_status.configure(text=message))
+            synced=0
+            errors=[]
+            for local_id,symbol,side,outcome,pnl,notes in pending:
+                payload={
+                    "symbol":symbol,"direction":side.lower(),"outcome":outcome.lower(),
+                    "pnl":pnl,"notes":notes,"client_ref":f"windows:{local_id}",
+                }
+                try:
+                    self._api_request("POST","/api/v1/journal",payload,base=base)
+                    self.journal.mark_synced(local_id)
+                    synced+=1
+                except Exception as exc:
+                    errors.append(str(exc))
+            def finish():
+                self._refresh()
+                remaining=len(self.journal.pending())
+                message=f"Synced {synced} trade(s). {remaining} remain pending."
+                if errors:
+                    message+=" Last error: "+errors[-1]
+                unknown_now=self.journal.unknown_sync_count()
+                if unknown_now:
+                    message+=f" {unknown_now} older entries have unknown sync history and were not automatically re-sent."
+                self.journal_sync_status.configure(text=message)
+            self.after(0,finish)
         threading.Thread(target=worker,daemon=True).start()
 
     def _device(self):

@@ -1,4 +1,4 @@
-"""Safe, incremental QUANTNEX source updater for the Windows supervisor."""
+"""Safe, incremental QUANTNEX source updater for the local Web + Backend supervisor."""
 from __future__ import annotations
 
 import io

@@ -236,3 +236,11 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - The latest published GitHub Release observed during this audit is still v0.6.0, with QUANTNEX.exe and SHA256SUMS.txt. Merging source changes does not publish a new Windows EXE release. A new release build must complete before the packaged EXE updater can receive a newer binary.
 - This PR can be validated by GitHub CI and source-level tests. A real local MT5 terminal/broker connection, the user's provider credentials/network, and the installed Windows/ZIP runtime are not available to this audit environment; those require a post-download smoke test. Gold historical candles will remain explicitly unavailable until the user has an enabled MT5 feed or a valid Twelve Data key.
 - Status: MERGED — PR #130 (merge commit 8212a1289a1db4a35793150133468a7952eeef10). Web CI, Backend CI, Backend/Web CI (Python 3.12/3.14), and Windows Build all passed on the final PR head. Source-level fixes are now on main. No claim that the user's installed copy has already updated or that live market providers have been reached from the user's laptop.
+
+
+## Update 015 — Spreadsheet-safe journal CSV export
+
+- Audited the Web Journal CSV export path and found that quoting CSV fields alone does not prevent spreadsheet formula injection when a user-controlled symbol, direction, outcome or note begins with formula characters.
+- Added a shared CSV serializer that quotes and escapes every cell and prefixes formula-like text cells (including leading whitespace/control characters followed by =, +, - or @) with a text marker. Finite numeric P&L values remain numeric, including legitimate negative P&L.
+- Added Node tests for formula-like inputs, leading whitespace, quotes/commas/newlines and numeric negative P&L. Web CI now runs this test.
+- Status: code and unit tests added on the current main branch; CI pending. Real browser/Excel interoperability remains a separate device-level check.

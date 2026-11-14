@@ -1,7 +1,7 @@
 """Resilient, cached public market overview feeds for QUANTNEX.
 
 BTC and XAU spot prices use Gold-API's keyless real-time endpoint first.
-BTC falls back to Binance; XAU falls back to Twelve Data when configured.
+BTC falls back through Binance, Coinbase Exchange and CoinGecko; XAU falls back to Twelve Data when configured.
 USD/LKR uses the keyless daily ExchangeRate-API feed, then Twelve Data.
 These are indicative prices, not executable quotes.
 """

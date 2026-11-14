@@ -1228,12 +1228,14 @@ def download_demo_goal_certificate(payload: dict | None = None, user: User = Dep
     """Render a personalized sample only; it never creates or unlocks a real certificate."""
     from .goal_certificates import build_goal_certificate_pdf
     payload = payload or {}
-    display_name = str(payload.get("display_name") or "QUANTNEX Demo User").strip()
-    goal_title = str(payload.get("goal_title") or "Sample Personal Goal").strip()
-    achievement_text = str(payload.get("achievement_text") or "I just achieved gold").strip()
-    currency = str(payload.get("currency") or "USD").upper()
+    # Defaults apply only when a field is omitted. Explicitly supplied empty or
+    # zero values must reach validation rather than silently becoming demo data.
+    display_name = str(payload.get("display_name", "QUANTNEX Demo User")).strip()
+    goal_title = str(payload.get("goal_title", "Sample Personal Goal")).strip()
+    achievement_text = str(payload.get("achievement_text", "I just achieved gold")).strip()
+    currency = str(payload.get("currency", "USD")).strip().upper()
     try:
-        target_amount = float(payload.get("target_amount") or 1000)
+        target_amount = float(payload.get("target_amount", 1000))
     except (TypeError, ValueError):
         raise HTTPException(status_code=422, detail="Demo goal amount must be numeric.")
     if not display_name or len(display_name) > 80:

@@ -15,6 +15,9 @@ on:
     paths:
       - "apps/web/**"
       - "tests/test_telegram_release_workflow.py"
+      - "tests/test_quantnex_updater_rollback.py"
+      - "quantnex_updater.py"
+      - "run_quantnex_services.py"
       - ".github/workflows/telegram-release-notify.yml"
       - ".github/workflows/web-ci.yml"
 

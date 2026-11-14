@@ -138,4 +138,4 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - Paper equity estimate now includes realized plus current unrealized P&L, so subsequent risk sizing uses the current estimated equity.
 - Updated the UI label to "Daily P&L incl. floating" to match the metric.
 - Added unit and API tests for floating loss, current equity estimate, daily loss blocking, unpriced-position blocking and quote-unavailable behavior.
-- **Status:** CI pending. All data is indicative paper-ledger/provider data only; no broker order is placed.
+- **Status:** PASS — Backend CI (Python 3.12/3.14), Backend/Web CI, Web CI, Windows backend tests and Windows EXE build/artifact upload all passed for PR #118. All data is indicative paper-ledger/provider data only; no broker order is placed.

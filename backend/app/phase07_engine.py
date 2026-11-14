@@ -2,7 +2,8 @@
 
 Crypto prices/candles/order books are public Binance spot data.
 XAUUSD and FX quotes/candles require the configured Twelve Data key.
-Missing providers are reported as unavailable; no synthetic prices are generated.
+XAUUSD broker depth can use the optional local MT5 DOM feed when enabled.
+Missing providers are reported as unavailable; no synthetic prices or depth are generated.
 """
 from __future__ import annotations
 import asyncio

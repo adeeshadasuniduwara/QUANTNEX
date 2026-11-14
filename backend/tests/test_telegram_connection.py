@@ -125,3 +125,20 @@ def test_telegram_connect_accepts_channel_only_when_bot_can_post(monkeypatch):
     assert response.json()["destination_type"] == "channel"
     assert [call[0] for call in fake.calls] == ["getMe", "getChat", "getChatMember"]
     client.delete("/api/v1/telegram/connect")
+
+
+def test_telegram_connect_accepts_channel_owner(monkeypatch):
+    client = TestClient(main_module.app)
+    client.delete("/api/v1/telegram/connect")
+    response, _fake = _connect(client, monkeypatch, {
+        "getMe": _bot(),
+        "getChat": FakeTelegramResponse({"ok": True, "result": {
+            "id": -100123456789, "type": "channel", "title": "QUANTNEX Updates",
+        }}),
+        "getChatMember": FakeTelegramResponse({"ok": True, "result": {
+            "status": "creator",
+        }}),
+    }, chat_id="@QUANTNEXUpdates")
+    assert response.status_code == 200
+    assert response.json()["destination_type"] == "channel"
+    client.delete("/api/v1/telegram/connect")

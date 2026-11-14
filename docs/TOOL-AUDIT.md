@@ -145,7 +145,7 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - Audit found Windows journal entries were saved locally and posted once to the local API. If the API was unavailable or the response was lost, there was no durable pending state or retry control; retrying manually could duplicate wallet P&L.
 - Added a sync_status column with migration: new entries are PENDING; successful syncs become SYNCED. Existing rows without sync history are marked UNKNOWN and are deliberately not auto-replayed to avoid duplicate historical wallet P&L.
 - Added a visible Sync column, a Sync pending trades button and a one-time startup retry for new pending entries.
-- Each new Windows trade uses a stable client_ref of windows:<local_trade_id>; the backend's existing idempotency marker ensures a lost response can be retried without creating duplicate journal rows or wallet P&L.
+- Each new Windows trade stores a unique persistent UUID-based client_ref (windows:<uuid>); the backend's existing idempotency marker ensures a lost response can be retried without creating duplicate journal rows or wallet P&L.
 - Prevent overlapping local sync workers. Failed syncs remain pending and can be retried when the local API is available.
 - Added Windows tests for new pending/synced persistence, legacy-row migration safety and backend idempotency using the Windows client_ref.
 - **Status:** CI pending. Existing UNKNOWN legacy rows require manual review; they are not automatically replayed.

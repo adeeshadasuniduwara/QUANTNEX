@@ -117,6 +117,42 @@ def _safe_web_destination(relative: PurePosixPath) -> Path:
     return destination
 
 
+MAX_ARCHIVE_BYTES = 100 * 1024 * 1024
+
+
+def download_bounded_archive(request, destination: Path, max_bytes: int = MAX_ARCHIVE_BYTES) -> int:
+    """Download a pinned source archive with a strict compressed-size limit."""
+    total = 0
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            content_length = response.headers.get("Content-Length")
+            if content_length is not None:
+                try:
+                    advertised = int(content_length)
+                except (TypeError, ValueError) as exc:
+                    raise RuntimeError("The update archive has an invalid Content-Length.") from exc
+                if advertised < 0 or advertised > max_bytes:
+                    raise RuntimeError("The update archive exceeds the 100 MB download limit.")
+            with destination.open("wb") as output:
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > max_bytes:
+                        raise RuntimeError("The update archive exceeds the 100 MB download limit.")
+                    output.write(chunk)
+        if total == 0:
+            raise RuntimeError("The update archive is empty.")
+        return total
+    except Exception:
+        try:
+            destination.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+
 def install_commit(commit: dict) -> None:
     sha = str(commit.get("sha", ""))
     archive_url = str(commit.get("archive_url", ""))
@@ -129,8 +165,7 @@ def install_commit(commit: dict) -> None:
         archive, staged = temp / "source.zip", temp / "web"
         staged.mkdir()
         request = urllib.request.Request(archive_url, headers={"User-Agent": "QUANTNEX-Web-Updater"})
-        with urllib.request.urlopen(request, timeout=120) as response, archive.open("wb") as output:
-            shutil.copyfileobj(response, output)
+        download_bounded_archive(request, archive)
 
         count = 0
         total_size = 0

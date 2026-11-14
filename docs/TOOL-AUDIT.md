@@ -191,4 +191,4 @@ This report is a living audit record. Update it as each flow is exercised, repai
 - Channels require administrator status with can_post_messages=true (or creator status); groups/supergroups require membership and send permission.
 - Private destinations remain supported and the bot-self check remains in place.
 - Added workflow contract tests for getChatMember, channel posting permission and group send permission.
-- **Status:** CI pending. Actual delivery still depends on the repository owner's TELEGRAM_CHAT_ID secret and a valid Telegram destination.
+- **Status:** PASS — GitHub workflow contract tests and Web syntax checks passed for PR #126. Actual delivery still depends on the repository owner's TELEGRAM_CHAT_ID secret and a valid Telegram destination.

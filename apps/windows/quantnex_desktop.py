@@ -32,6 +32,16 @@ def calculate_position_size(equity, risk_percent, stop_pips, pip_value):
     risk_amount = equity * risk_percent / 100
     return risk_amount, risk_amount / (stop_pips * pip_value)
 
+def validate_wallet_amount(value):
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        raise ValueError("Enter a valid wallet amount.") from None
+    if not math.isfinite(amount) or not 0 < amount <= 1000000000:
+        raise ValueError("Wallet amount must be finite, greater than zero and no more than $1,000,000,000.")
+    return amount
+
+
 def fetch_chart_data(symbol, urlopen=None):
     """Fetch real BTC Binance candles or read-only Gold candles from the local MT5 API."""
     normalized = str(symbol or "").strip().upper()
@@ -488,8 +498,7 @@ class App(tk.Tk):
 
     def _wallet_submit(self,transaction_type):
         try:
-            amount=float(self.wallet_amount_var.get())
-            if amount<=0: raise ValueError("Amount must be greater than zero.")
+            amount=validate_wallet_amount(self.wallet_amount_var.get())
         except ValueError as exc:
             self.account_status.configure(text=str(exc)); return
         base=self._api_base()

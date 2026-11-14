@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 title QUANTNEX Web + Backend Launcher
 cd /d "%~dp0"
 
@@ -23,7 +23,7 @@ echo Starting QUANTNEX Web + Backend supervisor...
 where py >nul 2>nul
 if not errorlevel 1 (
   py -3 run_quantnex_services.py
-  set "APP_EXIT=%ERRORLEVEL%"
+  set "APP_EXIT=!ERRORLEVEL!"
 ) else (
   where python >nul 2>nul
   if errorlevel 1 goto python_missing

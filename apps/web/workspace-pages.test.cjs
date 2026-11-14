@@ -101,3 +101,14 @@ console.log("Journal timezone normalization checks passed.");
 
 assert.match(app, /client_ref:trade\.client_ref/, "Online journal writes must carry the same idempotency key as offline retries.");
 console.log("Journal online/offline idempotency checks passed.");
+
+const journalHtml = html.slice(html.indexOf('id="journal"'), html.indexOf('id="automation"'));
+assert.match(journalHtml, /id="tradeDate" type="date" required/, "Journal entries must allow an explicit trade date.");
+assert.match(journalHtml, /id="cancelJournalEdit"/, "Journal edit mode must have a cancel action.");
+assert.match(journalHtml, /id="saveTrade"/, "Journal create and edit must share a visible save action.");
+assert.match(app, /function beginJournalEdit\(/, "Every journal row must expose an edit flow.");
+assert.match(app, /function cancelJournalEdit\(/, "Journal edits must be cancellable without writing.");
+assert.match(app, /apiRequest\("\/api\/v1\/journal\/"\+existing\.id,\{method:"PUT"/, "Persisted journal edits must update the local database API.");
+assert.match(app, /journalRowsCache=journalRowsCache\.map\(row=>journalRowKey\(row\)===key\?updated:row\)/, "An edited journal row must replace only its matching cached record.");
+assert.match(app, /if\(error\.status\)\{setJournalStatus\("Trade could not be saved:/, "API validation errors must not be misclassified as offline queued trades.");
+console.log("Web journal create/edit/delete UI wiring checks passed.");

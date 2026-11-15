@@ -210,3 +210,30 @@ Each generated signal is then passed through the Telegram delivery helper with a
 1. Phase 8: preserve and report the actual market-data provider used for each signal timeframe (MT5, Twelve Data, Binance or Coinbase fallback).
 2. Add provider-fallback and provider-attribution tests.
 3. Perform a real Windows/MT5 and public crypto-feed smoke test when the user's local runtime is available.
+
+
+## 2026-11-16 — Phase 8: actual market-data provider attribution (in progress)
+
+### Finding
+
+The candle provider function already returned the provider actually used, including MT5, Twelve Data, Binance Spot and Coinbase fallback. The signal engine discarded that information and hard-coded the result label to Binance Spot for every crypto signal and Twelve Data for every Gold signal. Telegram automatic alerts therefore could misreport the source when a fallback or MT5 feed was used.
+
+### Changes in branch `fix/signal-market-provider-attribution`
+
+- Build signals from provider-aware candle fetch results and aggregate the distinct sources used across selected timeframes.
+- Report the actual source(s) in the scan response and Signal Lab's existing Source field.
+- Include the actual market-data source in Telegram automatic signal alerts.
+- Update the feed status description to document the Coinbase fallback.
+- Add provider attribution coverage for Binance, Coinbase fallback, MT5, Twelve Data and mixed-source timeframes.
+
+### Verification
+
+- Changes and tests are on the feature branch.
+- GitHub Actions checks are pending; merge only after all backend and web checks pass.
+- Provider labels in synthetic tests do not prove the actual user's MT5 terminal or public network connectivity.
+
+### Next steps
+
+1. Inspect CI and provider fallback test results.
+2. Merge only after checks pass and verify post-merge CI.
+3. Continue real-provider smoke checks and audit stale/fallback behavior.

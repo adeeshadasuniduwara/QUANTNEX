@@ -393,7 +393,7 @@ async def run_signal_walk_forward(
             "slippage_bps_per_side": float(settings.get("estimated_slippage_bps_per_side", 2.5)),
             "fees_and_slippage": "Uses estimated fee/slippage assumptions; not historical exchange order-book or account fee data.",
             "market_fill": "Next primary candle open using the modeled bid/ask spread.",
-            "limit_fill": "Filled only if a later candle touches the limit within the 15-minute signal expiry; gap-through fills use the better opening price.",
+            "limit_fill": "Filled only if a 1m candle touches the limit within the 15-minute signal expiry; gap-through fills use the better opening price.",
             "intrabar_ambiguity": "If stop-loss and TP1 are both touched in one candle, stop-loss is assumed first.",
             "exit_policy": "Full position exits at stop-loss or TP1; TP2/TP3 partial exits are not modeled.",
         },

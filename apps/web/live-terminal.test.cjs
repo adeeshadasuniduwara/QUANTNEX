@@ -53,6 +53,9 @@ assert.match(nativeChart, /function heikin\(/, "Heikin Ashi candle calculation i
 assert.match(nativeChart, /data-qx-draw|querySelectorAll\("\[data-qx-draw\]"\)/, "Chart drawing tools are missing");
 assert.doesNotMatch(signal, /LightweightCharts/, "Legacy TradingView chart engine must not remain in signal-tool.js");
 assert.match(signal, /apiRequest\("\/api\/v1\/signals\/scan\?symbol=/, "Manual signal scan must use the selected market");
+assert.match(signal, /Entry type/, "Signal Lab must show MARKET versus LIMIT entry type");
+assert.match(signal, /entry_selection_reason/, "Signal Lab must show the entry decision reason");
+assert.match(signal, /execution_quality/, "Signal Lab must show execution-quality checks");
 assert.match(signal, /symbols\}\)/, "Telegram auto-signal settings must save selected markets");
 assert.match(app, /volume:isTrade\?Number\(data\.q\|\|0\):0/, "Live Binance trade size must feed chart volume");
 

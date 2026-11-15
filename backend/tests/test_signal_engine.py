@@ -324,3 +324,31 @@ def test_binance_signal_fetch_drops_current_unclosed_candle(monkeypatch):
     result = asyncio.run(signal_engine.fetch_candles("15min", 220, "BTCUSDT"))
     assert len(result) == 219
     assert result[-1]["time"] == datetime.fromtimestamp((last_open - 900000) / 1000, timezone.utc).isoformat()
+
+
+
+def test_gold_feed_provider_accepts_configured_mt5_without_twelve_data(monkeypatch):
+    from app import signal_engine
+
+    monkeypatch.setattr(signal_engine, "TWELVE_DATA_API_KEY", "")
+    monkeypatch.setattr(signal_engine, "QUANTNEX_MT5_ENABLED", True)
+    assert signal_engine.gold_feed_configured() is True
+    assert signal_engine.gold_feed_provider() == "MetaTrader 5 local terminal"
+
+
+def test_gold_feed_provider_uses_twelve_data_when_mt5_is_disabled(monkeypatch):
+    from app import signal_engine
+
+    monkeypatch.setattr(signal_engine, "TWELVE_DATA_API_KEY", "test-key")
+    monkeypatch.setattr(signal_engine, "QUANTNEX_MT5_ENABLED", False)
+    assert signal_engine.gold_feed_configured() is True
+    assert signal_engine.gold_feed_provider() == "Twelve Data"
+
+
+def test_gold_feed_provider_is_unavailable_without_either_provider(monkeypatch):
+    from app import signal_engine
+
+    monkeypatch.setattr(signal_engine, "TWELVE_DATA_API_KEY", "")
+    monkeypatch.setattr(signal_engine, "QUANTNEX_MT5_ENABLED", False)
+    assert signal_engine.gold_feed_configured() is False
+    assert signal_engine.gold_feed_provider() is None

@@ -267,7 +267,7 @@ async def paper_autopilot_worker() -> None:
                     if not settings["enabled"]:
                         continue
                     now_mono = time.monotonic()
-                    if now_mono - last_scan.get(user.id, 0) < settings["interval_seconds"]:
+                    if now_mono - last_scan.get(user.id, now_mono - settings["interval_seconds"]) < settings["interval_seconds"]:
                         continue
                     last_scan[user.id] = now_mono
                     trades = list(db.scalars(select(PaperTrade).where(PaperTrade.user_id == user.id)))

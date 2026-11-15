@@ -204,6 +204,12 @@
       $("telegramStatus").textContent=data.telegram_sent?"Signal sent to your connected Telegram bot.":(data.telegram_note||"Signal calculated, but Telegram delivery did not complete. Check your bot connection.");
     } else {
       const p=document.createElement("p");p.textContent=data.message||"No high-confluence setup. Wait for confirmation.";result.append(p);
+      if(data.execution_quality){
+        const quality=document.createElement("p");quality.className="signal-feed-note";
+        quality.textContent="Execution rejected · Spread "+data.execution_quality.spread_bps+" bps · Bid depth "+
+          data.execution_quality.bid_depth_usd+" USD · Ask depth "+data.execution_quality.ask_depth_usd+" USD";
+        result.append(quality);
+      }
     }
     Object.entries(data.timeframes||{}).forEach(([tf,v])=>{
       const card=document.createElement("div");card.className="indicator-card";

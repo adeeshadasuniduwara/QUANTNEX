@@ -380,17 +380,52 @@ After dynamic Binance pair coverage, the next core requirement is to generate an
 - Added unit and end-to-end tests for MARKET selection, LIMIT retracement selection, wide-spread rejection, exchange filters and low-price precision.
 - Added deterministic bearish LIMIT selection, dynamic newly listed pair signal coverage, quote-asset USD conversion tests, and an end-to-end WAIT case proving poor spreads do not produce a forced signal.
 
-### Verification status
+### Verification and merge result
 
-- Implementation and test changes are committed to the feature branch; local runtime execution is unavailable in this session, so GitHub Actions must verify syntax and test behavior before merge.
+- PR [#166](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/166) merged to `main` as commit `9b420315b3222c12bfb4800fb6bb13e09aade474`.
+- Backend CI, Backend-and-Web CI and Web CI passed before merge; post-merge Backend and Web checks also passed.
+- The separate Telegram Update Notifications workflow failed because the configured `TELEGRAM_CHAT_ID` resolves to the bot itself; this remains a notification-secret configuration blocker, not a signal-engine CI failure.
 - Binance Spot only. SELL signals are analytical Spot sell signals; this does not create a short position or submit a Binance order.
 - No real orders are submitted. Market/limit values are signal guidance only; actual fills may differ and LIMIT signals may expire unfilled.
 - The quality gates are explicit engineering thresholds and need historical/out-of-sample evaluation before any profitability claim.
 
 ### Next steps
 
-1. Run Backend CI, Backend-and-Web CI and Web CI; inspect failures and fix before merge.
-2. Review the complete diff and ensure no secrets or unrelated changes; merge only after all required checks pass.
-3. Verify post-merge tests.
-4. Continue with chronological backtests, cost sensitivity and signal quality calibration; do not loosen the filters simply to increase signal count.
-5. Then evaluate Binance USDⓈ-M Futures support for native short signals and broader pair coverage, with explicit market-type separation.
+1. Add chronological historical replay of the same signal engine, with no look-ahead and explicit fill/expiry assumptions.
+2. Compare training and unseen out-of-sample metrics, including fees, slippage, spread, win rate, expectancy, profit factor and drawdown.
+3. Do not tune parameters on the holdout or loosen filters simply to increase signal count.
+4. Then evaluate Binance USDⓈ-M Futures support for native short signals and broader pair coverage, with explicit market-type separation.
+
+
+## 2026-11-16 — Phase 14: signal-engine historical walk-forward validation (implementation and CI pending)
+
+### User priority
+
+A signal is not considered good merely because the engine emits it. Validate the actual multi-timeframe QUANTNEX signal rules against historical Binance Spot candles, with chronological training and unseen out-of-sample results. No parameter fitting on the holdout, no future-candle look-ahead, and no live orders.
+
+### Implementation started on branch `feat/signal-engine-walk-forward-backtest`
+
+- Added a bounded, paginated Binance Spot historical kline fetcher (1m base data, 1–30 day bounds, closed candles only).
+- Improved minute aggregation to discard incomplete/duplicate buckets before constructing 5m/15m/30m/M50/1h candles.
+- Added historical minute-gap checks; reject replay ranges with excessive missing bars rather than silently interpolating or inventing candles.
+- Added deterministic historical candle and execution-context overrides to the same `build_signal` engine used by live scans; replay timestamps and signal expiry are anchored to the historical replay time.
+- Added a chronological walk-forward runner that uses only candles closed by the next primary bar open, splits usable history into training and unseen holdout slices, and simulates MARKET fills, 15-minute LIMIT expiry/fills, SL/TP1 exits, and conservative stop-first same-candle ambiguity.
+- Execution fills and exits are replayed on 1m candles even when the signal timeframe is 15m/30m/M50/1h, so the 15-minute LIMIT expiry cannot accidentally extend to a whole higher-timeframe candle.
+- Includes spread/depth/fee/slippage assumptions, net PnL, win rate, profit factor, expectancy in R, max drawdown, expired limit counts and a buy-and-hold reference.
+- Added a `POST /api/v1/signals/backtest` API and Signal Lab UI action to show training versus out-of-sample results.
+- Backtest limitations are surfaced: no historical order book, no partial TP2/TP3 exits, no position sizing, no funding, and no actual user fee-tier confirmation.
+
+### Verification status
+
+- Code and deterministic tests are in progress on the feature branch; GitHub Actions must verify all tests before merge.
+- Backtest MARKET/LIMIT execution uses explicit assumptions for historical spread and depth because Binance public klines do not provide historical order-book snapshots.
+- No live orders are submitted; this is a research-only replay.
+- A positive holdout result is not proof of future profitability.
+
+### Next steps
+
+1. Run Backend CI and Web CI; fix all test, schema and UI regressions.
+2. Review the no-look-ahead boundary and fill/exit simulation against edge cases (gaps, unfilled limits, stop/target in one candle, missing minute buckets).
+3. Merge only after checks pass and verify post-merge CI.
+4. Run the walk-forward tool on several liquid and lower-liquidity Binance Spot pairs; record real outputs and limitations without inventing performance claims.
+5. Perform cost sensitivity tests before treating any strategy settings as reliable.

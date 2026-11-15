@@ -311,3 +311,54 @@ def test_signal_pipeline_returns_wait_when_spread_blocks_market_and_limit(monkey
     assert result["quality_filters"]["execution_quality"] is False
     assert result["execution_quality"]["accepted"] is False
     assert "No safe MARKET entry" in result["message"]
+
+
+def test_build_signal_supports_historical_replay_without_live_provider_calls(monkeypatch):
+    now = datetime.now(timezone.utc)
+    replay_as_of = now + timedelta(minutes=5)
+    candles_by_tf = {
+        tf: _synthetic_setup("BUY", interval, now)
+        for tf, interval in {"60": "1h", "30": "30min", "15": "15min", "5": "5min", "1": "1min"}.items()
+    }
+    close = candles_by_tf["5"][-1]["close"]
+
+    async def no_live_fetch(*_args, **_kwargs):
+        raise AssertionError("Historical replay must not fetch live candles.")
+
+    def bullish_analysis(_rows):
+        structure = {
+            "bos_mss": "BULLISH", "liquidity_sweep": "BULLISH",
+            "bullish_fvg": {"low": close - 0.1, "high": close + 0.1},
+            "bullish_order_block": None, "bullish_breaker_block": None,
+            "bullish_ifvg": None, "bearish_fvg": None, "bearish_order_block": None,
+            "bearish_breaker_block": None, "bearish_ifvg": None,
+            "premium_discount": "DISCOUNT", "swing_low": close - 1.0, "swing_high": close + 1.0,
+        }
+        return {
+            "bias": "BULLISH", "close": close, "ema20": close - 0.2, "ema50": close - 0.4,
+            "ema200": close - 0.6, "macd_histogram": 0.2, "rsi": 55.0, "adx": 25.0,
+            "atr": 0.5, "structure": structure,
+        }
+
+    execution = {
+        "best_bid": close - 0.005, "best_ask": close + 0.005, "mid_price": close,
+        "spread_bps": 0.9, "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
+        "bid_depth_usd": 20000.0, "ask_depth_usd": 20000.0,
+        "tick_size": "0.01", "step_size": "0.001", "min_quantity": "0.001",
+        "min_notional": "5", "observed_at": replay_as_of.isoformat(),
+        "provider": "Historical Binance Spot replay", "is_replay": True,
+    }
+
+    monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", no_live_fetch)
+    monkeypatch.setattr(signal_engine, "inspect_tf", bullish_analysis)
+    settings = {"primary": "5", "trend": "60", "enabled": ["60", "30", "15", "5", "1"], "min_score": 8}
+    result = asyncio.run(signal_engine.build_signal(
+        settings, "BTCUSDT", candles_override=candles_by_tf,
+        execution_context_override=execution, replay_as_of=replay_as_of,
+    ))
+
+    assert result["provider"] == "Historical Binance Spot replay"
+    assert result["generated_at"] == replay_as_of.isoformat()
+    assert result["signal"]["entry_type"] == "MARKET"
+    assert result["signal"]["entry_expires_at"] == (replay_as_of + timedelta(seconds=60)).isoformat()
+    assert result["signal"]["execution_quality"]["data_mode"] == "HISTORICAL_REPLAY_ASSUMED"

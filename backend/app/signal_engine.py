@@ -275,7 +275,11 @@ def select_binance_entry(
         return {
             "entry_type": "MARKET",
             "entry_price": market_price,
-            "reason": "Fresh spread and top-book liquidity are acceptable, and price remains close to the confirmed signal candle.",
+            "reason": (
+                "Historical replay model: assumed spread/depth pass the MARKET gate."
+                if execution.get("is_replay") else
+                "Fresh spread and top-book liquidity are acceptable, and price remains close to the confirmed signal candle."
+            ),
         }
 
     if zone and isinstance(zone, dict):
@@ -294,7 +298,11 @@ def select_binance_entry(
             return {
                 "entry_type": "LIMIT",
                 "entry_price": candidate,
-                "reason": "Price has moved away from the signal close; a resting limit is placed at the confirmed OB/FVG zone midpoint.",
+                "reason": (
+                    "Historical replay model: assumed spread/depth pass; resting LIMIT is placed at the OB/FVG zone midpoint."
+                    if execution.get("is_replay") else
+                    "Price has moved away from the signal close; a resting limit is placed at the confirmed OB/FVG zone midpoint."
+                ),
             }
     return None
 
@@ -563,25 +571,123 @@ async def fetch_candles(interval: str, outputsize: int = 320, symbol: str = "XAU
     candles, _provider = await fetch_candles_with_provider(interval, outputsize, symbol)
     return candles
 
-def aggregate_minutes(candles: list[dict[str, Any]], minutes: int) -> list[dict[str, Any]]:
-    """Aggregate 1-minute UTC candles into fixed minute bars."""
+async def fetch_binance_historical_candles(
+    symbol: str, interval: str = "1m", days: int = 30, max_candles: int = 43200
+) -> list[dict[str, Any]]:
+    """Fetch closed Binance Spot history with bounded, rate-conscious pagination."""
+    normalized = str(symbol or "").strip().upper()
+    if interval not in {"1m", "5m", "15m", "30m", "1h", "4h"}:
+        raise MarketDataError("Historical Binance interval is unsupported.")
+    if not 1 <= int(days) <= 30:
+        raise MarketDataError("Historical replay supports between 1 and 30 days.")
+    if not await is_binance_spot_symbol(normalized):
+        raise MarketDataError(f"{normalized} is not a tradable Binance Spot pair.")
+    interval_ms = {"1m": 60_000, "5m": 300_000, "15m": 900_000,
+                   "30m": 1_800_000, "1h": 3_600_000, "4h": 14_400_000}[interval]
+    end_time = datetime.now(timezone.utc)
+    end_ms = int(end_time.timestamp() * 1000)
+    start_ms = int((end_time - timedelta(days=int(days))).timestamp() * 1000)
+    candles: list[dict[str, Any]] = []
+    seen_open_times: set[int] = set()
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(18, connect=5)) as client:
+            while start_ms < end_ms and len(candles) < max_candles:
+                response = await client.get(
+                    "https://api.binance.com/api/v3/klines",
+                    params={"symbol": normalized, "interval": interval,
+                            "startTime": start_ms, "endTime": end_ms, "limit": 1000},
+                )
+                response.raise_for_status()
+                rows = response.json()
+                if not isinstance(rows, list):
+                    raise MarketDataError("Binance returned an invalid historical candle page.")
+                if not rows:
+                    break
+                last_open = None
+                for row in rows:
+                    try:
+                        open_ms = int(row[0])
+                        close_ms = int(row[6])
+                        values = [float(row[index]) for index in (1, 2, 3, 4, 5)]
+                        if open_ms in seen_open_times or close_ms >= end_ms:
+                            continue
+                        op, high, low, close, volume = values
+                        if not all(math.isfinite(value) and value > 0 for value in (op, high, low, close)):
+                            continue
+                        if high < max(op, close, low) or low > min(op, close, high) or volume < 0:
+                            continue
+                        seen_open_times.add(open_ms)
+                        candles.append({
+                            "time": datetime.fromtimestamp(open_ms / 1000, timezone.utc).isoformat(),
+                            "open": op, "high": high, "low": low, "close": close, "volume": volume,
+                        })
+                        last_open = open_ms if last_open is None else max(last_open, open_ms)
+                    except (IndexError, TypeError, ValueError, OverflowError):
+                        continue
+                if last_open is None:
+                    break
+                next_start = last_open + interval_ms
+                if next_start <= start_ms:
+                    raise MarketDataError("Binance historical pagination did not advance.")
+                start_ms = next_start
+                if len(rows) < 1000:
+                    break
+                await asyncio.sleep(0.05)
+    except (httpx.HTTPError, ValueError) as exc:
+        raise MarketDataError(f"Binance historical data request failed: {exc}") from exc
+    candles.sort(key=lambda row: row["time"])
+    if len(candles) < 210:
+        raise MarketDataError(f"Only {len(candles)} closed historical candles were available; at least 210 are required.")
+    return candles[-max_candles:]
+
+
+def aggregate_minutes(
+    candles: list[dict[str, Any]], minutes: int, *, require_complete: bool = False
+) -> list[dict[str, Any]]:
+    """Aggregate unique 1-minute UTC buckets; historical replay can require full buckets."""
     from datetime import datetime
-    buckets={}
-    for c in candles:
+    if minutes < 1:
+        raise ValueError("Aggregation interval must be positive.")
+    buckets: dict[int, dict[str, Any]] = {}
+    seen: set[tuple[int, int]] = set()
+    for candle in sorted(candles, key=lambda row: str(row.get("time") or "")):
         try:
-            stamp=datetime.fromisoformat(c["time"].replace("Z","+00:00"))
-            if stamp.tzinfo is None: stamp=stamp.replace(tzinfo=timezone.utc)
-            epoch=int(stamp.timestamp())
-        except (ValueError,TypeError):
+            stamp = datetime.fromisoformat(str(candle["time"]).replace("Z", "+00:00"))
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=timezone.utc)
+            epoch = int(stamp.timestamp())
+            op, high, low, close = (float(candle[key]) for key in ("open", "high", "low", "close"))
+            volume = float(candle.get("volume") or 0)
+            if not all(math.isfinite(value) and value > 0 for value in (op, high, low, close)):
+                continue
+            if high < max(op, close, low) or low > min(op, close, high) or not math.isfinite(volume) or volume < 0:
+                continue
+        except (KeyError, ValueError, TypeError, OverflowError):
             continue
-        key=epoch//(minutes*60)
-        b=buckets.get(key)
-        if b is None:
+        key = epoch // (minutes * 60)
+        minute_key = (key, epoch)
+        if minute_key in seen:
+            continue
+        seen.add(minute_key)
+        bucket = buckets.get(key)
+        if bucket is None:
             bucket_start = datetime.fromtimestamp(key * minutes * 60, timezone.utc).isoformat()
-            buckets[key]={"time":bucket_start,"open":c["open"],"high":c["high"],"low":c["low"],"close":c["close"]}
+            buckets[key] = {
+                "time": bucket_start, "open": op, "high": high, "low": low,
+                "close": close, "volume": volume, "count": 1,
+            }
         else:
-            b["high"]=max(b["high"],c["high"]);b["low"]=min(b["low"],c["low"]);b["close"]=c["close"]
-    return [buckets[k] for k in sorted(buckets)]
+            bucket["high"] = max(bucket["high"], high)
+            bucket["low"] = min(bucket["low"], low)
+            bucket["close"] = close
+            bucket["volume"] += volume
+            bucket["count"] += 1
+    complete = []
+    for key in sorted(buckets):
+        bucket = buckets[key]
+        if not require_complete or bucket["count"] == minutes:
+            complete.append({name: value for name, value in bucket.items() if name != "count"})
+    return complete
 
 def ema(values: list[float], period: int) -> list[float]:
     if not values: return []
@@ -707,47 +813,77 @@ def inspect_tf(c: list[dict[str,Any]]) -> dict[str,Any]:
     return {"bias":bias,"close":last,"ema20":e20,"ema50":e50,"ema200":e200,"macd":m,"macd_signal":ms,
             "macd_histogram":mh,"rsi":rv,"atr":av,"adx":dx,"structure":structure(c)}
 
-async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[str,Any]:
+async def build_signal(
+    settings: dict[str, Any], symbol: str = "XAUUSD", *,
+    candles_override: dict[str, list[dict[str, Any]]] | None = None,
+    execution_context_override: dict[str, Any] | None = None,
+    replay_as_of: datetime | None = None,
+) -> dict[str, Any]:
     symbol = str(symbol).upper()
+    as_of = replay_as_of or datetime.now(timezone.utc)
+    if as_of.tzinfo is None:
+        as_of = as_of.replace(tzinfo=timezone.utc)
     if symbol != "XAUUSD" and not await is_binance_spot_symbol(symbol):
         raise MarketDataError("Unsupported market. Choose a currently tradable Binance Spot pair or XAUUSD.")
     enabled=[str(x) for x in settings.get("enabled",["60","30","15","5","1"])]
     if not enabled: enabled=["60","30","15","5","1"]
     needed=set(enabled+[str(settings.get("primary","5")),str(settings.get("trend","60"))])
     if "50" in needed: needed.add("1")
-    tasks={}
-    for tf in needed:
-        if tf in INTERVALS: tasks[tf]=fetch_candles_with_provider(INTERVALS[tf],3200 if tf=="1" and "50" in needed else 320,symbol)
-    results=await asyncio.gather(*tasks.values(),return_exceptions=True)
-    candles={}
-    providers=set()
-    errors=[]
-    for tf,result in zip(tasks,results):
-        if isinstance(result,Exception):
-            errors.append(f"{tf}m: {str(result)}")
-        else:
-            try:
-                rows, provider = result
-                if not isinstance(rows, list) or not provider:
-                    raise ValueError("Market-data provider returned an invalid candle result.")
-                candles[tf]=rows
-                providers.add(str(provider))
-            except (TypeError, ValueError) as exc:
-                errors.append(f"{tf}m: {str(exc)}")
+    candles = {}
+    providers = set()
+    errors = []
+    if candles_override is None:
+        tasks = {}
+        for tf in needed:
+            if tf in INTERVALS:
+                tasks[tf] = fetch_candles_with_provider(
+                    INTERVALS[tf], 3200 if tf == "1" and "50" in needed else 320, symbol
+                )
+        results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+        for tf, result in zip(tasks, results):
+            if isinstance(result, Exception):
+                errors.append(f"{tf}m: {str(result)}")
+            else:
+                try:
+                    rows, provider = result
+                    if not isinstance(rows, list) or not provider:
+                        raise ValueError("Market-data provider returned an invalid candle result.")
+                    candles[tf] = rows
+                    providers.add(str(provider))
+                except (TypeError, ValueError) as exc:
+                    errors.append(f"{tf}m: {str(exc)}")
+    else:
+        for tf in needed:
+            if tf == "50" and "1" in candles_override:
+                continue
+            rows = candles_override.get(tf)
+            if not isinstance(rows, list):
+                errors.append(f"{tf}m: historical replay candles are missing.")
+                continue
+            candles[tf] = [dict(row) for row in rows]
+        providers.add("Historical Binance Spot replay")
     if "50" in needed and "1" in candles:
         candles["50"] = closed_candles(aggregate_minutes(candles["1"], 50), "50min")
         if len(candles["50"]) < 50:
             raise MarketDataError("Not enough fully closed M50 candles for stable indicator calculations.")
     if errors: raise MarketDataError("; ".join(errors))
-    freshness_errors = []
-    for tf, rows in candles.items():
-        interval = "50min" if tf == "50" else INTERVALS[tf]
-        try:
-            validate_candle_freshness(rows, interval)
-        except MarketDataError as exc:
-            freshness_errors.append(f"{tf}m: {exc}")
-    if freshness_errors:
-        raise MarketDataError("; ".join(freshness_errors))
+    if candles_override is None:
+        freshness_errors = []
+        for tf, rows in candles.items():
+            interval = "50min" if tf == "50" else INTERVALS[tf]
+            try:
+                validate_candle_freshness(rows, interval)
+            except MarketDataError as exc:
+                freshness_errors.append(f"{tf}m: {exc}")
+        if freshness_errors:
+            raise MarketDataError("; ".join(freshness_errors))
+    else:
+        for tf, rows in candles.items():
+            if len(rows) < (50 if tf == "50" else 210):
+                raise MarketDataError(f"Not enough historical {tf}m candles for replay.")
+            times = [str(row.get("time") or "") for row in rows]
+            if times != sorted(times) or len(times) != len(set(times)):
+                raise MarketDataError(f"Historical {tf}m candles must be unique and chronological.")
     analysis={tf:inspect_tf(candles[tf]) for tf in needed if tf in candles and len(candles[tf])>=(50 if tf=="50" else 210)}
     primary=str(settings.get("primary","5")); trend=str(settings.get("trend","60"))
     if primary not in analysis or trend not in analysis: raise MarketDataError("Selected primary/trend timeframe does not have enough candles.")
@@ -811,7 +947,7 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
             "reason": "Gold provider reference price; Binance execution routing is not applicable.",
         }
     elif side:
-        execution = await get_binance_spot_execution_context(symbol)
+        execution = execution_context_override or await get_binance_spot_execution_context(symbol)
         entry_choice = select_binance_entry(side, close, p["atr"], zone, execution, settings)
         if not entry_choice:
             side = None
@@ -889,6 +1025,7 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
                 "min_notional": execution["min_notional"],
                 "quote_observed_at": execution["observed_at"],
                 "provider": execution["provider"],
+                "data_mode": "HISTORICAL_REPLAY_ASSUMED" if execution.get("is_replay") else "LIVE_ORDER_BOOK",
                 "tp1_reward_to_cost_ratio": round(reward_cost_ratio, 2),
             }
             if reward_cost_ratio < minimum_reward_cost_ratio:
@@ -917,7 +1054,7 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
                 "entry_price": entry,
                 "limit_price": entry if entry_choice["entry_type"] == "LIMIT" else None,
                 "entry_selection_reason": entry_choice["reason"],
-                "entry_expires_at": (datetime.now(timezone.utc) + timedelta(seconds=expiry_seconds)).isoformat()
+                "entry_expires_at": (as_of + timedelta(seconds=expiry_seconds)).isoformat()
                     if expiry_seconds else None,
                 "signal_candle_time": candles[primary][-1]["time"],
                 "stop_loss": round(sl, price_precision),
@@ -934,7 +1071,7 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
         entry_rejection_reason = "Directional setup passed, but execution quality did not produce a valid entry."
 
     provider_label = " + ".join(sorted(providers)) if providers else "Unknown"
-    generated_at = datetime.now(timezone.utc).isoformat()
+    generated_at = as_of.isoformat()
     message = (
         "Signal setup and entry-quality filters passed."
         if signal else

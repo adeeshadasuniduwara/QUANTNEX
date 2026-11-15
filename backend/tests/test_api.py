@@ -1165,3 +1165,48 @@ def test_auto_signals_can_select_a_dynamic_binance_spot_pair(monkeypatch):
     assert response.status_code == 200
     assert response.json()["symbols"] == ["1000PEPEUSDT"]
     assert response.json()["enabled"] is True
+
+
+def test_signal_backtest_api_returns_training_and_out_of_sample_metrics(monkeypatch):
+    from app import signal_engine, signal_backtest
+
+    now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+    history = []
+    for index in range(1000):
+        stamp = now - timedelta(minutes=1000 - index)
+        price = 100 + (index % 5) * 0.01
+        history.append({
+            "time": stamp.isoformat(), "open": price, "high": price + 0.1,
+            "low": price - 0.1, "close": price + 0.02, "volume": 10.0,
+        })
+
+    async def valid_symbol(_symbol):
+        return True
+
+    async def fake_history(*_args, **_kwargs):
+        return history
+
+    async def fake_info(_symbol):
+        return {"quote_asset": "USDT", "filters": {"PRICE_FILTER": {"tickSize": "0.01"}}}
+
+    async def fake_walk_forward(*_args, **_kwargs):
+        return {
+            "symbol": "BTCUSDT", "method": "Chronological holdout test",
+            "training": {"trade_count": 4, "win_rate_pct": 50.0},
+            "out_of_sample": {"trade_count": 2, "win_rate_pct": 50.0},
+            "assumptions": {"spread_bps": 5}, "limitations": [],
+        }
+
+    monkeypatch.setattr(signal_engine, "is_binance_spot_symbol", valid_symbol)
+    monkeypatch.setattr(signal_engine, "fetch_binance_historical_candles", fake_history)
+    monkeypatch.setattr(signal_engine, "get_binance_spot_symbol_info", fake_info)
+    monkeypatch.setattr(signal_backtest, "run_signal_walk_forward", fake_walk_forward)
+
+    response = TestClient(app).post("/api/v1/signals/backtest", json={
+        "symbol": "BTCUSDT", "days": 14,
+        "settings": {"primary": "5", "trend": "30", "enabled": ["60", "30", "15", "5", "1"], "min_score": 7},
+    })
+
+    assert response.status_code == 200
+    assert response.json()["training"]["trade_count"] == 4
+    assert response.json()["out_of_sample"]["trade_count"] == 2

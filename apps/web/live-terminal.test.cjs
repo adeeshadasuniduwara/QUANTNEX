@@ -56,6 +56,9 @@ assert.match(signal, /apiRequest\("\/api\/v1\/signals\/scan\?symbol=/, "Manual s
 assert.match(signal, /Entry type/, "Signal Lab must show MARKET versus LIMIT entry type");
 assert.match(signal, /entry_selection_reason/, "Signal Lab must show the entry decision reason");
 assert.match(signal, /execution_quality/, "Signal Lab must show execution-quality checks");
+assert.match(signal, /runSignalBacktest/, "Signal Lab must expose historical walk-forward validation");
+assert.match(signal, /Out-of-sample holdout/, "Signal Lab must distinguish unseen holdout results");
+assert.match(html, /runSignalBacktest/, "Signal Lab must include a walk-forward test action");
 assert.match(signal, /symbols\}\)/, "Telegram auto-signal settings must save selected markets");
 assert.match(app, /volume:isTrade\?Number\(data\.q\|\|0\):0/, "Live Binance trade size must feed chart volume");
 

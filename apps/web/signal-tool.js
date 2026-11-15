@@ -236,6 +236,85 @@
     finally{button.disabled=false;button.textContent="Run market signal scan";}
   });
 
+  function renderSignalBacktest(data){
+    const container=$("signalBacktestResult");
+    if(!container)return;
+    container.replaceChildren();
+    const heading=document.createElement("strong");
+    heading.textContent=data.symbol+" · "+(data.quote_asset||"quote asset")+" · Chronological walk-forward validation";
+    container.append(heading);
+    const note=document.createElement("p");
+    note.className="signal-feed-note";
+    note.textContent=data.method||"Chronological training and unseen holdout.";
+    container.append(note);
+    const renderSlice=(label,metrics)=>{
+      const section=document.createElement("section");
+      section.className="signal-backtest-slice";
+      const title=document.createElement("strong");title.textContent=label;section.append(title);
+      const grid=document.createElement("div");grid.className="position-summary signal-levels";
+      [
+        ["Trades",metrics.trade_count],
+        ["Win rate",metrics.win_rate_pct==null?"—":metrics.win_rate_pct+"%"],
+        ["Profit factor",metrics.profit_factor==null?"—":metrics.profit_factor],
+        ["Expectancy",metrics.expectancy_r==null?"—":metrics.expectancy_r+"R"],
+        ["Max drawdown",metrics.max_drawdown_r+"R"],
+        ["Net PnL / base unit",metrics.net_pnl_quote],
+        ["Estimated costs",metrics.estimated_cost_quote],
+        ["Buy & hold",metrics.buy_and_hold_return_pct==null?"—":metrics.buy_and_hold_return_pct+"%"],
+        ["Signals",metrics.signal_count],
+        ["Market / Limit",metrics.market_entries+" / "+metrics.limit_entries],
+        ["Limit expired",metrics.limit_expired]
+      ].forEach(([name,value])=>addStat(grid,name,String(value)));
+      section.append(grid);container.append(section);
+    };
+    renderSlice("Training sample",data.training);
+    renderSlice("Out-of-sample holdout",data.out_of_sample);
+    const assumptions=document.createElement("p");assumptions.className="signal-feed-note";
+    assumptions.textContent="Model assumptions · Spread "+data.assumptions.spread_bps+" bps · Top-book depth "+
+      data.assumptions.top_book_depth_usd+" USD · "+data.assumptions.fees_and_slippage;
+    assumptions.textContent+=" · "+(data.pnl_unit||"PnL shown per base unit");
+    container.append(assumptions);
+    if(data.data_quality){
+      const quality=document.createElement("p");quality.className="signal-feed-note";
+      quality.textContent="Historical data quality · "+data.data_quality.one_minute_candles+" one-minute bars · "+
+        data.data_quality.missing_minute_bars+" missing bars · largest gap "+data.data_quality.largest_gap_minutes+"m";
+      container.append(quality);
+    }
+    const limitations=document.createElement("ul");
+    (data.limitations||[]).forEach(item=>{const li=document.createElement("li");li.textContent=item;limitations.append(li);});
+    container.append(limitations);
+  }
+
+  $("runSignalBacktest")?.addEventListener("click",async()=>{
+    const button=$("runSignalBacktest");
+    const container=$("signalBacktestResult");
+    const symbol=($("signalMarketSymbol")?.value||"BTCUSDT").trim().toUpperCase();
+    const primary=$("primarySignalTf")?.value||"5";
+    const settings={
+      primary,
+      trend:$("trendSignalTf")?.value||"60",
+      enabled:Array.from(document.querySelectorAll('input[name="analysisTf"]:checked')).map(input=>input.value),
+      min_score:Number($("signalMinScore")?.value||7),
+      risk_pct:Number($("signalRiskPct")?.value||1)
+    };
+    button.disabled=true;
+    container.textContent="Downloading closed Binance 1-minute history and replaying the signal engine. This can take a little while.";
+    try{
+      const data=await apiRequest("/api/v1/signals/backtest",{
+        method:"POST",
+        body:JSON.stringify({
+          symbol,days:primary==="1"?14:primary==="50"?30:primary==="60"?30:30,
+          settings,train_ratio:0.7,assumed_spread_bps:5,assumed_depth_usd:10000
+        })
+      });
+      renderSignalBacktest(data);
+    }catch(error){
+      container.textContent="Historical validation failed: "+(error?.message||"Unknown error");
+    }finally{
+      button.disabled=false;
+    }
+  });
+
   async function storedTelegramMessage(message){
     return apiRequest("/api/v1/telegram/notify",{method:"POST",body:JSON.stringify({message})});
   }

@@ -6,7 +6,7 @@ from bisect import bisect_right
 from datetime import datetime, timezone
 from typing import Any
 
-from .signal_engine import MarketDataError, build_signal
+from .signal_engine import build_signal
 
 TIMEFRAME_MINUTES = {"1": 1, "5": 5, "15": 15, "30": 30, "50": 50, "60": 60, "240": 240}
 
@@ -251,6 +251,15 @@ async def run_signal_walk_forward(
         raise ValueError("Assumed spread must be between 0 and 100 bps.")
     if not math.isfinite(assumed_depth_usd) or assumed_depth_usd < 1000:
         raise ValueError("Assumed replay depth must be at least 1,000 USD.")
+    for key, default in (
+        ("estimated_taker_fee_bps_per_side", 10.0),
+        ("estimated_maker_fee_bps_per_side", 8.0),
+        ("estimated_slippage_bps_per_side", 2.5),
+        ("min_reward_to_cost_ratio", 1.25),
+    ):
+        value = float(settings.get(key, default))
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(f"{key} must be finite and non-negative.")
 
     primary_tf = str(settings.get("primary", "5"))
     primary = candles_by_tf.get(primary_tf, [])
@@ -302,6 +311,7 @@ async def run_signal_walk_forward(
     return {
         "symbol": symbol,
         "market_type": "BINANCE_SPOT",
+        "quote_asset": symbol_info.get("quote_asset"),
         "settings": settings,
         "train_ratio": train_ratio,
         "training": training,
@@ -309,7 +319,10 @@ async def run_signal_walk_forward(
         "assumptions": {
             "spread_bps": assumed_spread_bps,
             "top_book_depth_usd": assumed_depth_usd,
-            "fees_and_slippage": "Uses the signal engine's configured estimated fee/slippage assumptions; not historical exchange order-book or account fee data.",
+            "taker_fee_bps_per_side": float(settings.get("estimated_taker_fee_bps_per_side", 10.0)),
+            "maker_fee_bps_per_side": float(settings.get("estimated_maker_fee_bps_per_side", 8.0)),
+            "slippage_bps_per_side": float(settings.get("estimated_slippage_bps_per_side", 2.5)),
+            "fees_and_slippage": "Uses estimated fee/slippage assumptions; not historical exchange order-book or account fee data.",
             "market_fill": "Next primary candle open using the modeled bid/ask spread.",
             "limit_fill": "Filled only if a later candle touches the limit within the 15-minute signal expiry; gap-through fills use the better opening price.",
             "intrabar_ambiguity": "If stop-loss and TP1 are both touched in one candle, stop-loss is assumed first.",

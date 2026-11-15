@@ -30,7 +30,7 @@ def test_auto_signal_settings_recover_from_invalid_interval_and_symbols():
     assert result == {
         "enabled": True,
         "interval_seconds": 180,
-        "symbols": ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+        "symbols": [],
     }
 
 

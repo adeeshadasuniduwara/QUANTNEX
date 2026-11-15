@@ -691,7 +691,9 @@ async def scan_market_signal(symbol: str = "BTCUSDT", user: User = Depends(local
                 message=("QUANTNEX · "+market_symbol+" "+signal["side"]+" SIGNAL\nMarket data: "+str(result.get("provider","Unknown"))+
                     "\nEntry type: "+str(signal.get("entry_type","REFERENCE"))+"\nEntry: "+str(signal["entry"])+
                     ("\nLimit price: "+str(signal["limit_price"]) if signal.get("entry_type")=="LIMIT" else "")+
-                    "\nEntry logic: "+str(signal.get("entry_selection_reason",""))+"\nSL: "+str(signal["stop_loss"])+
+                    "\nEntry logic: "+str(signal.get("entry_selection_reason",""))+
+                    ("\nSpread: "+str(signal["execution_quality"]["spread_bps"])+" bps · estimated round-trip cost: "+str(signal["execution_quality"]["estimated_round_trip_cost_bps"])+" bps" if signal.get("execution_quality") else "")+
+                    "\nSL: "+str(signal["stop_loss"])+
                     "\nTP1: "+str(signal["tp1"])+"\nTP2: "+str(signal["tp2"])+"\nTP3: "+str(signal["tp3"])+
                     "\nConfluence: "+str(signal["score"])+"/10 (rule count, not win probability)\nConfirmations: "+", ".join(signal["confirmations"])+
                     "\nSignal only. Verify spread, fees and execution. No broker order is placed.")

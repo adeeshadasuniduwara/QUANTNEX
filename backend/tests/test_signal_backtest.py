@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import httpx
 
 
-def _candles(count: int, minutes: int, *, start_epoch: int = 1_700_000_000, price: float = 100.0):
+def _candles(count: int, minutes: int, *, start_epoch: int = 1_700_000_100, price: float = 100.0):
     rows = []
     start_epoch = (start_epoch // (minutes * 60)) * (minutes * 60)
     for index in range(count):

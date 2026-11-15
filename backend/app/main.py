@@ -297,7 +297,7 @@ async def quantnex_view_backtest(symbol: str = "BTCUSDT", interval: str = "15m",
         return backtest_candles(candles, symbol, interval, initial_balance, risk_percent, min_score)
     except MarketDataError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
-    except ValueError as exc:
+    except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
 
@@ -677,11 +677,14 @@ async def signal_engine_backtest(payload: dict, user: User = Depends(local_works
             settings = DEFAULT_SIGNAL_SETTINGS
         if not isinstance(settings, dict):
             raise ValueError("Signal settings must be an object.")
+        enabled_raw = settings.get("enabled", ["60", "30", "15", "5", "1"])
+        if not isinstance(enabled_raw, list):
+            raise ValueError("Enabled replay timeframes must be a list.")
         settings = {
             **settings,
             "primary": str(settings.get("primary", "5")),
             "trend": str(settings.get("trend", "60")),
-            "enabled": [str(item) for item in settings.get("enabled", ["60", "30", "15", "5", "1"])],
+            "enabled": [str(item) for item in enabled_raw],
             "min_score": int(settings.get("min_score", 7)),
             "estimated_taker_fee_bps_per_side": float(payload.get("taker_fee_bps_per_side", 10.0)),
             "estimated_maker_fee_bps_per_side": float(payload.get("maker_fee_bps_per_side", 8.0)),

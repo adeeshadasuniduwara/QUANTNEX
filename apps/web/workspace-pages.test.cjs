@@ -130,4 +130,5 @@ assert.ok(app.includes("item.realized_pnl"), "Closed paper trades must render re
 assert.ok(app.includes("await loadPaper();"), "A failed close action must reload the ledger so concurrent-close state is reconciled.");
 assert.ok(html.includes("<th>Exit</th>") && html.includes("<th>Realized P&amp;L</th>"), "The paper ledger must expose exit and realized P&L columns.");
 assert.ok(html.includes('colspan="11"'), "The empty paper ledger row must span the expanded table.");
+assert.ok(app.includes("td.colSpan=11"), "The dynamically rendered empty row must span the expanded table.");
 console.log("Paper Trading UI checks passed: closed results and close-error reconciliation.");

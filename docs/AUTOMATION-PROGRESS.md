@@ -376,6 +376,7 @@ After dynamic Binance pair coverage, the next core requirement is to generate an
 - Added explicit `entry_type`, `entry_price`, optional `limit_price`, entry rationale, expiry and execution-quality evidence to signal payloads.
 - Added estimated spread/fee/slippage cost checks. Fee assumptions are clearly marked as estimates because the user's Binance fee tier is not available to this local signal engine.
 - Updated manual/automatic Telegram alerts and Signal Lab UI to display entry type, limit price and execution quality.
+- Displayed the MARKET/LIMIT entry expiry in the UI and Telegram alerts so a limit signal is not mistaken for an indefinitely valid instruction.
 - Added unit and end-to-end tests for MARKET selection, LIMIT retracement selection, wide-spread rejection, exchange filters and low-price precision.
 - Added deterministic bearish LIMIT selection, dynamic newly listed pair signal coverage, quote-asset USD conversion tests, and an end-to-end WAIT case proving poor spreads do not produce a forced signal.
 

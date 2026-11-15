@@ -197,8 +197,16 @@ Each generated signal is then passed through the Telegram delivery helper with a
 - Keep real market-data providers and a real MT5 terminal smoke test separate from synthetic CI tests.
 - Passing synthetic tests prove the pipeline can generate signals under controlled conditions, not that the strategy has a positive live expectancy.
 
+### Verification
+
+- PR [#156](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/156) merged to `main` as commit `5822d99a5f89251e19097997a72e37606fe2079f`.
+- End-to-end synthetic BUY and SELL cases passed using the actual indicator, structure, confluence, quality-filter and signal-level implementations.
+- The generated signals passed through a fake Telegram sender and SQLite fingerprint persistence; duplicate sends were suppressed after reopening the database.
+- PR CI and post-merge CI passed on Python 3.12 and 3.14, plus schema and web checks.
+- No live provider, MT5 terminal, external Telegram destination or broker order was used.
+
 ### Next steps
 
-1. Inspect CI and verify the BUY and SELL test cases pass on supported Python versions.
-2. Merge only after all relevant checks pass and verify post-merge CI.
-3. Continue with a real provider/data-feed smoke test when the local runtime is available.
+1. Phase 8: preserve and report the actual market-data provider used for each signal timeframe (MT5, Twelve Data, Binance or Coinbase fallback).
+2. Add provider-fallback and provider-attribution tests.
+3. Perform a real Windows/MT5 and public crypto-feed smoke test when the user's local runtime is available.

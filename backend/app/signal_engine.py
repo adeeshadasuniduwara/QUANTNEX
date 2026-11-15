@@ -34,6 +34,81 @@ def gold_feed_configured() -> bool:
     return gold_feed_provider() is not None
 
 CRYPTO_SYMBOLS = {"BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "LTCUSDT", "BCHUSDT", "DOTUSDT", "TRXUSDT", "TONUSDT", "SUIUSDT", "NEARUSDT", "UNIUSDT", "AAVEUSDT", "SHIBUSDT", "PEPEUSDT"}
+
+# Binance Spot is the authoritative crypto universe. CRYPTO_SYMBOLS remains a
+# compatibility set for older callers; new symbols are resolved dynamically.
+_BINANCE_SPOT_SYMBOLS_CACHE: tuple[float, frozenset[str]] | None = None
+_BINANCE_SPOT_SYMBOLS_TTL = 3600.0
+_BINANCE_SYMBOL_LOCKS: WeakKeyDictionary = WeakKeyDictionary()
+
+
+@asynccontextmanager
+async def _binance_symbol_cache_guard():
+    loop = asyncio.get_running_loop()
+    lock = _BINANCE_SYMBOL_LOCKS.get(loop)
+    if lock is None:
+        lock = asyncio.Lock()
+        _BINANCE_SYMBOL_LOCKS[loop] = lock
+    async with lock:
+        yield
+
+
+async def get_binance_spot_symbols(force_refresh: bool = False) -> list[str]:
+    """Return all currently tradable Binance Spot symbols from exchangeInfo."""
+    global _BINANCE_SPOT_SYMBOLS_CACHE
+    cached = _BINANCE_SPOT_SYMBOLS_CACHE
+    if not force_refresh and cached and time.monotonic() - cached[0] < _BINANCE_SPOT_SYMBOLS_TTL:
+        return sorted(cached[1])
+
+    async with _binance_symbol_cache_guard():
+        cached = _BINANCE_SPOT_SYMBOLS_CACHE
+        if not force_refresh and cached and time.monotonic() - cached[0] < _BINANCE_SPOT_SYMBOLS_TTL:
+            return sorted(cached[1])
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(15, connect=5)) as client:
+                response = await client.get("https://api.binance.com/api/v3/exchangeInfo")
+                response.raise_for_status()
+                payload = response.json()
+        except (httpx.HTTPError, ValueError, TypeError) as exc:
+            raise MarketDataError("Could not retrieve Binance Spot exchange symbol metadata.") from exc
+
+        if not isinstance(payload, dict) or not isinstance(payload.get("symbols"), list):
+            raise MarketDataError("Binance returned invalid Spot exchange metadata.")
+        symbols = set()
+        for item in payload["symbols"]:
+            if not isinstance(item, dict) or item.get("status") != "TRADING":
+                continue
+            symbol = str(item.get("symbol") or "").upper()
+            base = str(item.get("baseAsset") or "").upper()
+            quote = str(item.get("quoteAsset") or "").upper()
+            permissions = item.get("permissions") or []
+            permission_sets = item.get("permissionSets") or []
+            spot_allowed = item.get("isSpotTradingAllowed")
+            if spot_allowed is False:
+                continue
+            if spot_allowed is not True and "SPOT" not in permissions and not any(
+                isinstance(group, list) and "SPOT" in group for group in permission_sets
+            ):
+                continue
+            if not symbol.isalnum() or not base or not quote or symbol != base + quote:
+                continue
+            symbols.add(symbol)
+        if not symbols:
+            raise MarketDataError("Binance exchange metadata contained no eligible Spot trading pairs.")
+        _BINANCE_SPOT_SYMBOLS_CACHE = (time.monotonic(), frozenset(symbols))
+        return sorted(symbols)
+
+
+async def is_binance_spot_symbol(symbol: str) -> bool:
+    """Validate a Binance Spot pair, including pairs listed after app release."""
+    normalized = str(symbol or "").strip().upper()
+    if not normalized or not normalized.isalnum() or len(normalized) > 30:
+        return False
+    if normalized in CRYPTO_SYMBOLS:
+        return True
+    return normalized in set(await get_binance_spot_symbols())
+
+
 BINANCE_INTERVALS = {"1min":"1m", "5min":"5m", "15min":"15m", "30min":"30m", "1h":"1h", "4h":"4h"}
 INTERVAL_SECONDS = {"1min":60, "5min":300, "15min":900, "30min":1800,
                     "1h":3600, "4h":14400, "50min":3000}
@@ -201,7 +276,7 @@ async def fetch_candles_with_provider(interval: str, outputsize: int = 320,
                                       symbol: str = "XAUUSD") -> tuple[list[dict[str, Any]], str]:
     """Fetch validated candles and return the actual provider used for the chart."""
     symbol = str(symbol).upper()
-    if symbol in CRYPTO_SYMBOLS:
+    if await is_binance_spot_symbol(symbol):
         binance_interval = BINANCE_INTERVALS.get(interval)
         if not binance_interval:
             raise MarketDataError(f"Unsupported Binance candle interval: {interval}.")
@@ -250,7 +325,7 @@ async def fetch_candles_with_provider(interval: str, outputsize: int = 320,
                 ) from coinbase_error
 
     if symbol != "XAUUSD":
-        raise MarketDataError("Supported crypto markets: "+", ".join(sorted(CRYPTO_SYMBOLS))+"; gold: XAUUSD.")
+        raise MarketDataError("Unsupported market. Choose a currently tradable Binance Spot pair or XAUUSD.")
     mt5_error = None
     if QUANTNEX_MT5_ENABLED:
         from .mt5_feed import get_candles as get_mt5_candles, MT5FeedError
@@ -444,8 +519,8 @@ def inspect_tf(c: list[dict[str,Any]]) -> dict[str,Any]:
 
 async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[str,Any]:
     symbol = str(symbol).upper()
-    if symbol not in CRYPTO_SYMBOLS and symbol != "XAUUSD":
-        raise MarketDataError("Supported signal markets: BTCUSDT, ETHUSDT, SOLUSDT and XAUUSD.")
+    if symbol != "XAUUSD" and not await is_binance_spot_symbol(symbol):
+        raise MarketDataError("Unsupported market. Choose a currently tradable Binance Spot pair or XAUUSD.")
     enabled=[str(x) for x in settings.get("enabled",["60","30","15","5","1"])]
     if not enabled: enabled=["60","30","15","5","1"]
     needed=set(enabled+[str(settings.get("primary","5")),str(settings.get("trend","60"))])

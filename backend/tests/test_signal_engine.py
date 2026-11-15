@@ -430,14 +430,26 @@ def test_low_price_crypto_signal_levels_keep_required_precision(monkeypatch):
                 "ema50": 0.0000121, "ema200": 0.0000120, "macd_histogram": 0.0000001,
                 "rsi": 55.0, "adx": 25.0, "atr": 0.000001, "structure": structure}
 
+    async def fake_execution(_symbol):
+        return {
+            "best_bid": 0.000012339, "best_ask": 0.000012341, "mid_price": 0.00001234,
+            "spread_bps": 1.62, "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
+            "tick_size": "0.00000001", "step_size": "1", "min_quantity": "1",
+            "min_notional": "5", "observed_at": now.isoformat(), "provider": "Binance Spot",
+        }
+
     monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
     monkeypatch.setattr(signal_engine, "inspect_tf", bullish_analysis)
+    monkeypatch.setattr(signal_engine, "get_binance_spot_execution_context", fake_execution)
     settings = {"primary": "5", "trend": "60", "enabled": ["5", "60"], "min_score": 6}
     result = asyncio.run(signal_engine.build_signal(settings, "PEPEUSDT"))
     signal = result["signal"]
     assert signal is not None
     assert 0 < signal["stop_loss"] < signal["entry"] < signal["tp1"] < signal["tp2"] < signal["tp3"]
     assert signal["entry"] > 0.00001
+    assert signal["entry_type"] == "MARKET"
+    assert signal["entry_price"] == signal["entry"]
+    assert signal["execution_quality"]["accepted"] is True
     assert result["timeframes"]["5"]["atr"] > 0
 
 
@@ -781,3 +793,101 @@ def test_telegram_auto_signal_settings_keep_dynamic_binance_pairs():
     )
     assert settings["enabled"] is True
     assert settings["symbols"] == ["1000PEPEUSDT", "BTCUSDT", "XAUUSD"]
+
+
+def test_binance_entry_selector_prefers_market_when_spread_liquidity_and_drift_are_safe():
+    from app.signal_engine import select_binance_entry
+
+    execution = {
+        "best_bid": 100.00, "best_ask": 100.02, "mid_price": 100.01,
+        "spread_bps": 2.0, "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
+    }
+    selected = select_binance_entry("BUY", 100.0, 2.0, None, execution)
+    assert selected is not None
+    assert selected["entry_type"] == "MARKET"
+    assert selected["entry_price"] == 100.02
+
+
+def test_binance_entry_selector_uses_limit_at_confirmed_zone_after_price_runs():
+    from app.signal_engine import select_binance_entry
+
+    execution = {
+        "best_bid": 102.00, "best_ask": 102.02, "mid_price": 102.01,
+        "spread_bps": 2.0, "bid_depth_quote": 2000.0, "ask_depth_quote": 2000.0,
+    }
+    selected = select_binance_entry(
+        "BUY", 100.0, 2.0, {"low": 101.0, "high": 101.2}, execution
+    )
+    assert selected is not None
+    assert selected["entry_type"] == "LIMIT"
+    assert selected["entry_price"] == 101.1
+
+
+def test_binance_entry_selector_rejects_wide_spread_without_valid_execution():
+    from app.signal_engine import select_binance_entry
+
+    execution = {
+        "best_bid": 100.0, "best_ask": 100.8, "mid_price": 100.4,
+        "spread_bps": 79.68, "bid_depth_quote": 50000.0, "ask_depth_quote": 50000.0,
+    }
+    assert select_binance_entry(
+        "BUY", 100.0, 2.0, {"low": 99.8, "high": 100.0}, execution
+    ) is None
+
+
+def test_price_rounding_respects_exchange_tick_direction():
+    from app.signal_engine import round_price_to_tick
+
+    assert round_price_to_tick(0.12345678, "0.0001", round_up=True) == 0.1235
+    assert round_price_to_tick(0.12345678, "0.0001", round_up=False) == 0.1234
+
+
+def test_binance_execution_context_reads_exchange_filters_and_live_book(monkeypatch):
+    import asyncio
+    import httpx
+    from app import signal_engine
+
+    monkeypatch.setattr(signal_engine, "_BINANCE_SPOT_SYMBOLS_CACHE", None)
+    exchange_info = {"symbols": [{
+        "symbol": "1000PEPEUSDT", "status": "TRADING",
+        "baseAsset": "1000PEPE", "quoteAsset": "USDT",
+        "isSpotTradingAllowed": True,
+        "filters": [
+            {"filterType": "PRICE_FILTER", "tickSize": "0.00000001"},
+            {"filterType": "LOT_SIZE", "stepSize": "1", "minQty": "1"},
+            {"filterType": "NOTIONAL", "minNotional": "5"},
+        ],
+    }]}
+    depth = {
+        "bids": [["0.00001234", "100000000"], ["0.00001233", "90000000"]],
+        "asks": [["0.00001235", "100000000"], ["0.00001236", "90000000"]],
+    }
+
+    def handler(request):
+        if request.url.path == "/api/v3/exchangeInfo":
+            return httpx.Response(200, json=exchange_info)
+        if request.url.path == "/api/v3/ticker/bookTicker":
+            return httpx.Response(200, json={
+                "symbol": "1000PEPEUSDT", "bidPrice": "0.00001234",
+                "bidQty": "100000000", "askPrice": "0.00001235", "askQty": "100000000",
+            })
+        if request.url.path == "/api/v3/depth":
+            return httpx.Response(200, json=depth)
+        raise AssertionError(f"Unexpected Binance endpoint: {request.url.path}")
+
+    original_client = httpx.AsyncClient
+    transport = httpx.MockTransport(handler)
+
+    def mock_client(*args, **kwargs):
+        return original_client(*args, transport=transport, **kwargs)
+
+    monkeypatch.setattr(signal_engine.httpx, "AsyncClient", mock_client)
+    context = asyncio.run(signal_engine.get_binance_spot_execution_context("1000PEPEUSDT"))
+
+    assert context["tick_size"] == "0.00000001"
+    assert context["step_size"] == "1"
+    assert context["min_notional"] == "5"
+    assert context["best_bid"] == 0.00001234
+    assert context["best_ask"] == 0.00001235
+    assert context["bid_depth_quote"] > 0
+    assert context["ask_depth_quote"] > 0

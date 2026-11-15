@@ -314,6 +314,17 @@ async def run_signal_walk_forward(
         for tf, rows in candles_by_tf.items() if tf in TIMEFRAME_MINUTES
     }
     primary_times = timestamps[primary_tf]
+    minute_times = timestamps.get("1", [])
+    missing_minute_bars = 0
+    largest_gap_minutes = 0
+    for previous, current in zip(minute_times, minute_times[1:]):
+        gap_minutes = max(0, int(round((current - previous) / 60)) - 1)
+        missing_minute_bars += gap_minutes
+        largest_gap_minutes = max(largest_gap_minutes, gap_minutes)
+    if largest_gap_minutes > 15 or missing_minute_bars > max(10, int(len(minute_times) * 0.01)):
+        raise ValueError(
+            f"Historical 1m data has too many missing bars ({missing_minute_bars}; largest gap {largest_gap_minutes}m)."
+        )
     first_valid = None
     for index in range(len(primary) - 1):
         as_of_epoch = primary_times[index + 1]
@@ -346,6 +357,12 @@ async def run_signal_walk_forward(
         "symbol": symbol,
         "market_type": "BINANCE_SPOT",
         "quote_asset": symbol_info.get("quote_asset"),
+        "data_quality": {
+            "one_minute_candles": len(minute_times),
+            "missing_minute_bars": missing_minute_bars,
+            "largest_gap_minutes": largest_gap_minutes,
+            "incomplete_aggregated_bars_are_discarded": True,
+        },
         "settings": settings,
         "train_ratio": train_ratio,
         "training": training,

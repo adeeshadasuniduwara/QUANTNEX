@@ -182,8 +182,21 @@
     if(data.signal){
       const s=data.signal;const head=document.createElement("h3");head.textContent=s.side+" "+(data.symbol||"MARKET")+" · "+(tfNames[s.timeframe]||s.timeframe);result.append(head);
       const grid=document.createElement("div");grid.className="position-summary signal-levels";
-      [["Entry",s.entry],["Stop Loss",s.stop_loss],["TP1",s.tp1],["TP2",s.tp2],["TP3",s.tp3]].forEach(([a,b])=>addStat(grid,a,String(b)));
+      [["Entry type",s.entry_type||"REFERENCE"],["Entry",s.entry],
+       ...(s.entry_type==="LIMIT"?[["Limit price",s.limit_price]]:[]),
+       ...(s.entry_expires_at?[["Entry expires",new Date(s.entry_expires_at).toLocaleString()]]:[]),
+       ["Stop Loss",s.stop_loss],["TP1",s.tp1],["TP2",s.tp2],["TP3",s.tp3]].forEach(([a,b])=>addStat(grid,a,String(b)));
       result.append(grid);
+      if(s.entry_selection_reason){
+        const entryNote=document.createElement("p");entryNote.className="signal-feed-note";
+        entryNote.textContent="Entry decision: "+s.entry_selection_reason;result.append(entryNote);
+      }
+      if(s.execution_quality){
+        const quality=document.createElement("p");quality.className="signal-feed-note";
+        quality.textContent="Execution check · Spread "+s.execution_quality.spread_bps+" bps · Estimated round-trip cost "+
+          s.execution_quality.estimated_round_trip_cost_bps+" bps · TP1 reward/cost "+s.execution_quality.tp1_reward_to_cost_ratio+"x";
+        result.append(quality);
+      }
       $("side").value=s.side;$("entry").value=s.entry;$("stopLoss").value=s.stop_loss;$("tp1").value=s.tp1;$("tp2").value=s.tp2;$("tp3").value=s.tp3;
       $("riskPct").value=String($("signalRiskPct").value||1);renderPosition();
       const title=document.createElement("h4");title.textContent="Confirmations ("+s.confirmations.length+")";result.append(title);
@@ -192,6 +205,12 @@
       $("telegramStatus").textContent=data.telegram_sent?"Signal sent to your connected Telegram bot.":(data.telegram_note||"Signal calculated, but Telegram delivery did not complete. Check your bot connection.");
     } else {
       const p=document.createElement("p");p.textContent=data.message||"No high-confluence setup. Wait for confirmation.";result.append(p);
+      if(data.execution_quality){
+        const quality=document.createElement("p");quality.className="signal-feed-note";
+        quality.textContent="Execution rejected · Spread "+data.execution_quality.spread_bps+" bps · Bid depth "+
+          data.execution_quality.bid_depth_usd+" USD · Ask depth "+data.execution_quality.ask_depth_usd+" USD";
+        result.append(quality);
+      }
     }
     Object.entries(data.timeframes||{}).forEach(([tf,v])=>{
       const card=document.createElement("div");card.className="indicator-card";

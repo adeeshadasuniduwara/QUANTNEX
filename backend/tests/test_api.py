@@ -1130,3 +1130,38 @@ def test_gold_auto_signals_can_be_enabled_with_mt5_without_twelve_data(monkeypat
     assert response.status_code == 200
     assert response.json()["enabled"] is True
     assert response.json()["gold_feed_configured"] is True
+
+
+def test_signal_market_endpoint_returns_live_binance_spot_universe(monkeypatch):
+    from app import signal_engine
+
+    async def fake_symbols():
+        return ["1000PEPEUSDT", "BTCUSDT"]
+
+    monkeypatch.setattr(signal_engine, "get_binance_spot_symbols", fake_symbols)
+    response = TestClient(app).get("/api/v1/signals/markets")
+
+    assert response.status_code == 200
+    assert response.json()["market_type"] == "BINANCE_SPOT"
+    assert response.json()["symbols"] == ["1000PEPEUSDT", "BTCUSDT"]
+
+
+def test_auto_signals_can_select_a_dynamic_binance_spot_pair(monkeypatch):
+    from app import signal_engine
+
+    monkeypatch.setattr(
+        main_module, "_preference",
+        lambda _db, _user_id, key, default=None: "encrypted-token" if key == "telegram_bot_token_enc" else "123456" if key == "telegram_chat_id" else default,
+    )
+
+    async def valid_symbol(symbol):
+        return symbol == "1000PEPEUSDT"
+
+    monkeypatch.setattr(signal_engine, "is_binance_spot_symbol", valid_symbol)
+    response = TestClient(app).put("/api/v1/telegram/auto-signals", json={
+        "enabled": True, "interval_seconds": 180, "symbols": ["1000PEPEUSDT"]
+    })
+
+    assert response.status_code == 200
+    assert response.json()["symbols"] == ["1000PEPEUSDT"]
+    assert response.json()["enabled"] is True

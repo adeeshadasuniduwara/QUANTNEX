@@ -1,6 +1,7 @@
-"""XAUUSD multi-timeframe confluence engine using a configured Twelve Data feed.
+"""Multi-timeframe confluence engine for Binance Spot pairs and XAUUSD.
 
 Scores are rule-based confluence counts, never estimated win probabilities.
+Binance signals require fresh order-book data and a validated MARKET/LIMIT entry.
 """
 from __future__ import annotations
 import asyncio
@@ -8,6 +9,7 @@ from datetime import datetime, timezone, timedelta
 from contextlib import asynccontextmanager
 import math
 import time
+from decimal import Decimal, ROUND_DOWN, ROUND_UP
 from weakref import WeakKeyDictionary
 from typing import Any
 import httpx
@@ -37,7 +39,7 @@ CRYPTO_SYMBOLS = {"BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSD
 
 # Binance Spot is the authoritative crypto universe. CRYPTO_SYMBOLS remains a
 # compatibility set for older callers; new symbols are resolved dynamically.
-_BINANCE_SPOT_SYMBOLS_CACHE: tuple[float, frozenset[str]] | None = None
+_BINANCE_SPOT_SYMBOLS_CACHE: tuple[float, dict[str, dict[str, Any]]] | None = None
 _BINANCE_SPOT_SYMBOLS_TTL = 300.0
 _BINANCE_SYMBOL_LOCKS: WeakKeyDictionary = WeakKeyDictionary()
 
@@ -58,12 +60,12 @@ async def get_binance_spot_symbols(force_refresh: bool = False) -> list[str]:
     global _BINANCE_SPOT_SYMBOLS_CACHE
     cached = _BINANCE_SPOT_SYMBOLS_CACHE
     if not force_refresh and cached and time.monotonic() - cached[0] < _BINANCE_SPOT_SYMBOLS_TTL:
-        return sorted(cached[1])
+        return sorted(cached[1].keys())
 
     async with _binance_symbol_cache_guard():
         cached = _BINANCE_SPOT_SYMBOLS_CACHE
         if not force_refresh and cached and time.monotonic() - cached[0] < _BINANCE_SPOT_SYMBOLS_TTL:
-            return sorted(cached[1])
+            return sorted(cached[1].keys())
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(15, connect=5)) as client:
                 response = await client.get("https://api.binance.com/api/v3/exchangeInfo")
@@ -74,7 +76,7 @@ async def get_binance_spot_symbols(force_refresh: bool = False) -> list[str]:
 
         if not isinstance(payload, dict) or not isinstance(payload.get("symbols"), list):
             raise MarketDataError("Binance returned invalid Spot exchange metadata.")
-        symbols = set()
+        symbols: dict[str, dict[str, Any]] = {}
         for item in payload["symbols"]:
             if not isinstance(item, dict) or item.get("status") != "TRADING":
                 continue
@@ -92,11 +94,32 @@ async def get_binance_spot_symbols(force_refresh: bool = False) -> list[str]:
                 continue
             if not symbol.isalnum() or not base or not quote or symbol != base + quote:
                 continue
-            symbols.add(symbol)
+            filters = {
+                str(value.get("filterType")): value
+                for value in (item.get("filters") or [])
+                if isinstance(value, dict) and value.get("filterType")
+            }
+            symbols[symbol] = {
+                "symbol": symbol,
+                "base_asset": base,
+                "quote_asset": quote,
+                "filters": filters,
+            }
         if not symbols:
             raise MarketDataError("Binance exchange metadata contained no eligible Spot trading pairs.")
-        _BINANCE_SPOT_SYMBOLS_CACHE = (time.monotonic(), frozenset(symbols))
-        return sorted(symbols)
+        _BINANCE_SPOT_SYMBOLS_CACHE = (time.monotonic(), symbols)
+        return sorted(symbols.keys())
+
+
+async def get_binance_spot_symbol_info(symbol: str) -> dict[str, Any]:
+    """Return cached Binance exchange filters for one active Spot symbol."""
+    normalized = str(symbol or "").strip().upper()
+    await get_binance_spot_symbols()
+    cached = _BINANCE_SPOT_SYMBOLS_CACHE
+    info = cached[1].get(normalized) if cached else None
+    if info is None:
+        raise MarketDataError(f"{normalized} is not a currently tradable Binance Spot pair.")
+    return info
 
 
 async def is_binance_spot_symbol(symbol: str) -> bool:
@@ -107,6 +130,173 @@ async def is_binance_spot_symbol(symbol: str) -> bool:
     if normalized in CRYPTO_SYMBOLS:
         return True
     return normalized in set(await get_binance_spot_symbols())
+
+
+async def get_binance_spot_execution_context(symbol: str) -> dict[str, Any]:
+    """Fetch fresh top-of-book and depth plus the pair's exchange price filters."""
+    normalized = str(symbol or "").strip().upper()
+    info = await get_binance_spot_symbol_info(normalized)
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(12, connect=5)) as client:
+            quote_response = await client.get(
+                "https://api.binance.com/api/v3/ticker/bookTicker", params={"symbol": normalized}
+            )
+            quote_response.raise_for_status()
+            quote = quote_response.json()
+            depth_response = await client.get(
+                "https://api.binance.com/api/v3/depth", params={"symbol": normalized, "limit": 20}
+            )
+            depth_response.raise_for_status()
+            depth = depth_response.json()
+            quote_asset = str(info.get("quote_asset") or "").upper()
+            stable_quotes = {"USDT", "USDC", "FDUSD", "BUSD", "TUSD", "USDP", "DAI", "USDE"}
+            quote_asset_usd_rate = 1.0 if quote_asset in stable_quotes else None
+            quote_asset_usd_rate_source = "stablecoin_parity_assumption" if quote_asset_usd_rate else None
+            if quote_asset_usd_rate is None and _BINANCE_SPOT_SYMBOLS_CACHE:
+                known_symbols = _BINANCE_SPOT_SYMBOLS_CACHE[1]
+                conversion_symbol = next(
+                    (quote_asset + suffix for suffix in ("USDT", "USDC", "FDUSD", "BUSD")
+                     if quote_asset + suffix in known_symbols),
+                    None,
+                )
+                if conversion_symbol:
+                    try:
+                        conversion_response = await client.get(
+                            "https://api.binance.com/api/v3/ticker/bookTicker",
+                            params={"symbol": conversion_symbol},
+                        )
+                        conversion_response.raise_for_status()
+                        conversion = conversion_response.json()
+                        conversion_bid = float(conversion["bidPrice"])
+                        conversion_ask = float(conversion["askPrice"])
+                        if (
+                            math.isfinite(conversion_bid) and math.isfinite(conversion_ask)
+                            and conversion_bid > 0 and conversion_ask >= conversion_bid
+                        ):
+                            quote_asset_usd_rate = (conversion_bid + conversion_ask) / 2
+                            quote_asset_usd_rate_source = conversion_symbol
+                    except (httpx.HTTPError, ValueError, TypeError, KeyError):
+                        quote_asset_usd_rate = None
+    except (httpx.HTTPError, ValueError, TypeError) as exc:
+        raise MarketDataError(f"Could not retrieve fresh Binance Spot execution data for {normalized}.") from exc
+
+    try:
+        bid = float(quote["bidPrice"])
+        ask = float(quote["askPrice"])
+        bid_qty = float(quote["bidQty"])
+        ask_qty = float(quote["askQty"])
+        if not all(math.isfinite(value) for value in (bid, ask, bid_qty, ask_qty)):
+            raise ValueError()
+        if bid <= 0 or ask < bid or bid_qty < 0 or ask_qty < 0:
+            raise ValueError()
+        bids = depth.get("bids", [])
+        asks = depth.get("asks", [])
+        bid_depth_quote = sum(float(row[0]) * float(row[1]) for row in bids[:10])
+        ask_depth_quote = sum(float(row[0]) * float(row[1]) for row in asks[:10])
+        if not all(math.isfinite(value) and value >= 0 for value in (bid_depth_quote, ask_depth_quote)):
+            raise ValueError()
+    except (AttributeError, KeyError, IndexError, TypeError, ValueError, OverflowError):
+        raise MarketDataError(f"Binance returned invalid top-of-book/depth data for {normalized}.") from None
+
+    mid = (bid + ask) / 2
+    spread_bps = ((ask - bid) / mid) * 10000 if mid > 0 else float("inf")
+    filters = info.get("filters", {})
+    price_filter = filters.get("PRICE_FILTER", {})
+    lot_filter = filters.get("LOT_SIZE", {})
+    notional_filter = filters.get("NOTIONAL") or filters.get("MIN_NOTIONAL") or {}
+    tick_size = str(price_filter.get("tickSize") or "0.00000001")
+    return {
+        "symbol": normalized,
+        "provider": "Binance Spot",
+        "best_bid": bid,
+        "best_ask": ask,
+        "best_bid_quantity": bid_qty,
+        "best_ask_quantity": ask_qty,
+        "mid_price": mid,
+        "spread_bps": spread_bps,
+        "bid_depth_quote": bid_depth_quote,
+        "ask_depth_quote": ask_depth_quote,
+        "quote_asset": info.get("quote_asset"),
+        "quote_asset_usd_rate": quote_asset_usd_rate,
+        "quote_asset_usd_rate_source": quote_asset_usd_rate_source,
+        "bid_depth_usd": bid_depth_quote * quote_asset_usd_rate if quote_asset_usd_rate else 0.0,
+        "ask_depth_usd": ask_depth_quote * quote_asset_usd_rate if quote_asset_usd_rate else 0.0,
+        "tick_size": tick_size,
+        "step_size": str(lot_filter.get("stepSize") or ""),
+        "min_quantity": str(lot_filter.get("minQty") or ""),
+        "min_notional": str(notional_filter.get("minNotional") or notional_filter.get("minNotionalValue") or ""),
+        "observed_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def round_price_to_tick(value: float, tick_size: str, *, round_up: bool) -> float:
+    """Round a price to the exchange tick without introducing float-step errors."""
+    try:
+        price = Decimal(str(value))
+        tick = Decimal(str(tick_size))
+        if not price.is_finite() or not tick.is_finite() or price <= 0 or tick <= 0:
+            raise ValueError()
+        units = (price / tick).to_integral_value(rounding=ROUND_UP if round_up else ROUND_DOWN)
+        return float(units * tick)
+    except (ArithmeticError, ValueError, TypeError):
+        raise MarketDataError("Binance returned an invalid price tick size.") from None
+
+
+def select_binance_entry(
+    side: str, close: float, atr_value: float, zone: dict[str, float] | None,
+    execution: dict[str, Any], settings: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Choose a marketable entry or a technically justified resting limit."""
+    settings = settings or {}
+    spread = float(execution["spread_bps"])
+    depth = float(
+        execution.get("ask_depth_usd", execution.get("ask_depth_quote", 0.0))
+        if side == "BUY" else
+        execution.get("bid_depth_usd", execution.get("bid_depth_quote", 0.0))
+    )
+    bid = float(execution["best_bid"])
+    ask = float(execution["best_ask"])
+    mid = float(execution["mid_price"])
+    if not all(math.isfinite(value) for value in (spread, depth, bid, ask, mid, close, atr_value)):
+        return None
+    if atr_value <= 0 or spread < 0 or depth < 0 or ask < bid:
+        return None
+
+    market_spread_cap = float(settings.get("max_market_spread_bps", 10.0))
+    limit_spread_cap = float(settings.get("max_limit_spread_bps", 25.0))
+    market_depth_floor = float(settings.get("min_market_depth_usd", settings.get("min_market_depth_quote", 5000.0)))
+    limit_depth_floor = float(settings.get("min_limit_depth_usd", settings.get("min_limit_depth_quote", 1000.0)))
+    market_drift_cap = float(settings.get("max_market_entry_deviation_atr", 0.20))
+    limit_distance_cap = float(settings.get("max_limit_entry_distance_atr", 0.75))
+    market_price = ask if side == "BUY" else bid
+    market_drift = abs(market_price - close) / atr_value
+
+    if spread <= market_spread_cap and depth >= market_depth_floor and market_drift <= market_drift_cap:
+        return {
+            "entry_type": "MARKET",
+            "entry_price": market_price,
+            "reason": "Fresh spread and top-book liquidity are acceptable, and price remains close to the confirmed signal candle.",
+        }
+
+    if zone and isinstance(zone, dict):
+        try:
+            candidate = (float(zone["low"]) + float(zone["high"])) / 2
+        except (KeyError, TypeError, ValueError, OverflowError):
+            candidate = 0.0
+        favorable = candidate < ask if side == "BUY" else candidate > bid
+        distance = abs(mid - candidate) / atr_value if candidate > 0 else float("inf")
+        if (
+            spread <= limit_spread_cap
+            and depth >= limit_depth_floor
+            and favorable
+            and distance <= limit_distance_cap
+        ):
+            return {
+                "entry_type": "LIMIT",
+                "entry_price": candidate,
+                "reason": "Price has moved away from the signal close; a resting limit is placed at the confirmed OB/FVG zone midpoint.",
+            }
+    return None
 
 
 BINANCE_INTERVALS = {"1min":"1m", "5min":"5m", "15min":"15m", "30min":"30m", "1h":"1h", "4h":"4h"}
@@ -608,21 +798,155 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
         if not all(quality_filters.values()):
             side=None
     price_precision = 2 if symbol == "XAUUSD" else 8
-    signal=None
-    if side:
-        risk=max(p["atr"]*1.5,abs(close-(st["swing_low"] if side=="BUY" else st["swing_high"])))
-        risk=max(risk,p["atr"]*0.8)
-        sl=close-risk if side=="BUY" else close+risk
-        sign=1 if side=="BUY" else -1
-        signal={"symbol":symbol,"side":side,"timeframe":primary,"trend_timeframe":trend,
-                "entry":round(close,price_precision),"signal_candle_time":candles[primary][-1]["time"],"stop_loss":round(sl,price_precision),"tp1":round(close+sign*risk,price_precision),
-                "tp2":round(close+sign*risk*2,price_precision),"tp3":round(close+sign*risk*3,price_precision),
-                "score":score,"out_of":10,"confirmations":checks,"risk_distance":round(risk,price_precision)}
-    provider_label=" + ".join(sorted(providers)) if providers else "Unknown"
-    return {"symbol":symbol,"provider":provider_label,"generated_at":datetime.now(timezone.utc).isoformat(),
-            "signal":signal,"confluence_score":score,"score_out_of":10,"score_note":"Rule-based confluence count, not a measured win probability.",
+    signal = None
+    entry_rejection_reason = None
+    entry_choice = None
+    execution = None
+    execution_quality = None
+    tick_size = "0.01" if symbol == "XAUUSD" else "0.00000001"
+    if side and symbol == "XAUUSD":
+        entry_choice = {
+            "entry_type": "REFERENCE",
+            "entry_price": close,
+            "reason": "Gold provider reference price; Binance execution routing is not applicable.",
+        }
+    elif side:
+        execution = await get_binance_spot_execution_context(symbol)
+        entry_choice = select_binance_entry(side, close, p["atr"], zone, execution, settings)
+        if not entry_choice:
+            side = None
+            quality_filters["execution_quality"] = False
+            entry_rejection_reason = (
+                "No safe MARKET entry or technically justified LIMIT retracement met the spread, "
+                "liquidity and price-distance rules."
+            )
+            execution_quality = {
+                "spread_bps": round(float(execution["spread_bps"]), 3),
+                "bid_depth_usd": round(float(execution.get("bid_depth_usd", 0.0)), 2),
+                "ask_depth_usd": round(float(execution.get("ask_depth_usd", 0.0)), 2),
+                "quote_asset": execution.get("quote_asset"),
+                "quote_asset_usd_rate": execution.get("quote_asset_usd_rate"),
+                "accepted": False,
+                "rejection_reason": entry_rejection_reason,
+            }
+        else:
+            tick_size = str(execution["tick_size"])
+            price_precision = max(0, -Decimal(tick_size).normalize().as_tuple().exponent)
+            round_entry_up = (side == "BUY" and entry_choice["entry_type"] == "MARKET") or (
+                side == "SELL" and entry_choice["entry_type"] == "LIMIT"
+            )
+            entry_choice["entry_price"] = round_price_to_tick(
+                float(entry_choice["entry_price"]), tick_size, round_up=round_entry_up
+            )
+
+    if side and entry_choice:
+        entry = round(float(entry_choice["entry_price"]), price_precision)
+        swing = st["swing_low"] if side == "BUY" else st["swing_high"]
+        risk = max(p["atr"] * 1.5, abs(entry - swing), p["atr"] * 0.8)
+        if symbol != "XAUUSD":
+            risk = max(risk, float(Decimal(tick_size)) * 2)
+        sign = 1 if side == "BUY" else -1
+        if symbol == "XAUUSD":
+            sl = round(entry - sign * risk, price_precision)
+            tp1 = round(entry + sign * risk, price_precision)
+            tp2 = round(entry + sign * risk * 2, price_precision)
+            tp3 = round(entry + sign * risk * 3, price_precision)
+            execution_quality = None
+            expiry_seconds = None
+        else:
+            sl = round_price_to_tick(entry - sign * risk, tick_size, round_up=side == "SELL")
+            tp1 = round_price_to_tick(entry + sign * risk, tick_size, round_up=side == "BUY")
+            tp2 = round_price_to_tick(entry + sign * risk * 2, tick_size, round_up=side == "BUY")
+            tp3 = round_price_to_tick(entry + sign * risk * 3, tick_size, round_up=side == "BUY")
+            fee_bps = float(settings.get(
+                "estimated_maker_fee_bps_per_side" if entry_choice["entry_type"] == "LIMIT"
+                else "estimated_taker_fee_bps_per_side", 8.0 if entry_choice["entry_type"] == "LIMIT" else 10.0
+            ))
+            slippage_bps = float(settings.get(
+                "estimated_slippage_bps_per_side", 1.0 if entry_choice["entry_type"] == "LIMIT" else 2.5
+            ))
+            if not all(math.isfinite(value) and value >= 0 for value in (fee_bps, slippage_bps)):
+                raise MarketDataError("Execution cost assumptions must be finite and non-negative.")
+            spread_bps = float(execution["spread_bps"])
+            estimated_round_trip_cost_bps = spread_bps + 2 * (fee_bps + slippage_bps)
+            tp1_reward_bps = abs(tp1 - entry) / entry * 10000 if entry > 0 else 0
+            reward_cost_ratio = tp1_reward_bps / max(estimated_round_trip_cost_bps, 0.01)
+            minimum_reward_cost_ratio = float(settings.get("min_reward_to_cost_ratio", 1.25))
+            execution_quality = {
+                "spread_bps": round(spread_bps, 3),
+                "quote_asset": execution.get("quote_asset"),
+                "quote_asset_usd_rate": execution.get("quote_asset_usd_rate"),
+                "quote_asset_usd_rate_source": execution.get("quote_asset_usd_rate_source"),
+                "bid_depth_usd": round(float(execution.get("bid_depth_usd", execution["bid_depth_quote"])), 2),
+                "ask_depth_usd": round(float(execution.get("ask_depth_usd", execution["ask_depth_quote"])), 2),
+                "estimated_round_trip_cost_bps": round(estimated_round_trip_cost_bps, 3),
+                "estimated_fee_bps_per_side": fee_bps,
+                "estimated_slippage_bps_per_side": slippage_bps,
+                "fee_assumption": "Estimated only; replace with the user's actual Binance fee tier.",
+                "tick_size": tick_size,
+                "step_size": execution["step_size"],
+                "min_quantity": execution["min_quantity"],
+                "min_notional": execution["min_notional"],
+                "quote_observed_at": execution["observed_at"],
+                "provider": execution["provider"],
+                "tp1_reward_to_cost_ratio": round(reward_cost_ratio, 2),
+            }
+            if reward_cost_ratio < minimum_reward_cost_ratio:
+                quality_filters["execution_quality"] = False
+                entry_rejection_reason = (
+                    "Expected TP1 reward is too small relative to estimated spread, fees and slippage "
+                    f"({reward_cost_ratio:.2f}x; minimum {minimum_reward_cost_ratio:.2f}x)."
+                )
+                side = None
+                entry_choice = None
+                execution_quality = {**execution_quality, "accepted": False}
+            else:
+                quality_filters["execution_quality"] = True
+                execution_quality["accepted"] = True
+                expiry_seconds = 900 if entry_choice["entry_type"] == "LIMIT" else 60
+
+        if side and entry_choice:
+            signal = {
+                "symbol": symbol,
+                "market_type": "BINANCE_SPOT" if symbol != "XAUUSD" else "XAUUSD_FEED",
+                "side": side,
+                "timeframe": primary,
+                "trend_timeframe": trend,
+                "entry_type": entry_choice["entry_type"],
+                "entry": entry,
+                "entry_price": entry,
+                "limit_price": entry if entry_choice["entry_type"] == "LIMIT" else None,
+                "entry_selection_reason": entry_choice["reason"],
+                "entry_expires_at": (datetime.now(timezone.utc) + timedelta(seconds=expiry_seconds)).isoformat()
+                    if expiry_seconds else None,
+                "signal_candle_time": candles[primary][-1]["time"],
+                "stop_loss": round(sl, price_precision),
+                "tp1": round(tp1, price_precision),
+                "tp2": round(tp2, price_precision),
+                "tp3": round(tp3, price_precision),
+                "score": score,
+                "out_of": 10,
+                "confirmations": checks,
+                "risk_distance": round(risk, price_precision),
+                "execution_quality": execution_quality,
+            }
+    if symbol != "XAUUSD" and side is None and score >= threshold and not entry_rejection_reason:
+        entry_rejection_reason = "Directional setup passed, but execution quality did not produce a valid entry."
+
+    provider_label = " + ".join(sorted(providers)) if providers else "Unknown"
+    generated_at = datetime.now(timezone.utc).isoformat()
+    message = (
+        "Signal setup and entry-quality filters passed."
+        if signal else
+        "WAIT — " + entry_rejection_reason
+        if entry_rejection_reason else
+        "WAIT — confluence threshold or directional quality filters not met."
+    )
+    return {"symbol":symbol,"provider":provider_label,"generated_at":generated_at,
+            "signal":signal,"execution_quality":execution_quality,
+            "confluence_score":score,"score_out_of":10,"score_note":"Rule-based confluence count, not a measured win probability.",
             "timeframes":{tf:{"bias":v["bias"],"close":round(v["close"],price_precision),"ema20":round(v["ema20"],price_precision),
                 "ema50":round(v["ema50"],price_precision),"ema200":round(v["ema200"],price_precision) if v["ema200"] is not None else None,"macd_histogram":round(v["macd_histogram"],price_precision),
                 "rsi":round(v["rsi"],1),"adx":round(v["adx"],1),"atr":round(v["atr"],price_precision),
                 "structure":v["structure"]} for tf,v in analysis.items()},
-            "quality_filters":quality_filters,"status":"SIGNAL" if signal else "WAIT","message":"Confluence threshold and directional quality filters met." if signal else "WAIT — confluence threshold or directional quality filters not met."}
+            "quality_filters":quality_filters,"status":"SIGNAL" if signal else "WAIT","message":message}

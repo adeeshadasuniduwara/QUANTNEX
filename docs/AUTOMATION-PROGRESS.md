@@ -342,18 +342,55 @@ The current signal pipeline used a static `CRYPTO_SYMBOLS` allowlist (20 symbols
 - Increased Auto Signals selection capacity to 50 pairs and validate selected symbols against current Binance Spot metadata before enabling alerts.
 - Added tests for newly listed Spot pair discovery, inactive/non-Spot filtering, and fetching candles for a dynamic pair.
 
-### Verification status
+### Verification and merge result
 
-- Code changes and tests are committed to the feature branch; GitHub PR and CI verification are still pending.
-- No claim is made yet that every Binance market type is supported. This phase covers Binance Spot only; USDⓈ-M and COIN-M Futures require separate exchange metadata, candle endpoints, contract filters and explicit market-type handling.
-- No MARKET/LIMIT selection has been implemented in this phase. Current signal payloads still use a closed-candle reference entry. This is the next core signal-engine phase.
+- PR #165 was merged to `main` as commit `43d787c6c13441f5225b49d509baa0a0c4fda113`.
+- Backend CI, Backend-and-Web CI, and Web CI passed after merge, including Python 3.12/3.14 and frontend checks.
+- The separate Telegram Update Notifications workflow failed because the configured `TELEGRAM_CHAT_ID` resolves to the bot itself; this is a notification-secret configuration blocker, not a signal-engine test failure.
+- This phase covers Binance Spot only. USDⓈ-M and COIN-M Futures require separate exchange metadata, candle endpoints, contract filters and explicit market-type handling.
 - No live order placement is enabled. The work remains read-only signal analysis and paper/demo validation.
 
 ### Next steps
 
-1. Review this branch's complete diff and open a PR against main.
-2. Run Backend CI and all relevant tests; fix any regression before merge.
-3. If CI passes, review mergeability and merge, then verify post-merge checks.
-4. Implement and test adaptive MARKET versus LIMIT entry selection, spread/fee/slippage/liquidity checks, exchange precision and explicit entry type in the signal payload.
-5. Extend end-to-end tests with deterministic long/short setups and realistic chronological paper/backtest validation.
-6. Only after Spot coverage is verified, plan the next supported Binance market type expansion without implying unsupported Futures coverage.
+1. Implement and test adaptive MARKET versus LIMIT entry selection using fresh Binance bookTicker/depth, price movement relative to the confirmed close, OB/FVG retracement zones, spread, liquidity and estimated costs.
+2. Apply exact exchange tick/lot/notional filters and include explicit entry type, price, expiry and execution-quality evidence in the signal payload and Telegram/UI alerts.
+3. Add deterministic end-to-end long/short tests proving both MARKET and LIMIT decisions, plus rejection of poor execution conditions.
+4. Run realistic chronological/out-of-sample paper validation with fees and slippage before treating the signal engine as reliable.
+5. Plan Futures coverage only after Spot signal execution quality is verified.
+
+
+## 2026-11-16 — Phase 13: adaptive MARKET/LIMIT entry (implementation and CI pending)
+
+### User priority
+
+After dynamic Binance pair coverage, the next core requirement is to generate an entry price suited to current market movement: use MARKET when current spread/liquidity and price drift make immediate execution acceptable; use LIMIT at a technically justified OB/FVG retracement when price has moved away from the signal candle. Do not force an entry when neither method meets the execution-quality gates.
+
+### Implementation started on branch `feat/adaptive-market-limit-entry`
+
+- Extended Binance Spot exchange metadata cache to retain symbol filters, including price tick size, quantity step and minimum notional.
+- Added fresh Binance Spot best-bid/best-ask and order-book depth retrieval for a selected pair.
+- Normalized order-book depth into USD-equivalent liquidity using stablecoin parity assumptions or a live quote-asset/USDT conversion pair; unknown/unconvertible quote assets fail the execution-liquidity gate rather than being treated as USD.
+- Exposed execution diagnostics and rejection reasons when no safe entry qualifies.
+- Added transparent entry selection thresholds for spread, side-specific top-10 depth, deviation from the confirmed candle and a valid OB/FVG limit zone.
+- Added tick-aware price rounding for MARKET/LIMIT entry, stop-loss and take-profit prices.
+- Added explicit `entry_type`, `entry_price`, optional `limit_price`, entry rationale, expiry and execution-quality evidence to signal payloads.
+- Added estimated spread/fee/slippage cost checks. Fee assumptions are clearly marked as estimates because the user's Binance fee tier is not available to this local signal engine.
+- Updated manual/automatic Telegram alerts and Signal Lab UI to display entry type, limit price and execution quality.
+- Displayed the MARKET/LIMIT entry expiry in the UI and Telegram alerts so a limit signal is not mistaken for an indefinitely valid instruction.
+- Added unit and end-to-end tests for MARKET selection, LIMIT retracement selection, wide-spread rejection, exchange filters and low-price precision.
+- Added deterministic bearish LIMIT selection, dynamic newly listed pair signal coverage, quote-asset USD conversion tests, and an end-to-end WAIT case proving poor spreads do not produce a forced signal.
+
+### Verification status
+
+- Implementation and test changes are committed to the feature branch; local runtime execution is unavailable in this session, so GitHub Actions must verify syntax and test behavior before merge.
+- Binance Spot only. SELL signals are analytical Spot sell signals; this does not create a short position or submit a Binance order.
+- No real orders are submitted. Market/limit values are signal guidance only; actual fills may differ and LIMIT signals may expire unfilled.
+- The quality gates are explicit engineering thresholds and need historical/out-of-sample evaluation before any profitability claim.
+
+### Next steps
+
+1. Run Backend CI, Backend-and-Web CI and Web CI; inspect failures and fix before merge.
+2. Review the complete diff and ensure no secrets or unrelated changes; merge only after all required checks pass.
+3. Verify post-merge tests.
+4. Continue with chronological backtests, cost sensitivity and signal quality calibration; do not loosen the filters simply to increase signal count.
+5. Then evaluate Binance USDⓈ-M Futures support for native short signals and broader pair coverage, with explicit market-type separation.

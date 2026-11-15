@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import func, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, DATABASE_URL, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
@@ -485,18 +485,65 @@ def wallet_transactions(limit: int = 100, user: User = Depends(local_workspace),
 @app.post("/api/v1/wallet/transactions", response_model=WalletTransactionResponse, status_code=201)
 def create_wallet_transaction(payload: WalletTransactionCreate, user: User = Depends(local_workspace),
                                db: Session = Depends(get_db)):
-    balance = db.scalar(select(func.coalesce(func.sum(WalletTransaction.amount), 0.0))
-                        .where(WalletTransaction.user_id == user.id)) or 0.0
-    signed_amount = payload.amount if payload.transaction_type == "deposit" else -payload.amount
-    if payload.transaction_type == "withdrawal" and payload.amount > balance:
-        raise HTTPException(status_code=409, detail="Insufficient wallet balance for this withdrawal.")
-    item = WalletTransaction(user_id=user.id, transaction_type=payload.transaction_type,
-                             amount=signed_amount, description=payload.description.strip())
-    db.add(item)
-    record_audit_event(db, "wallet.transaction_created", {"transaction_type": item.transaction_type, "amount": item.amount})
+    user_id = user.id
+    description = payload.description.strip()
+    if payload.transaction_type == "withdrawal":
+        # Make the balance predicate part of the same INSERT so concurrent
+        # withdrawals cannot both spend the same available ledger balance.
+        statement = text("""
+            INSERT INTO wallet_transactions
+                (user_id, created_at, transaction_type, amount, description, trade_id)
+            SELECT :user_id, :created_at, :transaction_type, :signed_amount, :description, NULL
+            WHERE COALESCE((
+                SELECT SUM(amount) FROM wallet_transactions WHERE user_id = :user_id
+            ), 0) >= :requested_amount
+            RETURNING id
+        """)
+        params = {
+            "user_id": user_id,
+            "created_at": datetime.now(timezone.utc),
+            "transaction_type": "withdrawal",
+            "signed_amount": -payload.amount,
+            "description": description,
+            "requested_amount": payload.amount,
+        }
+        try:
+            transaction_id = db.execute(statement, params).scalar_one_or_none()
+        except OperationalError as exc:
+            # SQLite WAL may reject a stale read snapshot. Retry once only after
+            # rolling back; the conditional INSERT is retained on the retry.
+            db.rollback()
+            if "locked" not in str(exc).lower() and "busy" not in str(exc).lower():
+                raise
+            try:
+                transaction_id = db.execute(statement, params).scalar_one_or_none()
+            except OperationalError as retry_exc:
+                db.rollback()
+                if "locked" in str(retry_exc).lower() or "busy" in str(retry_exc).lower():
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Wallet is busy. Refresh the balance and try the withdrawal again.",
+                    ) from None
+                raise
+        if transaction_id is None:
+            db.rollback()
+            raise HTTPException(status_code=409, detail="Insufficient wallet balance for this withdrawal.")
+        item = db.get(WalletTransaction, transaction_id)
+        if item is None:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Wallet transaction could not be loaded after saving.")
+    else:
+        item = WalletTransaction(user_id=user_id, transaction_type="deposit",
+                                 amount=payload.amount, description=description)
+        db.add(item)
+    record_audit_event(db, "wallet.transaction_created", {
+        "transaction_type": item.transaction_type, "amount": item.amount
+    })
     db.commit()
     db.refresh(item)
-    event_hub.publish("wallet.changed", "wallet", "transaction_created", {"transaction_id": item.id, "transaction_type": item.transaction_type, "amount": item.amount})
+    event_hub.publish("wallet.changed", "wallet", "transaction_created", {
+        "transaction_id": item.id, "transaction_type": item.transaction_type, "amount": item.amount
+    })
     return item
 
 @app.get("/api/v1/preferences", response_model=list[PreferenceResponse])

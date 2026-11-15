@@ -170,12 +170,34 @@ The automatic worker already stores a per-symbol signal fingerprint in the persi
 
 ### Verification
 
-- Implementation and regression tests are on the feature branch.
-- GitHub Actions checks are pending; merge only after all relevant backend checks pass.
-- Telegram Bot API cannot provide a general idempotency key for sendMessage; a network failure with an ambiguous server-side outcome may still require separate handling.
+- Implementation and regression tests were reviewed in PR [#154](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/154) and merged to `main` as commit `a48bfe0cf61dc3099daa66cfe3a4c2d3612157b6`.
+- PR CI passed on Python 3.12 and 3.14, plus web and schema checks.
+- Post-merge CI passed: `backend-tests (3.12)`, `backend-tests (3.14)`, `test`, and `web-check`.
+- Telegram Bot API cannot provide a general idempotency key for sendMessage; an ambiguous network/server failure may still have an uncertain delivery outcome.
+- The optional Telegram `announce` workflow failed because the repository's `TELEGRAM_CHAT_ID` secret resolves to the bot itself; code and test checks passed.
 
 ### Next steps
 
-1. Inspect CI and the complete diff.
-2. Merge only after tests pass and verify post-merge CI.
-3. Continue the paper-mode end-to-end signal generation and delivery audit.
+1. Phase 7: add an end-to-end synthetic market-data test that exercises the real indicator/structure/confluence pipeline and proves a valid signal can be generated.
+2. Verify the signal output is delivered through the tested Telegram fingerprint path in paper mode.
+3. Complete a local Windows/MT5 smoke test when the user's runtime is available; never infer it from CI.
+
+
+## 2026-11-16 — Phase 7: end-to-end signal generation verification (in progress)
+
+### Goal
+
+Move beyond unit tests and mocked indicator outputs: use deterministic, timestamp-fresh synthetic OHLC candles through the actual indicator, structure, scoring, quality-filter and signal-level code. Verify the resulting signal is structurally valid and can be passed through the persistent Telegram delivery helper without sending to a real chat.
+
+### Verification boundary
+
+- Tests must use synthetic data and a fake Telegram sender; no external message or broker order is sent.
+- Keep the real market-data providers and real MT5 terminal smoke test separate from synthetic CI tests.
+- A passing synthetic test proves the pipeline can generate a signal for controlled conditions, not that the strategy has a positive live expectancy.
+
+### Next steps
+
+1. Construct a deterministic candle series that produces a valid bullish and/or bearish setup under the existing documented rules.
+2. Run it through real `inspect_tf` and `build_signal` functions with only the market-data fetch mocked.
+3. Validate symbol, direction, candle timestamp, Entry, SL, TP1-TP3, price precision, freshness and quality filters.
+4. Pass the generated signal through the fake Telegram delivery helper and verify fingerprint persistence and duplicate suppression.

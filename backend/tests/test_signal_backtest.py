@@ -84,7 +84,12 @@ def test_signal_walk_forward_uses_chronological_holdout_and_costs(monkeypatch):
     async def fake_build_signal(settings, symbol, *, candles_override, execution_context_override, replay_as_of):
         calls["count"] += 1
         latest = candles_override["5"][-1]["time"]
-        assert _epoch(replay_as_of.isoformat()) > _epoch(latest)
+        as_of_epoch = _epoch(replay_as_of.isoformat())
+        assert as_of_epoch > _epoch(latest)
+        interval_minutes = {"1": 1, "5": 5, "15": 15, "30": 30, "60": 60}
+        for timeframe, rows in candles_override.items():
+            minutes = interval_minutes[timeframe]
+            assert all(_epoch(row["time"]) + minutes * 60 <= as_of_epoch + 1e-6 for row in rows)
         if calls["count"] % 10:
             return {"status": "WAIT", "signal": None}
         return {

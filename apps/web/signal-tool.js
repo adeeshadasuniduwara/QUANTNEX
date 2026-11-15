@@ -273,6 +273,12 @@
     assumptions.textContent="Model assumptions · Spread "+data.assumptions.spread_bps+" bps · Top-book depth "+
       data.assumptions.top_book_depth_usd+" USD · "+data.assumptions.fees_and_slippage;
     container.append(assumptions);
+    if(data.data_quality){
+      const quality=document.createElement("p");quality.className="signal-feed-note";
+      quality.textContent="Historical data quality · "+data.data_quality.one_minute_candles+" one-minute bars · "+
+        data.data_quality.missing_minute_bars+" missing bars · largest gap "+data.data_quality.largest_gap_minutes+"m";
+      container.append(quality);
+    }
     const limitations=document.createElement("ul");
     (data.limitations||[]).forEach(item=>{const li=document.createElement("li");li.textContent=item;limitations.append(li);});
     container.append(limitations);

@@ -1,5 +1,6 @@
 import json
 from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 import math
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, select
@@ -318,6 +319,190 @@ def test_wallet_and_journal_linkage_persist_after_database_engine_restart(tmp_pa
     assert restarted_client.get("/api/v1/wallet/summary").json()["balance"] == 225.0
     restarted_client.close()
     restarted_engine.dispose()
+
+
+def test_manual_paper_trade_lifecycle_and_settings_persist_after_engine_restart(tmp_path, monkeypatch):
+    from app import phase07_engine
+
+    database_path = tmp_path / "paper-lifecycle.db"
+    database_url = "sqlite:///" + database_path.as_posix()
+    first_engine = create_engine(
+        database_url, connect_args={"check_same_thread": False, "timeout": 20}
+    )
+    Base.metadata.create_all(first_engine)
+    monkeypatch.setattr(
+        database_module, "SessionLocal",
+        sessionmaker(bind=first_engine, autoflush=False, autocommit=False),
+    )
+
+    quote_state = {"price": 100.0, "stale": True}
+
+    async def fake_quote(_symbol):
+        stamp = datetime.now(timezone.utc)
+        if quote_state["stale"]:
+            stamp -= timedelta(minutes=10)
+        return {
+            "symbol": "BTCUSDT", "kind": "crypto", "provider": "isolated-test-provider",
+            "price": quote_state["price"], "source_timestamp": stamp.isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+    monkeypatch.setattr(phase07_engine, "get_quote", fake_quote)
+    client = TestClient(app)
+    wallet_before = client.get("/api/v1/wallet/summary").json()
+
+    invalid = client.post(
+        "/api/v1/paper-trading/trades",
+        content=json.dumps({
+            "symbol": "BTCUSDT", "side": "BUY", "quantity": float("nan"),
+            "stop_loss": 90, "take_profit": 120,
+        }, allow_nan=True),
+        headers={"Content-Type": "application/json"},
+    )
+    assert invalid.status_code == 422
+    stale_open = client.post("/api/v1/paper-trading/trades", json={
+        "symbol": "BTCUSDT", "side": "BUY", "quantity": 2,
+        "stop_loss": 90, "take_profit": 120,
+    })
+    assert stale_open.status_code == 503
+    assert client.get("/api/v1/paper-trading/trades?limit=500").json() == []
+
+    quote_state["stale"] = False
+    opened = client.post("/api/v1/paper-trading/trades", json={
+        "symbol": "BTCUSDT", "side": "BUY", "quantity": 2,
+        "stop_loss": 90, "take_profit": 120,
+    })
+    assert opened.status_code == 201
+    trade_id = opened.json()["id"]
+    assert opened.json()["mode"] == "PAPER"
+
+    quote_state["stale"] = True
+    stale_close = client.post(f"/api/v1/paper-trading/trades/{trade_id}/close")
+    assert stale_close.status_code == 503
+    still_open = client.get("/api/v1/paper-trading/trades?status=OPEN").json()
+    assert len(still_open) == 1 and still_open[0]["id"] == trade_id
+    assert client.get("/api/v1/paper-engine/events?limit=100").json()[0]["event_type"] == "MANUAL_OPENED"
+
+    quote_state["stale"] = False
+    quote_state["price"] = 110.0
+    closed = client.post(f"/api/v1/paper-trading/trades/{trade_id}/close")
+    assert closed.status_code == 200
+    assert closed.json()["realized_pnl"] == 20.0
+    assert client.post(f"/api/v1/paper-trading/trades/{trade_id}/close").status_code == 409
+    summary = client.get("/api/v1/paper-trading/summary").json()
+    assert summary["open_trades"] == 0 and summary["closed_trades"] == 1
+    assert summary["realized_pnl"] == 20.0
+    assert client.get("/api/v1/paper-trading/trades?limit=0").status_code == 422
+    assert client.get("/api/v1/paper-trading/trades?status=INVALID").status_code == 422
+
+    settings = client.get("/api/v1/paper-engine").json()["settings"]
+    settings.update({"enabled": False, "paper_equity": 1500, "interval_seconds": 90,
+                     "max_open_positions": 2})
+    saved = client.put("/api/v1/paper-engine", json=settings)
+    assert saved.status_code == 200
+    assert client.get("/api/v1/wallet/summary").json() == wallet_before
+    first_client_rows = client.get("/api/v1/paper-trading/trades?limit=500").json()
+    first_client_events = client.get("/api/v1/paper-engine/events?limit=500").json()
+    client.close()
+    first_engine.dispose()
+
+    restarted_engine = create_engine(
+        database_url, connect_args={"check_same_thread": False, "timeout": 20}
+    )
+    monkeypatch.setattr(
+        database_module, "SessionLocal",
+        sessionmaker(bind=restarted_engine, autoflush=False, autocommit=False),
+    )
+    restarted = TestClient(app)
+    assert restarted.get("/api/v1/paper-trading/trades?limit=500").json() == first_client_rows
+    assert restarted.get("/api/v1/paper-trading/summary").json()["realized_pnl"] == 20.0
+    assert restarted.get("/api/v1/paper-engine/events?limit=500").json() == first_client_events
+    persisted_settings = restarted.get("/api/v1/paper-engine").json()["settings"]
+    assert persisted_settings["paper_equity"] == 1500
+    assert persisted_settings["interval_seconds"] == 90
+    assert persisted_settings["max_open_positions"] == 2
+    assert restarted.get("/api/v1/wallet/summary").json() == wallet_before
+    restarted.close()
+    restarted_engine.dispose()
+
+
+def test_concurrent_paper_close_records_only_one_realized_event(tmp_path, monkeypatch):
+    from app import phase07_engine
+
+    database_path = tmp_path / "paper-close-race.db"
+    test_engine = create_engine(
+        "sqlite:///" + database_path.as_posix(),
+        connect_args={"check_same_thread": False, "timeout": 20},
+        pool_pre_ping=True,
+    )
+    with test_engine.connect() as connection:
+        connection.exec_driver_sql("PRAGMA journal_mode=WAL")
+    Base.metadata.create_all(test_engine)
+    monkeypatch.setattr(
+        database_module, "SessionLocal",
+        sessionmaker(bind=test_engine, autoflush=False, autocommit=False),
+    )
+
+    quote_state = {"barrier": None}
+
+    async def fake_quote(_symbol):
+        barrier = quote_state["barrier"]
+        if barrier is not None:
+            barrier.wait(timeout=10)
+        return {
+            "symbol": "BTCUSDT", "kind": "crypto", "provider": "isolated-test-provider",
+            "price": 105.0, "source_timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+    monkeypatch.setattr(phase07_engine, "get_quote", fake_quote)
+    seed_client = TestClient(app)
+    opened = seed_client.post("/api/v1/paper-trading/trades", json={
+        "symbol": "BTCUSDT", "side": "BUY", "quantity": 1,
+        "stop_loss": 90, "take_profit": 120,
+    })
+    assert opened.status_code == 201
+    trade_id = opened.json()["id"]
+    seed_client.close()
+    quote_state["barrier"] = Barrier(2)
+
+    def close_once():
+        worker = TestClient(app)
+        try:
+            return worker.post(f"/api/v1/paper-trading/trades/{trade_id}/close").status_code
+        finally:
+            worker.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        statuses = list(pool.map(lambda _index: close_once(), range(2)))
+    assert statuses.count(200) == 1
+    assert all(status in {200, 409, 503} for status in statuses)
+
+    verify = TestClient(app)
+    rows = verify.get("/api/v1/paper-trading/trades?limit=500").json()
+    events = verify.get("/api/v1/paper-engine/events?limit=500").json()
+    assert next(row for row in rows if row["id"] == trade_id)["status"] == "CLOSED"
+    assert len([row for row in events if row["event_type"] == "MANUAL_CLOSED"]) == 1
+    verify.close()
+    test_engine.dispose()
+
+
+def test_paper_engine_settings_reject_non_finite_or_fractional_integer_controls():
+    client = TestClient(app)
+    before = client.get("/api/v1/paper-engine").json()["settings"]
+    for key, invalid in [
+        ("interval_seconds", float("inf")),
+        ("max_open_positions", float("nan")),
+        ("min_score", 8.5),
+    ]:
+        payload = {**before, key: invalid}
+        response = client.put(
+            "/api/v1/paper-engine",
+            content=json.dumps(payload, allow_nan=True),
+            headers={"Content-Type": "application/json"},
+        )
+        assert response.status_code == 422, (key, response.text)
+    assert client.get("/api/v1/paper-engine").json()["settings"] == before
 
 
 def test_signal_settings_and_telegram_status_work_without_login():

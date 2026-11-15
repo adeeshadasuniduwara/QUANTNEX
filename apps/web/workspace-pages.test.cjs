@@ -124,3 +124,11 @@ assert.ok(app.includes("walletWriteInFlight"), "Wallet writes must ignore duplic
 assert.ok(app.includes("wallet display could not refresh"), "A saved transaction must not be misreported as an unsaved write when refresh fails.");
 assert.ok(app.includes("wallet/transactions?limit=500"), "Wallet UI must request the latest supported transaction-history page.");
 console.log("Wallet UI checks passed: shared formatter, safe history rendering, duplicate-submit guard and explicit refresh errors.");
+
+assert.ok(app.includes("item.exit_price"), "Closed paper trades must render their exit price.");
+assert.ok(app.includes("item.realized_pnl"), "Closed paper trades must render realized P&L per position.");
+assert.ok(app.includes("await loadPaper();"), "A failed close action must reload the ledger so concurrent-close state is reconciled.");
+assert.ok(html.includes("<th>Exit</th>") && html.includes("<th>Realized P&amp;L</th>"), "The paper ledger must expose exit and realized P&L columns.");
+assert.ok(html.includes('colspan="11"'), "The empty paper ledger row must span the expanded table.");
+assert.ok(app.includes("td.colSpan=11"), "The dynamically rendered empty row must span the expanded table.");
+console.log("Paper Trading UI checks passed: closed results and close-error reconciliation.");

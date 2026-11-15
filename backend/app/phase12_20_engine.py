@@ -16,7 +16,7 @@ from statistics import mean
 from typing import Any
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, update
 from .database import SessionLocal
 from .models import PaperTrade, PaperTradeEvent, Preference, User
 from .events import event_hub
@@ -33,10 +33,30 @@ SUPPORTED_AUTO_SYMBOLS = {"BTCUSDT", "ETHUSDT", "SOLUSDT"}
 LEVERAGED_BASE = re.compile(r".*(?:UP|DOWN|BULL|BEAR|[3-5]L|[3-5]S)$", re.I)
 
 
+def _integer_setting(value: Any, key: str, default: int, low: int, high: int,
+                     clamp: bool = False) -> int:
+    try:
+        raw = default if value is None else value
+        if isinstance(raw, bool):
+            raise ValueError()
+        number = float(raw)
+    except (TypeError, ValueError, OverflowError):
+        raise ValueError(f"{key} must be a finite whole number.") from None
+    if not math.isfinite(number) or not number.is_integer():
+        raise ValueError(f"{key} must be a finite whole number.")
+    if clamp:
+        number = max(float(low), min(float(high), number))
+    elif not low <= number <= high:
+        raise ValueError(f"{key} must be between {low} and {high}.")
+    return int(number)
+
+
 def normalize_settings(raw: dict | None) -> dict:
     value = {**DEFAULT_SETTINGS, **(raw or {})}
     value["enabled"] = value.get("enabled") is True
-    value["interval_seconds"] = int(max(60, min(3600, int(value.get("interval_seconds", 180)))))
+    value["interval_seconds"] = _integer_setting(
+        value.get("interval_seconds"), "interval_seconds", 180, 60, 3600, clamp=True
+    )
     symbols = list(dict.fromkeys(str(x).upper().strip() for x in value.get("symbols", [])))
     if not symbols or any(x not in SUPPORTED_AUTO_SYMBOLS for x in symbols):
         raise ValueError("Automatic paper mode currently supports BTCUSDT, ETHUSDT and SOLUSDT only. Forex/Gold require verified contract sizing first.")
@@ -51,12 +71,12 @@ def normalize_settings(raw: dict | None) -> dict:
         if not math.isfinite(number) or not low <= number <= high:
             raise ValueError(f"{key} must be between {low} and {high}.")
         value[key] = number
-    value["max_open_positions"] = int(value.get("max_open_positions", 3))
-    if not 1 <= value["max_open_positions"] <= 10:
-        raise ValueError("max_open_positions must be between 1 and 10.")
-    value["min_score"] = int(value.get("min_score", 8))
-    if not 8 <= value["min_score"] <= 10:
-        raise ValueError("min_score must be between 8 and 10 for automatic paper mode.")
+    value["max_open_positions"] = _integer_setting(
+        value.get("max_open_positions"), "max_open_positions", 3, 1, 10
+    )
+    value["min_score"] = _integer_setting(
+        value.get("min_score"), "min_score", 8, 8, 10
+    )
     return value
 
 
@@ -247,7 +267,7 @@ async def paper_autopilot_worker() -> None:
                     if not settings["enabled"]:
                         continue
                     now_mono = time.monotonic()
-                    if now_mono - last_scan.get(user.id, 0) < settings["interval_seconds"]:
+                    if now_mono - last_scan.get(user.id, now_mono - settings["interval_seconds"]) < settings["interval_seconds"]:
                         continue
                     last_scan[user.id] = now_mono
                     trades = list(db.scalars(select(PaperTrade).where(PaperTrade.user_id == user.id)))
@@ -266,20 +286,41 @@ async def paper_autopilot_worker() -> None:
                                 continue
                             price = float(quote["price"])
                             floating = (price - position.entry_price) * position.quantity * (1 if position.side == "BUY" else -1)
+                            if not math.isfinite(price) or price <= 0 or not math.isfinite(floating):
+                                unpriced_open_position = True
+                                continue
                             stop_hit = price <= position.stop_loss if position.side == "BUY" else price >= position.stop_loss
                             target_hit = price >= position.take_profit if position.side == "BUY" else price <= position.take_profit
                             if position.id in auto_ids and (stop_hit or target_hit):
                                 reason = "STOP_LOSS" if stop_hit else "TAKE_PROFIT"
-                                position.exit_price = price
-                                position.realized_pnl = round(floating, 8)
-                                position.status = "CLOSED"
-                                position.closed_at = datetime.now(timezone.utc)
-                                db.add(PaperTradeEvent(user_id=user.id, trade_id=position.id,
-                                    event_type=reason, price=price, quantity=position.quantity,
-                                    pnl=position.realized_pnl, details_json=json.dumps({"provider": quote["provider"], "data_health": health})))
-                                event_hub.publish("paper_trade.changed", "paper_trade", "auto_closed",
-                                    {"trade_id": position.id, "symbol": position.symbol, "status": "CLOSED", "reason": reason})
-                                db.commit()
+                                realized_pnl = round(floating, 8)
+                                closed_at = datetime.now(timezone.utc)
+                                updated_id = db.execute(
+                                    update(PaperTrade)
+                                    .where(
+                                        PaperTrade.id == position.id,
+                                        PaperTrade.user_id == user.id,
+                                        PaperTrade.status == "OPEN",
+                                    )
+                                    .values(
+                                        exit_price=price,
+                                        realized_pnl=realized_pnl,
+                                        status="CLOSED",
+                                        closed_at=closed_at,
+                                    )
+                                    .returning(PaperTrade.id)
+                                    .execution_options(synchronize_session=False)
+                                ).scalar_one_or_none()
+                                if updated_id is not None:
+                                    db.add(PaperTradeEvent(user_id=user.id, trade_id=position.id,
+                                        event_type=reason, price=price, quantity=position.quantity,
+                                        pnl=realized_pnl, details_json=json.dumps({
+                                            "provider": quote["provider"], "data_health": health
+                                        })))
+                                    db.commit()
+                                    event_hub.publish("paper_trade.changed", "paper_trade", "auto_closed",
+                                        {"trade_id": position.id, "symbol": position.symbol,
+                                         "status": "CLOSED", "reason": reason})
                             else:
                                 unrealized_pnl += floating
                         except (IntelligenceDataError, httpx.HTTPError, ValueError, KeyError):

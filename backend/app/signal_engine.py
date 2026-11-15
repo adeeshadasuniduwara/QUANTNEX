@@ -641,8 +641,10 @@ async def fetch_binance_historical_candles(
     return candles[-max_candles:]
 
 
-def aggregate_minutes(candles: list[dict[str, Any]], minutes: int) -> list[dict[str, Any]]:
-    """Aggregate only complete, unique 1-minute UTC buckets."""
+def aggregate_minutes(
+    candles: list[dict[str, Any]], minutes: int, *, require_complete: bool = False
+) -> list[dict[str, Any]]:
+    """Aggregate unique 1-minute UTC buckets; historical replay can require full buckets."""
     from datetime import datetime
     if minutes < 1:
         raise ValueError("Aggregation interval must be positive.")
@@ -683,7 +685,7 @@ def aggregate_minutes(candles: list[dict[str, Any]], minutes: int) -> list[dict[
     complete = []
     for key in sorted(buckets):
         bucket = buckets[key]
-        if bucket["count"] == minutes:
+        if not require_complete or bucket["count"] == minutes:
             complete.append({name: value for name, value in bucket.items() if name != "count"})
     return complete
 

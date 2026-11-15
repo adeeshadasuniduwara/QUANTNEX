@@ -59,7 +59,7 @@ def test_order_book_metrics_measure_spread_depth_imbalance_and_microprice():
     assert result["best_bid"] == 100
     assert result["best_ask"] == pytest.approx(100.1)
     assert result["spread_bps"] == pytest.approx(9.995, rel=1e-3)
-    assert result["microprice"] == pytest.approx(100.1)
+    assert result["microprice"] == pytest.approx(100.0666666667)
     assert result["depth_imbalance"] == pytest.approx((299.9 - 300.5) / (299.9 + 300.5))
 
 

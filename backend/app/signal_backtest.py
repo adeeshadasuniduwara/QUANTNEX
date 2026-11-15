@@ -113,7 +113,8 @@ async def _simulate_slice(
             if eligible < 210:
                 enough_history = False
                 break
-            windows[tf] = rows[max(0, eligible - 320):eligible]
+            window_size = 3200 if tf == "1" and "50" in enabled else 320
+            windows[tf] = rows[max(0, eligible - window_size):eligible]
         if not enough_history:
             index += 1
             continue

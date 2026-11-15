@@ -39,7 +39,7 @@ def _normalise_auto_signal_settings(raw: str) -> dict[str, Any]:
         interval = defaults["interval_seconds"]
     symbols = value.get("symbols", defaults["symbols"])
     if not isinstance(symbols, (list, tuple)):
-        symbols = defaults["symbols"]
+        symbols = []
     allowed = {"BTCUSDT", "ETHUSDT", "SOLUSDT", "XAUUSD"}
     selected = list(dict.fromkeys(str(item).upper() for item in symbols if str(item).upper() in allowed))
     return {"enabled": value.get("enabled") is True,

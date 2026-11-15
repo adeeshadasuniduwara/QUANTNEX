@@ -1,0 +1,31 @@
+name: QUANTNEX Live Crypto Signal Smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 1 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  live-crypto-smoke:
+    name: Read-only public crypto signal scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      PYTHONPATH: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run live public crypto signal smoke test
+        run: python smoke_signal_engine.py --symbols BTCUSDT,ETHUSDT,SOLUSDT

@@ -33,10 +33,30 @@ SUPPORTED_AUTO_SYMBOLS = {"BTCUSDT", "ETHUSDT", "SOLUSDT"}
 LEVERAGED_BASE = re.compile(r".*(?:UP|DOWN|BULL|BEAR|[3-5]L|[3-5]S)$", re.I)
 
 
+def _integer_setting(value: Any, key: str, default: int, low: int, high: int,
+                     clamp: bool = False) -> int:
+    try:
+        raw = default if value is None else value
+        if isinstance(raw, bool):
+            raise ValueError()
+        number = float(raw)
+    except (TypeError, ValueError, OverflowError):
+        raise ValueError(f"{key} must be a finite whole number.") from None
+    if not math.isfinite(number) or not number.is_integer():
+        raise ValueError(f"{key} must be a finite whole number.")
+    if clamp:
+        number = max(float(low), min(float(high), number))
+    elif not low <= number <= high:
+        raise ValueError(f"{key} must be between {low} and {high}.")
+    return int(number)
+
+
 def normalize_settings(raw: dict | None) -> dict:
     value = {**DEFAULT_SETTINGS, **(raw or {})}
     value["enabled"] = value.get("enabled") is True
-    value["interval_seconds"] = int(max(60, min(3600, int(value.get("interval_seconds", 180)))))
+    value["interval_seconds"] = _integer_setting(
+        value.get("interval_seconds"), "interval_seconds", 180, 60, 3600, clamp=True
+    )
     symbols = list(dict.fromkeys(str(x).upper().strip() for x in value.get("symbols", [])))
     if not symbols or any(x not in SUPPORTED_AUTO_SYMBOLS for x in symbols):
         raise ValueError("Automatic paper mode currently supports BTCUSDT, ETHUSDT and SOLUSDT only. Forex/Gold require verified contract sizing first.")
@@ -51,12 +71,12 @@ def normalize_settings(raw: dict | None) -> dict:
         if not math.isfinite(number) or not low <= number <= high:
             raise ValueError(f"{key} must be between {low} and {high}.")
         value[key] = number
-    value["max_open_positions"] = int(value.get("max_open_positions", 3))
-    if not 1 <= value["max_open_positions"] <= 10:
-        raise ValueError("max_open_positions must be between 1 and 10.")
-    value["min_score"] = int(value.get("min_score", 8))
-    if not 8 <= value["min_score"] <= 10:
-        raise ValueError("min_score must be between 8 and 10 for automatic paper mode.")
+    value["max_open_positions"] = _integer_setting(
+        value.get("max_open_positions"), "max_open_positions", 3, 1, 10
+    )
+    value["min_score"] = _integer_setting(
+        value.get("min_score"), "min_score", 8, 8, 10
+    )
     return value
 
 

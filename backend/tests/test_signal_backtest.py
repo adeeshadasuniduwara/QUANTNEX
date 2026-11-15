@@ -216,8 +216,12 @@ def test_limit_order_can_fill_and_exit_using_one_minute_execution_data(monkeypat
     touch_index = (signal_open_epoch - int(datetime.fromisoformat(minute[0]["time"]).timestamp())) // 60 + 10
     minute[touch_index]["low"] = 98.9
     minute[touch_index + 1]["high"] = 101.2
+    calls = {"count": 0}
 
     async def fake_build_signal(settings, symbol, *, candles_override, execution_context_override, replay_as_of):
+        calls["count"] += 1
+        if calls["count"] > 1:
+            return {"status": "WAIT", "signal": None}
         return {
             "status": "SIGNAL",
             "signal": {

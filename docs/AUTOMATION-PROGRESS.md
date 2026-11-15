@@ -331,7 +331,7 @@ The current signal pipeline used a static `CRYPTO_SYMBOLS` allowlist (20 symbols
 
 ### Changes in branch `feat/dynamic-binance-spot-universe`
 
-- Added cached, one-hour Binance Spot `exchangeInfo` discovery with filtering for `TRADING` status and Spot permission.
+- Added cached, five-minute Binance Spot `exchangeInfo` discovery with filtering for `TRADING` status and Spot permission.
 - Kept the legacy symbol set as a compatibility fast-path while allowing additional pairs after live exchange metadata validation.
 - Updated signal and candle fetching to accept dynamically discovered Spot pairs.
 - Added `GET /api/v1/signals/markets` to expose the current Binance Spot universe for a market selector.

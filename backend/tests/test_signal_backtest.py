@@ -138,3 +138,15 @@ def test_signal_walk_forward_rejects_invalid_assumptions():
         asyncio.run(signal_backtest.run_signal_walk_forward(
             "BTCUSDT", candles_by_tf, info, assumed_spread_bps=200
         ))
+
+
+def test_historical_limit_and_exit_fills_handle_gaps_conservatively():
+    from app.signal_backtest import _limit_fill_price, _stop_fill_price, _target_fill_price
+
+    assert _limit_fill_price("BUY", 100.0, {"open": 99.0, "low": 98.0, "high": 99.5}) == 99.0
+    assert _limit_fill_price("BUY", 100.0, {"open": 101.0, "low": 99.5, "high": 102.0}) == 100.0
+    assert _limit_fill_price("SELL", 100.0, {"open": 101.0, "low": 100.5, "high": 102.0}) == 101.0
+    assert _limit_fill_price("SELL", 100.0, {"open": 99.0, "low": 98.0, "high": 100.5}) == 100.0
+    assert _limit_fill_price("BUY", 100.0, {"open": 101.0, "low": 100.5, "high": 102.0}) is None
+    assert _stop_fill_price("BUY", 99.0, {"open": 98.0}) == 98.0
+    assert _target_fill_price("BUY", 101.0, {"open": 102.0}) == 102.0

@@ -794,6 +794,8 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
         entry = round(float(entry_choice["entry_price"]), price_precision)
         swing = st["swing_low"] if side == "BUY" else st["swing_high"]
         risk = max(p["atr"] * 1.5, abs(entry - swing), p["atr"] * 0.8)
+        if symbol != "XAUUSD":
+            risk = max(risk, float(Decimal(tick_size)) * 2)
         sign = 1 if side == "BUY" else -1
         if symbol == "XAUUSD":
             sl = round(entry - sign * risk, price_precision)

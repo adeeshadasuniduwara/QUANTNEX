@@ -22,9 +22,9 @@ def _candles(count: int, minutes: int, *, start_epoch: int = 1_700_000_000, pric
 def test_aggregate_minutes_omits_incomplete_and_duplicate_buckets():
     from app.signal_engine import aggregate_minutes
 
-    rows = _candles(11, 1)
+    rows = _candles(11, 1, start_epoch=1_700_000_100)
     rows.insert(3, dict(rows[2]))  # duplicate minute must not complete a bucket
-    aggregated = aggregate_minutes(rows, 5)
+    aggregated = aggregate_minutes(rows, 5, require_complete=True)
 
     assert len(aggregated) == 2
     assert aggregated[0]["volume"] == 50.0

@@ -658,6 +658,79 @@ def update_signal_settings(payload: SignalSettingsRequest, user: User = Depends(
     event_hub.publish("preferences.changed", "signals", "settings_updated", {"key": "signal_settings"})
     return settings
 
+@app.post("/api/v1/signals/backtest")
+async def signal_engine_backtest(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .signal_engine import (
+        MarketDataError, aggregate_minutes, fetch_binance_historical_candles,
+        get_binance_spot_symbol_info, is_binance_spot_symbol,
+    )
+    from .signal_backtest import run_signal_walk_forward
+    symbol = str(payload.get("symbol") or "BTCUSDT").strip().upper()
+    try:
+        if not await is_binance_spot_symbol(symbol):
+            raise HTTPException(status_code=422, detail="Choose a currently tradable Binance Spot pair.")
+        days = int(payload.get("days", 30))
+        if not 14 <= days <= 30:
+            raise ValueError("Signal backtest supports 14 to 30 days of historical data.")
+        try:
+            settings = payload.get("settings") or json.loads(
+                _preference(db, user.id, "signal_settings", json.dumps(DEFAULT_SIGNAL_SETTINGS))
+            )
+        except (ValueError, TypeError):
+            settings = DEFAULT_SIGNAL_SETTINGS
+        if not isinstance(settings, dict):
+            raise ValueError("Signal settings must be an object.")
+        settings = {
+            **settings,
+            "primary": str(settings.get("primary", "5")),
+            "trend": str(settings.get("trend", "60")),
+            "enabled": [str(item) for item in settings.get("enabled", ["60", "30", "15", "5", "1"])],
+            "min_score": int(settings.get("min_score", 7)),
+            "estimated_taker_fee_bps_per_side": float(payload.get("taker_fee_bps_per_side", 10.0)),
+            "estimated_maker_fee_bps_per_side": float(payload.get("maker_fee_bps_per_side", 8.0)),
+            "estimated_slippage_bps_per_side": float(payload.get("slippage_bps_per_side", 2.5)),
+        }
+        if settings["primary"] not in {"5", "15"} or settings["trend"] != "60":
+            raise ValueError("Signal replay currently supports 5m/15m entry timeframes with a 1h trend timeframe.")
+        allowed_timeframes = {"1", "5", "15", "30", "50", "60"}
+        if not settings["enabled"] or any(tf not in allowed_timeframes for tf in settings["enabled"]):
+            raise ValueError("Enabled replay timeframes must be selected from 1m, 5m, 15m, 30m, M50 and 1h.")
+        if not 6 <= settings["min_score"] <= 10:
+            raise ValueError("Minimum signal confluence must be between 6 and 10.")
+        history = await fetch_binance_historical_candles(symbol, "1m", days, max_candles=days * 1440)
+        candles_by_tf = {"1": history}
+        for timeframe in (5, 15, 30, 50, 60):
+            candles_by_tf[str(timeframe)] = aggregate_minutes(history, timeframe)
+        symbol_info = await get_binance_spot_symbol_info(symbol)
+        result = await run_signal_walk_forward(
+            symbol, candles_by_tf, symbol_info, settings,
+            train_ratio=float(payload.get("train_ratio", 0.7)),
+            assumed_spread_bps=float(payload.get("assumed_spread_bps", 5.0)),
+            assumed_depth_usd=float(payload.get("assumed_depth_usd", 10000.0)),
+        )
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except MarketDataError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="Historical Binance market data is temporarily unavailable.") from exc
+    db.add(StrategyLabRun(
+        user_id=user.id, run_type="SIGNAL_WALK_FORWARD", symbol=symbol,
+        timeframe=settings["primary"] + "m", strategy_json=json.dumps(settings),
+        result_json=json.dumps(result),
+    ))
+    record_audit_event(db, "signals.walk_forward_backtest", {
+        "symbol": symbol, "days": days,
+        "training_trades": result["training"]["trade_count"],
+        "out_of_sample_trades": result["out_of_sample"]["trade_count"],
+    })
+    db.commit()
+    event_hub.publish("strategy.research.changed", "strategy", "signal_walk_forward_saved", {"symbol": symbol})
+    return result
+
+
 @app.post("/api/v1/signals/scan")
 async def scan_market_signal(symbol: str = "BTCUSDT", user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     from .signal_engine import build_signal, MarketDataError, is_binance_spot_symbol, gold_feed_configured

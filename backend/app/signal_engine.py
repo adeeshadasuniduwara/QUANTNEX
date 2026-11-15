@@ -242,7 +242,11 @@ def select_binance_entry(
     """Choose a marketable entry or a technically justified resting limit."""
     settings = settings or {}
     spread = float(execution["spread_bps"])
-    depth = float(execution.get("ask_depth_usd", 0.0) if side == "BUY" else execution.get("bid_depth_usd", 0.0))
+    depth = float(
+        execution.get("ask_depth_usd", execution.get("ask_depth_quote", 0.0))
+        if side == "BUY" else
+        execution.get("bid_depth_usd", execution.get("bid_depth_quote", 0.0))
+    )
     bid = float(execution["best_bid"])
     ask = float(execution["best_ask"])
     mid = float(execution["mid_price"])

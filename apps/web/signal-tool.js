@@ -66,10 +66,38 @@
     } catch(e){$("timeframeStatus").textContent="Local settings saved; API sync failed: "+e.message;}
     return s;
   }
+  async function loadSignalMarkets() {
+    try {
+      const data = await apiRequest("/api/v1/signals/markets");
+      const symbols = Array.isArray(data.symbols) ? data.symbols : [];
+      ["signalMarketOptions", "autoSignalSymbolOptions"].forEach(id => {
+        const list = $(id);
+        if (!list) return;
+        list.replaceChildren();
+        symbols.forEach(symbol => {
+          const option = document.createElement("option");
+          option.value = symbol;
+          list.append(option);
+        });
+        const gold = document.createElement("option");
+        gold.value = "XAUUSD";
+        list.append(gold);
+      });
+    } catch (error) {
+      const status = $("timeframeStatus");
+      if (status && !status.textContent) status.textContent = "Binance pair list could not refresh: " + error.message;
+    }
+  }
+
   function applyChartTimeframe() {
     const settings=readSettings(),market=$("signalMarketSymbol")?.value||"BTCUSDT";
     const symbol=$("qxSymbol"),timeframe=$("qxInterval");
-    if(symbol){symbol.value=market;symbol.dispatchEvent(new Event("change"));}
+    if(symbol){
+      if(market && ![...symbol.options].some(option=>option.value===market)){
+        const option=document.createElement("option");option.value=market;option.textContent=market;symbol.add(option);
+      }
+      symbol.value=market;symbol.dispatchEvent(new Event("change"));
+    }
     if(timeframe){
       timeframe.value=settings.chart==="50"?"15m":({"1":"1m","5":"5m","15":"15m","30":"30m","60":"1h"}[settings.chart]||"15m");
       timeframe.dispatchEvent(new Event("change"));
@@ -226,7 +254,7 @@
       else {$("telegramStatus").textContent="No Telegram bot connected yet. Create one with @BotFather and connect it here.";$("telegramMonitorTitle").textContent="Telegram bot not connected";$("telegramMonitorDescription").textContent="Open Signal Lab to connect your BotFather bot. Manual crypto signals and enabled Auto Signals are delivered while the local QUANTNEX API is active.";$("telegramMonitorPill").textContent="OFFLINE";}
       $("autoSignalsEnabled").checked=!!settings.enabled;
       $("autoSignalInterval").value=String(settings.interval_seconds||180);
-      document.querySelectorAll("input[name=autoSignalSymbol]").forEach(el=>{el.checked=(settings.symbols||["BTCUSDT","ETHUSDT","SOLUSDT"]).includes(el.value);});
+      $("autoSignalSymbolsInput").value=(settings.symbols||["BTCUSDT","ETHUSDT","SOLUSDT"]).join(", ");
       $("autoSignalStatus").textContent=settings.enabled?"Auto Signals ON · selected markets scan while the QUANTNEX API is running.":"Auto Signals OFF.";
       $("tgDailyReportEnabled").checked=!!reports.enabled;
       $("tgDailyReportStatus").textContent=reports.enabled?"Daily PDF ON · 20:00 Asia/Colombo · Paper ledger only.":"Daily PDF OFF.";
@@ -236,8 +264,8 @@
   $("saveAutoSignals")?.addEventListener("click",async()=>{
     const enabled=$("autoSignalsEnabled").checked;
     const interval_seconds=Number($("autoSignalInterval").value||180);
-    const symbols=[...document.querySelectorAll('input[name="autoSignalSymbol"]:checked')].map(el=>el.value);
-    if(!symbols.length){$("autoSignalStatus").textContent="Select at least one market.";return;}
+    const symbols=[...new Set(($("autoSignalSymbolsInput").value||"").split(",").map(value=>value.trim().toUpperCase()).filter(Boolean))].slice(0,50);
+    if(!symbols.length){$("autoSignalStatus").textContent="Enter at least one Binance pair, for example BTCUSDT.";return;}
     const button=$("saveAutoSignals");button.disabled=true;button.textContent="Saving…";
     try{
       const result=await apiRequest("/api/v1/telegram/auto-signals",{method:"PUT",body:JSON.stringify({enabled,interval_seconds,symbols})});
@@ -256,6 +284,7 @@
     }catch(error){$("tgDailyReportEnabled").checked=false;$("tgDailyReportStatus").textContent=error.message;}
     finally{button.disabled=false;button.textContent="Save daily report setting";}
   });
+    loadSignalMarkets();
     loadAutoSignalSettings();
 })();
  

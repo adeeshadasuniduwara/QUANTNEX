@@ -669,9 +669,6 @@ async def signal_engine_backtest(payload: dict, user: User = Depends(local_works
     try:
         if not await is_binance_spot_symbol(symbol):
             raise HTTPException(status_code=422, detail="Choose a currently tradable Binance Spot pair.")
-        days = int(payload.get("days", 30))
-        if not 14 <= days <= 30:
-            raise ValueError("Signal backtest supports 14 to 30 days of historical data.")
         try:
             settings = payload.get("settings") or json.loads(
                 _preference(db, user.id, "signal_settings", json.dumps(DEFAULT_SIGNAL_SETTINGS))
@@ -690,8 +687,13 @@ async def signal_engine_backtest(payload: dict, user: User = Depends(local_works
             "estimated_maker_fee_bps_per_side": float(payload.get("maker_fee_bps_per_side", 8.0)),
             "estimated_slippage_bps_per_side": float(payload.get("slippage_bps_per_side", 2.5)),
         }
-        if settings["primary"] not in {"5", "15"} or settings["trend"] != "60":
-            raise ValueError("Signal replay currently supports 5m/15m entry timeframes with a 1h trend timeframe.")
+        if settings["primary"] not in {"1", "5", "15", "30", "50", "60"} or settings["trend"] not in {"15", "30", "60"}:
+            raise ValueError("Signal replay supports 1m/5m/15m/30m/M50/1h entry timeframes with 15m/30m/1h trend timeframes.")
+        days = int(payload.get("days", 14 if settings["primary"] == "1" else 30))
+        minimum_days = 21 if settings["primary"] == "60" else 18 if settings["primary"] == "50" else 14
+        maximum_days = 14 if settings["primary"] == "1" else 30
+        if not minimum_days <= days <= maximum_days:
+            raise ValueError(f"Selected timeframe requires between {minimum_days} and {maximum_days} days of historical data.")
         allowed_timeframes = {"1", "5", "15", "30", "50", "60"}
         if not settings["enabled"] or any(tf not in allowed_timeframes for tf in settings["enabled"]):
             raise ValueError("Enabled replay timeframes must be selected from 1m, 5m, 15m, 30m, M50 and 1h.")

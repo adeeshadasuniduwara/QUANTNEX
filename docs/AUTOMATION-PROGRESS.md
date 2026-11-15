@@ -407,6 +407,7 @@ A signal is not considered good merely because the engine emits it. Validate the
 
 - Added a bounded, paginated Binance Spot historical kline fetcher (1m base data, 1–30 day bounds, closed candles only).
 - Improved minute aggregation to discard incomplete/duplicate buckets before constructing 5m/15m/30m/M50/1h candles.
+- Added historical minute-gap checks; reject replay ranges with excessive missing bars rather than silently interpolating or inventing candles.
 - Added deterministic historical candle and execution-context overrides to the same `build_signal` engine used by live scans; replay timestamps and signal expiry are anchored to the historical replay time.
 - Added a chronological walk-forward runner that uses only candles closed by the next primary bar open, splits usable history into training and unseen holdout slices, and simulates MARKET fills, 15-minute LIMIT expiry/fills, SL/TP1 exits, and conservative stop-first same-candle ambiguity.
 - Includes spread/depth/fee/slippage assumptions, net PnL, win rate, profit factor, expectancy in R, max drawdown, expired limit counts and a buy-and-hold reference.

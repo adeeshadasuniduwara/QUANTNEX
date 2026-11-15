@@ -70,6 +70,16 @@
     try {
       const data = await apiRequest("/api/v1/signals/markets");
       const symbols = Array.isArray(data.symbols) ? data.symbols : [];
+      const chartSymbol = $("qxSymbol");
+      if (chartSymbol) {
+        symbols.forEach(symbol => {
+          if ([...chartSymbol.options].some(option => option.value === symbol)) return;
+          const option = document.createElement("option");
+          option.value = symbol;
+          option.textContent = symbol;
+          chartSymbol.add(option);
+        });
+      }
       ["signalMarketOptions", "autoSignalSymbolOptions"].forEach(id => {
         const list = $(id);
         if (!list) return;

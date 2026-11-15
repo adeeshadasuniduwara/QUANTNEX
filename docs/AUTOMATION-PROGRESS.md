@@ -251,12 +251,40 @@ The candle provider function already returned the provider actually used, includ
 
 ### Verification
 
-- Changes and tests are on the feature branch.
-- GitHub Actions checks are pending; merge only after all relevant backend checks pass.
-- The live smoke script can be syntax-checked in CI, but actual provider connectivity and MT5 terminal availability must be checked on the user's local Windows machine.
+- Implementation and tests were reviewed in PR [#159](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/159) and merged to `main` as commit `43a83c2ce965c9e7d4d93cc1fe8a32ce226f23ae`.
+- PR CI and post-merge CI passed on Python 3.12 and 3.14, plus schema and web checks.
+- Twelve Data tests cover direct provider use and fallback after an MT5 disconnect.
+- The read-only local smoke script and PowerShell instructions are now in the repository.
+- The optional Telegram `announce` workflow failed because the repository's `TELEGRAM_CHAT_ID` secret resolves to the bot itself; code and test checks passed.
+- The actual Windows/MT5 smoke test has not been run here; it requires the user's local terminal and configured symbol.
 
 ### Next steps
 
-1. Review CI and the new Twelve Data fallback tests.
-2. Merge only after tests pass and verify post-merge CI.
-3. Continue audit of provider outages, API rate limits and market-closure behavior.
+1. Phase 10: audit Twelve Data rate limits and concurrent XAUUSD scans, then improve cache reuse/single-flight behavior without serving stale candles.
+2. Add deterministic tests for concurrent scans and cache expiry/freshness.
+3. Continue local feed verification using the new smoke script when the Windows runtime is available.
+
+
+## 2026-11-16 — Phase 10: market-data cache and rate-limit resilience (in progress)
+
+### Finding
+
+The Twelve Data Gold candle cache currently has a 15-second TTL. Each signal scan can request five timeframes concurrently. Multiple users/scans arriving together can miss the cache simultaneously and issue duplicate requests for the same symbol/timeframe, increasing the chance of provider rate limits. Any cache extension must remain within the signal engine's timeframe-aware candle freshness limits.
+
+### Next implementation
+
+- Add per-event-loop single-flight locking for identical Twelve Data candle requests.
+- Recheck the cache after acquiring the lock so concurrent scans share one provider request.
+- Choose a bounded cache TTL that cannot cause M1 candles to pass the freshness gate when stale.
+- Add tests for concurrent same-key requests, cache hits, expiry and stale-candle rejection.
+
+### Verification boundary
+
+- Tests use a fake Twelve Data transport; they do not consume API quota or require secrets.
+- Live provider quota behavior and local MT5 availability still require the real environment.
+
+### Next steps
+
+1. Implement and test the cache/single-flight behavior.
+2. Merge only after backend CI passes and post-merge checks pass.
+3. Continue auditing provider outages, rate limits and market-closure handling.

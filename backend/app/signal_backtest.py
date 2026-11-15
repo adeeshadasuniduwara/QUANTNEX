@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import math
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from datetime import datetime, timezone
 from typing import Any
 

@@ -1,6 +1,7 @@
-"""XAUUSD multi-timeframe confluence engine using a configured Twelve Data feed.
+"""Multi-timeframe confluence engine for Binance Spot pairs and XAUUSD.
 
 Scores are rule-based confluence counts, never estimated win probabilities.
+Binance signals require fresh order-book data and a validated MARKET/LIMIT entry.
 """
 from __future__ import annotations
 import asyncio

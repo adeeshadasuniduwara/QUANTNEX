@@ -114,3 +114,13 @@ assert.match(app, /apiRequest\("\/api\/v1\/journal\/"\+existing\.id,\{method:"PU
 assert.match(app, /journalRowsCache=journalRowsCache\.map\(row=>journalRowKey\(row\)===key\?updated:row\)/, "An edited journal row must replace only its matching cached record.");
 assert.match(app, /if\(error\.status\)\{setJournalStatus\("Trade could not be saved:/, "API validation errors must not be misclassified as offline queued trades.");
 console.log("Web journal create/edit/delete UI wiring checks passed.");
+
+assert.ok(app.includes("function money(value)"), "The shared USD formatter must exist before journal and wallet rendering.");
+assert.ok(app.includes("function renderWalletTransactions(transactions)"), "Wallet history must have a concrete renderer.");
+assert.ok(app.includes('const body=$("walletRows")'), "Wallet history must target the visible transaction table.");
+assert.ok(app.includes("transaction.transaction_type"), "Wallet history must label deposit, withdrawal and journal P&L rows.");
+assert.ok(app.includes("cell.textContent=value"), "Wallet history must render data through textContent rather than HTML.");
+assert.ok(app.includes("walletWriteInFlight"), "Wallet writes must ignore duplicate clicks while a request is pending.");
+assert.ok(app.includes("wallet display could not refresh"), "A saved transaction must not be misreported as an unsaved write when refresh fails.");
+assert.ok(app.includes("wallet/transactions?limit=500"), "Wallet UI must request the latest supported transaction-history page.");
+console.log("Wallet UI checks passed: shared formatter, safe history rendering, duplicate-submit guard and explicit refresh errors.");

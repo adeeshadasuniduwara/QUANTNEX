@@ -257,8 +257,8 @@ def select_binance_entry(
 
     market_spread_cap = float(settings.get("max_market_spread_bps", 10.0))
     limit_spread_cap = float(settings.get("max_limit_spread_bps", 25.0))
-    market_depth_floor = float(settings.get("min_market_depth_quote", 5000.0))
-    limit_depth_floor = float(settings.get("min_limit_depth_quote", 1000.0))
+    market_depth_floor = float(settings.get("min_market_depth_usd", settings.get("min_market_depth_quote", 5000.0)))
+    limit_depth_floor = float(settings.get("min_limit_depth_usd", settings.get("min_limit_depth_quote", 1000.0)))
     market_drift_cap = float(settings.get("max_market_entry_deviation_atr", 0.20))
     limit_distance_cap = float(settings.get("max_limit_entry_distance_atr", 0.75))
     market_price = ask if side == "BUY" else bid
@@ -857,8 +857,10 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
             minimum_reward_cost_ratio = float(settings.get("min_reward_to_cost_ratio", 1.25))
             execution_quality = {
                 "spread_bps": round(spread_bps, 3),
-                "bid_depth_quote": round(float(execution["bid_depth_quote"]), 2),
-                "ask_depth_quote": round(float(execution["ask_depth_quote"]), 2),
+                "quote_asset": execution.get("quote_asset"),
+                "quote_asset_usd_rate": execution.get("quote_asset_usd_rate"),
+                "bid_depth_usd": round(float(execution.get("bid_depth_usd", execution["bid_depth_quote"])), 2),
+                "ask_depth_usd": round(float(execution.get("ask_depth_usd", execution["ask_depth_quote"])), 2),
                 "estimated_round_trip_cost_bps": round(estimated_round_trip_cost_bps, 3),
                 "estimated_fee_bps_per_side": fee_bps,
                 "estimated_slippage_bps_per_side": slippage_bps,

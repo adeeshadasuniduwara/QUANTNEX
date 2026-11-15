@@ -168,7 +168,10 @@ async def get_binance_spot_execution_context(symbol: str) -> dict[str, Any]:
                         conversion = conversion_response.json()
                         conversion_bid = float(conversion["bidPrice"])
                         conversion_ask = float(conversion["askPrice"])
-                        if conversion_bid > 0 and conversion_ask >= conversion_bid:
+                        if (
+                            math.isfinite(conversion_bid) and math.isfinite(conversion_ask)
+                            and conversion_bid > 0 and conversion_ask >= conversion_bid
+                        ):
                             quote_asset_usd_rate = (conversion_bid + conversion_ask) / 2
                             quote_asset_usd_rate_source = conversion_symbol
                     except (httpx.HTTPError, ValueError, TypeError, KeyError):

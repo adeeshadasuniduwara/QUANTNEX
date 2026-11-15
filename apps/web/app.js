@@ -969,14 +969,15 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
         const tr=node("tr");
         [new Date(item.created_at).toLocaleString(),item.symbol,item.side,fmt(item.quantity,6),
          fmt(item.entry_price,priceDigits(item.symbol)),fmt(item.stop_loss,priceDigits(item.symbol)),
-         fmt(item.take_profit,priceDigits(item.symbol)),item.status].forEach(v=>addCell(tr,String(v)));
+         fmt(item.take_profit,priceDigits(item.symbol)),fmt(item.exit_price,priceDigits(item.symbol)),
+         item.realized_pnl==null?"—":money(item.realized_pnl),item.status].forEach(v=>addCell(tr,String(v)));
         const action=node("td");
         if(item.status==="OPEN"){
           const button=node("button","Close","p7-action-btn");
           button.addEventListener("click",async()=>{
             button.disabled=true;
             try{await apiRequest("/api/v1/paper-trading/trades/"+item.id+"/close",{method:"POST"});setMessage("p7PaperStatus","Paper position closed using a fresh provider quote.");await refreshAnalytics();}
-            catch(error){setMessage("p7PaperStatus",error.message,true);button.disabled=false;}
+            catch(error){setMessage("p7PaperStatus",error.message,true);button.disabled=false;await loadPaper();}
           });
           action.append(button);
         }else addCell(tr,"");

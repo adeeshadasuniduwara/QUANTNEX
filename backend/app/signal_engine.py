@@ -852,6 +852,8 @@ async def build_signal(
                     errors.append(f"{tf}m: {str(exc)}")
     else:
         for tf in needed:
+            if tf == "50" and "1" in candles_override:
+                continue
             rows = candles_override.get(tf)
             if not isinstance(rows, list):
                 errors.append(f"{tf}m: historical replay candles are missing.")

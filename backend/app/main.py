@@ -691,6 +691,7 @@ async def scan_market_signal(symbol: str = "BTCUSDT", user: User = Depends(local
                 message=("QUANTNEX · "+market_symbol+" "+signal["side"]+" SIGNAL\nMarket data: "+str(result.get("provider","Unknown"))+
                     "\nEntry type: "+str(signal.get("entry_type","REFERENCE"))+"\nEntry: "+str(signal["entry"])+
                     ("\nLimit price: "+str(signal["limit_price"]) if signal.get("entry_type")=="LIMIT" else "")+
+                    ("\nEntry expires: "+str(signal["entry_expires_at"]) if signal.get("entry_expires_at") else "")+
                     "\nEntry logic: "+str(signal.get("entry_selection_reason",""))+
                     ("\nSpread: "+str(signal["execution_quality"]["spread_bps"])+" bps · estimated round-trip cost: "+str(signal["execution_quality"]["estimated_round_trip_cost_bps"])+" bps" if signal.get("execution_quality") else "")+
                     "\nSL: "+str(signal["stop_loss"])+

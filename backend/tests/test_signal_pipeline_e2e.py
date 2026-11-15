@@ -66,6 +66,7 @@ def _synthetic_setup(direction: str, interval: str, now: datetime):
     [
         ("BUY", "BUY", "BTCUSDT", "Binance Spot"),
         ("SELL", "SELL", "BTCUSDT", "Coinbase Exchange fallback"),
+        ("BUY", "BUY", "1000PEPEUSDT", "Binance Spot"),
         ("BUY", "BUY", "XAUUSD", "MetaTrader 5 local terminal"),
         ("SELL", "SELL", "XAUUSD", "Twelve Data"),
     ],
@@ -85,6 +86,10 @@ def test_real_signal_pipeline_generates_and_delivers_synthetic_setup(monkeypatch
             "min_notional": "5", "observed_at": now.isoformat(), "provider": "Binance Spot",
         }
 
+    async def fake_valid_symbol(symbol):
+        return symbol in {"BTCUSDT", "1000PEPEUSDT"}
+
+    monkeypatch.setattr(signal_engine, "is_binance_spot_symbol", fake_valid_symbol)
     monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
     monkeypatch.setattr(signal_engine, "get_binance_spot_execution_context", fake_execution)
     settings = {
@@ -103,7 +108,7 @@ def test_real_signal_pipeline_generates_and_delivers_synthetic_setup(monkeypatch
     assert candidate["score"] >= 8
     assert candidate["signal_candle_time"]
     assert all(result["quality_filters"].values())
-    if symbol == "BTCUSDT":
+    if symbol != "XAUUSD":
         assert candidate["entry_type"] == "MARKET"
         assert candidate["market_type"] == "BINANCE_SPOT"
         assert candidate["execution_quality"]["accepted"] is True

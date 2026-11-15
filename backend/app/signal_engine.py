@@ -801,6 +801,7 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
     entry_rejection_reason = None
     entry_choice = None
     execution = None
+    execution_quality = None
     tick_size = "0.01" if symbol == "XAUUSD" else "0.00000001"
     if side and symbol == "XAUUSD":
         entry_choice = {
@@ -818,6 +819,15 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
                 "No safe MARKET entry or technically justified LIMIT retracement met the spread, "
                 "liquidity and price-distance rules."
             )
+            execution_quality = {
+                "spread_bps": round(float(execution["spread_bps"]), 3),
+                "bid_depth_usd": round(float(execution.get("bid_depth_usd", 0.0)), 2),
+                "ask_depth_usd": round(float(execution.get("ask_depth_usd", 0.0)), 2),
+                "quote_asset": execution.get("quote_asset"),
+                "quote_asset_usd_rate": execution.get("quote_asset_usd_rate"),
+                "accepted": False,
+                "rejection_reason": entry_rejection_reason,
+            }
         else:
             tick_size = str(execution["tick_size"])
             price_precision = max(0, -Decimal(tick_size).normalize().as_tuple().exponent)
@@ -932,7 +942,8 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
         "WAIT — confluence threshold or directional quality filters not met."
     )
     return {"symbol":symbol,"provider":provider_label,"generated_at":generated_at,
-            "signal":signal,"confluence_score":score,"score_out_of":10,"score_note":"Rule-based confluence count, not a measured win probability.",
+            "signal":signal,"execution_quality":execution_quality,
+            "confluence_score":score,"score_out_of":10,"score_note":"Rule-based confluence count, not a measured win probability.",
             "timeframes":{tf:{"bias":v["bias"],"close":round(v["close"],price_precision),"ema20":round(v["ema20"],price_precision),
                 "ema50":round(v["ema50"],price_precision),"ema200":round(v["ema200"],price_precision) if v["ema200"] is not None else None,"macd_histogram":round(v["macd_histogram"],price_precision),
                 "rsi":round(v["rsi"],1),"adx":round(v["adx"],1),"atr":round(v["atr"],price_precision),

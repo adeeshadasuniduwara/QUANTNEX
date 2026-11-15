@@ -390,9 +390,9 @@ def test_build_signal_rejects_stale_provider_candles(monkeypatch):
 
     stale_rows = candles(320)
     async def stale_provider(_interval, _outputsize, _symbol):
-        return stale_rows
+        return stale_rows, "Binance Spot"
 
-    monkeypatch.setattr(signal_engine, "fetch_candles", stale_provider)
+    monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", stale_provider)
     settings = {"primary": "5", "trend": "60", "enabled": ["5", "60"], "min_score": 7}
     with pytest.raises(signal_engine.MarketDataError, match="stale"):
         asyncio.run(signal_engine.build_signal(settings, "BTCUSDT"))
@@ -415,7 +415,7 @@ def test_low_price_crypto_signal_levels_keep_required_precision(monkeypatch):
         return rows
 
     async def fake_fetch(interval, _outputsize, _symbol):
-        return fresh_rows(interval)
+        return fresh_rows(interval), "Binance Spot"
 
     structure = {
         "bos_mss": "BULLISH", "liquidity_sweep": "BULLISH",
@@ -429,7 +429,7 @@ def test_low_price_crypto_signal_levels_keep_required_precision(monkeypatch):
                 "ema50": 0.0000121, "ema200": 0.0000120, "macd_histogram": 0.0000001,
                 "rsi": 55.0, "adx": 25.0, "atr": 0.000001, "structure": structure}
 
-    monkeypatch.setattr(signal_engine, "fetch_candles", fake_fetch)
+    monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
     monkeypatch.setattr(signal_engine, "inspect_tf", bullish_analysis)
     settings = {"primary": "5", "trend": "60", "enabled": ["5", "60"], "min_score": 6}
     result = asyncio.run(signal_engine.build_signal(settings, "PEPEUSDT"))

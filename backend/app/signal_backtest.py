@@ -8,7 +8,7 @@ from typing import Any
 
 from .signal_engine import MarketDataError, build_signal
 
-TIMEFRAME_MINUTES = {"1": 1, "5": 5, "15": 15, "30": 30, "60": 60, "240": 240}
+TIMEFRAME_MINUTES = {"1": 1, "5": 5, "15": 15, "30": 30, "50": 50, "60": 60, "240": 240}
 
 
 def _epoch(value: str) -> float:
@@ -259,6 +259,12 @@ async def run_signal_walk_forward(
         [str(item) for item in settings.get("enabled", ["60", "30", "15", "5", "1"])]
         + [primary_tf, str(settings.get("trend", "60"))]
     ))
+    unsupported = [tf for tf in enabled if tf not in TIMEFRAME_MINUTES]
+    if unsupported:
+        raise ValueError("Unsupported replay timeframe(s): " + ", ".join(unsupported))
+    missing = [tf for tf in enabled if tf not in candles_by_tf]
+    if missing:
+        raise ValueError("Missing historical timeframe data: " + ", ".join(missing))
     timestamps = {
         tf: [_epoch(row["time"]) for row in rows]
         for tf, rows in candles_by_tf.items() if tf in TIMEFRAME_MINUTES

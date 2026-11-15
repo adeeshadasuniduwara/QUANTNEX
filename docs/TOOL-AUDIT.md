@@ -1,6 +1,6 @@
 # QUANTNEX Full Tool Audit
 
-**Audit refreshed:** 2026-11-15  
+**Audit refreshed:** 2026-11-16  
 **Product scope:** Android APK + Web workspace + supporting local Backend.  
 **Method:** Trace each user-facing Web/Android tool through UI, API/service/provider and persistence. Static inventory is not proof that an external provider is reachable from a user's device.
 
@@ -19,7 +19,7 @@
 | QUANTNEX VIEW | First-party chart UI; Binance candles and Coinbase fallback for supported crypto; Gold history via configured MT5 or Twelve Data | Implemented; provider-dependent | Test all symbol/timeframe combinations, stale/empty/error states and overlays on device |
 | Web journal CRUD | Browser recovery cache plus local SQLite GET/POST/PUT/DELETE API; offline creates import idempotently; edits reconcile an existing linked wallet P&L row | **PARTIAL** — backend API lifecycle and UI wiring regression tests; physical browser/restart path not yet exercised | Verify real browser add/edit/delete, offline recovery, reload/restart and multi-tab behavior |
 | Journal CSV export | Spreadsheet-safe CSV serializer and download action | **PARTIAL** — formula-injection, quoting, newline and numeric-P&L unit tests pass; actual spreadsheet interoperability is unverified | Open a downloaded CSV in supported spreadsheet apps on a user device |
-| Wallet ledger | Backend deposit/withdrawal/summary APIs and Web UI | Local record ledger only; not a bank/payment integration | Test amount boundaries, NaN/Infinity/over-limit inputs, reload and journal P&L linkage |
+| Wallet ledger | Local Web form, shared USD formatter, safe transaction-history renderer, summary/history/POST APIs, SQLite ledger and journal-linked P&L | **PARTIAL** — API boundary/history tests, atomic concurrent-withdrawal test and file-backed database-engine restart test; Web renderer/action contracts covered in CI | Real browser deposit/withdraw, history rendering, reload and full backend process restart on the user's Windows host; this is not a bank/payment rail |
 | Signal Lab / Signal Center | Signal settings and scan APIs; rule-based confluence score | Implemented; not a win probability | Exercise valid/invalid scans, settings persistence and unavailable market feeds |
 | Market Intelligence / Order Flow / News | Market, order-book, signal and news APIs | Partial/provider-dependent | Gold depth needs local MT5 + broker DOM; Forex depth needs a configured provider; Finnhub news needs a valid key |
 | Paper Trading / Autopilot | Paper-trade CRUD, close, summary, risk gates and worker lifecycle | Implemented in paper mode | Verify open/close, realized/floating P&L, risk limits, restart persistence and worker stop/start |
@@ -71,6 +71,16 @@ These CI results establish that the tested code passed in GitHub's runner. They 
 - Delete continues to remove an existing linked P&L transaction; the create/update/delete test checks the balance returns to its starting value. Invalid non-finite P&L is rejected without mutating either record.
 - Web contract tests cover date/edit/cancel controls, PUT wiring, matching-row cache replacement, startup/offline recovery wiring and distinction between HTTP validation errors and offline queuing.
 - Evidence level: backend TestClient exercises API create/list/update/delete, timestamp normalization, wallet linkage, legacy no-wallet behavior and invalid-input rollback. Web CI exercises syntax and static UI/API contract tests. A real browser download, browser storage failure, browser restart, Excel/LibreOffice opening and user's device persistence remain **PARTIAL / device-level verification required**.
+
+## Update 021 — Wallet ledger lifecycle and UI recovery
+
+- Fixed two missing Web functions in the main app bundle: the shared USD formatter used by journal metrics and the wallet transaction-history renderer. Without these definitions, the initial journal render could stop `app.js` before the wallet controls and refresh lifecycle were registered; wallet refresh also referenced a renderer that did not exist.
+- Added a safe DOM-only wallet history renderer using `textContent`, UTC-aware timestamp parsing and explicit Deposit / Withdrawal / Trading P&L labels. The Web wallet now requests the latest 500 ledger rows and documents that older entries remain stored locally.
+- Wallet writes now ignore repeated clicks while a request is pending. A successful API write is reported as saved even if the subsequent display refresh fails, avoiding ambiguous failure feedback after a committed transaction.
+- Made withdrawal balance enforcement atomic: the balance predicate is part of a single conditional SQL INSERT with RETURNING, so concurrent withdrawals cannot both spend the same available balance. A SQLite busy-snapshot is rolled back and retried once; persistent contention returns a clear HTTP 503. Insufficient funds remains HTTP 409 and no row is written.
+- Backend TestClient coverage now includes withdrawal rejection without balance mutation, newest-first history, the 1–500 history limit, simultaneous withdrawals against a $1,000 fixture (one succeeds, one receives 409), and a file-backed SQLite database-engine dispose/reopen with deposit, withdrawal, journal P&L reconciliation and deletion.
+- Web CI checks the shared formatter, visible history renderer, safe text insertion, duplicate-submit guard, saved-vs-refresh error distinction and 500-row request contract. These are source/contract checks, not a real browser run.
+- Evidence level: backend tests exercise API and controlled file-backed persistence. CI does not launch the user's browser or restart their Windows process. Wallet remains a local bookkeeping ledger; no bank transfer, card payment, exchange transfer or broker funding is performed. Real browser and full-device restart verification remain **PARTIAL / device-level verification required**.
 
 ## Audit status vocabulary
 

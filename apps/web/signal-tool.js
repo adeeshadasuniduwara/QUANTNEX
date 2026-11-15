@@ -258,7 +258,7 @@
         ["Profit factor",metrics.profit_factor==null?"—":metrics.profit_factor],
         ["Expectancy",metrics.expectancy_r==null?"—":metrics.expectancy_r+"R"],
         ["Max drawdown",metrics.max_drawdown_r+"R"],
-        ["Net PnL (quote)",metrics.net_pnl_quote],
+        ["Net PnL / base unit",metrics.net_pnl_quote],
         ["Estimated costs",metrics.estimated_cost_quote],
         ["Buy & hold",metrics.buy_and_hold_return_pct==null?"—":metrics.buy_and_hold_return_pct+"%"],
         ["Signals",metrics.signal_count],
@@ -272,6 +272,7 @@
     const assumptions=document.createElement("p");assumptions.className="signal-feed-note";
     assumptions.textContent="Model assumptions · Spread "+data.assumptions.spread_bps+" bps · Top-book depth "+
       data.assumptions.top_book_depth_usd+" USD · "+data.assumptions.fees_and_slippage;
+    assumptions.textContent+=" · "+(data.pnl_unit||"PnL shown per base unit");
     container.append(assumptions);
     if(data.data_quality){
       const quality=document.createElement("p");quality.className="signal-feed-note";

@@ -330,6 +330,9 @@ async def run_signal_walk_forward(
         tf: [_epoch(row["time"]) for row in rows]
         for tf, rows in candles_by_tf.items() if tf in TIMEFRAME_MINUTES
     }
+    for timeframe, values in timestamps.items():
+        if values != sorted(values) or len(values) != len(set(values)):
+            raise ValueError(f"Historical {timeframe}m candles must be unique and chronological.")
     primary_times = timestamps[primary_tf]
     minute_times = timestamps.get("1", [])
     missing_minute_bars = 0

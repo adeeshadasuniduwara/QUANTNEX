@@ -204,3 +204,39 @@ def test_limit_order_expires_after_15_minutes_even_on_hourly_primary(monkeypatch
     assert result["limit_entries"] == 1
     assert result["limit_expired"] == 1
     assert result["trade_count"] == 0
+
+
+def test_limit_order_can_fill_and_exit_using_one_minute_execution_data(monkeypatch):
+    from app import signal_backtest
+
+    start = 1_700_002_800
+    primary = _candles(220, 60, start_epoch=start)
+    minute = _candles(13_200, 1, start_epoch=start)
+    signal_open_epoch = int(datetime.fromisoformat(primary[211]["time"]).timestamp())
+    touch_index = (signal_open_epoch - int(datetime.fromisoformat(minute[0]["time"]).timestamp())) // 60 + 10
+    minute[touch_index]["low"] = 98.9
+    minute[touch_index + 1]["high"] = 101.2
+
+    async def fake_build_signal(settings, symbol, *, candles_override, execution_context_override, replay_as_of):
+        return {
+            "status": "SIGNAL",
+            "signal": {
+                "side": "BUY", "entry_type": "LIMIT", "entry": 99.0, "limit_price": 99.0,
+                "stop_loss": 98.0, "tp1": 101.0,
+                "signal_candle_time": candles_override["60"][-1]["time"],
+                "execution_quality": {"estimated_round_trip_cost_bps": 10.0},
+            },
+        }
+
+    monkeypatch.setattr(signal_backtest, "build_signal", fake_build_signal)
+    result = asyncio.run(signal_backtest._simulate_slice(
+        "BTCUSDT", {"1": minute, "60": primary},
+        {"quote_asset": "USDT", "filters": {"PRICE_FILTER": {"tickSize": "0.01"}}},
+        {"primary": "60", "trend": "60", "enabled": ["60"], "min_score": 7},
+        5.0, 10000.0, 210, 218,
+    ))
+
+    assert result["limit_entries"] == 1
+    assert result["limit_expired"] == 0
+    assert result["trade_count"] == 1
+    assert result["trades"][0]["exit_reason"] == "TAKE_PROFIT_1"

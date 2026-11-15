@@ -61,24 +61,33 @@ def _synthetic_setup(direction: str, interval: str, now: datetime):
     return rows
 
 
-@pytest.mark.parametrize(("direction", "expected_side"), [("BUY", "BUY"), ("SELL", "SELL")])
-def test_real_signal_pipeline_generates_and_delivers_synthetic_setup(monkeypatch, direction, expected_side):
+@pytest.mark.parametrize(
+    ("direction", "expected_side", "symbol", "provider"),
+    [
+        ("BUY", "BUY", "BTCUSDT", "Binance Spot"),
+        ("SELL", "SELL", "BTCUSDT", "Coinbase Exchange fallback"),
+        ("BUY", "BUY", "XAUUSD", "MetaTrader 5 local terminal"),
+        ("SELL", "SELL", "XAUUSD", "Twelve Data"),
+    ],
+)
+def test_real_signal_pipeline_generates_and_delivers_synthetic_setup(monkeypatch, direction, expected_side, symbol, provider):
     now = datetime.now(timezone.utc)
 
     async def fake_fetch(interval, _outputsize, _symbol):
-        return _synthetic_setup(direction, interval, now)
+        return _synthetic_setup(direction, interval, now), provider
 
-    monkeypatch.setattr(signal_engine, "fetch_candles", fake_fetch)
+    monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
     settings = {
         "primary": "5",
         "trend": "60",
         "enabled": ["60", "30", "15", "5", "1"],
         "min_score": 8,
     }
-    result = asyncio.run(signal_engine.build_signal(settings, "BTCUSDT"))
+    result = asyncio.run(signal_engine.build_signal(settings, symbol))
     candidate = result["signal"]
 
     assert result["status"] == "SIGNAL"
+    assert result["provider"] == provider
     assert candidate is not None
     assert candidate["side"] == expected_side
     assert candidate["score"] >= 8
@@ -98,7 +107,7 @@ def test_real_signal_pipeline_generates_and_delivers_synthetic_setup(monkeypatch
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     db = factory()
-    user = User(email=f"signal-{direction.lower()}@example.test", password_hash="test-hash")
+    user = User(email=f"signal-{direction.lower()}-{symbol.lower()}@example.test", password_hash="test-hash")
     db.add(user)
     db.commit()
     user_id = user.id
@@ -109,8 +118,8 @@ def test_real_signal_pipeline_generates_and_delivers_synthetic_setup(monkeypatch
         return {"ok": True, "result": {"message_id": 987}}
 
     monkeypatch.setattr(telegram_worker, "_send", fake_telegram_send)
-    key = "auto_signal_last_fingerprint_btcusdt"
-    fingerprint = telegram_worker._auto_signal_fingerprint("BTCUSDT", candidate)
+    key = "auto_signal_last_fingerprint_" + symbol.lower()
+    fingerprint = telegram_worker._auto_signal_fingerprint(symbol, candidate)
     assert fingerprint
     previous = telegram_worker._get(db, user_id, key)
     assert asyncio.run(telegram_worker._deliver_auto_signal(

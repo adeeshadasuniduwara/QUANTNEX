@@ -576,3 +576,99 @@ def test_gold_candle_provider_falls_back_to_twelve_data_when_mt5_disconnects(mon
     )
     assert provider == "Twelve Data"
     assert len(rows) == 220
+
+
+def _fake_async_twelve_data_client(monkeypatch, signal_engine, values, delay=0.0):
+    import asyncio
+
+    calls = {"count": 0}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"values": values}
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, *_args, **_kwargs):
+            calls["count"] += 1
+            if delay:
+                await asyncio.sleep(delay)
+            return FakeResponse()
+
+    monkeypatch.setattr(signal_engine.httpx, "AsyncClient", FakeClient)
+    return calls
+
+
+def test_concurrent_gold_scans_share_one_twelve_data_request(monkeypatch):
+    import asyncio
+    from app import signal_engine
+
+    signal_engine._GOLD_CANDLE_CACHE.clear()
+    monkeypatch.setattr(signal_engine, "QUANTNEX_MT5_ENABLED", False)
+    monkeypatch.setattr(signal_engine, "TWELVE_DATA_API_KEY", "test-key")
+    monkeypatch.setattr(signal_engine, "_GOLD_CANDLE_CACHE_TTL", 45.0)
+    calls = _fake_async_twelve_data_client(
+        monkeypatch, signal_engine, _twelve_data_values(), delay=0.03
+    )
+
+    async def concurrent_fetches():
+        return await asyncio.gather(
+            signal_engine.fetch_candles_with_provider("5min", 220, "XAUUSD"),
+            signal_engine.fetch_candles_with_provider("5min", 220, "XAUUSD"),
+        )
+
+    first, second = asyncio.run(concurrent_fetches())
+    assert calls["count"] == 1
+    assert first[0] == second[0]
+    assert {first[1], second[1]} == {"Twelve Data", "Twelve Data (cached)"}
+
+
+def test_expired_gold_candle_cache_triggers_new_twelve_data_request(monkeypatch):
+    import asyncio
+    from app import signal_engine
+
+    signal_engine._GOLD_CANDLE_CACHE.clear()
+    monkeypatch.setattr(signal_engine, "QUANTNEX_MT5_ENABLED", False)
+    monkeypatch.setattr(signal_engine, "TWELVE_DATA_API_KEY", "test-key")
+    monkeypatch.setattr(signal_engine, "_GOLD_CANDLE_CACHE_TTL", 0.0)
+    calls = _fake_async_twelve_data_client(monkeypatch, signal_engine, _twelve_data_values())
+
+    async def sequential_fetches():
+        first = await signal_engine.fetch_candles_with_provider("5min", 220, "XAUUSD")
+        second = await signal_engine.fetch_candles_with_provider("5min", 220, "XAUUSD")
+        return first, second
+
+    first, second = asyncio.run(sequential_fetches())
+    assert calls["count"] == 2
+    assert first[1] == "Twelve Data"
+    assert second[1] == "Twelve Data"
+
+
+def test_stale_twelve_data_cache_cannot_generate_a_signal(monkeypatch):
+    import asyncio
+    import pytest
+    from app import signal_engine
+
+    signal_engine._GOLD_CANDLE_CACHE.clear()
+    monkeypatch.setattr(signal_engine, "QUANTNEX_MT5_ENABLED", False)
+    monkeypatch.setattr(signal_engine, "TWELVE_DATA_API_KEY", "test-key")
+    monkeypatch.setattr(signal_engine, "_GOLD_CANDLE_CACHE_TTL", 45.0)
+    stale_rows = candles(320)
+    cache_time = signal_engine.time.monotonic()
+    signal_engine._GOLD_CANDLE_CACHE[("XAUUSD", "5min", 320)] = (cache_time, stale_rows)
+    signal_engine._GOLD_CANDLE_CACHE[("XAUUSD", "1h", 320)] = (cache_time, stale_rows)
+
+    settings = {"primary": "5", "trend": "60", "enabled": ["5", "60"], "min_score": 8}
+    with pytest.raises(signal_engine.MarketDataError, match="stale"):
+        asyncio.run(signal_engine.build_signal(settings, "XAUUSD"))

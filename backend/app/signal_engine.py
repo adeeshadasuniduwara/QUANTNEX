@@ -5,8 +5,10 @@ Scores are rule-based confluence counts, never estimated win probabilities.
 from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone, timedelta
+from contextlib import asynccontextmanager
 import math
 import time
+from weakref import WeakKeyDictionary
 from typing import Any
 import httpx
 from .config import TWELVE_DATA_API_KEY, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
@@ -91,7 +93,37 @@ def closed_candles(candles: list[dict[str, Any]], interval: str,
             continue
     return result
 _GOLD_CANDLE_CACHE: dict[tuple[str, str, int], tuple[float, list[dict[str, Any]]]] = {}
-_GOLD_CANDLE_CACHE_TTL = 15.0
+_GOLD_CANDLE_CACHE_TTL = 45.0
+_GOLD_CANDLE_CACHE_LOCKS: WeakKeyDictionary = WeakKeyDictionary()
+
+
+@asynccontextmanager
+async def _gold_candle_cache_guard(cache_key: tuple[str, str, int]):
+    """Serialize same-key fetches and release idle locks after the last waiter."""
+    loop = asyncio.get_running_loop()
+    loop_locks = _GOLD_CANDLE_CACHE_LOCKS.get(loop)
+    if loop_locks is None:
+        loop_locks = {}
+        _GOLD_CANDLE_CACHE_LOCKS[loop] = loop_locks
+    entry = loop_locks.get(cache_key)
+    if entry is None:
+        entry = {"lock": asyncio.Lock(), "users": 0}
+        loop_locks[cache_key] = entry
+    entry["users"] += 1
+    try:
+        async with entry["lock"]:
+            yield
+    finally:
+        entry["users"] -= 1
+        if entry["users"] <= 0:
+            loop_locks.pop(cache_key, None)
+
+
+def _cached_gold_candles(cache_key: tuple[str, str, int]) -> list[dict[str, Any]] | None:
+    cached = _GOLD_CANDLE_CACHE.get(cache_key)
+    if cached and time.monotonic() - cached[0] < _GOLD_CANDLE_CACHE_TTL:
+        return [dict(row) for row in cached[1]]
+    return None
 
 
 def _normalize_gold_candles(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -237,24 +269,29 @@ async def fetch_candles_with_provider(interval: str, outputsize: int = 320,
         raise MarketDataError(detail)
     requested = min(max(int(outputsize), 210), 5000)
     cache_key = (symbol, interval, requested)
-    cached = _GOLD_CANDLE_CACHE.get(cache_key)
-    if cached and time.monotonic() - cached[0] < _GOLD_CANDLE_CACHE_TTL:
-        return [dict(row) for row in cached[1]], "Twelve Data (cached)"
-    async with httpx.AsyncClient(timeout=18) as client:
-        response = await client.get(BASE, params={"symbol":"XAU/USD","interval":interval,
-            "outputsize":requested,"timezone":"UTC","apikey":TWELVE_DATA_API_KEY})
-        response.raise_for_status()
-        payload = response.json()
-    if not isinstance(payload, dict) or payload.get("status") == "error" or not isinstance(payload.get("values"), list):
-        detail = payload.get("message") or payload.get("code") if isinstance(payload, dict) else "Provider returned an invalid candle response."
-        raise MarketDataError(str(detail or "Provider returned no candle data."))
-    candles = _normalize_gold_candles(payload["values"])
-    candles = closed_candles(candles, interval)
-    if len(candles) < 210:
-        raise MarketDataError(f"Not enough valid CLOSED {interval} XAUUSD candles for stable indicator calculations ({len(candles)} received).")
-    candles = candles[-requested:]
-    _GOLD_CANDLE_CACHE[cache_key] = (time.monotonic(), candles)
-    return [dict(row) for row in candles], "Twelve Data"
+    cached = _cached_gold_candles(cache_key)
+    if cached is not None:
+        return cached, "Twelve Data (cached)"
+    async with _gold_candle_cache_guard(cache_key):
+        # Recheck after waiting: another concurrent scan may have filled this key.
+        cached = _cached_gold_candles(cache_key)
+        if cached is not None:
+            return cached, "Twelve Data (cached)"
+        async with httpx.AsyncClient(timeout=18) as client:
+            response = await client.get(BASE, params={"symbol":"XAU/USD","interval":interval,
+                "outputsize":requested,"timezone":"UTC","apikey":TWELVE_DATA_API_KEY})
+            response.raise_for_status()
+            payload = response.json()
+        if not isinstance(payload, dict) or payload.get("status") == "error" or not isinstance(payload.get("values"), list):
+            detail = payload.get("message") or payload.get("code") if isinstance(payload, dict) else "Provider returned an invalid candle response."
+            raise MarketDataError(str(detail or "Provider returned no candle data."))
+        candles = _normalize_gold_candles(payload["values"])
+        candles = closed_candles(candles, interval)
+        if len(candles) < 210:
+            raise MarketDataError(f"Not enough valid CLOSED {interval} XAUUSD candles for stable indicator calculations ({len(candles)} received).")
+        candles = candles[-requested:]
+        _GOLD_CANDLE_CACHE[cache_key] = (time.monotonic(), candles)
+        return [dict(row) for row in candles], "Twelve Data"
 
 
 async def fetch_candles(interval: str, outputsize: int = 320, symbol: str = "XAUUSD") -> list[dict[str, Any]]:

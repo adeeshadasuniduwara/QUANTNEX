@@ -756,3 +756,28 @@ def test_newly_listed_binance_spot_pair_can_fetch_candles(monkeypatch):
     assert provider == "Binance Spot"
     assert len(candles) == 220
     assert candles[-1]["close"] > 0
+
+
+def test_auto_signal_settings_accept_dynamic_binance_pair_names():
+    import pytest
+    from pydantic import ValidationError
+    from app.schemas import AutoSignalSettingsRequest
+
+    settings = AutoSignalSettingsRequest(
+        enabled=True,
+        interval_seconds=180,
+        symbols=["1000PEPEUSDT", "BTCUSDT", "XAUUSD"],
+    )
+    assert settings.symbols == ["1000PEPEUSDT", "BTCUSDT", "XAUUSD"]
+    with pytest.raises(ValidationError):
+        AutoSignalSettingsRequest(symbols=["NOT-A-PAIR"])
+
+
+def test_telegram_auto_signal_settings_keep_dynamic_binance_pairs():
+    from app.telegram_worker import _normalise_auto_signal_settings
+
+    settings = _normalise_auto_signal_settings(
+        '{"enabled":true,"interval_seconds":180,"symbols":["1000PEPEUSDT","BTCUSDT","XAUUSD","bad-symbol"]}'
+    )
+    assert settings["enabled"] is True
+    assert settings["symbols"] == ["1000PEPEUSDT", "BTCUSDT", "XAUUSD"]

@@ -571,25 +571,121 @@ async def fetch_candles(interval: str, outputsize: int = 320, symbol: str = "XAU
     candles, _provider = await fetch_candles_with_provider(interval, outputsize, symbol)
     return candles
 
+async def fetch_binance_historical_candles(
+    symbol: str, interval: str = "1m", days: int = 30, max_candles: int = 43200
+) -> list[dict[str, Any]]:
+    """Fetch closed Binance Spot history with bounded, rate-conscious pagination."""
+    normalized = str(symbol or "").strip().upper()
+    if interval not in {"1m", "5m", "15m", "30m", "1h", "4h"}:
+        raise MarketDataError("Historical Binance interval is unsupported.")
+    if not 1 <= int(days) <= 30:
+        raise MarketDataError("Historical replay supports between 1 and 30 days.")
+    if not await is_binance_spot_symbol(normalized):
+        raise MarketDataError(f"{normalized} is not a tradable Binance Spot pair.")
+    interval_ms = {"1m": 60_000, "5m": 300_000, "15m": 900_000,
+                   "30m": 1_800_000, "1h": 3_600_000, "4h": 14_400_000}[interval]
+    end_time = datetime.now(timezone.utc)
+    end_ms = int(end_time.timestamp() * 1000)
+    start_ms = int((end_time - timedelta(days=int(days))).timestamp() * 1000)
+    candles: list[dict[str, Any]] = []
+    seen_open_times: set[int] = set()
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(18, connect=5)) as client:
+            while start_ms < end_ms and len(candles) < max_candles:
+                response = await client.get(
+                    "https://api.binance.com/api/v3/klines",
+                    params={"symbol": normalized, "interval": interval,
+                            "startTime": start_ms, "endTime": end_ms, "limit": 1000},
+                )
+                response.raise_for_status()
+                rows = response.json()
+                if not isinstance(rows, list):
+                    raise MarketDataError("Binance returned an invalid historical candle page.")
+                if not rows:
+                    break
+                last_open = None
+                for row in rows:
+                    try:
+                        open_ms = int(row[0])
+                        close_ms = int(row[6])
+                        values = [float(row[index]) for index in (1, 2, 3, 4, 5)]
+                        if open_ms in seen_open_times or close_ms >= end_ms:
+                            continue
+                        op, high, low, close, volume = values
+                        if not all(math.isfinite(value) and value > 0 for value in (op, high, low, close)):
+                            continue
+                        if high < max(op, close, low) or low > min(op, close, high) or volume < 0:
+                            continue
+                        seen_open_times.add(open_ms)
+                        candles.append({
+                            "time": datetime.fromtimestamp(open_ms / 1000, timezone.utc).isoformat(),
+                            "open": op, "high": high, "low": low, "close": close, "volume": volume,
+                        })
+                        last_open = open_ms if last_open is None else max(last_open, open_ms)
+                    except (IndexError, TypeError, ValueError, OverflowError):
+                        continue
+                if last_open is None:
+                    break
+                next_start = last_open + interval_ms
+                if next_start <= start_ms:
+                    raise MarketDataError("Binance historical pagination did not advance.")
+                start_ms = next_start
+                if len(rows) < 1000:
+                    break
+                await asyncio.sleep(0.05)
+    except httpx.HTTPError as exc:
+        raise MarketDataError(f"Binance historical data request failed: {exc}") from exc
+    candles.sort(key=lambda row: row["time"])
+    if len(candles) < 210:
+        raise MarketDataError(f"Only {len(candles)} closed historical candles were available; at least 210 are required.")
+    return candles[-max_candles:]
+
+
 def aggregate_minutes(candles: list[dict[str, Any]], minutes: int) -> list[dict[str, Any]]:
-    """Aggregate 1-minute UTC candles into fixed minute bars."""
+    """Aggregate only complete, unique 1-minute UTC buckets."""
     from datetime import datetime
-    buckets={}
-    for c in candles:
+    if minutes < 1:
+        raise ValueError("Aggregation interval must be positive.")
+    buckets: dict[int, dict[str, Any]] = {}
+    seen: set[tuple[int, int]] = set()
+    for candle in sorted(candles, key=lambda row: str(row.get("time") or "")):
         try:
-            stamp=datetime.fromisoformat(c["time"].replace("Z","+00:00"))
-            if stamp.tzinfo is None: stamp=stamp.replace(tzinfo=timezone.utc)
-            epoch=int(stamp.timestamp())
-        except (ValueError,TypeError):
+            stamp = datetime.fromisoformat(str(candle["time"]).replace("Z", "+00:00"))
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=timezone.utc)
+            epoch = int(stamp.timestamp())
+            op, high, low, close = (float(candle[key]) for key in ("open", "high", "low", "close"))
+            volume = float(candle.get("volume") or 0)
+            if not all(math.isfinite(value) and value > 0 for value in (op, high, low, close)):
+                continue
+            if high < max(op, close, low) or low > min(op, close, high) or not math.isfinite(volume) or volume < 0:
+                continue
+        except (KeyError, ValueError, TypeError, OverflowError):
             continue
-        key=epoch//(minutes*60)
-        b=buckets.get(key)
-        if b is None:
+        key = epoch // (minutes * 60)
+        minute_key = (key, epoch)
+        if minute_key in seen:
+            continue
+        seen.add(minute_key)
+        bucket = buckets.get(key)
+        if bucket is None:
             bucket_start = datetime.fromtimestamp(key * minutes * 60, timezone.utc).isoformat()
-            buckets[key]={"time":bucket_start,"open":c["open"],"high":c["high"],"low":c["low"],"close":c["close"]}
+            buckets[key] = {
+                "time": bucket_start, "open": op, "high": high, "low": low,
+                "close": close, "volume": volume, "count": 1,
+            }
         else:
-            b["high"]=max(b["high"],c["high"]);b["low"]=min(b["low"],c["low"]);b["close"]=c["close"]
-    return [buckets[k] for k in sorted(buckets)]
+            bucket["high"] = max(bucket["high"], high)
+            bucket["low"] = min(bucket["low"], low)
+            bucket["close"] = close
+            bucket["volume"] += volume
+            bucket["count"] += 1
+    complete = []
+    for key in sorted(buckets):
+        bucket = buckets[key]
+        if bucket["count"] == minutes:
+            complete.append({name: value for name, value in bucket.items() if name != "count"})
+    return complete
 
 def ema(values: list[float], period: int) -> list[float]:
     if not values: return []

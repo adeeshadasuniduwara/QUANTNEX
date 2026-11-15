@@ -964,7 +964,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
         const card=node("article");card.append(node("span",label),node("strong",String(value)));kpis.append(card);
       });
       const body=$("p7PaperRows");body.replaceChildren();
-      if(!trades.length){const tr=node("tr");const td=node("td","No paper trades yet.","empty-row");td.colSpan=9;tr.append(td);body.append(tr);}
+      if(!trades.length){const tr=node("tr");const td=node("td","No paper trades yet.","empty-row");td.colSpan=11;tr.append(td);body.append(tr);}
       trades.forEach(item=>{
         const tr=node("tr");
         [new Date(item.created_at).toLocaleString(),item.symbol,item.side,fmt(item.quantity,6),

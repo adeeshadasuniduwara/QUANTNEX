@@ -150,6 +150,7 @@ async def get_binance_spot_execution_context(symbol: str) -> dict[str, Any]:
             quote_asset = str(info.get("quote_asset") or "").upper()
             stable_quotes = {"USDT", "USDC", "FDUSD", "BUSD", "TUSD", "USDP", "DAI", "USDE"}
             quote_asset_usd_rate = 1.0 if quote_asset in stable_quotes else None
+            quote_asset_usd_rate_source = "stablecoin_parity_assumption" if quote_asset_usd_rate else None
             if quote_asset_usd_rate is None and _BINANCE_SPOT_SYMBOLS_CACHE:
                 known_symbols = _BINANCE_SPOT_SYMBOLS_CACHE[1]
                 conversion_symbol = next(
@@ -169,6 +170,7 @@ async def get_binance_spot_execution_context(symbol: str) -> dict[str, Any]:
                         conversion_ask = float(conversion["askPrice"])
                         if conversion_bid > 0 and conversion_ask >= conversion_bid:
                             quote_asset_usd_rate = (conversion_bid + conversion_ask) / 2
+                            quote_asset_usd_rate_source = conversion_symbol
                     except (httpx.HTTPError, ValueError, TypeError, KeyError):
                         quote_asset_usd_rate = None
     except (httpx.HTTPError, ValueError, TypeError) as exc:
@@ -212,6 +214,7 @@ async def get_binance_spot_execution_context(symbol: str) -> dict[str, Any]:
         "ask_depth_quote": ask_depth_quote,
         "quote_asset": info.get("quote_asset"),
         "quote_asset_usd_rate": quote_asset_usd_rate,
+        "quote_asset_usd_rate_source": quote_asset_usd_rate_source,
         "bid_depth_usd": bid_depth_quote * quote_asset_usd_rate if quote_asset_usd_rate else 0.0,
         "ask_depth_usd": ask_depth_quote * quote_asset_usd_rate if quote_asset_usd_rate else 0.0,
         "tick_size": tick_size,
@@ -859,6 +862,7 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
                 "spread_bps": round(spread_bps, 3),
                 "quote_asset": execution.get("quote_asset"),
                 "quote_asset_usd_rate": execution.get("quote_asset_usd_rate"),
+                "quote_asset_usd_rate_source": execution.get("quote_asset_usd_rate_source"),
                 "bid_depth_usd": round(float(execution.get("bid_depth_usd", execution["bid_depth_quote"])), 2),
                 "ask_depth_usd": round(float(execution.get("ask_depth_usd", execution["ask_depth_quote"])), 2),
                 "estimated_round_trip_cost_bps": round(estimated_round_trip_cost_bps, 3),

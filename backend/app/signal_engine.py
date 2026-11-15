@@ -64,7 +64,7 @@ async def get_binance_spot_symbols(force_refresh: bool = False) -> list[str]:
     async with _binance_symbol_cache_guard():
         cached = _BINANCE_SPOT_SYMBOLS_CACHE
         if not force_refresh and cached and time.monotonic() - cached[0] < _BINANCE_SPOT_SYMBOLS_TTL:
-            return sorted(cached[1])
+            return sorted(cached[1].keys())
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(15, connect=5)) as client:
                 response = await client.get("https://api.binance.com/api/v3/exchangeInfo")
@@ -165,7 +165,7 @@ async def get_binance_spot_execution_context(symbol: str) -> dict[str, Any]:
         ask_depth_quote = sum(float(row[0]) * float(row[1]) for row in asks[:10])
         if not all(math.isfinite(value) and value >= 0 for value in (bid_depth_quote, ask_depth_quote)):
             raise ValueError()
-    except (KeyError, IndexError, TypeError, ValueError, OverflowError):
+    except (AttributeError, KeyError, IndexError, TypeError, ValueError, OverflowError):
         raise MarketDataError(f"Binance returned invalid top-of-book/depth data for {normalized}.") from None
 
     mid = (bid + ask) / 2
@@ -775,6 +775,7 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
         entry_choice = select_binance_entry(side, close, p["atr"], zone, execution, settings)
         if not entry_choice:
             side = None
+            quality_filters["execution_quality"] = False
             entry_rejection_reason = (
                 "No safe MARKET entry or technically justified LIMIT retracement met the spread, "
                 "liquidity and price-distance rules."
@@ -837,6 +838,7 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
                 "tp1_reward_to_cost_ratio": round(reward_cost_ratio, 2),
             }
             if reward_cost_ratio < minimum_reward_cost_ratio:
+                quality_filters["execution_quality"] = False
                 entry_rejection_reason = (
                     "Expected TP1 reward is too small relative to estimated spread, fees and slippage "
                     f"({reward_cost_ratio:.2f}x; minimum {minimum_reward_cost_ratio:.2f}x)."
@@ -845,6 +847,7 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
                 entry_choice = None
                 execution_quality = {**execution_quality, "accepted": False}
             else:
+                quality_filters["execution_quality"] = True
                 execution_quality["accepted"] = True
                 expiry_seconds = 900 if entry_choice["entry_type"] == "LIMIT" else 60
 

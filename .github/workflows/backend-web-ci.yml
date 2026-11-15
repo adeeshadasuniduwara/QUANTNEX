@@ -6,12 +6,14 @@ on:
       - "backend/**"
       - "apps/web/**"
       - ".github/workflows/backend-web-ci.yml"
+      - ".github/workflows/live-signal-smoke.yml"
   push:
     branches: [main]
     paths:
       - "backend/**"
       - "apps/web/**"
       - ".github/workflows/backend-web-ci.yml"
+      - ".github/workflows/live-signal-smoke.yml"
 
 permissions:
   contents: read

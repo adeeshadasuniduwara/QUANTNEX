@@ -142,3 +142,22 @@ def test_real_signal_pipeline_generates_and_delivers_synthetic_setup(monkeypatch
     reopened.close()
     Base.metadata.drop_all(engine)
     engine.dispose()
+
+
+def test_signal_reports_all_sources_when_timeframes_use_mixed_providers(monkeypatch):
+    now = datetime.now(timezone.utc)
+
+    async def fake_fetch(interval, _outputsize, _symbol):
+        provider = "Coinbase Exchange fallback" if interval == "1h" else "Binance Spot"
+        return _synthetic_setup("BUY", interval, now), provider
+
+    monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
+    settings = {
+        "primary": "5",
+        "trend": "60",
+        "enabled": ["60", "30", "15", "5", "1"],
+        "min_score": 8,
+    }
+    result = asyncio.run(signal_engine.build_signal(settings, "BTCUSDT"))
+    assert result["status"] == "SIGNAL"
+    assert result["provider"] == "Binance Spot + Coinbase Exchange fallback"

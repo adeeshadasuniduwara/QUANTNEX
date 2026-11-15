@@ -147,6 +147,30 @@ async def get_binance_spot_execution_context(symbol: str) -> dict[str, Any]:
             )
             depth_response.raise_for_status()
             depth = depth_response.json()
+            quote_asset = str(info.get("quote_asset") or "").upper()
+            stable_quotes = {"USDT", "USDC", "FDUSD", "BUSD", "TUSD", "USDP", "DAI", "USDE"}
+            quote_asset_usd_rate = 1.0 if quote_asset in stable_quotes else None
+            if quote_asset_usd_rate is None and _BINANCE_SPOT_SYMBOLS_CACHE:
+                known_symbols = _BINANCE_SPOT_SYMBOLS_CACHE[1]
+                conversion_symbol = next(
+                    (quote_asset + suffix for suffix in ("USDT", "USDC", "FDUSD", "BUSD")
+                     if quote_asset + suffix in known_symbols),
+                    None,
+                )
+                if conversion_symbol:
+                    try:
+                        conversion_response = await client.get(
+                            "https://api.binance.com/api/v3/ticker/bookTicker",
+                            params={"symbol": conversion_symbol},
+                        )
+                        conversion_response.raise_for_status()
+                        conversion = conversion_response.json()
+                        conversion_bid = float(conversion["bidPrice"])
+                        conversion_ask = float(conversion["askPrice"])
+                        if conversion_bid > 0 and conversion_ask >= conversion_bid:
+                            quote_asset_usd_rate = (conversion_bid + conversion_ask) / 2
+                    except (httpx.HTTPError, ValueError, TypeError, KeyError):
+                        quote_asset_usd_rate = None
     except (httpx.HTTPError, ValueError, TypeError) as exc:
         raise MarketDataError(f"Could not retrieve fresh Binance Spot execution data for {normalized}.") from exc
 
@@ -186,6 +210,10 @@ async def get_binance_spot_execution_context(symbol: str) -> dict[str, Any]:
         "spread_bps": spread_bps,
         "bid_depth_quote": bid_depth_quote,
         "ask_depth_quote": ask_depth_quote,
+        "quote_asset": info.get("quote_asset"),
+        "quote_asset_usd_rate": quote_asset_usd_rate,
+        "bid_depth_usd": bid_depth_quote * quote_asset_usd_rate if quote_asset_usd_rate else 0.0,
+        "ask_depth_usd": ask_depth_quote * quote_asset_usd_rate if quote_asset_usd_rate else 0.0,
         "tick_size": tick_size,
         "step_size": str(lot_filter.get("stepSize") or ""),
         "min_quantity": str(lot_filter.get("minQty") or ""),
@@ -214,7 +242,7 @@ def select_binance_entry(
     """Choose a marketable entry or a technically justified resting limit."""
     settings = settings or {}
     spread = float(execution["spread_bps"])
-    depth = float(execution["ask_depth_quote"] if side == "BUY" else execution["bid_depth_quote"])
+    depth = float(execution.get("ask_depth_usd", 0.0) if side == "BUY" else execution.get("bid_depth_usd", 0.0))
     bid = float(execution["best_bid"])
     ask = float(execution["best_ask"])
     mid = float(execution["mid_price"])

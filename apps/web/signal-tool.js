@@ -66,10 +66,48 @@
     } catch(e){$("timeframeStatus").textContent="Local settings saved; API sync failed: "+e.message;}
     return s;
   }
+  async function loadSignalMarkets() {
+    try {
+      const data = await apiRequest("/api/v1/signals/markets");
+      const symbols = Array.isArray(data.symbols) ? data.symbols : [];
+      const chartSymbol = $("qxSymbol");
+      if (chartSymbol) {
+        symbols.forEach(symbol => {
+          if ([...chartSymbol.options].some(option => option.value === symbol)) return;
+          const option = document.createElement("option");
+          option.value = symbol;
+          option.textContent = symbol;
+          chartSymbol.add(option);
+        });
+      }
+      ["signalMarketOptions", "autoSignalSymbolOptions"].forEach(id => {
+        const list = $(id);
+        if (!list) return;
+        list.replaceChildren();
+        symbols.forEach(symbol => {
+          const option = document.createElement("option");
+          option.value = symbol;
+          list.append(option);
+        });
+        const gold = document.createElement("option");
+        gold.value = "XAUUSD";
+        list.append(gold);
+      });
+    } catch (error) {
+      const status = $("timeframeStatus");
+      if (status && !status.textContent) status.textContent = "Binance pair list could not refresh: " + error.message;
+    }
+  }
+
   function applyChartTimeframe() {
     const settings=readSettings(),market=$("signalMarketSymbol")?.value||"BTCUSDT";
     const symbol=$("qxSymbol"),timeframe=$("qxInterval");
-    if(symbol){symbol.value=market;symbol.dispatchEvent(new Event("change"));}
+    if(symbol){
+      if(market && ![...symbol.options].some(option=>option.value===market)){
+        const option=document.createElement("option");option.value=market;option.textContent=market;symbol.add(option);
+      }
+      symbol.value=market;symbol.dispatchEvent(new Event("change"));
+    }
     if(timeframe){
       timeframe.value=settings.chart==="50"?"15m":({"1":"1m","5":"5m","15":"15m","30":"30m","60":"1h"}[settings.chart]||"15m");
       timeframe.dispatchEvent(new Event("change"));
@@ -188,7 +226,7 @@
     button.disabled=true;button.textContent="Connecting…";
     try{
       const data=await apiRequest("/api/v1/telegram/connect",{method:"POST",body:JSON.stringify({bot_token:token,chat_id:chat,display_name:$("tgBotDisplayName").value.trim()})});
-      $("telegramStatus").textContent="Connected to "+($("tgBotDisplayName").value.trim()||"@"+(data.bot_username||"your bot"))+" (@"+(data.bot_username||"bot")+"). Commands enabled: /help, /timeframes, /settf, /settrend, /setanalysis, /scan BTCUSDT, /scan ETHUSDT, /scan SOLUSDT, /scan XAUUSD, /status.";
+      $("telegramStatus").textContent="Connected to "+($("tgBotDisplayName").value.trim()||"@"+(data.bot_username||"your bot"))+" (@"+(data.bot_username||"bot")+"). Commands enabled: /help, /timeframes, /settf, /settrend, /setanalysis, /scan SYMBOL (any tradable Binance Spot pair), /scan XAUUSD, /status.";
       $("tgBotToken").value="";
     }catch(e){$("telegramStatus").textContent=e.message;}
     finally{button.disabled=false;button.textContent="Connect bot & enable commands";}
@@ -222,11 +260,11 @@
   async function loadAutoSignalSettings(){
     try{
       const [settings,bot,reports]=await Promise.all([apiRequest("/api/v1/telegram/auto-signals"),apiRequest("/api/v1/telegram/status"),apiRequest("/api/v1/telegram/reports")]);
-      if(bot.connected){$("tgBotDisplayName").value=bot.display_name||"";$("telegramStatus").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username))+" · "+bot.chat_id;$("telegramMonitorTitle").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username));$("telegramMonitorDescription").textContent="Your personal Telegram bot is connected. Turn on Auto Signals in Signal Lab to receive fresh BTC, ETH, SOL and optional Gold setups.";$("telegramMonitorPill").textContent=settings.enabled?"AUTO ON":"CONNECTED";}
+      if(bot.connected){$("tgBotDisplayName").value=bot.display_name||"";$("telegramStatus").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username))+" · "+bot.chat_id;$("telegramMonitorTitle").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username));$("telegramMonitorDescription").textContent="Your personal Telegram bot is connected. Turn on Auto Signals in Signal Lab to receive fresh setups from selected Binance Spot pairs and optional Gold.";$("telegramMonitorPill").textContent=settings.enabled?"AUTO ON":"CONNECTED";}
       else {$("telegramStatus").textContent="No Telegram bot connected yet. Create one with @BotFather and connect it here.";$("telegramMonitorTitle").textContent="Telegram bot not connected";$("telegramMonitorDescription").textContent="Open Signal Lab to connect your BotFather bot. Manual crypto signals and enabled Auto Signals are delivered while the local QUANTNEX API is active.";$("telegramMonitorPill").textContent="OFFLINE";}
       $("autoSignalsEnabled").checked=!!settings.enabled;
       $("autoSignalInterval").value=String(settings.interval_seconds||180);
-      document.querySelectorAll("input[name=autoSignalSymbol]").forEach(el=>{el.checked=(settings.symbols||["BTCUSDT","ETHUSDT","SOLUSDT"]).includes(el.value);});
+      $("autoSignalSymbolsInput").value=(settings.symbols||["BTCUSDT","ETHUSDT","SOLUSDT"]).join(", ");
       $("autoSignalStatus").textContent=settings.enabled?"Auto Signals ON · selected markets scan while the QUANTNEX API is running.":"Auto Signals OFF.";
       $("tgDailyReportEnabled").checked=!!reports.enabled;
       $("tgDailyReportStatus").textContent=reports.enabled?"Daily PDF ON · 20:00 Asia/Colombo · Paper ledger only.":"Daily PDF OFF.";
@@ -236,8 +274,8 @@
   $("saveAutoSignals")?.addEventListener("click",async()=>{
     const enabled=$("autoSignalsEnabled").checked;
     const interval_seconds=Number($("autoSignalInterval").value||180);
-    const symbols=[...document.querySelectorAll('input[name="autoSignalSymbol"]:checked')].map(el=>el.value);
-    if(!symbols.length){$("autoSignalStatus").textContent="Select at least one market.";return;}
+    const symbols=[...new Set(($("autoSignalSymbolsInput").value||"").split(",").map(value=>value.trim().toUpperCase()).filter(Boolean))].slice(0,50);
+    if(!symbols.length){$("autoSignalStatus").textContent="Enter at least one Binance pair, for example BTCUSDT.";return;}
     const button=$("saveAutoSignals");button.disabled=true;button.textContent="Saving…";
     try{
       const result=await apiRequest("/api/v1/telegram/auto-signals",{method:"PUT",body:JSON.stringify({enabled,interval_seconds,symbols})});
@@ -256,6 +294,7 @@
     }catch(error){$("tgDailyReportEnabled").checked=false;$("tgDailyReportStatus").textContent=error.message;}
     finally{button.disabled=false;button.textContent="Save daily report setting";}
   });
+    loadSignalMarkets();
     loadAutoSignalSettings();
 })();
  

@@ -40,8 +40,11 @@ def _normalise_auto_signal_settings(raw: str) -> dict[str, Any]:
     symbols = value.get("symbols", defaults["symbols"])
     if not isinstance(symbols, (list, tuple)):
         symbols = []
-    allowed = {"BTCUSDT", "ETHUSDT", "SOLUSDT", "XAUUSD"}
-    selected = list(dict.fromkeys(str(item).upper() for item in symbols if str(item).upper() in allowed))
+    selected = list(dict.fromkeys(
+        str(item).strip().upper() for item in symbols
+        if str(item).strip().upper() == "XAUUSD"
+        or (str(item).strip().isalnum() and 5 <= len(str(item).strip()) <= 30)
+    ))[:50]
     return {"enabled": value.get("enabled") is True,
             "interval_seconds": max(60, min(3600, interval)),
             "symbols": selected}
@@ -407,8 +410,8 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
         return "QUANTNEX bot connected. Crypto feed: Binance Spot public candles with Coinbase fallback for BTC/ETH/SOL. Gold feed: "+(gold_feed_provider() or "not configured")+". Broker execution: disabled."
     if command=="/scan":
         market=parts[1].upper() if len(parts)>1 else "BTCUSDT"
-        if market not in {"BTCUSDT","ETHUSDT","SOLUSDT","XAUUSD"}:
-            return "Choose /scan BTCUSDT, /scan ETHUSDT, /scan SOLUSDT or /scan XAUUSD."
+        if market != "XAUUSD" and (not market.isalnum() or len(market) < 5 or len(market) > 30):
+            return "Enter a valid Binance Spot pair symbol, for example /scan BTCUSDT, or /scan XAUUSD."
         if market=="XAUUSD" and not gold_feed_configured():
             return "XAUUSD feed is not configured. Enable the local MT5 feed or add TWELVE_DATA_API_KEY to backend/.env."
         try:

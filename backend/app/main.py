@@ -160,11 +160,15 @@ def local_workspace(db: Session = Depends(get_db)) -> User:
 @app.get("/api/v1/charts/candles")
 async def chart_candles(symbol: str = "BTCUSDT", interval: str = "15m", limit: int = 500):
     """Historical OHLC candles for the first-party QUANTNEX VIEW chart."""
-    from .signal_engine import fetch_candles_with_provider, MarketDataError, CRYPTO_SYMBOLS
+    from .signal_engine import fetch_candles_with_provider, MarketDataError, is_binance_spot_symbol
     allowed_intervals = {"1m":"1min","5m":"5min","15m":"15min","30m":"30min","1h":"1h","4h":"4h"}
     symbol = symbol.upper()
-    if symbol not in CRYPTO_SYMBOLS and symbol != "XAUUSD":
-        raise HTTPException(status_code=422, detail="Supported chart markets: "+", ".join(sorted(CRYPTO_SYMBOLS))+" and XAUUSD.")
+    try:
+        supported_crypto = await is_binance_spot_symbol(symbol)
+    except MarketDataError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    if not supported_crypto and symbol != "XAUUSD":
+        raise HTTPException(status_code=422, detail="Choose a currently tradable Binance Spot pair or XAUUSD.")
     if interval not in allowed_intervals or not 210 <= limit <= 1000:
         raise HTTPException(status_code=422, detail="Choose a supported interval and 210–1000 candles.")
     try:
@@ -656,10 +660,14 @@ def update_signal_settings(payload: SignalSettingsRequest, user: User = Depends(
 
 @app.post("/api/v1/signals/scan")
 async def scan_market_signal(symbol: str = "BTCUSDT", user: User = Depends(local_workspace), db: Session = Depends(get_db)):
-    from .signal_engine import build_signal, MarketDataError, CRYPTO_SYMBOLS, gold_feed_configured
+    from .signal_engine import build_signal, MarketDataError, is_binance_spot_symbol, gold_feed_configured
     symbol = symbol.upper()
-    if symbol not in CRYPTO_SYMBOLS and symbol != "XAUUSD":
-        raise HTTPException(status_code=422, detail="Supported signal markets: BTCUSDT, ETHUSDT, SOLUSDT and XAUUSD.")
+    try:
+        supported_crypto = await is_binance_spot_symbol(symbol)
+    except MarketDataError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    if not supported_crypto and symbol != "XAUUSD":
+        raise HTTPException(status_code=422, detail="Choose a currently tradable Binance Spot pair or XAUUSD.")
     if symbol == "XAUUSD" and not gold_feed_configured():
         raise HTTPException(status_code=503,detail="Gold market feed not configured. Enable the local MT5 feed or add TWELVE_DATA_API_KEY to backend/.env, then restart the API.")
     try: settings=json.loads(_preference(db,user.id,"signal_settings",json.dumps(DEFAULT_SIGNAL_SETTINGS)))
@@ -869,13 +877,21 @@ def get_auto_signal_settings(user: User = Depends(local_workspace), db: Session 
     return settings
 
 @app.put("/api/v1/telegram/auto-signals")
-def set_auto_signal_settings(payload: AutoSignalSettingsRequest, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+async def set_auto_signal_settings(payload: AutoSignalSettingsRequest, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     connected=bool(_preference(db,user.id,"telegram_bot_token_enc") and _preference(db,user.id,"telegram_chat_id"))
     if payload.enabled and not connected:
         raise HTTPException(status_code=409,detail="Connect and test your personal Telegram bot before enabling Auto Signals.")
-    from .signal_engine import gold_feed_configured
+    from .signal_engine import gold_feed_configured, is_binance_spot_symbol, MarketDataError
     if payload.enabled and "XAUUSD" in payload.symbols and not gold_feed_configured():
         raise HTTPException(status_code=503,detail="XAUUSD is selected but no historical Gold feed is configured. Enable the local MT5 feed or add TWELVE_DATA_API_KEY to backend/.env.")
+    if payload.enabled:
+        try:
+            invalid = [symbol for symbol in payload.symbols
+                       if symbol != "XAUUSD" and not await is_binance_spot_symbol(symbol)]
+        except MarketDataError as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+        if invalid:
+            raise HTTPException(status_code=422, detail="These symbols are not currently tradable Binance Spot pairs: " + ", ".join(invalid))
     settings=payload.model_dump()
     _save_preference(db,user.id,"auto_signal_settings",json.dumps(settings))
     record_audit_event(db, "signals.auto_settings_updated", {"enabled": settings["enabled"], "interval_seconds": settings["interval_seconds"], "symbols": settings["symbols"]})
@@ -937,6 +953,23 @@ async def stop_daily_backup_worker():
             await task
         except asyncio.CancelledError:
             pass
+
+
+@app.get("/api/v1/signals/markets")
+async def signal_markets(user: User = Depends(local_workspace)):
+    """List the current tradable Binance Spot universe for the signal selector."""
+    from .signal_engine import get_binance_spot_symbols, MarketDataError
+    try:
+        symbols = await get_binance_spot_symbols()
+    except MarketDataError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    return {
+        "market_type": "BINANCE_SPOT",
+        "count": len(symbols),
+        "symbols": symbols,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "note": "Dynamically loaded from Binance exchangeInfo. Inactive and non-Spot symbols are excluded.",
+    }
 
 
 # ---------------------------------------------------------------------------

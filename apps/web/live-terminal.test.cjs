@@ -42,7 +42,9 @@ assert.match(html, /QUANTNEX VIEW/, "The chart workspace must use the exact QUAN
 assert.match(html, /id="qxChartHost"/, "First-party QUANTNEX VIEW chart container is missing");
 assert.match(html, /id="qxChartType"/, "Chart type selector is missing");
 assert.match(html, /Heikin Ashi/, "Heikin Ashi chart option is missing");
-assert.match(html, /name="autoSignalSymbol"/, "Selectable Telegram auto-signal markets are missing");
+assert.match(html, /id="autoSignalSymbolsInput"/, "Dynamic Telegram auto-signal market input is missing");
+assert.match(html, /id="autoSignalSymbolOptions"/, "Dynamic Telegram auto-signal suggestions are missing");
+assert.match(html, /id="signalMarketOptions"/, "Dynamic manual signal market suggestions are missing");
 assert.match(html, /id="signalMarketSymbol"/, "Manual signal market selector is missing");
 assert.doesNotMatch(html, /external-embedding\/embed-widget-advanced-chart|TradingView Advanced Chart/, "The embedded TradingView widget must be removed");
 assert.match(nativeChart, /api\/v1\/charts\/candles/, "QUANTNEX VIEW must load real local OHLC candles");

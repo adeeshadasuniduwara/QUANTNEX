@@ -33,3 +33,7 @@ Crypto uses public Binance Spot candles with Coinbase fallback for BTC/ETH/SOL. 
 For MT5, open the local terminal and make sure the configured Gold symbol is available. If MT5 is not enabled, configure `TWELVE_DATA_API_KEY` in the backend environment. Never put API keys in command-line arguments or commit them to Git.
 
 A successful smoke test proves that the selected provider returned usable data and the engine completed a scan at that moment. It does not prove profitability, future signal quality, broker execution, or a stable live connection.
+
+## Automated public-crypto check
+
+GitHub Actions also runs the read-only crypto smoke test daily through the **QUANTNEX Live Crypto Signal Smoke** workflow (BTCUSDT, ETHUSDT and SOLUSDT). It can be started manually from the repository's Actions tab. This cloud check does not test the local MT5 terminal or Gold feed.

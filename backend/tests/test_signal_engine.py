@@ -910,3 +910,48 @@ def test_binance_execution_context_reads_exchange_filters_and_live_book(monkeypa
     assert context["quote_asset_usd_rate"] == 1.0
     assert context["bid_depth_usd"] == context["bid_depth_quote"]
     assert context["ask_depth_usd"] == context["ask_depth_quote"]
+
+
+def test_binance_execution_context_converts_non_stable_quote_asset_to_usd(monkeypatch):
+    import asyncio
+    import httpx
+    from app import signal_engine
+
+    monkeypatch.setattr(signal_engine, "_BINANCE_SPOT_SYMBOLS_CACHE", None)
+    exchange_info = {"symbols": [
+        {"symbol": "ETHBTC", "status": "TRADING", "baseAsset": "ETH", "quoteAsset": "BTC",
+         "isSpotTradingAllowed": True, "filters": [{"filterType": "PRICE_FILTER", "tickSize": "0.000001"}]},
+        {"symbol": "BTCUSDT", "status": "TRADING", "baseAsset": "BTC", "quoteAsset": "USDT",
+         "isSpotTradingAllowed": True, "filters": [{"filterType": "PRICE_FILTER", "tickSize": "0.01"}]},
+    ]}
+    depth = {"bids": [["0.05", "1000"]], "asks": [["0.0501", "1000"]]}
+
+    def handler(request):
+        if request.url.path == "/api/v3/exchangeInfo":
+            return httpx.Response(200, json=exchange_info)
+        if request.url.path == "/api/v3/ticker/bookTicker" and request.url.params["symbol"] == "ETHBTC":
+            return httpx.Response(200, json={
+                "bidPrice": "0.05", "bidQty": "1000", "askPrice": "0.0501", "askQty": "1000"
+            })
+        if request.url.path == "/api/v3/depth":
+            return httpx.Response(200, json=depth)
+        if request.url.path == "/api/v3/ticker/bookTicker" and request.url.params["symbol"] == "BTCUSDT":
+            return httpx.Response(200, json={
+                "bidPrice": "100000", "bidQty": "10", "askPrice": "100100", "askQty": "10"
+            })
+        raise AssertionError(f"Unexpected Binance endpoint: {request.url.path}")
+
+    original_client = httpx.AsyncClient
+    transport = httpx.MockTransport(handler)
+
+    def mock_client(*args, **kwargs):
+        return original_client(*args, transport=transport, **kwargs)
+
+    monkeypatch.setattr(signal_engine.httpx, "AsyncClient", mock_client)
+    context = asyncio.run(signal_engine.get_binance_spot_execution_context("ETHBTC"))
+
+    assert context["quote_asset"] == "BTC"
+    assert context["quote_asset_usd_rate_source"] == "BTCUSDT"
+    assert context["quote_asset_usd_rate"] == 100050
+    assert context["bid_depth_usd"] > context["bid_depth_quote"]
+    assert context["ask_depth_usd"] > context["ask_depth_quote"]

@@ -507,3 +507,72 @@ def test_gold_candle_provider_reports_local_mt5(monkeypatch):
     )
     assert provider == "MetaTrader 5 local terminal"
     assert len(rows) == 210
+
+
+def _mock_twelve_data_candle_transport(monkeypatch, signal_engine, values):
+    import httpx
+
+    def handler(request):
+        assert request.url.host == "api.twelvedata.com"
+        return httpx.Response(200, json={"values": values})
+
+    original_client = httpx.AsyncClient
+    transport = httpx.MockTransport(handler)
+
+    def mock_client(*args, **kwargs):
+        return original_client(*args, transport=transport, **kwargs)
+
+    monkeypatch.setattr(signal_engine.httpx, "AsyncClient", mock_client)
+
+
+def _twelve_data_values(interval_seconds=300, count=220):
+    now = datetime.now(timezone.utc)
+    last_open = int(now.timestamp() // interval_seconds) * interval_seconds - interval_seconds
+    values = []
+    for index in range(count):
+        stamp = datetime.fromtimestamp(last_open - index * interval_seconds, timezone.utc)
+        price = 2300.0 + index * 0.01
+        values.append({
+            "datetime": stamp.strftime("%Y-%m-%d %H:%M:%S"),
+            "open": str(price), "high": str(price + 0.5),
+            "low": str(price - 0.5), "close": str(price + 0.1), "volume": "10",
+        })
+    return values
+
+
+def test_gold_candle_provider_reports_twelve_data_when_mt5_disabled(monkeypatch):
+    import asyncio
+    from app import signal_engine
+
+    signal_engine._GOLD_CANDLE_CACHE.clear()
+    monkeypatch.setattr(signal_engine, "QUANTNEX_MT5_ENABLED", False)
+    monkeypatch.setattr(signal_engine, "TWELVE_DATA_API_KEY", "test-key")
+    _mock_twelve_data_candle_transport(monkeypatch, signal_engine, _twelve_data_values())
+
+    rows, provider = asyncio.run(
+        signal_engine.fetch_candles_with_provider("5min", 220, "XAUUSD")
+    )
+    assert provider == "Twelve Data"
+    assert len(rows) == 220
+    assert rows == sorted(rows, key=lambda row: row["time"])
+
+
+def test_gold_candle_provider_falls_back_to_twelve_data_when_mt5_disconnects(monkeypatch):
+    import asyncio
+    from app import mt5_feed, signal_engine
+
+    signal_engine._GOLD_CANDLE_CACHE.clear()
+    monkeypatch.setattr(signal_engine, "QUANTNEX_MT5_ENABLED", True)
+    monkeypatch.setattr(signal_engine, "TWELVE_DATA_API_KEY", "test-key")
+
+    async def disconnected_mt5(_symbol, _timeframe, _limit):
+        raise mt5_feed.MT5FeedError("terminal is not connected")
+
+    monkeypatch.setattr(mt5_feed, "get_candles", disconnected_mt5)
+    _mock_twelve_data_candle_transport(monkeypatch, signal_engine, _twelve_data_values())
+
+    rows, provider = asyncio.run(
+        signal_engine.fetch_candles_with_provider("5min", 220, "XAUUSD")
+    )
+    assert provider == "Twelve Data"
+    assert len(rows) == 220

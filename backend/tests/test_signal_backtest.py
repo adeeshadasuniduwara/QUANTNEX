@@ -91,7 +91,7 @@ def test_signal_walk_forward_uses_chronological_holdout_and_costs(monkeypatch):
             "status": "SIGNAL",
             "signal": {
                 "side": "BUY", "entry_type": "MARKET", "entry": 100.0,
-                "stop_loss": 99.0, "tp1": 101.0,
+                "stop_loss": 99.0, "tp1": 100.3,
                 "signal_candle_time": latest,
                 "execution_quality": {"estimated_round_trip_cost_bps": 10.0},
             },
@@ -123,7 +123,7 @@ def test_signal_walk_forward_uses_chronological_holdout_and_costs(monkeypatch):
 
 
 def test_signal_walk_forward_rejects_invalid_assumptions():
-    from app.signal_backtest import run_signal_walk_forward
+    from app import signal_backtest
 
     candles_by_tf = {"5": _candles(600, 5), "60": _candles(300, 60),
                      "30": _candles(600, 30), "15": _candles(1200, 15),

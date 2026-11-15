@@ -415,14 +415,23 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
     if "50" in needed: needed.add("1")
     tasks={}
     for tf in needed:
-        if tf in INTERVALS: tasks[tf]=fetch_candles(INTERVALS[tf],3200 if tf=="1" and "50" in needed else 320,symbol)
+        if tf in INTERVALS: tasks[tf]=fetch_candles_with_provider(INTERVALS[tf],3200 if tf=="1" and "50" in needed else 320,symbol)
     results=await asyncio.gather(*tasks.values(),return_exceptions=True)
     candles={}
+    providers=set()
     errors=[]
     for tf,result in zip(tasks,results):
         if isinstance(result,Exception):
             errors.append(f"{tf}m: {str(result)}")
-        else: candles[tf]=result
+        else:
+            try:
+                rows, provider = result
+                if not isinstance(rows, list) or not provider:
+                    raise ValueError("Market-data provider returned an invalid candle result.")
+                candles[tf]=rows
+                providers.add(str(provider))
+            except (TypeError, ValueError) as exc:
+                errors.append(f"{tf}m: {str(exc)}")
     if "50" in needed and "1" in candles:
         candles["50"] = closed_candles(aggregate_minutes(candles["1"], 50), "50min")
         if len(candles["50"]) < 50:
@@ -497,7 +506,8 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
                 "entry":round(close,price_precision),"signal_candle_time":candles[primary][-1]["time"],"stop_loss":round(sl,price_precision),"tp1":round(close+sign*risk,price_precision),
                 "tp2":round(close+sign*risk*2,price_precision),"tp3":round(close+sign*risk*3,price_precision),
                 "score":score,"out_of":10,"confirmations":checks,"risk_distance":round(risk,price_precision)}
-    return {"symbol":symbol,"provider":"Binance Spot" if symbol in CRYPTO_SYMBOLS else "Twelve Data","generated_at":datetime.now(timezone.utc).isoformat(),
+    provider_label=" + ".join(sorted(providers)) if providers else "Unknown"
+    return {"symbol":symbol,"provider":provider_label,"generated_at":datetime.now(timezone.utc).isoformat(),
             "signal":signal,"confluence_score":score,"score_out_of":10,"score_note":"Rule-based confluence count, not a measured win probability.",
             "timeframes":{tf:{"bias":v["bias"],"close":round(v["close"],price_precision),"ema20":round(v["ema20"],price_precision),
                 "ema50":round(v["ema50"],price_precision),"ema200":round(v["ema200"],price_precision) if v["ema200"] is not None else None,"macd_histogram":round(v["macd_histogram"],price_precision),

@@ -317,3 +317,41 @@ The Twelve Data Gold candle cache currently has a 15-second TTL. Each signal sca
 1. Phase 12: inspect the first scheduled live crypto smoke run and diagnose any actual Binance/Coinbase data or validation failures.
 2. Review output semantics for SIGNAL vs WAIT vs ERROR; do not treat a WAIT as failure.
 3. Continue local Windows/MT5 verification using the smoke script when the user's terminal is available.
+
+
+## 2026-11-16 — Phase 12: dynamic Binance Spot signal universe (PR validation pending)
+
+### User priority
+
+Automatic, high-quality market signals are the primary product milestone. Binance pair coverage must not be limited to a release-time hard-coded shortlist. For every valid setup, the signal engine must eventually choose MARKET versus LIMIT entry based on market conditions and execution costs, while retaining the existing documented setup rules and paper/read-only safety boundary.
+
+### Finding
+
+The current signal pipeline used a static `CRYPTO_SYMBOLS` allowlist (20 symbols). The candle provider, signal scan API, chart API, Telegram scan settings, auto-signal preferences and smoke-test validation all inherited this limitation. Newly listed or otherwise valid Binance Spot pairs could not be scanned even when Binance provided their candles. Automatic entry type was also not yet represented in the signal payload; the current entry is the latest closed candle price.
+
+### Changes in branch `feat/dynamic-binance-spot-universe`
+
+- Added cached, one-hour Binance Spot `exchangeInfo` discovery with filtering for `TRADING` status and Spot permission.
+- Kept the legacy symbol set as a compatibility fast-path while allowing additional pairs after live exchange metadata validation.
+- Updated signal and candle fetching to accept dynamically discovered Spot pairs.
+- Added `GET /api/v1/signals/markets` to expose the current Binance Spot universe for a market selector.
+- Updated chart and manual signal scan API validation to use dynamic exchange metadata.
+- Relaxed Auto Signals schema/Telegram normalization from a four-symbol static allowlist to validated symbol syntax, with final market eligibility checked by the signal engine.
+- Updated the read-only smoke script to validate requested pairs against live Binance exchange metadata.
+- Added tests for newly listed Spot pair discovery, inactive/non-Spot filtering, and fetching candles for a dynamic pair.
+
+### Verification status
+
+- Code changes and tests are committed to the feature branch; GitHub PR and CI verification are still pending.
+- No claim is made yet that every Binance market type is supported. This phase covers Binance Spot only; USDⓈ-M and COIN-M Futures require separate exchange metadata, candle endpoints, contract filters and explicit market-type handling.
+- No MARKET/LIMIT selection has been implemented in this phase. Current signal payloads still use a closed-candle reference entry. This is the next core signal-engine phase.
+- No live order placement is enabled. The work remains read-only signal analysis and paper/demo validation.
+
+### Next steps
+
+1. Review this branch's complete diff and open a PR against main.
+2. Run Backend CI and all relevant tests; fix any regression before merge.
+3. If CI passes, review mergeability and merge, then verify post-merge checks.
+4. Implement and test adaptive MARKET versus LIMIT entry selection, spread/fee/slippage/liquidity checks, exchange precision and explicit entry type in the signal payload.
+5. Extend end-to-end tests with deterministic long/short setups and realistic chronological paper/backtest validation.
+6. Only after Spot coverage is verified, plan the next supported Binance market type expansion without implying unsupported Futures coverage.

@@ -24,6 +24,60 @@ def _set(db, user_id: int, key: str, value: str) -> None:
     if row is None: db.add(Preference(user_id=user_id,key=key,value=value))
     else: row.value=value
 
+def _normalise_auto_signal_settings(raw: str) -> dict[str, Any]:
+    defaults = {"enabled": False, "interval_seconds": 180,
+                "symbols": ["BTCUSDT", "ETHUSDT", "SOLUSDT"]}
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        value = {}
+    if not isinstance(value, dict):
+        value = {}
+    try:
+        interval = int(value.get("interval_seconds", defaults["interval_seconds"]) or defaults["interval_seconds"])
+    except (TypeError, ValueError, OverflowError):
+        interval = defaults["interval_seconds"]
+    symbols = value.get("symbols", defaults["symbols"])
+    if not isinstance(symbols, (list, tuple)):
+        symbols = []
+    allowed = {"BTCUSDT", "ETHUSDT", "SOLUSDT", "XAUUSD"}
+    selected = list(dict.fromkeys(str(item).upper() for item in symbols if str(item).upper() in allowed))
+    return {"enabled": value.get("enabled") is True,
+            "interval_seconds": max(60, min(3600, interval)),
+            "symbols": selected}
+
+
+def _normalise_signal_settings(raw: str) -> dict[str, Any]:
+    defaults = {"primary": "5", "trend": "60",
+                "enabled": ["60", "30", "15", "5", "1"],
+                "risk_percent": 1, "min_score": 8}
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        value = {}
+    if not isinstance(value, dict):
+        value = {}
+    timeframes = {"1", "5", "15", "30", "50", "60", "240"}
+    primary = str(value.get("primary", defaults["primary"]))
+    trend = str(value.get("trend", defaults["trend"]))
+    if primary not in timeframes:
+        primary = defaults["primary"]
+    if trend not in timeframes:
+        trend = defaults["trend"]
+    enabled = value.get("enabled", defaults["enabled"])
+    if not isinstance(enabled, (list, tuple)):
+        enabled = defaults["enabled"]
+    enabled = list(dict.fromkeys(str(item) for item in enabled if str(item) in timeframes))
+    if not enabled:
+        enabled = defaults["enabled"]
+    try:
+        min_score = int(value.get("min_score", defaults["min_score"]))
+    except (TypeError, ValueError, OverflowError):
+        min_score = defaults["min_score"]
+    return {**defaults, **value, "primary": primary, "trend": trend,
+            "enabled": enabled, "min_score": max(8, min(10, min_score))}
+
+
 def _publish_signal_settings_changed() -> None:
     event_hub.publish("preferences.changed","preferences","updated",{"key":"signal_settings"})
 
@@ -522,17 +576,13 @@ async def telegram_worker() -> None:
                         # Automatic signals scan each selected market independently.
                         auto_raw=_get(db,user_id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}')
                         db.commit()
-                        try: auto_settings=json.loads(auto_raw)
-                        except ValueError: auto_settings={"enabled":False,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}
-                        interval=max(60,min(3600,int(auto_settings.get("interval_seconds",180) or 180)))
+                        auto_settings=_normalise_auto_signal_settings(auto_raw)
+                        interval=auto_settings["interval_seconds"]
                         auto_key=(user_id,"auto")
-                        selected=list(dict.fromkeys(str(value).upper() for value in auto_settings.get("symbols",["BTCUSDT","ETHUSDT","SOLUSDT"])
-                            if str(value).upper() in {"BTCUSDT","ETHUSDT","SOLUSDT","XAUUSD"}))
-                        if auto_settings.get("enabled") and selected and now-last_monitor.get(auto_key,0)>=interval:
+                        selected=auto_settings["symbols"]
+                        if auto_settings["enabled"] and selected and now-last_monitor.get(auto_key,0)>=interval:
                             signal_raw=_get(db,user_id,"signal_settings",'{"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":8}')
-                            try: signal_settings=json.loads(signal_raw)
-                            except ValueError: signal_settings={"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":8}
-                            signal_settings["min_score"]=max(8,int(signal_settings.get("min_score",8)))
+                            signal_settings=_normalise_signal_settings(signal_raw)
                             db.commit()
                             for market_symbol in selected:
                                 if market_symbol=="XAUUSD" and not gold_feed_configured():

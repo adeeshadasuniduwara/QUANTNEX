@@ -44,3 +44,30 @@ The Telegram TP/SL level monitor currently obtains its XAUUSD monitoring price t
 2. Add regression tests for fresh MT5 quotes, stale/missing quotes and Twelve Data fallback before merging that change.
 3. Continue auditing Telegram signal delivery/idempotency and market-data freshness/closed-candle handling.
 4. Keep this file current with exact commits, PRs, check results, blockers and next steps.
+
+
+## 2026-11-16 — Phase 2: MT5-backed Telegram Gold level monitoring (in progress)
+
+### Finding
+
+The Telegram XAUUSD TP/SL level monitor was gated on the Twelve Data API key and fetched a raw Twelve Data price directly. It did not use the already-supported local MT5 quote feed, and it did not apply the shared quote-freshness assessment before sending level notifications.
+
+### Changes in branch `fix/mt5-gold-telegram-level-monitor`
+
+- Prefer the local MT5 quote when enabled and accept it only when the tick is not stale and its age is at most 30 seconds.
+- Fall back to Twelve Data when MT5 is unavailable/stale and Twelve Data is configured.
+- Use the existing quote-health assessment for Twelve Data and reject unsafe/stale quotes.
+- Enable the existing Gold level-monitor loop whenever either historical Gold provider is configured.
+- Add regression tests for fresh MT5 preference, Twelve Data fallback, and stale MT5/Twelve Data rejection.
+
+### Verification
+
+- Implementation and regression tests are on the feature branch.
+- GitHub Actions checks are pending; do not merge until all relevant backend tests pass.
+- A real Windows MT5 terminal and broker-symbol smoke test remains device-level verification.
+
+### Next steps
+
+1. Inspect CI and the complete PR diff.
+2. Fix any failures, merge only after tests pass, and verify post-merge checks.
+3. Continue auditing signal delivery/idempotency, closed-candle rules and end-to-end automatic signal generation.

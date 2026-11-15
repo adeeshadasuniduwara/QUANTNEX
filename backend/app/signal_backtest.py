@@ -128,13 +128,20 @@ async def _simulate_slice(
     trades: list[dict[str, Any]] = []
     index = max(0, start_index)
     end_index = min(end_index, len(primary) - 2)
-    primary_seconds = TIMEFRAME_MINUTES[primary_tf] * 60
+    minute_rows = candles_by_tf.get("1", [])
+    minute_times = timestamps.get("1", [])
+    if not minute_rows or len(minute_rows) != len(minute_times):
+        raise ValueError("One-minute execution history is required for historical fill simulation.")
+    slice_end_epoch = timestamps[primary_tf][end_index + 1]
+    minute_end_index = bisect_left(minute_times, slice_end_epoch)
     tick_size = str(symbol_info.get("filters", {}).get("PRICE_FILTER", {}).get("tickSize") or "0.00000001")
     quote_asset = str(symbol_info.get("quote_asset") or "")
     stable_quotes = {"USDT", "USDC", "FDUSD", "BUSD", "TUSD", "USDP", "DAI", "USDE"}
 
     while index <= end_index:
         as_of_epoch = timestamps[primary_tf][index + 1]
+        if as_of_epoch >= slice_end_epoch:
+            break
         as_of = datetime.fromtimestamp(as_of_epoch, timezone.utc)
         windows: dict[str, list[dict[str, Any]]] = {}
         enough_history = True
@@ -195,18 +202,23 @@ async def _simulate_slice(
         side = signal["side"]
         sign = 1 if side == "BUY" else -1
         entry_type = signal["entry_type"]
+        minute_start = bisect_left(minute_times, as_of_epoch - 1e-6)
         if entry_type == "MARKET":
-            fill_index = index + 1
+            if minute_start >= minute_end_index or abs(minute_times[minute_start] - as_of_epoch) > 1e-3:
+                counters["waits"] += 1
+                index += 1
+                continue
+            fill_index = minute_start
             entry_price = float(signal["entry"])
             counters["market"] += 1
         elif entry_type == "LIMIT":
             limit_price = float(signal["limit_price"])
-            expiry_bars = max(1, math.ceil(900 / primary_seconds))
+            expiry_end_epoch = min(as_of_epoch + 900, slice_end_epoch)
+            expiry_end_index = bisect_left(minute_times, expiry_end_epoch - 1e-6)
             fill_index = None
             entry_price = None
-            for candidate_index in range(index + 1, min(end_index + 1, index + 1 + expiry_bars)):
-                candle = primary[candidate_index]
-                fill_price = _limit_fill_price(side, limit_price, candle)
+            for candidate_index in range(minute_start, min(expiry_end_index, minute_end_index)):
+                fill_price = _limit_fill_price(side, limit_price, minute_rows[candidate_index])
                 if fill_price is not None:
                     fill_index = candidate_index
                     entry_price = fill_price
@@ -214,7 +226,8 @@ async def _simulate_slice(
             counters["limit"] += 1
             if fill_index is None:
                 counters["limit_expired"] += 1
-                index += 1
+                next_signal_index = bisect_left(timestamps[primary_tf], expiry_end_epoch - 1e-6) - 1
+                index = max(index + 1, next_signal_index)
                 continue
         else:
             counters["waits"] += 1
@@ -223,11 +236,11 @@ async def _simulate_slice(
 
         stop = float(signal["stop_loss"])
         target = float(signal["tp1"])
-        exit_price = float(primary[end_index]["close"])
-        exit_index = end_index
+        exit_price = float(minute_rows[minute_end_index - 1]["close"])
+        exit_index = minute_end_index - 1
         exit_reason = "SPLIT_END"
-        for candle_index in range(fill_index, end_index + 1):
-            candle = primary[candle_index]
+        for candle_index in range(fill_index, minute_end_index):
+            candle = minute_rows[candle_index]
             low = float(candle["low"])
             high = float(candle["high"])
             hit_stop = low <= stop if side == "BUY" else high >= stop
@@ -253,16 +266,20 @@ async def _simulate_slice(
         trades.append({
             "symbol": symbol, "side": side, "entry_type": entry_type,
             "signal_time": signal["signal_candle_time"],
-            "fill_time": primary[fill_index]["time"],
-            "exit_time": primary[exit_index]["time"],
+            "fill_time": minute_rows[fill_index]["time"],
+            "exit_time": minute_rows[exit_index]["time"],
             "entry": round(entry_price, 12), "stop_loss": signal["stop_loss"],
             "take_profit": signal["tp1"], "exit": round(exit_price, 12),
             "gross_pnl": round(gross_pnl, 12), "estimated_cost": round(estimated_cost, 12),
             "net_pnl": round(net_pnl, 12), "estimated_cost_bps": round(cost_bps, 3),
             "r_multiple": round(r_multiple, 4), "exit_reason": exit_reason,
-            "bars_held": exit_index - fill_index + 1,
+            "minutes_held": exit_index - fill_index + 1,
         })
-        index = max(index + 1, exit_index + 1)
+        exit_epoch = minute_times[exit_index] + 60
+        if exit_epoch >= slice_end_epoch:
+            break
+        next_signal_index = bisect_left(timestamps[primary_tf], exit_epoch - 1e-6) - 1
+        index = max(index + 1, next_signal_index)
 
     return _metrics(trades, counters, primary, start_index, end_index, settings)
 

@@ -672,3 +672,87 @@ def test_stale_twelve_data_cache_cannot_generate_a_signal(monkeypatch):
     settings = {"primary": "5", "trend": "60", "enabled": ["5", "60"], "min_score": 8}
     with pytest.raises(signal_engine.MarketDataError, match="stale"):
         asyncio.run(signal_engine.build_signal(settings, "XAUUSD"))
+
+
+def test_binance_exchange_info_discovers_dynamic_spot_pairs_and_filters_ineligible(monkeypatch):
+    import asyncio
+    import httpx
+    from app import signal_engine
+
+    monkeypatch.setattr(signal_engine, "_BINANCE_SPOT_SYMBOLS_CACHE", None)
+    payload = {"symbols": [
+        {"symbol": "BTCUSDT", "status": "TRADING", "baseAsset": "BTC",
+         "quoteAsset": "USDT", "isSpotTradingAllowed": True},
+        {"symbol": "1000PEPEUSDT", "status": "TRADING", "baseAsset": "1000PEPE",
+         "quoteAsset": "USDT", "isSpotTradingAllowed": True},
+        {"symbol": "OLDUSDT", "status": "BREAK", "baseAsset": "OLD",
+         "quoteAsset": "USDT", "isSpotTradingAllowed": True},
+        {"symbol": "MARGINONLYUSDT", "status": "TRADING", "baseAsset": "MARGINONLY",
+         "quoteAsset": "USDT", "isSpotTradingAllowed": False},
+    ]}
+
+    def handler(request):
+        assert request.url.host == "api.binance.com"
+        assert request.url.path == "/api/v3/exchangeInfo"
+        return httpx.Response(200, json=payload)
+
+    original_client = httpx.AsyncClient
+    transport = httpx.MockTransport(handler)
+
+    def mock_client(*args, **kwargs):
+        return original_client(*args, transport=transport, **kwargs)
+
+    monkeypatch.setattr(signal_engine.httpx, "AsyncClient", mock_client)
+    symbols = asyncio.run(signal_engine.get_binance_spot_symbols())
+
+    assert "1000PEPEUSDT" in symbols
+    assert "BTCUSDT" in symbols
+    assert "OLDUSDT" not in symbols
+    assert "MARGINONLYUSDT" not in symbols
+    assert asyncio.run(signal_engine.is_binance_spot_symbol("1000PEPEUSDT")) is True
+    assert asyncio.run(signal_engine.is_binance_spot_symbol("NOT-A-PAIR")) is False
+
+
+def test_newly_listed_binance_spot_pair_can_fetch_candles(monkeypatch):
+    import asyncio
+    import httpx
+    from app import signal_engine
+
+    monkeypatch.setattr(signal_engine, "_BINANCE_SPOT_SYMBOLS_CACHE", None)
+    start = int(datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+    klines = []
+    for index in range(220):
+        price = 0.000012 + index * 0.00000001
+        open_time = start + index * 900000
+        klines.append([
+            open_time, str(price), str(price * 1.02), str(price * 0.98),
+            str(price * 1.01), "125000", open_time + 900000 - 1,
+            "500000", 100, "60000", "250000", "0",
+        ])
+    exchange_info = {"symbols": [{
+        "symbol": "1000PEPEUSDT", "status": "TRADING",
+        "baseAsset": "1000PEPE", "quoteAsset": "USDT",
+        "isSpotTradingAllowed": True,
+    }]}
+
+    def handler(request):
+        if request.url.path == "/api/v3/exchangeInfo":
+            return httpx.Response(200, json=exchange_info)
+        assert request.url.path == "/api/v3/klines"
+        assert request.url.params["symbol"] == "1000PEPEUSDT"
+        return httpx.Response(200, json=klines)
+
+    original_client = httpx.AsyncClient
+    transport = httpx.MockTransport(handler)
+
+    def mock_client(*args, **kwargs):
+        return original_client(*args, transport=transport, **kwargs)
+
+    monkeypatch.setattr(signal_engine.httpx, "AsyncClient", mock_client)
+    candles, provider = asyncio.run(
+        signal_engine.fetch_candles_with_provider("15min", 220, "1000PEPEUSDT")
+    )
+
+    assert provider == "Binance Spot"
+    assert len(candles) == 220
+    assert candles[-1]["close"] > 0

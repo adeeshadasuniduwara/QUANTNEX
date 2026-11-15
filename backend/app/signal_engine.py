@@ -707,7 +707,12 @@ def inspect_tf(c: list[dict[str,Any]]) -> dict[str,Any]:
     return {"bias":bias,"close":last,"ema20":e20,"ema50":e50,"ema200":e200,"macd":m,"macd_signal":ms,
             "macd_histogram":mh,"rsi":rv,"atr":av,"adx":dx,"structure":structure(c)}
 
-async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[str,Any]:
+async def build_signal(
+    settings: dict[str, Any], symbol: str = "XAUUSD", *,
+    candles_override: dict[str, list[dict[str, Any]]] | None = None,
+    execution_context_override: dict[str, Any] | None = None,
+    replay_as_of: datetime | None = None,
+) -> dict[str, Any]:
     symbol = str(symbol).upper()
     if symbol != "XAUUSD" and not await is_binance_spot_symbol(symbol):
         raise MarketDataError("Unsupported market. Choose a currently tradable Binance Spot pair or XAUUSD.")
@@ -715,39 +720,59 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
     if not enabled: enabled=["60","30","15","5","1"]
     needed=set(enabled+[str(settings.get("primary","5")),str(settings.get("trend","60"))])
     if "50" in needed: needed.add("1")
-    tasks={}
-    for tf in needed:
-        if tf in INTERVALS: tasks[tf]=fetch_candles_with_provider(INTERVALS[tf],3200 if tf=="1" and "50" in needed else 320,symbol)
-    results=await asyncio.gather(*tasks.values(),return_exceptions=True)
-    candles={}
-    providers=set()
-    errors=[]
-    for tf,result in zip(tasks,results):
-        if isinstance(result,Exception):
-            errors.append(f"{tf}m: {str(result)}")
-        else:
-            try:
-                rows, provider = result
-                if not isinstance(rows, list) or not provider:
-                    raise ValueError("Market-data provider returned an invalid candle result.")
-                candles[tf]=rows
-                providers.add(str(provider))
-            except (TypeError, ValueError) as exc:
-                errors.append(f"{tf}m: {str(exc)}")
+    candles = {}
+    providers = set()
+    errors = []
+    if candles_override is None:
+        tasks = {}
+        for tf in needed:
+            if tf in INTERVALS:
+                tasks[tf] = fetch_candles_with_provider(
+                    INTERVALS[tf], 3200 if tf == "1" and "50" in needed else 320, symbol
+                )
+        results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+        for tf, result in zip(tasks, results):
+            if isinstance(result, Exception):
+                errors.append(f"{tf}m: {str(result)}")
+            else:
+                try:
+                    rows, provider = result
+                    if not isinstance(rows, list) or not provider:
+                        raise ValueError("Market-data provider returned an invalid candle result.")
+                    candles[tf] = rows
+                    providers.add(str(provider))
+                except (TypeError, ValueError) as exc:
+                    errors.append(f"{tf}m: {str(exc)}")
+    else:
+        for tf in needed:
+            rows = candles_override.get(tf)
+            if not isinstance(rows, list):
+                errors.append(f"{tf}m: historical replay candles are missing.")
+                continue
+            candles[tf] = [dict(row) for row in rows]
+        providers.add("Historical Binance Spot replay")
     if "50" in needed and "1" in candles:
         candles["50"] = closed_candles(aggregate_minutes(candles["1"], 50), "50min")
         if len(candles["50"]) < 50:
             raise MarketDataError("Not enough fully closed M50 candles for stable indicator calculations.")
     if errors: raise MarketDataError("; ".join(errors))
-    freshness_errors = []
-    for tf, rows in candles.items():
-        interval = "50min" if tf == "50" else INTERVALS[tf]
-        try:
-            validate_candle_freshness(rows, interval)
-        except MarketDataError as exc:
-            freshness_errors.append(f"{tf}m: {exc}")
-    if freshness_errors:
-        raise MarketDataError("; ".join(freshness_errors))
+    if candles_override is None:
+        freshness_errors = []
+        for tf, rows in candles.items():
+            interval = "50min" if tf == "50" else INTERVALS[tf]
+            try:
+                validate_candle_freshness(rows, interval)
+            except MarketDataError as exc:
+                freshness_errors.append(f"{tf}m: {exc}")
+        if freshness_errors:
+            raise MarketDataError("; ".join(freshness_errors))
+    else:
+        for tf, rows in candles.items():
+            if len(rows) < (50 if tf == "50" else 210):
+                raise MarketDataError(f"Not enough historical {tf}m candles for replay.")
+            times = [str(row.get("time") or "") for row in rows]
+            if times != sorted(times) or len(times) != len(set(times)):
+                raise MarketDataError(f"Historical {tf}m candles must be unique and chronological.")
     analysis={tf:inspect_tf(candles[tf]) for tf in needed if tf in candles and len(candles[tf])>=(50 if tf=="50" else 210)}
     primary=str(settings.get("primary","5")); trend=str(settings.get("trend","60"))
     if primary not in analysis or trend not in analysis: raise MarketDataError("Selected primary/trend timeframe does not have enough candles.")
@@ -811,7 +836,7 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
             "reason": "Gold provider reference price; Binance execution routing is not applicable.",
         }
     elif side:
-        execution = await get_binance_spot_execution_context(symbol)
+        execution = execution_context_override or await get_binance_spot_execution_context(symbol)
         entry_choice = select_binance_entry(side, close, p["atr"], zone, execution, settings)
         if not entry_choice:
             side = None
@@ -889,6 +914,7 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
                 "min_notional": execution["min_notional"],
                 "quote_observed_at": execution["observed_at"],
                 "provider": execution["provider"],
+                "data_mode": "HISTORICAL_REPLAY_ASSUMED" if execution.get("is_replay") else "LIVE_ORDER_BOOK",
                 "tp1_reward_to_cost_ratio": round(reward_cost_ratio, 2),
             }
             if reward_cost_ratio < minimum_reward_cost_ratio:
@@ -917,7 +943,7 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
                 "entry_price": entry,
                 "limit_price": entry if entry_choice["entry_type"] == "LIMIT" else None,
                 "entry_selection_reason": entry_choice["reason"],
-                "entry_expires_at": (datetime.now(timezone.utc) + timedelta(seconds=expiry_seconds)).isoformat()
+                "entry_expires_at": ((replay_as_of or datetime.now(timezone.utc)) + timedelta(seconds=expiry_seconds)).isoformat()
                     if expiry_seconds else None,
                 "signal_candle_time": candles[primary][-1]["time"],
                 "stop_loss": round(sl, price_precision),
@@ -934,7 +960,10 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
         entry_rejection_reason = "Directional setup passed, but execution quality did not produce a valid entry."
 
     provider_label = " + ".join(sorted(providers)) if providers else "Unknown"
-    generated_at = datetime.now(timezone.utc).isoformat()
+    as_of = replay_as_of or datetime.now(timezone.utc)
+    if as_of.tzinfo is None:
+        as_of = as_of.replace(tzinfo=timezone.utc)
+    generated_at = as_of.isoformat()
     message = (
         "Signal setup and entry-quality filters passed."
         if signal else

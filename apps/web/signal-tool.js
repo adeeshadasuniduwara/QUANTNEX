@@ -258,8 +258,11 @@
         ["Profit factor",metrics.profit_factor==null?"—":metrics.profit_factor],
         ["Expectancy",metrics.expectancy_r==null?"—":metrics.expectancy_r+"R"],
         ["Max drawdown",metrics.max_drawdown_r+"R"],
-        ["Net PnL",metrics.net_pnl_quote],
+        ["Net PnL (quote)",metrics.net_pnl_quote],
+        ["Estimated costs",metrics.estimated_cost_quote],
+        ["Buy & hold",metrics.buy_and_hold_return_pct==null?"—":metrics.buy_and_hold_return_pct+"%"],
         ["Signals",metrics.signal_count],
+        ["Market / Limit",metrics.market_entries+" / "+metrics.limit_entries],
         ["Limit expired",metrics.limit_expired]
       ].forEach(([name,value])=>addStat(grid,name,String(value)));
       section.append(grid);container.append(section);

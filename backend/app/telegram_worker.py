@@ -47,6 +47,21 @@ def _normalise_auto_signal_settings(raw: str) -> dict[str, Any]:
             "symbols": selected}
 
 
+def _auto_signal_fingerprint(symbol: str, candidate: dict[str, Any] | None) -> str:
+    if not isinstance(candidate, dict):
+        return ""
+    side = str(candidate.get("side") or "").upper()
+    timeframe = str(candidate.get("timeframe") or "")
+    candle_time = str(candidate.get("signal_candle_time") or "")
+    if not side or not timeframe or not candle_time:
+        return ""
+    return "|".join([str(symbol).upper(), side, timeframe, candle_time])
+
+
+def _should_send_auto_signal(fingerprint: str, previous: str | None) -> bool:
+    return bool(fingerprint and fingerprint != (previous or ""))
+
+
 def _normalise_signal_settings(raw: str) -> dict[str, Any]:
     defaults = {"primary": "5", "trend": "60",
                 "enabled": ["60", "30", "15", "5", "1"],
@@ -175,6 +190,17 @@ def _format_telegram_message(message: str) -> str:
         else:
             rendered.append(safe)
     return "\n".join(rendered)[:3900]
+
+
+async def _deliver_auto_signal(client, token: str, chat_id: str, message: str,
+                              fingerprint: str, previous: str | None,
+                              db, user_id: int, fingerprint_key: str) -> bool:
+    """Send only a new signal fingerprint and persist it only after Telegram accepts it."""
+    if not _should_send_auto_signal(fingerprint, previous):
+        return False
+    await _send(client, token, chat_id, message)
+    _set(db, user_id, fingerprint_key, fingerprint)
+    return True
 
 
 async def _send(client, token: str, chat_id: str, text: str, reply_markup: dict | None = None):
@@ -592,10 +618,10 @@ async def telegram_worker() -> None:
                                     scan=await build_signal(signal_settings,market_symbol)
                                     candidate=scan.get("signal")
                                     if candidate:
-                                        fingerprint="|".join([market_symbol,str(candidate.get("side")),str(candidate.get("timeframe")),str(candidate.get("signal_candle_time"))])
+                                        fingerprint=_auto_signal_fingerprint(market_symbol,candidate)
                                         previous=_get(db,user_id,fingerprint_key)
                                         db.commit()
-                                        if fingerprint and fingerprint!=previous:
+                                        if _should_send_auto_signal(fingerprint,previous):
                                             msg=("QUANTNEX · AUTO SIGNAL · "+market_symbol+" "+candidate["side"]+"\n"
                                                 +"Signal TF: "+str(candidate["timeframe"])+"m · Trend TF: "+str(candidate["trend_timeframe"])+"m\n"
                                                 +"Entry: "+str(candidate["entry"])+"\nSL: "+str(candidate["stop_loss"])+"\n"
@@ -603,11 +629,11 @@ async def telegram_worker() -> None:
                                                 +"Confluence: "+str(candidate["score"])+"/10 (rule count, not win probability)\n"
                                                 +"Confirmations: "+", ".join(candidate["confirmations"])+"\n"
                                                 +"Signal only; verify spread, fees and execution. No order is placed.")
-                                            await _send(client,token,chat_id,msg)
-                                            _set(db,user_id,fingerprint_key,fingerprint)
-                                            if market_symbol=="XAUUSD":
-                                                _set(db,user_id,"active_signal",json.dumps({**candidate,"tp1_notified":False,"tp2_notified":False,"tp3_notified":False,"sl_notified":False}))
-                                            db.commit()
+                                            delivered=await _deliver_auto_signal(client,token,chat_id,msg,fingerprint,previous,db,user_id,fingerprint_key)
+                                            if delivered:
+                                                if market_symbol=="XAUUSD":
+                                                    _set(db,user_id,"active_signal",json.dumps({**candidate,"tp1_notified":False,"tp2_notified":False,"tp3_notified":False,"sl_notified":False}))
+                                                db.commit()
                                     # Keep the last delivered fingerprint when no setup is present.
                                     # This prevents duplicate alerts if the same candle briefly loses and regains confluence.
                                 except (MarketDataError,httpx.HTTPError,ValueError,KeyError) as exc:

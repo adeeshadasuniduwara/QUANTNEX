@@ -321,7 +321,8 @@ def test_binance_signal_fetch_drops_current_unclosed_candle(monkeypatch):
         return original_client(*args, transport=transport, **kwargs)
 
     monkeypatch.setattr(signal_engine.httpx, "AsyncClient", mock_client)
-    result = asyncio.run(signal_engine.fetch_candles("15min", 220, "BTCUSDT"))
+    result, provider = asyncio.run(signal_engine.fetch_candles_with_provider("15min", 220, "BTCUSDT"))
+    assert provider == "Binance Spot"
     assert len(result) == 219
     assert result[-1]["time"] == datetime.fromtimestamp((last_open - 900000) / 1000, timezone.utc).isoformat()
 
@@ -390,9 +391,9 @@ def test_build_signal_rejects_stale_provider_candles(monkeypatch):
 
     stale_rows = candles(320)
     async def stale_provider(_interval, _outputsize, _symbol):
-        return stale_rows
+        return stale_rows, "Binance Spot"
 
-    monkeypatch.setattr(signal_engine, "fetch_candles", stale_provider)
+    monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", stale_provider)
     settings = {"primary": "5", "trend": "60", "enabled": ["5", "60"], "min_score": 7}
     with pytest.raises(signal_engine.MarketDataError, match="stale"):
         asyncio.run(signal_engine.build_signal(settings, "BTCUSDT"))
@@ -415,7 +416,7 @@ def test_low_price_crypto_signal_levels_keep_required_precision(monkeypatch):
         return rows
 
     async def fake_fetch(interval, _outputsize, _symbol):
-        return fresh_rows(interval)
+        return fresh_rows(interval), "Binance Spot"
 
     structure = {
         "bos_mss": "BULLISH", "liquidity_sweep": "BULLISH",
@@ -429,7 +430,7 @@ def test_low_price_crypto_signal_levels_keep_required_precision(monkeypatch):
                 "ema50": 0.0000121, "ema200": 0.0000120, "macd_histogram": 0.0000001,
                 "rsi": 55.0, "adx": 25.0, "atr": 0.000001, "structure": structure}
 
-    monkeypatch.setattr(signal_engine, "fetch_candles", fake_fetch)
+    monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
     monkeypatch.setattr(signal_engine, "inspect_tf", bullish_analysis)
     settings = {"primary": "5", "trend": "60", "enabled": ["5", "60"], "min_score": 6}
     result = asyncio.run(signal_engine.build_signal(settings, "PEPEUSDT"))
@@ -438,3 +439,71 @@ def test_low_price_crypto_signal_levels_keep_required_precision(monkeypatch):
     assert 0 < signal["stop_loss"] < signal["entry"] < signal["tp1"] < signal["tp2"] < signal["tp3"]
     assert signal["entry"] > 0.00001
     assert result["timeframes"]["5"]["atr"] > 0
+
+
+def test_crypto_candle_provider_reports_coinbase_fallback(monkeypatch):
+    import asyncio
+    import httpx
+    from app import signal_engine
+
+    now = datetime.now(timezone.utc)
+    last_open = int(now.timestamp() // 900) * 900 - 900
+    payload = []
+    for index in range(220):
+        stamp = last_open - index * 900
+        price = 42000.0 + index
+        payload.append([stamp, price - 5, price + 5, price, price + 1, 12.5])
+
+    def handler(request):
+        if request.url.host == "api.binance.com":
+            return httpx.Response(503, json={"msg": "temporary unavailable"})
+        if request.url.host == "api.exchange.coinbase.com":
+            return httpx.Response(200, json=payload)
+        raise AssertionError("Unexpected candle provider: " + str(request.url))
+
+    original_client = httpx.AsyncClient
+    transport = httpx.MockTransport(handler)
+
+    def mock_client(*args, **kwargs):
+        return original_client(*args, transport=transport, **kwargs)
+
+    monkeypatch.setattr(signal_engine.httpx, "AsyncClient", mock_client)
+    candles_result, provider = asyncio.run(
+        signal_engine.fetch_candles_with_provider("15min", 220, "BTCUSDT")
+    )
+    assert provider == "Coinbase Exchange fallback"
+    assert len(candles_result) == 220
+    assert candles_result == sorted(candles_result, key=lambda row: row["time"])
+
+
+def test_gold_candle_provider_reports_local_mt5(monkeypatch):
+    import asyncio
+    from app import mt5_feed, signal_engine
+
+    now = datetime.now(timezone.utc)
+    seconds = signal_engine.INTERVAL_SECONDS["5min"]
+    last_open = now - timedelta(seconds=seconds + 30)
+    first_open = last_open - timedelta(seconds=seconds * 209)
+    candles = []
+    for index in range(210):
+        stamp = first_open + timedelta(seconds=seconds * index)
+        price = 2300.0 + index * 0.01
+        candles.append({
+            "time": stamp.isoformat(), "open": price, "high": price + 0.5,
+            "low": price - 0.5, "close": price + 0.1,
+        })
+
+    async def fake_mt5_candles(symbol, timeframe, limit):
+        assert symbol == signal_engine.QUANTNEX_MT5_GOLD_SYMBOL
+        assert timeframe == "5m"
+        assert limit == 210
+        return candles
+
+    monkeypatch.setattr(signal_engine, "QUANTNEX_MT5_ENABLED", True)
+    monkeypatch.setattr(signal_engine, "TWELVE_DATA_API_KEY", "")
+    monkeypatch.setattr(mt5_feed, "get_candles", fake_mt5_candles)
+    rows, provider = asyncio.run(
+        signal_engine.fetch_candles_with_provider("5min", 210, "XAUUSD")
+    )
+    assert provider == "MetaTrader 5 local terminal"
+    assert len(rows) == 210

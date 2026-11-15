@@ -636,8 +636,8 @@ DEFAULT_SIGNAL_SETTINGS = {"primary":"5","trend":"60","enabled":["60","30","15",
 def signal_engine_status(user: User = Depends(local_workspace)):
     from .signal_engine import gold_feed_configured, gold_feed_provider
     return {"configured": True, "crypto_configured": True, "gold_configured": gold_feed_configured(),
-            "providers":{"crypto":"Binance Spot public market data","gold":gold_feed_provider()},
-            "note":"Crypto uses Binance Spot. XAUUSD historical candles use the configured local read-only MT5 terminal or Twelve Data API key."}
+            "providers":{"crypto":"Binance Spot public candles; Coinbase Exchange fallback for BTC/ETH/SOL","gold":gold_feed_provider()},
+            "note":"Signal results report the actual provider used for their selected timeframes. Crypto uses Binance Spot with Coinbase Exchange fallback for BTC/ETH/SOL; XAUUSD uses the configured local read-only MT5 terminal or Twelve Data."}
 
 @app.get("/api/v1/signals/settings")
 def get_signal_settings(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
@@ -680,7 +680,7 @@ async def scan_market_signal(symbol: str = "BTCUSDT", user: User = Depends(local
             try:
                 token=decrypt_secret(token_enc)
                 market_symbol=result.get("symbol",symbol)
-                message=("QUANTNEX · "+market_symbol+" "+signal["side"]+" SIGNAL\nEntry: "+str(signal["entry"])+"\nSL: "+str(signal["stop_loss"])+
+                message=("QUANTNEX · "+market_symbol+" "+signal["side"]+" SIGNAL\nMarket data: "+str(result.get("provider","Unknown"))+"\nEntry: "+str(signal["entry"])+"\nSL: "+str(signal["stop_loss"])+
                     "\nTP1: "+str(signal["tp1"])+"\nTP2: "+str(signal["tp2"])+"\nTP3: "+str(signal["tp3"])+
                     "\nConfluence: "+str(signal["score"])+"/10 (rule count, not win probability)\nConfirmations: "+", ".join(signal["confirmations"])+
                     "\nSignal only. Verify spread, fees and execution. No broker order is placed.")

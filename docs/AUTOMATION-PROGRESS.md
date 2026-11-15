@@ -369,6 +369,8 @@ After dynamic Binance pair coverage, the next core requirement is to generate an
 
 - Extended Binance Spot exchange metadata cache to retain symbol filters, including price tick size, quantity step and minimum notional.
 - Added fresh Binance Spot best-bid/best-ask and order-book depth retrieval for a selected pair.
+- Normalized order-book depth into USD-equivalent liquidity using stablecoin parity assumptions or a live quote-asset/USDT conversion pair; unknown/unconvertible quote assets fail the execution-liquidity gate rather than being treated as USD.
+- Exposed execution diagnostics and rejection reasons when no safe entry qualifies.
 - Added transparent entry selection thresholds for spread, side-specific top-10 depth, deviation from the confirmed candle and a valid OB/FVG limit zone.
 - Added tick-aware price rounding for MARKET/LIMIT entry, stop-loss and take-profit prices.
 - Added explicit `entry_type`, `entry_price`, optional `limit_price`, entry rationale, expiry and execution-quality evidence to signal payloads.

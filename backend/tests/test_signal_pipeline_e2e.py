@@ -76,7 +76,17 @@ def test_real_signal_pipeline_generates_and_delivers_synthetic_setup(monkeypatch
     async def fake_fetch(interval, _outputsize, _symbol):
         return _synthetic_setup(direction, interval, now), provider
 
+    async def fake_execution(_symbol):
+        close = _synthetic_setup(direction, "5min", now)[-1]["close"]
+        return {
+            "best_bid": close - 0.005, "best_ask": close + 0.005, "mid_price": close,
+            "spread_bps": 0.9, "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
+            "tick_size": "0.01", "step_size": "0.001", "min_quantity": "0.001",
+            "min_notional": "5", "observed_at": now.isoformat(), "provider": "Binance Spot",
+        }
+
     monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
+    monkeypatch.setattr(signal_engine, "get_binance_spot_execution_context", fake_execution)
     settings = {
         "primary": "5",
         "trend": "60",
@@ -93,6 +103,10 @@ def test_real_signal_pipeline_generates_and_delivers_synthetic_setup(monkeypatch
     assert candidate["score"] >= 8
     assert candidate["signal_candle_time"]
     assert all(result["quality_filters"].values())
+    if symbol == "BTCUSDT":
+        assert candidate["entry_type"] == "MARKET"
+        assert candidate["market_type"] == "BINANCE_SPOT"
+        assert candidate["execution_quality"]["accepted"] is True
 
     if expected_side == "BUY":
         assert 0 < candidate["stop_loss"] < candidate["entry"] < candidate["tp1"] < candidate["tp2"] < candidate["tp3"]
@@ -151,7 +165,17 @@ def test_signal_reports_all_sources_when_timeframes_use_mixed_providers(monkeypa
         provider = "Coinbase Exchange fallback" if interval == "1h" else "Binance Spot"
         return _synthetic_setup("BUY", interval, now), provider
 
+    async def fake_execution(_symbol):
+        close = _synthetic_setup("BUY", "5min", now)[-1]["close"]
+        return {
+            "best_bid": close - 0.005, "best_ask": close + 0.005, "mid_price": close,
+            "spread_bps": 0.9, "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
+            "tick_size": "0.01", "step_size": "0.001", "min_quantity": "0.001",
+            "min_notional": "5", "observed_at": now.isoformat(), "provider": "Binance Spot",
+        }
+
     monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
+    monkeypatch.setattr(signal_engine, "get_binance_spot_execution_context", fake_execution)
     settings = {
         "primary": "5",
         "trend": "60",
@@ -170,7 +194,17 @@ def test_signal_reports_combined_provider_sources_for_mixed_timeframes(monkeypat
         provider = "Coinbase Exchange fallback" if interval == "1h" else "Binance Spot"
         return _synthetic_setup("BUY", interval, now), provider
 
+    async def fake_execution(_symbol):
+        close = _synthetic_setup("BUY", "5min", now)[-1]["close"]
+        return {
+            "best_bid": close - 0.005, "best_ask": close + 0.005, "mid_price": close,
+            "spread_bps": 0.9, "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
+            "tick_size": "0.01", "step_size": "0.001", "min_quantity": "0.001",
+            "min_notional": "5", "observed_at": now.isoformat(), "provider": "Binance Spot",
+        }
+
     monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
+    monkeypatch.setattr(signal_engine, "get_binance_spot_execution_context", fake_execution)
     settings = {
         "primary": "5",
         "trend": "60",
@@ -180,3 +214,51 @@ def test_signal_reports_combined_provider_sources_for_mixed_timeframes(monkeypat
     result = asyncio.run(signal_engine.build_signal(settings, "BTCUSDT"))
     assert result["status"] == "SIGNAL"
     assert result["provider"] == "Binance Spot + Coinbase Exchange fallback"
+
+
+def test_real_signal_pipeline_generates_a_resting_limit_at_ob_zone(monkeypatch):
+    now = datetime.now(timezone.utc)
+
+    async def fake_fetch(interval, _outputsize, _symbol):
+        return _synthetic_setup("BUY", interval, now), "Binance Spot"
+
+    zone = {"low": 101.0, "high": 101.2}
+    structure = {
+        "bos_mss": "BULLISH", "liquidity_sweep": "BULLISH",
+        "bullish_fvg": zone, "bullish_order_block": None,
+        "bullish_breaker_block": None, "bullish_ifvg": None,
+        "bearish_fvg": None, "bearish_order_block": None,
+        "bearish_breaker_block": None, "bearish_ifvg": None,
+        "premium_discount": "DISCOUNT", "swing_low": 99.0, "swing_high": 105.0,
+    }
+
+    def bullish_analysis(_rows):
+        return {
+            "bias": "BULLISH", "close": 100.0, "ema20": 99.8, "ema50": 99.5,
+            "ema200": 99.0, "macd_histogram": 0.2, "rsi": 55.0, "adx": 25.0,
+            "atr": 2.0, "structure": structure,
+        }
+
+    async def fake_execution(_symbol):
+        return {
+            "best_bid": 102.0, "best_ask": 102.02, "mid_price": 102.01,
+            "spread_bps": 2.0, "bid_depth_quote": 2000.0, "ask_depth_quote": 2000.0,
+            "tick_size": "0.01", "step_size": "0.001", "min_quantity": "0.001",
+            "min_notional": "5", "observed_at": now.isoformat(), "provider": "Binance Spot",
+        }
+
+    monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
+    monkeypatch.setattr(signal_engine, "inspect_tf", bullish_analysis)
+    monkeypatch.setattr(signal_engine, "get_binance_spot_execution_context", fake_execution)
+    settings = {"primary": "5", "trend": "60", "enabled": ["60", "30", "15", "5", "1"], "min_score": 8}
+    result = asyncio.run(signal_engine.build_signal(settings, "BTCUSDT"))
+    signal = result["signal"]
+
+    assert result["status"] == "SIGNAL"
+    assert signal is not None
+    assert signal["entry_type"] == "LIMIT"
+    assert signal["limit_price"] == signal["entry"]
+    assert signal["entry"] < 102.02
+    assert signal["entry_expires_at"]
+    assert "zone midpoint" in signal["entry_selection_reason"]
+    assert signal["execution_quality"]["accepted"] is True

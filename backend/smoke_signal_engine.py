@@ -9,7 +9,7 @@ import argparse
 import asyncio
 import sys
 
-from app.signal_engine import CRYPTO_SYMBOLS, MarketDataError, build_signal
+from app.signal_engine import MarketDataError, build_signal, get_binance_spot_symbols
 
 
 DEFAULT_SETTINGS = {
@@ -27,6 +27,15 @@ def _format_price(symbol: str, value: float) -> str:
 
 async def _run(symbols: list[str], min_score: int) -> int:
     settings = {**DEFAULT_SETTINGS, "min_score": max(8, min(10, min_score))}
+    try:
+        allowed = set(await get_binance_spot_symbols()) | {"XAUUSD"}
+    except MarketDataError as exc:
+        print(f"[ERROR] Binance Spot symbol discovery failed: {exc}", file=sys.stderr)
+        return 1
+    invalid = [symbol for symbol in symbols if symbol not in allowed]
+    if invalid:
+        print("Unsupported/non-tradable market symbol(s): " + ", ".join(invalid), file=sys.stderr)
+        return 2
     failures = 0
     print("QUANTNEX read-only signal smoke test")
     print("No Telegram messages are sent and no broker orders are placed.")
@@ -79,10 +88,8 @@ def main() -> int:
     args = parser.parse_args()
 
     symbols = list(dict.fromkeys(part.strip().upper() for part in args.symbols.split(",") if part.strip()))
-    allowed = set(CRYPTO_SYMBOLS) | {"XAUUSD"}
-    invalid = [symbol for symbol in symbols if symbol not in allowed]
-    if not symbols or invalid:
-        print("Invalid or empty symbol list. Supported markets: " + ", ".join(sorted(allowed)), file=sys.stderr)
+    if not symbols:
+        print("Invalid or empty symbol list.", file=sys.stderr)
         return 2
     return asyncio.run(_run(symbols, args.min_score))
 

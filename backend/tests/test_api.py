@@ -1096,3 +1096,37 @@ def test_windows_journal_sync_is_idempotent_when_http_response_is_lost():
     replay_after_delete = client.post("/api/v1/journal", json=payload)
     assert replay_after_delete.status_code == 409
     assert client.get("/api/v1/wallet/summary").json() == before
+
+
+
+def test_gold_signal_scan_accepts_mt5_without_twelve_data_key(monkeypatch):
+    from app import signal_engine
+
+    monkeypatch.setattr(signal_engine, "TWELVE_DATA_API_KEY", "")
+    monkeypatch.setattr(signal_engine, "QUANTNEX_MT5_ENABLED", True)
+
+    async def fake_build_signal(_settings, symbol):
+        assert symbol == "XAUUSD"
+        return {"symbol": symbol, "signal": None, "status": "WAIT", "generated_at": "2026-11-16T00:00:00+00:00"}
+
+    monkeypatch.setattr(signal_engine, "build_signal", fake_build_signal)
+    response = TestClient(app).post("/api/v1/signals/scan?symbol=XAUUSD")
+    assert response.status_code == 200
+    assert response.json()["status"] == "WAIT"
+
+
+def test_gold_auto_signals_can_be_enabled_with_mt5_without_twelve_data(monkeypatch):
+    from app import signal_engine
+
+    monkeypatch.setattr(signal_engine, "TWELVE_DATA_API_KEY", "")
+    monkeypatch.setattr(signal_engine, "QUANTNEX_MT5_ENABLED", True)
+    monkeypatch.setattr(
+        main_module, "_preference",
+        lambda _db, _user_id, key, default=None: "encrypted-token" if key == "telegram_bot_token_enc" else "123456" if key == "telegram_chat_id" else default,
+    )
+    response = TestClient(app).put("/api/v1/telegram/auto-signals", json={
+        "enabled": True, "interval_seconds": 180, "symbols": ["BTCUSDT", "XAUUSD"]
+    })
+    assert response.status_code == 200
+    assert response.json()["enabled"] is True
+    assert response.json()["gold_feed_configured"] is True

@@ -10,7 +10,7 @@ from .database import SessionLocal
 from .models import GoalContribution, PaperTrade, PersonalGoal, Preference
 from .security import decrypt_secret
 from .config import TWELVE_DATA_API_KEY
-from .signal_engine import build_signal, MarketDataError
+from .signal_engine import build_signal, MarketDataError, gold_feed_configured
 from .events import event_hub
 
 logger = logging.getLogger("quantnex.telegram")
@@ -508,7 +508,7 @@ async def telegram_worker() -> None:
                             signal_settings["min_score"]=max(8,int(signal_settings.get("min_score",8)))
                             db.commit()
                             for market_symbol in selected:
-                                if market_symbol=="XAUUSD" and not TWELVE_DATA_API_KEY:
+                                if market_symbol=="XAUUSD" and not gold_feed_configured():
                                     continue
                                 fingerprint_key="auto_signal_last_fingerprint_"+market_symbol.lower()
                                 try:

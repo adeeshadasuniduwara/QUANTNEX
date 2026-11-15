@@ -634,10 +634,10 @@ DEFAULT_SIGNAL_SETTINGS = {"primary":"5","trend":"60","enabled":["60","30","15",
 
 @app.get("/api/v1/signals/status")
 def signal_engine_status(user: User = Depends(local_workspace)):
-    from .config import TWELVE_DATA_API_KEY
-    return {"configured": True, "crypto_configured": True, "gold_configured": bool(TWELVE_DATA_API_KEY),
-            "providers":{"crypto":"Binance Spot public market data","gold":"Twelve Data" if TWELVE_DATA_API_KEY else None},
-            "note":"Crypto candles and signals use Binance Spot public data. XAUUSD requires a configured Twelve Data key."}
+    from .signal_engine import gold_feed_configured, gold_feed_provider
+    return {"configured": True, "crypto_configured": True, "gold_configured": gold_feed_configured(),
+            "providers":{"crypto":"Binance Spot public market data","gold":gold_feed_provider()},
+            "note":"Crypto uses Binance Spot. XAUUSD historical candles use the configured local read-only MT5 terminal or Twelve Data API key."}
 
 @app.get("/api/v1/signals/settings")
 def get_signal_settings(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
@@ -656,13 +656,12 @@ def update_signal_settings(payload: SignalSettingsRequest, user: User = Depends(
 
 @app.post("/api/v1/signals/scan")
 async def scan_market_signal(symbol: str = "BTCUSDT", user: User = Depends(local_workspace), db: Session = Depends(get_db)):
-    from .signal_engine import build_signal, MarketDataError, CRYPTO_SYMBOLS
-    from .config import TWELVE_DATA_API_KEY
+    from .signal_engine import build_signal, MarketDataError, CRYPTO_SYMBOLS, gold_feed_configured
     symbol = symbol.upper()
     if symbol not in CRYPTO_SYMBOLS and symbol != "XAUUSD":
         raise HTTPException(status_code=422, detail="Supported signal markets: BTCUSDT, ETHUSDT, SOLUSDT and XAUUSD.")
-    if symbol == "XAUUSD" and not TWELVE_DATA_API_KEY:
-        raise HTTPException(status_code=503,detail="Gold market feed not configured. Add TWELVE_DATA_API_KEY to backend/.env and restart the API.")
+    if symbol == "XAUUSD" and not gold_feed_configured():
+        raise HTTPException(status_code=503,detail="Gold market feed not configured. Enable the local MT5 feed or add TWELVE_DATA_API_KEY to backend/.env, then restart the API.")
     try: settings=json.loads(_preference(db,user.id,"signal_settings",json.dumps(DEFAULT_SIGNAL_SETTINGS)))
     except ValueError: settings=DEFAULT_SIGNAL_SETTINGS
     try:
@@ -864,9 +863,9 @@ def get_auto_signal_settings(user: User = Depends(local_workspace), db: Session 
     except ValueError: settings={"enabled":False,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}
     settings.setdefault("symbols",["BTCUSDT","ETHUSDT","SOLUSDT"])
     settings["telegram_connected"]=bool(_preference(db,user.id,"telegram_bot_token_enc") and _preference(db,user.id,"telegram_chat_id"))
-    from .config import TWELVE_DATA_API_KEY
+    from .signal_engine import gold_feed_configured
     settings["crypto_feed_configured"]=True
-    settings["gold_feed_configured"]=bool(TWELVE_DATA_API_KEY)
+    settings["gold_feed_configured"]=gold_feed_configured()
     return settings
 
 @app.put("/api/v1/telegram/auto-signals")
@@ -874,15 +873,15 @@ def set_auto_signal_settings(payload: AutoSignalSettingsRequest, user: User = De
     connected=bool(_preference(db,user.id,"telegram_bot_token_enc") and _preference(db,user.id,"telegram_chat_id"))
     if payload.enabled and not connected:
         raise HTTPException(status_code=409,detail="Connect and test your personal Telegram bot before enabling Auto Signals.")
-    from .config import TWELVE_DATA_API_KEY
-    if payload.enabled and "XAUUSD" in payload.symbols and not TWELVE_DATA_API_KEY:
-        raise HTTPException(status_code=503,detail="XAUUSD is selected but TWELVE_DATA_API_KEY is not configured. Remove Gold from selected markets or configure the provider.")
+    from .signal_engine import gold_feed_configured
+    if payload.enabled and "XAUUSD" in payload.symbols and not gold_feed_configured():
+        raise HTTPException(status_code=503,detail="XAUUSD is selected but no historical Gold feed is configured. Enable the local MT5 feed or add TWELVE_DATA_API_KEY to backend/.env.")
     settings=payload.model_dump()
     _save_preference(db,user.id,"auto_signal_settings",json.dumps(settings))
     record_audit_event(db, "signals.auto_settings_updated", {"enabled": settings["enabled"], "interval_seconds": settings["interval_seconds"], "symbols": settings["symbols"]})
     db.commit()
     event_hub.publish("preferences.changed", "signals", "auto_settings_updated", {"key": "auto_signal_settings", "enabled": settings["enabled"], "symbols": settings["symbols"]})
-    return {**settings,"telegram_connected":connected,"note":"Automatic crypto signal alerts run while this computer's QUANTNEX API and Telegram worker are running."}
+    return {**settings,"telegram_connected":connected,"gold_feed_configured":gold_feed_configured(),"note":"Automatic signal alerts run while this computer's QUANTNEX API and Telegram worker are running."}
 
 @app.get("/api/v1/telegram/reports")
 def get_telegram_report_settings(user: User = Depends(local_workspace), db: Session = Depends(get_db)):

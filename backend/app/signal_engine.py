@@ -17,6 +17,20 @@ INTERVALS = {"1": "1min", "5": "5min", "15": "15min", "30": "30min", "60": "1h",
 class MarketDataError(RuntimeError):
     pass
 
+
+def gold_feed_provider() -> str | None:
+    """Return the configured historical XAUUSD candle provider, if any."""
+    if QUANTNEX_MT5_ENABLED:
+        return "MetaTrader 5 local terminal"
+    if TWELVE_DATA_API_KEY:
+        return "Twelve Data"
+    return None
+
+
+def gold_feed_configured() -> bool:
+    """Whether an XAUUSD historical candle provider is configured."""
+    return gold_feed_provider() is not None
+
 CRYPTO_SYMBOLS = {"BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "LTCUSDT", "BCHUSDT", "DOTUSDT", "TRXUSDT", "TONUSDT", "SUIUSDT", "NEARUSDT", "UNIUSDT", "AAVEUSDT", "SHIBUSDT", "PEPEUSDT"}
 BINANCE_INTERVALS = {"1min":"1m", "5min":"5m", "15min":"15m", "30min":"30m", "1h":"1h", "4h":"4h"}
 INTERVAL_SECONDS = {"1min":60, "5min":300, "15min":900, "30min":1800,

@@ -554,7 +554,7 @@ def test_gold_candle_provider_reports_twelve_data_when_mt5_disabled(monkeypatch)
     )
     assert provider == "Twelve Data"
     assert len(rows) == 220
-    assert rows[-1]["time"] < rows[0]["time"] or rows[0]["time"] < rows[-1]["time"]
+    assert rows == sorted(rows, key=lambda row: row["time"])
 
 
 def test_gold_candle_provider_falls_back_to_twelve_data_when_mt5_disconnects(monkeypatch):

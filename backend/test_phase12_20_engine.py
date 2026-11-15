@@ -142,6 +142,89 @@ def test_open_position_risk_snapshot_marks_current_and_unavailable_quotes(monkey
     assert unpriced is True
 
 
+def test_paper_autopilot_worker_atomically_closes_auto_position(monkeypatch, tmp_path):
+    import json
+    from sqlalchemy import select
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session, sessionmaker
+    from app.database import Base
+    from app import phase07_engine, phase12_20_engine, signal_engine
+    from app.models import PaperTrade, PaperTradeEvent, Preference, User
+
+    database_path = tmp_path / "paper-worker.db"
+    test_engine = create_engine(
+        "sqlite:///" + database_path.as_posix(),
+        connect_args={"check_same_thread": False, "timeout": 20},
+    )
+    Base.metadata.create_all(test_engine)
+    factory = sessionmaker(bind=test_engine, autoflush=False, autocommit=False)
+    monkeypatch.setattr(phase12_20_engine, "SessionLocal", factory)
+
+    settings = {
+        "enabled": True, "interval_seconds": 60, "symbols": ["BTCUSDT"],
+        "paper_equity": 1000, "risk_percent": 0.25,
+        "max_daily_loss_percent": 2, "max_drawdown_percent": 5,
+        "max_open_positions": 3, "min_score": 8,
+    }
+    with Session(test_engine) as db:
+        user = User(email="local@quantnex.invalid", password_hash="")
+        db.add(user)
+        db.flush()
+        db.add(Preference(
+            user_id=user.id, key="paper_autopilot_settings", value=json.dumps(settings)
+        ))
+        position = PaperTrade(
+            user_id=user.id, symbol="BTCUSDT", side="BUY", quantity=1,
+            entry_price=100, stop_loss=90, take_profit=120, status="OPEN",
+        )
+        db.add(position)
+        db.flush()
+        trade_id = position.id
+        db.add(PaperTradeEvent(
+            user_id=user.id, trade_id=trade_id, event_type="AUTO_OPENED",
+            price=100, quantity=1, pnl=0, details_json="{}",
+        ))
+        db.commit()
+
+    async def quote(_symbol):
+        stamp = datetime.now(timezone.utc).isoformat()
+        return {
+            "symbol": "BTCUSDT", "kind": "crypto", "provider": "isolated-test-provider",
+            "price": 120, "source_timestamp": stamp, "timestamp": stamp,
+        }
+
+    signal_event = {"value": None}
+
+    async def no_signal(_settings, _symbol):
+        signal_event["value"].set()
+        return {"signal": None}
+
+    monkeypatch.setattr(phase07_engine, "get_quote", quote)
+    monkeypatch.setattr(signal_engine, "build_signal", no_signal)
+
+    async def run_one_cycle():
+        signal_event["value"] = asyncio.Event()
+        task = asyncio.create_task(phase12_20_engine.paper_autopilot_worker())
+        try:
+            await asyncio.wait_for(signal_event["value"].wait(), timeout=5)
+        finally:
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+    asyncio.run(run_one_cycle())
+    with Session(test_engine) as db:
+        saved = db.get(PaperTrade, trade_id)
+        events = list(db.scalars(select(PaperTradeEvent).where(
+            PaperTradeEvent.trade_id == trade_id
+        ).order_by(PaperTradeEvent.id)))
+        assert saved.status == "CLOSED"
+        assert saved.exit_price == 120
+        assert saved.realized_pnl == 20
+        assert [event.event_type for event in events].count("TAKE_PROFIT") == 1
+    test_engine.dispose()
+
+
 def test_paper_autopilot_worker_start_and_stop_cancels_its_task(monkeypatch):
     import app.main as main_module
     from app import phase12_20_engine

@@ -705,7 +705,7 @@ async def signal_engine_backtest(payload: dict, user: User = Depends(local_works
         history = await fetch_binance_historical_candles(symbol, "1m", days, max_candles=days * 1440)
         candles_by_tf = {"1": history}
         for timeframe in (5, 15, 30, 50, 60):
-            candles_by_tf[str(timeframe)] = aggregate_minutes(history, timeframe)
+            candles_by_tf[str(timeframe)] = aggregate_minutes(history, timeframe, require_complete=True)
         symbol_info = await get_binance_spot_symbol_info(symbol)
         result = await run_signal_walk_forward(
             symbol, candles_by_tf, symbol_info, settings,

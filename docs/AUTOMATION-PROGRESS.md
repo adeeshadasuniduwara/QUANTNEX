@@ -280,11 +280,34 @@ The Twelve Data Gold candle cache currently has a 15-second TTL. Each signal sca
 
 ### Verification boundary
 
-- Tests use a fake Twelve Data transport; they do not consume API quota or require secrets.
+- Implementation and tests were reviewed in PR [#161](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/161) and merged to `main` as commit `69ff1d84a87daea057985e309a485567dc3bc82f`.
+- PR CI and post-merge CI passed on Python 3.12 and 3.14, plus schema and web checks.
+- Tests verify concurrent same-key scans share one Twelve Data request, expired cache entries trigger a refetch, and stale cached candles are rejected by the signal freshness gate.
+- The optional Telegram `announce` workflow failed because the repository's `TELEGRAM_CHAT_ID` secret resolves to the bot itself; code and test checks passed.
 - Live provider quota behavior and local MT5 availability still require the real environment.
 
 ### Next steps
 
-1. Inspect CI and the complete cache/lock diff.
-2. Merge only after backend CI passes and post-merge checks pass.
+1. Phase 11: add a scheduled, read-only GitHub Actions smoke workflow for public crypto feeds using the local smoke script.
+2. Verify workflow output and ensure WAIT results are not treated as provider failures.
 3. Continue auditing provider outages, rate limits and market-closure handling.
+
+
+## 2026-11-16 — Phase 11: scheduled live crypto smoke verification (in progress)
+
+### Goal
+
+Run the read-only signal smoke script against public Binance Spot/Coinbase fallback data on a daily GitHub Actions schedule, with a manual workflow-dispatch option. This adds a real-provider integration check without credentials, Telegram sends or broker orders.
+
+### Verification boundary
+
+- The workflow checks only BTCUSDT, ETHUSDT and SOLUSDT; Gold/MT5 remains a separate local smoke test.
+- A `WAIT` result is a successful data/engine scan, not a failure.
+- A provider/data validation error should fail the workflow and remain visible in Actions logs.
+- Passing the workflow does not establish profitability or verify the user's local terminal.
+
+### Next steps
+
+1. Add the scheduled/manual workflow with read-only repository permissions.
+2. Validate workflow syntax and script invocation.
+3. Merge only after CI passes and verify the workflow is present on main.

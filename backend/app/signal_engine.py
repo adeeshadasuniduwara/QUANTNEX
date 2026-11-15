@@ -714,6 +714,9 @@ async def build_signal(
     replay_as_of: datetime | None = None,
 ) -> dict[str, Any]:
     symbol = str(symbol).upper()
+    as_of = replay_as_of or datetime.now(timezone.utc)
+    if as_of.tzinfo is None:
+        as_of = as_of.replace(tzinfo=timezone.utc)
     if symbol != "XAUUSD" and not await is_binance_spot_symbol(symbol):
         raise MarketDataError("Unsupported market. Choose a currently tradable Binance Spot pair or XAUUSD.")
     enabled=[str(x) for x in settings.get("enabled",["60","30","15","5","1"])]
@@ -943,7 +946,7 @@ async def build_signal(
                 "entry_price": entry,
                 "limit_price": entry if entry_choice["entry_type"] == "LIMIT" else None,
                 "entry_selection_reason": entry_choice["reason"],
-                "entry_expires_at": ((replay_as_of or datetime.now(timezone.utc)) + timedelta(seconds=expiry_seconds)).isoformat()
+                "entry_expires_at": (as_of + timedelta(seconds=expiry_seconds)).isoformat()
                     if expiry_seconds else None,
                 "signal_candle_time": candles[primary][-1]["time"],
                 "stop_loss": round(sl, price_precision),
@@ -960,9 +963,6 @@ async def build_signal(
         entry_rejection_reason = "Directional setup passed, but execution quality did not produce a valid entry."
 
     provider_label = " + ".join(sorted(providers)) if providers else "Unknown"
-    as_of = replay_as_of or datetime.now(timezone.utc)
-    if as_of.tzinfo is None:
-        as_of = as_of.replace(tzinfo=timezone.utc)
     generated_at = as_of.isoformat()
     message = (
         "Signal setup and entry-quality filters passed."

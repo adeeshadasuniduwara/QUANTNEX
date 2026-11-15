@@ -143,11 +143,39 @@ The Telegram automatic-signal worker parsed persisted preference JSON and immedi
 
 ### Verification
 
-- Changes and regression tests are on the feature branch.
-- GitHub Actions checks are pending; merge only after all relevant backend checks pass.
+- Implementation and regression tests were reviewed in PR [#153](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/153) and merged to `main` as commit `ee3d68b5ce2e5b69bdf63eb39fbce59515923710`.
+- PR CI passed on Python 3.12 and 3.14, plus web and schema checks.
+- Post-merge CI passed: `backend-tests (3.12)`, `backend-tests (3.14)`, `test`, and `web-check`.
+- The optional Telegram `announce` workflow continues to fail because the repository's `TELEGRAM_CHAT_ID` secret resolves to the bot itself; this is separate from code checks.
 
 ### Next steps
 
-1. Review automatic-signal delivery/fingerprint persistence and restart behavior.
-2. Add worker-level tests for duplicate suppression and Telegram send failures.
+1. Phase 6 is in progress: verify automatic signal fingerprint deduplication across database sessions/restarts and Telegram send failures.
+2. Review any ambiguous Telegram delivery outcomes; do not claim exactly-once delivery where the Bot API cannot guarantee it.
 3. Complete an end-to-end paper-mode signal generation and delivery smoke test when the local runtime is available.
+
+
+## 2026-11-16 — Phase 6: automatic signal deduplication and delivery persistence (in progress)
+
+### Finding
+
+The automatic worker already stores a per-symbol signal fingerprint in the persistent preferences table after Telegram accepts a message. However, the fingerprint creation, send, and persistence path was inline and had no direct regression tests proving that duplicates are suppressed after a worker restart or that a failed send does not mark an undelivered signal as delivered.
+
+### Changes in branch `test/automatic-signal-deduplication`
+
+- Extract deterministic fingerprint and delivery helpers used by the worker.
+- Treat symbol, side, timeframe and signal-candle timestamp as the signal identity; changed levels on the same candle do not produce a duplicate alert.
+- Persist the fingerprint only after Telegram send succeeds.
+- Add SQLite-backed tests for persistence across sessions, duplicate suppression and send-failure behavior.
+
+### Verification
+
+- Implementation and regression tests are on the feature branch.
+- GitHub Actions checks are pending; merge only after all relevant backend checks pass.
+- Telegram Bot API cannot provide a general idempotency key for sendMessage; a network failure with an ambiguous server-side outcome may still require separate handling.
+
+### Next steps
+
+1. Inspect CI and the complete diff.
+2. Merge only after tests pass and verify post-merge CI.
+3. Continue the paper-mode end-to-end signal generation and delivery audit.

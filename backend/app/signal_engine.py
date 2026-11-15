@@ -486,6 +486,7 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
                          "timeframe_consensus":consensus_ok}
         if not all(quality_filters.values()):
             side=None
+    price_precision = 2 if symbol == "XAUUSD" else 8
     signal=None
     if side:
         risk=max(p["atr"]*1.5,abs(close-(st["swing_low"] if side=="BUY" else st["swing_high"])))
@@ -493,13 +494,13 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
         sl=close-risk if side=="BUY" else close+risk
         sign=1 if side=="BUY" else -1
         signal={"symbol":symbol,"side":side,"timeframe":primary,"trend_timeframe":trend,
-                "entry":round(close,2),"signal_candle_time":candles[primary][-1]["time"],"stop_loss":round(sl,2),"tp1":round(close+sign*risk,2),
-                "tp2":round(close+sign*risk*2,2),"tp3":round(close+sign*risk*3,2),
-                "score":score,"out_of":10,"confirmations":checks,"risk_distance":round(risk,2)}
+                "entry":round(close,price_precision),"signal_candle_time":candles[primary][-1]["time"],"stop_loss":round(sl,price_precision),"tp1":round(close+sign*risk,price_precision),
+                "tp2":round(close+sign*risk*2,price_precision),"tp3":round(close+sign*risk*3,price_precision),
+                "score":score,"out_of":10,"confirmations":checks,"risk_distance":round(risk,price_precision)}
     return {"symbol":symbol,"provider":"Binance Spot" if symbol in CRYPTO_SYMBOLS else "Twelve Data","generated_at":datetime.now(timezone.utc).isoformat(),
             "signal":signal,"confluence_score":score,"score_out_of":10,"score_note":"Rule-based confluence count, not a measured win probability.",
-            "timeframes":{tf:{"bias":v["bias"],"close":round(v["close"],2),"ema20":round(v["ema20"],2),
-                "ema50":round(v["ema50"],2),"ema200":round(v["ema200"],2) if v["ema200"] is not None else None,"macd_histogram":round(v["macd_histogram"],4),
-                "rsi":round(v["rsi"],1),"adx":round(v["adx"],1),"atr":round(v["atr"],3),
+            "timeframes":{tf:{"bias":v["bias"],"close":round(v["close"],price_precision),"ema20":round(v["ema20"],price_precision),
+                "ema50":round(v["ema50"],price_precision),"ema200":round(v["ema200"],price_precision) if v["ema200"] is not None else None,"macd_histogram":round(v["macd_histogram"],price_precision),
+                "rsi":round(v["rsi"],1),"adx":round(v["adx"],1),"atr":round(v["atr"],price_precision),
                 "structure":v["structure"]} for tf,v in analysis.items()},
             "quality_filters":quality_filters,"status":"SIGNAL" if signal else "WAIT","message":"Confluence threshold and directional quality filters met." if signal else "WAIT — confluence threshold or directional quality filters not met."}

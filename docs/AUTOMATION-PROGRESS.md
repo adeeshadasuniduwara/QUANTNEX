@@ -228,12 +228,35 @@ The candle provider function already returned the provider actually used, includ
 
 ### Verification
 
-- Changes and tests are on the feature branch.
-- GitHub Actions checks are pending; merge only after all backend and web checks pass.
-- Provider labels in synthetic tests do not prove the actual user's MT5 terminal or public network connectivity.
+- Implementation and provider tests were reviewed in PR [#158](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/158) and merged to `main` as commit `a85ea1fb7439e6cced21ab520cfe2b3e9dd88e53`.
+- PR CI and post-merge CI passed on Python 3.12 and 3.14, plus schema and web checks.
+- Provider tests cover Binance Spot, Coinbase fallback, local MT5, Twelve Data and mixed timeframe sources.
+- The optional Telegram `announce` workflow failed because the repository's `TELEGRAM_CHAT_ID` secret resolves to the bot itself; this does not affect code or test checks.
 
 ### Next steps
 
-1. Inspect CI and provider fallback test results.
-2. Merge only after checks pass and verify post-merge CI.
-3. Continue real-provider smoke checks and audit stale/fallback behavior.
+1. Phase 9: add Twelve Data provider/fallback tests and a safe local live-feed smoke-test script.
+2. Inspect CI and the smoke-test script; merge only after all relevant checks pass.
+3. The local Windows/MT5 smoke test must be run on the user's actual machine; CI cannot verify their terminal connection.
+
+
+## 2026-11-16 — Phase 9: Twelve Data fallback and local live-feed smoke test (in progress)
+
+### Changes in branch `test/gold-provider-fallback-smoke-script`
+
+- Add tests for Twelve Data candle normalization/source attribution and MT5-disconnect fallback to Twelve Data.
+- Add `backend/smoke_signal_engine.py`, a read-only live-provider scan for BTCUSDT, ETHUSDT, SOLUSDT and XAUUSD.
+- Add `docs/LOCAL-SIGNAL-SMOKE-TEST.md` with Windows PowerShell instructions and interpretation of SIGNAL, WAIT and ERROR results.
+- The script never sends Telegram messages or places broker orders.
+
+### Verification
+
+- Changes and tests are on the feature branch.
+- GitHub Actions checks are pending; merge only after all relevant backend checks pass.
+- The live smoke script can be syntax-checked in CI, but actual provider connectivity and MT5 terminal availability must be checked on the user's local Windows machine.
+
+### Next steps
+
+1. Review CI and the new Twelve Data fallback tests.
+2. Merge only after tests pass and verify post-merge CI.
+3. Continue audit of provider outages, API rate limits and market-closure behavior.

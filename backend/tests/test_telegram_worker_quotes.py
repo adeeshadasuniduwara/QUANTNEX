@@ -69,3 +69,22 @@ def test_telegram_gold_level_price_rejects_stale_twelve_data(monkeypatch):
 
     monkeypatch.setattr(phase07_engine, "get_quote", stale_twelve_data_quote)
     assert asyncio.run(telegram_worker._price()) is None
+
+
+def test_telegram_gold_level_price_falls_back_when_mt5_connection_fails(monkeypatch):
+    monkeypatch.setattr(telegram_worker, "QUANTNEX_MT5_ENABLED", True)
+    monkeypatch.setattr(telegram_worker, "TWELVE_DATA_API_KEY", "test-key")
+
+    async def unavailable_mt5_quote(_symbol):
+        raise mt5_feed.MT5FeedError("terminal is not connected")
+
+    async def fresh_twelve_data_quote(_symbol):
+        stamp = datetime.now(timezone.utc).isoformat()
+        return {
+            "symbol": "XAUUSD", "kind": "gold", "price": 2303.5,
+            "provider": "Twelve Data", "source_timestamp": stamp, "timestamp": stamp,
+        }
+
+    monkeypatch.setattr(mt5_feed, "get_quote", unavailable_mt5_quote)
+    monkeypatch.setattr(phase07_engine, "get_quote", fresh_twelve_data_quote)
+    assert asyncio.run(telegram_worker._price()) == 2303.5

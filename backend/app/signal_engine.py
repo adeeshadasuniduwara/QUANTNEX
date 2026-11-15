@@ -102,7 +102,7 @@ async def get_binance_spot_symbols(force_refresh: bool = False) -> list[str]:
 async def is_binance_spot_symbol(symbol: str) -> bool:
     """Validate a Binance Spot pair, including pairs listed after app release."""
     normalized = str(symbol or "").strip().upper()
-    if not normalized or not normalized.isalnum() or len(normalized) > 30:
+    if not normalized or not normalized.isalnum() or len(normalized) > 30 or normalized == "XAUUSD":
         return False
     if normalized in CRYPTO_SYMBOLS:
         return True

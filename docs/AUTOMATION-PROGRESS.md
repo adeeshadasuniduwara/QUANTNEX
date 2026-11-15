@@ -73,3 +73,29 @@ The Telegram XAUUSD TP/SL level monitor was gated on the Twelve Data API key and
 1. Phase 2 is complete and merged; next audit candle freshness so automatic signals cannot be generated from stale-but-closed market data.
 2. Add timeframe-aware freshness checks and regression tests for stale, future-dated, and fresh candles.
 3. Continue auditing signal delivery/idempotency and end-to-end automatic signal generation.
+
+
+## 2026-11-16 — Phase 3: reject stale signal candles (in progress)
+
+### Finding
+
+The candle ingestion path removed still-forming candles, but the signal engine did not reject old, fully closed candles. A provider could therefore return an old historical snapshot and the engine could calculate and publish a signal from it.
+
+### Changes in branch `fix/reject-stale-signal-candles`
+
+- Add timeframe-aware freshness validation based on the latest candle's close time.
+- Reject future-dated and stale candles before indicator/confluence analysis.
+- Apply the freshness check to every selected timeframe, including derived M50 candles.
+- Add tests for fresh, stale, future-dated candles and stale provider data reaching `build_signal`.
+
+### Verification
+
+- Changes and regression tests are on the feature branch.
+- GitHub Actions checks are pending; merge only after all relevant backend tests pass.
+- Provider outage and weekend/market-closure behavior still need real-device/provider validation.
+
+### Next steps
+
+1. Inspect CI and review the complete PR diff.
+2. Merge only if all checks pass; verify post-merge CI.
+3. Continue auditing duplicate signal delivery and end-to-end automatic signal generation.

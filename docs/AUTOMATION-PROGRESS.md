@@ -90,8 +90,9 @@ The candle ingestion path removed still-forming candles, but the signal engine d
 
 ### Verification
 
-- Changes and regression tests are on the feature branch.
-- GitHub Actions checks are pending; merge only after all relevant backend tests pass.
+- Implementation and regression tests were reviewed in PR [#150](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/150) and merged to `main` as commit `c56a0518c8ce0d43839ea0ba30b2465c277815e5`.
+- PR CI passed on Python 3.12 and 3.14, plus the schema and web checks.
+- Post-merge CI passed: `backend-tests (3.12)`, `backend-tests (3.14)`, `test`, and `web-check`.
 - Provider outage and weekend/market-closure behavior still need real-device/provider validation.
 
 ### Next steps
@@ -115,11 +116,13 @@ The signal engine rounded every instrument's entry, stop loss, targets, ATR and 
 
 ### Verification
 
-- Implementation and regression tests are on the feature branch.
-- GitHub Actions checks are pending; merge only after all relevant backend and web checks pass.
+- Implementation and regression tests were reviewed in PR [#151](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/151) and merged to `main` as commit `eb4499b21a2a7a4ec534f2bf0907b8335bdb945e`.
+- PR CI passed: Backend CI on Python 3.12 and 3.14, schema checks, and both web checks.
+- Post-merge CI passed: `backend-tests (3.12)`, `backend-tests (3.14)`, `test`, and `web-check`.
+- The optional Telegram `announce` workflow still fails because the repository's `TELEGRAM_CHAT_ID` secret resolves to the bot itself; code and test checks pass.
 
 ### Next steps
 
-1. Inspect CI and the complete backend/frontend diff.
-2. Merge only after checks pass and verify post-merge CI.
-3. Continue reviewing supported-market coverage, exchange tick-size precision and duplicate signal delivery.
+1. Phase 4 is complete and merged; next review duplicate signal delivery and worker recovery across network failures/restarts.
+2. Add deterministic tests for the automatic Telegram signal loop and persistent fingerprint behavior.
+3. Complete a paper-mode end-to-end smoke test when a real local runtime and data feed are available.

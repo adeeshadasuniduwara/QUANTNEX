@@ -877,13 +877,21 @@ def get_auto_signal_settings(user: User = Depends(local_workspace), db: Session 
     return settings
 
 @app.put("/api/v1/telegram/auto-signals")
-def set_auto_signal_settings(payload: AutoSignalSettingsRequest, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+async def set_auto_signal_settings(payload: AutoSignalSettingsRequest, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     connected=bool(_preference(db,user.id,"telegram_bot_token_enc") and _preference(db,user.id,"telegram_chat_id"))
     if payload.enabled and not connected:
         raise HTTPException(status_code=409,detail="Connect and test your personal Telegram bot before enabling Auto Signals.")
-    from .signal_engine import gold_feed_configured
+    from .signal_engine import gold_feed_configured, is_binance_spot_symbol, MarketDataError
     if payload.enabled and "XAUUSD" in payload.symbols and not gold_feed_configured():
         raise HTTPException(status_code=503,detail="XAUUSD is selected but no historical Gold feed is configured. Enable the local MT5 feed or add TWELVE_DATA_API_KEY to backend/.env.")
+    if payload.enabled:
+        try:
+            invalid = [symbol for symbol in payload.symbols
+                       if symbol != "XAUUSD" and not await is_binance_spot_symbol(symbol)]
+        except MarketDataError as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+        if invalid:
+            raise HTTPException(status_code=422, detail="These symbols are not currently tradable Binance Spot pairs: " + ", ".join(invalid))
     settings=payload.model_dump()
     _save_preference(db,user.id,"auto_signal_settings",json.dumps(settings))
     record_audit_event(db, "signals.auto_settings_updated", {"enabled": settings["enabled"], "interval_seconds": settings["interval_seconds"], "symbols": settings["symbols"]})

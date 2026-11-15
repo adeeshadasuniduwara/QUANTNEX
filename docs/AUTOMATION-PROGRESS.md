@@ -185,19 +185,20 @@ The automatic worker already stores a per-symbol signal fingerprint in the persi
 
 ## 2026-11-16 — Phase 7: end-to-end signal generation verification (in progress)
 
-### Goal
+### Goal and implementation
 
-Move beyond unit tests and mocked indicator outputs: use deterministic, timestamp-fresh synthetic OHLC candles through the actual indicator, structure, scoring, quality-filter and signal-level code. Verify the resulting signal is structurally valid and can be passed through the persistent Telegram delivery helper without sending to a real chat.
+A new parameterized end-to-end test now creates deterministic, timestamp-fresh synthetic bullish and bearish OHLC series. Only the market-data fetch is mocked; the actual EMA, RSI, MACD, ATR, ADX, swing structure, BOS/MSS, liquidity sweep, confluence scoring, quality filters, and signal-level calculations execute.
+
+Each generated signal is then passed through the Telegram delivery helper with a fake sender and an isolated SQLite database. The test verifies the fingerprint is persisted and a second delivery attempt after reopening the database is suppressed.
 
 ### Verification boundary
 
-- Tests must use synthetic data and a fake Telegram sender; no external message or broker order is sent.
-- Keep the real market-data providers and real MT5 terminal smoke test separate from synthetic CI tests.
-- A passing synthetic test proves the pipeline can generate a signal for controlled conditions, not that the strategy has a positive live expectancy.
+- Tests use synthetic data and a fake Telegram sender; no external message or broker order is sent.
+- Keep real market-data providers and a real MT5 terminal smoke test separate from synthetic CI tests.
+- Passing synthetic tests prove the pipeline can generate signals under controlled conditions, not that the strategy has a positive live expectancy.
 
 ### Next steps
 
-1. Construct a deterministic candle series that produces a valid bullish and/or bearish setup under the existing documented rules.
-2. Run it through real `inspect_tf` and `build_signal` functions with only the market-data fetch mocked.
-3. Validate symbol, direction, candle timestamp, Entry, SL, TP1-TP3, price precision, freshness and quality filters.
-4. Pass the generated signal through the fake Telegram delivery helper and verify fingerprint persistence and duplicate suppression.
+1. Inspect CI and verify the BUY and SELL test cases pass on supported Python versions.
+2. Merge only after all relevant checks pass and verify post-merge CI.
+3. Continue with a real provider/data-feed smoke test when the local runtime is available.

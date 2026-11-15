@@ -38,7 +38,7 @@ CRYPTO_SYMBOLS = {"BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSD
 # Binance Spot is the authoritative crypto universe. CRYPTO_SYMBOLS remains a
 # compatibility set for older callers; new symbols are resolved dynamically.
 _BINANCE_SPOT_SYMBOLS_CACHE: tuple[float, frozenset[str]] | None = None
-_BINANCE_SPOT_SYMBOLS_TTL = 3600.0
+_BINANCE_SPOT_SYMBOLS_TTL = 300.0
 _BINANCE_SYMBOL_LOCKS: WeakKeyDictionary = WeakKeyDictionary()
 
 

@@ -295,19 +295,22 @@ The Twelve Data Gold candle cache currently has a 15-second TTL. Each signal sca
 
 ## 2026-11-16 — Phase 11: scheduled live crypto smoke verification (in progress)
 
-### Goal
+### Changes in branch `ci/live-crypto-signal-smoke`
 
-Run the read-only signal smoke script against public Binance Spot/Coinbase fallback data on a daily GitHub Actions schedule, with a manual workflow-dispatch option. This adds a real-provider integration check without credentials, Telegram sends or broker orders.
+- Add `.github/workflows/live-signal-smoke.yml` with a daily schedule at 01:17 UTC and a manual workflow-dispatch option.
+- Run the read-only smoke script for BTCUSDT, ETHUSDT and SOLUSDT on Python 3.12.
+- Grant only `contents: read`; no API secrets, Telegram destination, broker credentials or write permissions are used.
+- A `WAIT` scan exits successfully; provider/data errors fail the workflow.
 
 ### Verification boundary
 
-- The workflow checks only BTCUSDT, ETHUSDT and SOLUSDT; Gold/MT5 remains a separate local smoke test.
-- A `WAIT` result is a successful data/engine scan, not a failure.
-- A provider/data validation error should fail the workflow and remain visible in Actions logs.
+- The workflow checks public crypto feeds only; Gold/MT5 remains a separate local smoke test.
+- The scheduled run begins only after the workflow is merged to the default branch.
 - Passing the workflow does not establish profitability or verify the user's local terminal.
+- No workflow-dispatch tool is available in this session, so the first live run must be confirmed from GitHub Actions after merge.
 
 ### Next steps
 
-1. Add the scheduled/manual workflow with read-only repository permissions.
-2. Validate workflow syntax and script invocation.
-3. Merge only after CI passes and verify the workflow is present on main.
+1. Inspect workflow YAML, script invocation and CI checks.
+2. Merge only after CI passes and verify the workflow is present on main.
+3. Check the first scheduled/manual Actions run and continue provider reliability audit.

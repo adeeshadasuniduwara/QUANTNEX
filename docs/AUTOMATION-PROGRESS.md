@@ -62,12 +62,14 @@ The Telegram XAUUSD TP/SL level monitor was gated on the Twelve Data API key and
 
 ### Verification
 
-- Implementation and regression tests are on the feature branch.
-- GitHub Actions checks are pending; do not merge until all relevant backend tests pass.
+- Implementation and regression tests were reviewed in PR [#148](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/148) and merged to `main` as commit `e89a997eb58b727921143934a41c62c5e3640f85`.
+- PR CI passed: Backend CI, Backend/Web CI on Python 3.12 and 3.14, and Web CI.
+- Post-merge CI passed: `backend-tests (3.12)`, `backend-tests (3.14)`, `test`, and `web-check` on the merge commit.
+- The optional Telegram `announce` workflow again failed because the repository's `TELEGRAM_CHAT_ID` secret resolves to the bot itself. This does not affect build/test checks or the merged code.
 - A real Windows MT5 terminal and broker-symbol smoke test remains device-level verification.
 
 ### Next steps
 
-1. Inspect CI and the complete PR diff.
-2. Fix any failures, merge only after tests pass, and verify post-merge checks.
-3. Continue auditing signal delivery/idempotency, closed-candle rules and end-to-end automatic signal generation.
+1. Phase 2 is complete and merged; next audit candle freshness so automatic signals cannot be generated from stale-but-closed market data.
+2. Add timeframe-aware freshness checks and regression tests for stale, future-dated, and fresh candles.
+3. Continue auditing signal delivery/idempotency and end-to-end automatic signal generation.

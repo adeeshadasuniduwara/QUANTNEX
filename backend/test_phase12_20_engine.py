@@ -22,6 +22,24 @@ def test_engine_defaults_are_off_and_symbols_are_limited_to_validated_crypto():
     assert settings["symbols"] == ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
 
 
+@pytest.mark.parametrize(("key", "invalid"), [
+    ("interval_seconds", float("inf")),
+    ("interval_seconds", float("nan")),
+    ("max_open_positions", float("inf")),
+    ("max_open_positions", 1.5),
+    ("min_score", float("-inf")),
+    ("min_score", 8.5),
+])
+def test_integer_engine_settings_reject_non_finite_and_fractional_values(key, invalid):
+    with pytest.raises(ValueError, match=key):
+        normalize_settings({key: invalid})
+
+
+def test_engine_scan_interval_keeps_its_documented_safe_clamp():
+    assert normalize_settings({"interval_seconds": 30})["interval_seconds"] == 60
+    assert normalize_settings({"interval_seconds": 9000})["interval_seconds"] == 3600
+
+
 def test_engine_rejects_fx_gold_until_contract_sizing_is_verified():
     with pytest.raises(ValueError, match="BTCUSDT"):
         normalize_settings({**DEFAULT_SETTINGS, "symbols": ["XAUUSD"]})
@@ -122,6 +140,31 @@ def test_open_position_risk_snapshot_marks_current_and_unavailable_quotes(monkey
     pnl, unpriced = asyncio.run(open_position_risk_snapshot(positions))
     assert pnl == 0.0
     assert unpriced is True
+
+
+def test_paper_autopilot_worker_start_and_stop_cancels_its_task(monkeypatch):
+    import app.main as main_module
+    from app import phase12_20_engine
+
+    stopped = []
+
+    async def waiting_worker():
+        try:
+            await asyncio.Event().wait()
+        finally:
+            stopped.append(True)
+
+    monkeypatch.setattr(phase12_20_engine, "paper_autopilot_worker", waiting_worker)
+
+    async def exercise():
+        await main_module.start_paper_autopilot_worker()
+        task = main_module.app.state.paper_autopilot_task
+        await asyncio.sleep(0)
+        await main_module.stop_paper_autopilot_worker()
+        assert task.cancelled()
+
+    asyncio.run(exercise())
+    assert stopped == [True]
 
 
 def test_paper_engine_status_includes_floating_loss_and_unpriced_guard(monkeypatch):

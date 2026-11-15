@@ -633,7 +633,7 @@ async def fetch_binance_historical_candles(
                 if len(rows) < 1000:
                     break
                 await asyncio.sleep(0.05)
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, ValueError) as exc:
         raise MarketDataError(f"Binance historical data request failed: {exc}") from exc
     candles.sort(key=lambda row: row["time"])
     if len(candles) < 210:

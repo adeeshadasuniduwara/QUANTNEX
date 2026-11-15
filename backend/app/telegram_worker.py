@@ -10,7 +10,7 @@ from .database import SessionLocal
 from .models import GoalContribution, PaperTrade, PersonalGoal, Preference
 from .security import decrypt_secret
 from .config import TWELVE_DATA_API_KEY, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
-from .signal_engine import build_signal, MarketDataError, gold_feed_configured
+from .signal_engine import build_signal, MarketDataError, gold_feed_configured, gold_feed_provider
 from .events import event_hub
 
 logger = logging.getLogger("quantnex.telegram")
@@ -404,24 +404,24 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
         settings["enabled"]=selected;_set(db,user_id,"signal_settings",json.dumps(settings));db.commit();_publish_signal_settings_changed()
         return "Analysis timeframes saved: "+", ".join(names[x] for x in selected)
     if command=="/status":
-        return "QUANTNEX bot connected. Crypto feed: Binance Spot public data ready. Gold feed: "+("configured" if TWELVE_DATA_API_KEY else "not configured")+". Broker execution: disabled."
+        return "QUANTNEX bot connected. Crypto feed: Binance Spot public candles with Coinbase fallback for BTC/ETH/SOL. Gold feed: "+(gold_feed_provider() or "not configured")+". Broker execution: disabled."
     if command=="/scan":
         market=parts[1].upper() if len(parts)>1 else "BTCUSDT"
         if market not in {"BTCUSDT","ETHUSDT","SOLUSDT","XAUUSD"}:
             return "Choose /scan BTCUSDT, /scan ETHUSDT, /scan SOLUSDT or /scan XAUUSD."
-        if market=="XAUUSD" and not TWELVE_DATA_API_KEY:
-            return "XAUUSD feed is not configured. Crypto scans work with Binance public data and need no API key."
+        if market=="XAUUSD" and not gold_feed_configured():
+            return "XAUUSD feed is not configured. Enable the local MT5 feed or add TWELVE_DATA_API_KEY to backend/.env."
         try:
             result=await build_signal(settings,market)
             sig=result.get("signal")
             if not sig:
                 if market=="XAUUSD":
                     _set(db,user_id,"active_signal","");db.commit()
-                return "QUANTNEX · "+market+"\nWAIT — no setup reached the minimum confluence threshold.\nScore: "+str(result["confluence_score"])+"/10\n"+result["score_note"]
+                return "QUANTNEX · "+market+"\nMarket data: "+str(result.get("provider","Unknown"))+"\nWAIT — no setup reached the minimum confluence threshold.\nScore: "+str(result["confluence_score"])+"/10\n"+result["score_note"]
             if market=="XAUUSD":
                 _set(db,user_id,"active_signal",json.dumps({**sig,"tp1_notified":False,"tp2_notified":False,"tp3_notified":False,"sl_notified":False}))
                 db.commit()
-            return ("QUANTNEX · "+market+" "+sig["side"]+"\nEntry: "+str(sig["entry"])+"\nSL: "+str(sig["stop_loss"])+
+            return ("QUANTNEX · "+market+" "+sig["side"]+"\nMarket data: "+str(result.get("provider","Unknown"))+"\nEntry: "+str(sig["entry"])+"\nSL: "+str(sig["stop_loss"])+
                 "\nTP1: "+str(sig["tp1"])+"\nTP2: "+str(sig["tp2"])+"\nTP3: "+str(sig["tp3"])+
                 "\nConfluence: "+str(sig["score"])+"/10 (rule count, not win probability)\nConfirmations: "+", ".join(sig["confirmations"])+
                 "\nSignal only. Verify spread, fees and execution. No broker order is placed.")

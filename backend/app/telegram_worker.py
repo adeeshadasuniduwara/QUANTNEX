@@ -219,8 +219,8 @@ async def _price(_client: httpx.AsyncClient | None = None) -> float | None:
     price can trigger a Telegram TP/SL level notification.
     """
     if QUANTNEX_MT5_ENABLED:
+        from .mt5_feed import get_quote as get_mt5_quote, MT5FeedError
         try:
-            from .mt5_feed import get_quote as get_mt5_quote, MT5FeedError
             quote = await get_mt5_quote(QUANTNEX_MT5_GOLD_SYMBOL)
             age = float(quote.get("age_seconds"))
             if not quote.get("stale") and math.isfinite(age) and 0 <= age <= 30:

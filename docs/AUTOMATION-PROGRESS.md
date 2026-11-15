@@ -271,12 +271,12 @@ The candle provider function already returned the provider actually used, includ
 
 The Twelve Data Gold candle cache currently has a 15-second TTL. Each signal scan can request five timeframes concurrently. Multiple users/scans arriving together can miss the cache simultaneously and issue duplicate requests for the same symbol/timeframe, increasing the chance of provider rate limits. Any cache extension must remain within the signal engine's timeframe-aware candle freshness limits.
 
-### Next implementation
+### Changes in branch `fix/twelvedata-singleflight-cache`
 
-- Add per-event-loop single-flight locking for identical Twelve Data candle requests.
-- Recheck the cache after acquiring the lock so concurrent scans share one provider request.
-- Choose a bounded cache TTL that cannot cause M1 candles to pass the freshness gate when stale.
-- Add tests for concurrent same-key requests, cache hits, expiry and stale-candle rejection.
+- Add per-event-loop, per-cache-key single-flight locking for Twelve Data Gold candle requests.
+- Recheck the cache after acquiring the lock so concurrent scans for the same timeframe share one provider request.
+- Increase the bounded cache TTL from 15 to 45 seconds; the signal engine still validates every returned timeframe's candle age before signal generation.
+- Add tests for concurrent same-key requests, cache expiry/refetch and rejection of stale cached candles.
 
 ### Verification boundary
 
@@ -285,6 +285,6 @@ The Twelve Data Gold candle cache currently has a 15-second TTL. Each signal sca
 
 ### Next steps
 
-1. Implement and test the cache/single-flight behavior.
+1. Inspect CI and the complete cache/lock diff.
 2. Merge only after backend CI passes and post-merge checks pass.
 3. Continue auditing provider outages, rate limits and market-closure handling.

@@ -297,7 +297,7 @@ async def quantnex_view_backtest(symbol: str = "BTCUSDT", interval: str = "15m",
         return backtest_candles(candles, symbol, interval, initial_balance, risk_percent, min_score)
     except MarketDataError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
-    except (ValueError, TypeError) as exc:
+    except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
 

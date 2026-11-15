@@ -881,7 +881,7 @@ def set_auto_signal_settings(payload: AutoSignalSettingsRequest, user: User = De
     record_audit_event(db, "signals.auto_settings_updated", {"enabled": settings["enabled"], "interval_seconds": settings["interval_seconds"], "symbols": settings["symbols"]})
     db.commit()
     event_hub.publish("preferences.changed", "signals", "auto_settings_updated", {"key": "auto_signal_settings", "enabled": settings["enabled"], "symbols": settings["symbols"]})
-    return {**settings,"telegram_connected":connected,"note":"Automatic crypto signal alerts run while this computer's QUANTNEX API and Telegram worker are running."}
+    return {**settings,"telegram_connected":connected,"gold_feed_configured":gold_feed_configured(),"note":"Automatic signal alerts run while this computer's QUANTNEX API and Telegram worker are running."}
 
 @app.get("/api/v1/telegram/reports")
 def get_telegram_report_settings(user: User = Depends(local_workspace), db: Session = Depends(get_db)):

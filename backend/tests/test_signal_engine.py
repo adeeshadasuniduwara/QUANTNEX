@@ -352,3 +352,47 @@ def test_gold_feed_provider_is_unavailable_without_either_provider(monkeypatch):
     monkeypatch.setattr(signal_engine, "QUANTNEX_MT5_ENABLED", False)
     assert signal_engine.gold_feed_configured() is False
     assert signal_engine.gold_feed_provider() is None
+
+
+def test_candle_freshness_accepts_recent_fully_closed_candle():
+    from app.signal_engine import validate_candle_freshness
+
+    now = datetime(2026, 11, 16, 12, 10, tzinfo=timezone.utc)
+    rows = [{"time": (now - timedelta(minutes=6)).isoformat()}]
+    age = validate_candle_freshness(rows, "5min", now)
+    assert age == 60
+
+
+def test_candle_freshness_rejects_stale_closed_candle():
+    import pytest
+    from app.signal_engine import MarketDataError, validate_candle_freshness
+
+    now = datetime(2026, 11, 16, 12, 10, tzinfo=timezone.utc)
+    rows = [{"time": (now - timedelta(minutes=20)).isoformat()}]
+    with pytest.raises(MarketDataError, match="stale"):
+        validate_candle_freshness(rows, "5min", now)
+
+
+def test_candle_freshness_rejects_future_dated_candle():
+    import pytest
+    from app.signal_engine import MarketDataError, validate_candle_freshness
+
+    now = datetime(2026, 11, 16, 12, 10, tzinfo=timezone.utc)
+    rows = [{"time": (now + timedelta(hours=1)).isoformat()}]
+    with pytest.raises(MarketDataError, match="future"):
+        validate_candle_freshness(rows, "5min", now)
+
+
+def test_build_signal_rejects_stale_provider_candles(monkeypatch):
+    import asyncio
+    import pytest
+    from app import signal_engine
+
+    stale_rows = candles(320)
+    async def stale_provider(_interval, _outputsize, _symbol):
+        return stale_rows
+
+    monkeypatch.setattr(signal_engine, "fetch_candles", stale_provider)
+    settings = {"primary": "5", "trend": "60", "enabled": ["5", "60"], "min_score": 7}
+    with pytest.raises(signal_engine.MarketDataError, match="stale"):
+        asyncio.run(signal_engine.build_signal(settings, "BTCUSDT"))

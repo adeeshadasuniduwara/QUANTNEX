@@ -37,6 +37,37 @@ INTERVAL_SECONDS = {"1min":60, "5min":300, "15min":900, "30min":1800,
                     "1h":3600, "4h":14400, "50min":3000}
 
 
+def validate_candle_freshness(candles: list[dict[str, Any]], interval: str,
+                              now: datetime | None = None) -> float:
+    """Reject candles whose latest fully closed bar is too old or future-dated."""
+    seconds = INTERVAL_SECONDS.get(interval)
+    if seconds is None:
+        raise MarketDataError(f"Unsupported candle interval for freshness validation: {interval}.")
+    if not candles:
+        raise MarketDataError(f"No {interval} candles are available for freshness validation.")
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    else:
+        current = current.astimezone(timezone.utc)
+    try:
+        stamp = datetime.fromisoformat(str(candles[-1]["time"]).replace("Z", "+00:00"))
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        close_time = stamp.astimezone(timezone.utc) + timedelta(seconds=seconds)
+    except (KeyError, TypeError, ValueError, OverflowError):
+        raise MarketDataError(f"The latest {interval} candle has an invalid timestamp.") from None
+    age = (current - close_time).total_seconds()
+    if age < -30:
+        raise MarketDataError(f"The latest {interval} candle closes {abs(age):.0f}s in the future.")
+    max_age = max(120, seconds * 2)
+    if age > max_age:
+        raise MarketDataError(
+            f"The latest {interval} candle is stale ({age:.0f}s old; maximum allowed age is {max_age}s)."
+        )
+    return age
+
+
 def closed_candles(candles: list[dict[str, Any]], interval: str,
                    now: datetime | None = None) -> list[dict[str, Any]]:
     """Keep only candles whose full interval has elapsed at the supplied UTC time."""
@@ -397,6 +428,15 @@ async def build_signal(settings: dict[str,Any], symbol: str = "XAUUSD") -> dict[
         if len(candles["50"]) < 50:
             raise MarketDataError("Not enough fully closed M50 candles for stable indicator calculations.")
     if errors: raise MarketDataError("; ".join(errors))
+    freshness_errors = []
+    for tf, rows in candles.items():
+        interval = "50min" if tf == "50" else INTERVALS[tf]
+        try:
+            validate_candle_freshness(rows, interval)
+        except MarketDataError as exc:
+            freshness_errors.append(f"{tf}m: {exc}")
+    if freshness_errors:
+        raise MarketDataError("; ".join(freshness_errors))
     analysis={tf:inspect_tf(candles[tf]) for tf in needed if tf in candles and len(candles[tf])>=(50 if tf=="50" else 210)}
     primary=str(settings.get("primary","5")); trend=str(settings.get("trend","60"))
     if primary not in analysis or trend not in analysis: raise MarketDataError("Selected primary/trend timeframe does not have enough candles.")

@@ -18,6 +18,42 @@ def _epoch(value: str) -> float:
     return stamp.timestamp()
 
 
+def _limit_fill_price(side: str, limit_price: float, candle: dict[str, Any]) -> float | None:
+    """Model a resting limit fill, including a favorable gap through the limit."""
+    open_price = float(candle["open"])
+    low = float(candle["low"])
+    high = float(candle["high"])
+    if side == "BUY":
+        if open_price <= limit_price:
+            return min(limit_price, open_price)
+        if low <= limit_price:
+            return limit_price
+    else:
+        if open_price >= limit_price:
+            return max(limit_price, open_price)
+        if high >= limit_price:
+            return limit_price
+    return None
+
+
+def _stop_fill_price(side: str, stop: float, candle: dict[str, Any]) -> float:
+    open_price = float(candle["open"])
+    if side == "BUY" and open_price <= stop:
+        return open_price
+    if side == "SELL" and open_price >= stop:
+        return open_price
+    return stop
+
+
+def _target_fill_price(side: str, target: float, candle: dict[str, Any]) -> float:
+    open_price = float(candle["open"])
+    if side == "BUY" and open_price >= target:
+        return open_price
+    if side == "SELL" and open_price <= target:
+        return open_price
+    return target
+
+
 def _metrics(trades: list[dict[str, Any]], counters: dict[str, int], candles: list[dict[str, Any]],
              start_index: int, end_index: int, settings: dict[str, Any]) -> dict[str, Any]:
     wins = [trade for trade in trades if trade["net_pnl"] > 0]
@@ -170,12 +206,10 @@ async def _simulate_slice(
             entry_price = None
             for candidate_index in range(index + 1, min(end_index + 1, index + 1 + expiry_bars)):
                 candle = primary[candidate_index]
-                low = float(candle["low"])
-                high = float(candle["high"])
-                open_price = float(candle["open"])
-                if low <= limit_price <= high:
+                fill_price = _limit_fill_price(side, limit_price, candle)
+                if fill_price is not None:
                     fill_index = candidate_index
-                    entry_price = min(limit_price, open_price) if side == "BUY" else max(limit_price, open_price)
+                    entry_price = fill_price
                     break
             counters["limit"] += 1
             if fill_index is None:
@@ -199,12 +233,12 @@ async def _simulate_slice(
             hit_stop = low <= stop if side == "BUY" else high >= stop
             hit_target = high >= target if side == "BUY" else low <= target
             if hit_stop:
-                exit_price = stop
+                exit_price = _stop_fill_price(side, stop, candle)
                 exit_index = candle_index
                 exit_reason = "STOP_LOSS_STOP_FIRST"
                 break
-            if hit_target:
-                exit_price = target
+            if hit_target and not (entry_type == "LIMIT" and candle_index == fill_index):
+                exit_price = _target_fill_price(side, target, candle)
                 exit_index = candle_index
                 exit_reason = "TAKE_PROFIT_1"
                 break

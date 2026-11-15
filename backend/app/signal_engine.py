@@ -275,7 +275,11 @@ def select_binance_entry(
         return {
             "entry_type": "MARKET",
             "entry_price": market_price,
-            "reason": "Fresh spread and top-book liquidity are acceptable, and price remains close to the confirmed signal candle.",
+            "reason": (
+                "Historical replay model: assumed spread/depth pass the MARKET gate."
+                if execution.get("is_replay") else
+                "Fresh spread and top-book liquidity are acceptable, and price remains close to the confirmed signal candle."
+            ),
         }
 
     if zone and isinstance(zone, dict):
@@ -294,7 +298,11 @@ def select_binance_entry(
             return {
                 "entry_type": "LIMIT",
                 "entry_price": candidate,
-                "reason": "Price has moved away from the signal close; a resting limit is placed at the confirmed OB/FVG zone midpoint.",
+                "reason": (
+                    "Historical replay model: assumed spread/depth pass; resting LIMIT is placed at the OB/FVG zone midpoint."
+                    if execution.get("is_replay") else
+                    "Price has moved away from the signal close; a resting limit is placed at the confirmed OB/FVG zone midpoint."
+                ),
             }
     return None
 

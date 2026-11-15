@@ -1,6 +1,6 @@
 """Background Telegram command and TP1 notification worker."""
 from __future__ import annotations
-import asyncio, json, logging
+import asyncio, json, logging, math
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from typing import Any
@@ -9,7 +9,7 @@ from sqlalchemy import select, func
 from .database import SessionLocal
 from .models import GoalContribution, PaperTrade, PersonalGoal, Preference
 from .security import decrypt_secret
-from .config import TWELVE_DATA_API_KEY
+from .config import TWELVE_DATA_API_KEY, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
 from .signal_engine import build_signal, MarketDataError, gold_feed_configured
 from .events import event_hub
 
@@ -211,13 +211,40 @@ def _risk_dashboard(db, user_id: int) -> str:
         +"These are alert settings, not guaranteed account-level risk controls.")
 
 
-async def _price(client: httpx.AsyncClient) -> float | None:
-    if not TWELVE_DATA_API_KEY:return None
-    response=await client.get("https://api.twelvedata.com/price",
-        params={"symbol":"XAU/USD","apikey":TWELVE_DATA_API_KEY})
-    data=response.json()
-    try:return float(data["price"])
-    except (KeyError,TypeError,ValueError):return None
+async def _price(_client: httpx.AsyncClient | None = None) -> float | None:
+    """Return a fresh XAUUSD monitoring price from MT5 or Twelve Data.
+
+    MT5 is preferred when enabled. A stale/unavailable MT5 tick falls back to
+    Twelve Data when configured. Provider timestamps are checked before a
+    price can trigger a Telegram TP/SL level notification.
+    """
+    if QUANTNEX_MT5_ENABLED:
+        try:
+            from .mt5_feed import get_quote as get_mt5_quote, MT5FeedError
+            quote = await get_mt5_quote(QUANTNEX_MT5_GOLD_SYMBOL)
+            age = float(quote.get("age_seconds"))
+            if not quote.get("stale") and math.isfinite(age) and 0 <= age <= 30:
+                bid, ask = float(quote["bid"]), float(quote["ask"])
+                last = float(quote.get("last") or 0)
+                price = last if last > 0 else (bid + ask) / 2
+                if all(math.isfinite(value) and value > 0 for value in (bid, ask, price)) and ask >= bid:
+                    return price
+        except (MT5FeedError, ValueError, TypeError, KeyError, OverflowError):
+            pass
+
+    if not TWELVE_DATA_API_KEY:
+        return None
+    try:
+        from .phase07_engine import get_quote as get_twelve_data_quote, IntelligenceDataError
+        from .phase10_engine import assess_quote
+        quote = await get_twelve_data_quote("XAUUSD")
+        health = assess_quote(quote)
+        if not health.get("trading_safe"):
+            return None
+        price = float(quote["price"])
+        return price if math.isfinite(price) and price > 0 else None
+    except (IntelligenceDataError, httpx.HTTPError, ValueError, TypeError, KeyError, OverflowError):
+        return None
 
 async def _handle_command(client, db, user_id: int, token: str, chat_id: str, text: str) -> str | None:
     parts=text.strip().split()
@@ -466,7 +493,7 @@ async def telegram_worker() -> None:
                         if now-last_monitor.get(user_id,0)>=60:
                             active_raw=_get(db,user_id,"active_signal")
                             db.commit()
-                            if active_raw and TWELVE_DATA_API_KEY:
+                            if active_raw and gold_feed_configured():
                                 try:
                                     active=json.loads(active_raw);price=await _price(client)
                                     if price is not None:

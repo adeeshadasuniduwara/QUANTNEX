@@ -823,6 +823,21 @@ def test_binance_entry_selector_uses_limit_at_confirmed_zone_after_price_runs():
     assert selected["entry_price"] == 101.1
 
 
+def test_binance_entry_selector_uses_sell_limit_above_bid_at_bearish_zone():
+    from app.signal_engine import select_binance_entry
+
+    execution = {
+        "best_bid": 100.00, "best_ask": 100.02, "mid_price": 100.01,
+        "spread_bps": 2.0, "bid_depth_quote": 2000.0, "ask_depth_quote": 2000.0,
+    }
+    selected = select_binance_entry(
+        "SELL", 102.0, 2.0, {"low": 101.0, "high": 101.2}, execution
+    )
+    assert selected is not None
+    assert selected["entry_type"] == "LIMIT"
+    assert selected["entry_price"] == 101.1
+
+
 def test_binance_entry_selector_rejects_wide_spread_without_valid_execution():
     from app.signal_engine import select_binance_entry
 

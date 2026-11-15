@@ -16,7 +16,7 @@ from statistics import mean
 from typing import Any
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, update
 from .database import SessionLocal
 from .models import PaperTrade, PaperTradeEvent, Preference, User
 from .events import event_hub
@@ -286,20 +286,41 @@ async def paper_autopilot_worker() -> None:
                                 continue
                             price = float(quote["price"])
                             floating = (price - position.entry_price) * position.quantity * (1 if position.side == "BUY" else -1)
+                            if not math.isfinite(price) or price <= 0 or not math.isfinite(floating):
+                                unpriced_open_position = True
+                                continue
                             stop_hit = price <= position.stop_loss if position.side == "BUY" else price >= position.stop_loss
                             target_hit = price >= position.take_profit if position.side == "BUY" else price <= position.take_profit
                             if position.id in auto_ids and (stop_hit or target_hit):
                                 reason = "STOP_LOSS" if stop_hit else "TAKE_PROFIT"
-                                position.exit_price = price
-                                position.realized_pnl = round(floating, 8)
-                                position.status = "CLOSED"
-                                position.closed_at = datetime.now(timezone.utc)
-                                db.add(PaperTradeEvent(user_id=user.id, trade_id=position.id,
-                                    event_type=reason, price=price, quantity=position.quantity,
-                                    pnl=position.realized_pnl, details_json=json.dumps({"provider": quote["provider"], "data_health": health})))
-                                event_hub.publish("paper_trade.changed", "paper_trade", "auto_closed",
-                                    {"trade_id": position.id, "symbol": position.symbol, "status": "CLOSED", "reason": reason})
-                                db.commit()
+                                realized_pnl = round(floating, 8)
+                                closed_at = datetime.now(timezone.utc)
+                                updated_id = db.execute(
+                                    update(PaperTrade)
+                                    .where(
+                                        PaperTrade.id == position.id,
+                                        PaperTrade.user_id == user.id,
+                                        PaperTrade.status == "OPEN",
+                                    )
+                                    .values(
+                                        exit_price=price,
+                                        realized_pnl=realized_pnl,
+                                        status="CLOSED",
+                                        closed_at=closed_at,
+                                    )
+                                    .returning(PaperTrade.id)
+                                    .execution_options(synchronize_session=False)
+                                ).scalar_one_or_none()
+                                if updated_id is not None:
+                                    db.add(PaperTradeEvent(user_id=user.id, trade_id=position.id,
+                                        event_type=reason, price=price, quantity=position.quantity,
+                                        pnl=realized_pnl, details_json=json.dumps({
+                                            "provider": quote["provider"], "data_health": health
+                                        })))
+                                    db.commit()
+                                    event_hub.publish("paper_trade.changed", "paper_trade", "auto_closed",
+                                        {"trade_id": position.id, "symbol": position.symbol,
+                                         "status": "CLOSED", "reason": reason})
                             else:
                                 unrealized_pnl += floating
                         except (IntelligenceDataError, httpx.HTTPError, ValueError, KeyError):

@@ -420,14 +420,16 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
             if not sig:
                 if market=="XAUUSD":
                     _set(db,user_id,"active_signal","");db.commit()
-                return "QUANTNEX · "+market+"\nMarket data: "+str(result.get("provider","Unknown"))+"\nWAIT — no setup reached the minimum confluence threshold.\nScore: "+str(result["confluence_score"])+"/10\n"+result["score_note"]
+                return "QUANTNEX · "+market+"\nMarket data: "+str(result.get("provider","Unknown"))+"\n"+str(result.get("message","WAIT — no qualifying setup."))+"\nScore: "+str(result["confluence_score"])+"/10\n"+result["score_note"]
             if market=="XAUUSD":
                 _set(db,user_id,"active_signal",json.dumps({**sig,"tp1_notified":False,"tp2_notified":False,"tp3_notified":False,"sl_notified":False}))
                 db.commit()
             return ("QUANTNEX · "+market+" "+sig["side"]+"\nMarket data: "+str(result.get("provider","Unknown"))+
                 "\nEntry type: "+str(sig.get("entry_type","REFERENCE"))+"\nEntry: "+str(sig["entry"])+
                 ("\nLimit price: "+str(sig["limit_price"]) if sig.get("entry_type")=="LIMIT" else "")+
-                "\nEntry logic: "+str(sig.get("entry_selection_reason",""))+"\nSL: "+str(sig["stop_loss"])+
+                "\nEntry logic: "+str(sig.get("entry_selection_reason",""))+
+                ("\nSpread: "+str(sig["execution_quality"]["spread_bps"])+" bps · estimated round-trip cost: "+str(sig["execution_quality"]["estimated_round_trip_cost_bps"])+" bps" if sig.get("execution_quality") else "")+
+                "\nSL: "+str(sig["stop_loss"])+
                 "\nTP1: "+str(sig["tp1"])+"\nTP2: "+str(sig["tp2"])+"\nTP3: "+str(sig["tp3"])+
                 "\nConfluence: "+str(sig["score"])+"/10 (rule count, not win probability)\nConfirmations: "+", ".join(sig["confirmations"])+
                 "\nSignal only. Verify spread, fees and execution. No broker order is placed.")
@@ -634,6 +636,8 @@ async def telegram_worker() -> None:
                                                 +"Entry type: "+str(candidate.get("entry_type","REFERENCE"))+"\n"
                                                 +"Entry: "+str(candidate["entry"])+
                                                 ("\nLimit price: "+str(candidate["limit_price"]) if candidate.get("entry_type")=="LIMIT" else "")+"\n"
+                                                +"Entry logic: "+str(candidate.get("entry_selection_reason",""))+"\n"
+                                                +("Spread: "+str(candidate["execution_quality"]["spread_bps"])+" bps · estimated round-trip cost: "+str(candidate["execution_quality"]["estimated_round_trip_cost_bps"])+" bps\n" if candidate.get("execution_quality") else "")
                                                 +"SL: "+str(candidate["stop_loss"])+"\n"
                                                 +"TP1: "+str(candidate["tp1"])+"\nTP2: "+str(candidate["tp2"])+"\nTP3: "+str(candidate["tp3"])+"\n"
                                                 +"Confluence: "+str(candidate["score"])+"/10 (rule count, not win probability)\n"

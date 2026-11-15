@@ -715,7 +715,7 @@ async def signal_engine_backtest(payload: dict, user: User = Depends(local_works
         )
     except HTTPException:
         raise
-    except ValueError as exc:
+    except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except MarketDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc))

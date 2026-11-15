@@ -1,4 +1,9 @@
 const $ = (id) => document.getElementById(id);
+function money(value){
+  const amount=Number(value);
+  if(!Number.isFinite(amount))return "—";
+  return (amount<0?"−":"")+"$"+Math.abs(amount).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+}
 const storageKey = "quantnex.journal.v2";
 const journalSourceKey = "quantnex.journal.import_source.v1";
 function loadTrades(){
@@ -459,19 +464,60 @@ window.addEventListener("quantnex:workspace-event",event=>{
 // Recover and reconcile queued rows on every workspace startup, not only after
 // a later browser "online" event or event-stream reconnect.
 syncJournal();
+function renderWalletTransactions(transactions){
+  const body=$("walletRows");
+  if(!body)return;
+  body.replaceChildren();
+  if(!Array.isArray(transactions)||!transactions.length){
+    const row=document.createElement("tr"),cell=document.createElement("td");
+    cell.colSpan=4;cell.className="empty-row";cell.textContent="No wallet transactions yet.";
+    row.append(cell);body.append(row);return;
+  }
+  transactions.forEach(transaction=>{
+    const row=document.createElement("tr");
+    const rawDate=String(transaction.created_at||"");
+    const stamp=new Date(/[zZ]|[+-]\d{2}:\d{2}$/.test(rawDate)?rawDate:rawDate+"Z");
+    const date=Number.isNaN(stamp.getTime())?"—":stamp.toLocaleString();
+    const labels={deposit:"Deposit",withdrawal:"Withdrawal",trade_pnl:"Trading P&L"};
+    const type=labels[transaction.transaction_type]||String(transaction.transaction_type||"Unknown").replaceAll("_"," ");
+    const amount=Number(transaction.amount);
+    const values=[date,type,String(transaction.description||""),Number.isFinite(amount)?money(amount):"—"];
+    values.forEach((value,index)=>{
+      const cell=document.createElement("td");cell.textContent=value;
+      if(index===3&&Number.isFinite(amount))cell.className=amount<0?"negative":amount>0?"positive":"";
+      row.append(cell);
+    });
+    body.append(row);
+  });
+}
 async function refreshWallet(){
-  const [summary,transactions]=await Promise.all([apiRequest("/api/v1/wallet/summary"),apiRequest("/api/v1/wallet/transactions?limit=100")]);
+  const [summary,transactions]=await Promise.all([apiRequest("/api/v1/wallet/summary"),apiRequest("/api/v1/wallet/transactions?limit=500")]);
   $("walletBalance").textContent=money(summary.balance);$("walletDeposits").textContent=money(summary.deposits);$("walletWithdrawals").textContent=money(summary.withdrawals);$("walletPnl").textContent=money(summary.trading_pnl);renderWalletTransactions(transactions);
 }
 window.addEventListener("quantnex:workspace-event",event=>{
   if(event.detail?.type==="wallet.changed")refreshWallet().catch(error=>setAccountMessage("Wallet refresh failed: "+error.message,true));
 });
 window.addEventListener("quantnex:workspace-resync",()=>refreshWallet().catch(error=>setAccountMessage("Wallet refresh failed: "+error.message,true)));
+let walletWriteInFlight=false;
 async function recordWalletTransaction(type){
+  if(walletWriteInFlight)return;
   const amountInput=$(type==="deposit"?"depositAmount":"withdrawAmount"),descriptionInput=$(type==="deposit"?"depositDescription":"withdrawDescription"),amount=Number(amountInput.value);
   if(!Number.isFinite(amount)||amount<=0||amount>1000000000){setAccountMessage("Enter a finite amount greater than zero and no more than $1,000,000,000.",true);return;}
-  try{await apiRequest("/api/v1/wallet/transactions",{method:"POST",body:JSON.stringify({transaction_type:type,amount,description:descriptionInput.value.trim()})});amountInput.value="";descriptionInput.value="";await refreshWallet();setAccountMessage(type==="deposit"?"Deposit record saved locally.":"Withdrawal record saved locally.");}
-  catch(error){setAccountMessage(error.message,true);}
+  const button=$(type==="deposit"?"walletDeposit":"walletWithdraw"),originalText=button.textContent;
+  walletWriteInFlight=true;button.disabled=true;button.textContent="Saving…";
+  let saved=false;
+  try{
+    await apiRequest("/api/v1/wallet/transactions",{method:"POST",body:JSON.stringify({transaction_type:type,amount,description:descriptionInput.value.trim()})});
+    saved=true;amountInput.value="";descriptionInput.value="";
+  }catch(error){setAccountMessage(error.message,true);}
+  finally{walletWriteInFlight=false;button.disabled=false;button.textContent=originalText;}
+  if(!saved)return;
+  try{
+    await refreshWallet();
+    setAccountMessage(type==="deposit"?"Deposit record saved locally.":"Withdrawal record saved locally.");
+  }catch(error){
+    setAccountMessage("Transaction saved, but wallet display could not refresh: "+error.message,true);
+  }
 }
 $("walletDeposit").addEventListener("click",()=>recordWalletTransaction("deposit"));
 $("walletWithdraw").addEventListener("click",()=>recordWalletTransaction("withdrawal"));

@@ -126,3 +126,28 @@ The signal engine rounded every instrument's entry, stop loss, targets, ATR and 
 1. Phase 4 is complete and merged; next review duplicate signal delivery and worker recovery across network failures/restarts.
 2. Add deterministic tests for the automatic Telegram signal loop and persistent fingerprint behavior.
 3. Complete a paper-mode end-to-end smoke test when a real local runtime and data feed are available.
+
+
+## 2026-11-16 — Phase 5: harden automatic signal worker settings (in progress)
+
+### Finding
+
+The Telegram automatic-signal worker parsed persisted preference JSON and immediately called dictionary methods and integer conversions. A valid JSON scalar/null value, malformed interval, malformed timeframe list, or out-of-range minimum score could raise an uncaught exception and interrupt the worker loop. The worker also only enforced a lower bound for the score, so a corrupt value above the maximum could silently prevent every signal.
+
+### Changes in branch `fix/guard-auto-signal-worker-settings`
+
+- Normalize auto-signal settings to a safe typed dictionary before scanning.
+- Normalize primary/trend/enabled timeframes and clamp automatic-signal score to the supported 8–10 range.
+- Fall back to safe defaults for invalid persisted values without enabling automatic signals unless the stored enabled value is exactly true.
+- Add tests for malformed JSON values, invalid intervals, symbols and score bounds.
+
+### Verification
+
+- Changes and regression tests are on the feature branch.
+- GitHub Actions checks are pending; merge only after all relevant backend checks pass.
+
+### Next steps
+
+1. Review automatic-signal delivery/fingerprint persistence and restart behavior.
+2. Add worker-level tests for duplicate suppression and Telegram send failures.
+3. Complete an end-to-end paper-mode signal generation and delivery smoke test when the local runtime is available.

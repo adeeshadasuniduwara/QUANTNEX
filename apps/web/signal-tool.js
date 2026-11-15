@@ -184,6 +184,7 @@
       const grid=document.createElement("div");grid.className="position-summary signal-levels";
       [["Entry type",s.entry_type||"REFERENCE"],["Entry",s.entry],
        ...(s.entry_type==="LIMIT"?[["Limit price",s.limit_price]]:[]),
+       ...(s.entry_expires_at?[["Entry expires",new Date(s.entry_expires_at).toLocaleString()]]:[]),
        ["Stop Loss",s.stop_loss],["TP1",s.tp1],["TP2",s.tp2],["TP3",s.tp3]].forEach(([a,b])=>addStat(grid,a,String(b)));
       result.append(grid);
       if(s.entry_selection_reason){

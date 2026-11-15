@@ -267,3 +267,47 @@ def test_real_signal_pipeline_generates_a_resting_limit_at_ob_zone(monkeypatch):
     assert signal["entry_expires_at"]
     assert "zone midpoint" in signal["entry_selection_reason"]
     assert signal["execution_quality"]["accepted"] is True
+
+
+def test_signal_pipeline_returns_wait_when_spread_blocks_market_and_limit(monkeypatch):
+    now = datetime.now(timezone.utc)
+
+    async def fake_fetch(interval, _outputsize, _symbol):
+        return _synthetic_setup("BUY", interval, now), "Binance Spot"
+
+    zone = {"low": 101.0, "high": 101.2}
+    structure = {
+        "bos_mss": "BULLISH", "liquidity_sweep": "BULLISH",
+        "bullish_fvg": zone, "bullish_order_block": None,
+        "bullish_breaker_block": None, "bullish_ifvg": None,
+        "bearish_fvg": None, "bearish_order_block": None,
+        "bearish_breaker_block": None, "bearish_ifvg": None,
+        "premium_discount": "DISCOUNT", "swing_low": 99.0, "swing_high": 105.0,
+    }
+
+    def bullish_analysis(_rows):
+        return {
+            "bias": "BULLISH", "close": 100.0, "ema20": 99.8, "ema50": 99.5,
+            "ema200": 99.0, "macd_histogram": 0.2, "rsi": 55.0, "adx": 25.0,
+            "atr": 2.0, "structure": structure,
+        }
+
+    async def wide_spread_execution(_symbol):
+        return {
+            "best_bid": 102.0, "best_ask": 102.8, "mid_price": 102.4,
+            "spread_bps": 78.12, "bid_depth_quote": 50000.0, "ask_depth_quote": 50000.0,
+            "tick_size": "0.01", "step_size": "0.001", "min_quantity": "0.001",
+            "min_notional": "5", "observed_at": now.isoformat(), "provider": "Binance Spot",
+        }
+
+    monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
+    monkeypatch.setattr(signal_engine, "inspect_tf", bullish_analysis)
+    monkeypatch.setattr(signal_engine, "get_binance_spot_execution_context", wide_spread_execution)
+    settings = {"primary": "5", "trend": "60", "enabled": ["60", "30", "15", "5", "1"], "min_score": 8}
+    result = asyncio.run(signal_engine.build_signal(settings, "BTCUSDT"))
+
+    assert result["status"] == "WAIT"
+    assert result["signal"] is None
+    assert result["quality_filters"]["execution_quality"] is False
+    assert result["execution_quality"]["accepted"] is False
+    assert "No safe MARKET entry" in result["message"]

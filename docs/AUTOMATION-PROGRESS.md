@@ -338,6 +338,8 @@ The current signal pipeline used a static `CRYPTO_SYMBOLS` allowlist (20 symbols
 - Updated chart and manual signal scan API validation to use dynamic exchange metadata.
 - Relaxed Auto Signals schema/Telegram normalization from a four-symbol static allowlist to validated symbol syntax, with final market eligibility checked by the signal engine.
 - Updated the read-only smoke script to validate requested pairs against live Binance exchange metadata.
+- Added searchable Binance-pair inputs to Signal Lab and Auto Signals; populated suggestions and the chart symbol list from the dynamic market endpoint.
+- Increased Auto Signals selection capacity to 50 pairs and validate selected symbols against current Binance Spot metadata before enabling alerts.
 - Added tests for newly listed Spot pair discovery, inactive/non-Spot filtering, and fetching candles for a dynamic pair.
 
 ### Verification status

@@ -28,9 +28,11 @@ Affected paths:
 
 ### Verification
 
-- Changes and regression tests are committed on the feature branch.
-- Local test execution is not available through the current GitHub repository connector session. GitHub Actions PR checks must run and pass before merge.
-- Do not claim the fix is verified until CI results are inspected. A physical Windows MT5 terminal smoke test remains separate and must not be inferred from CI.
+- Changes and regression tests were reviewed in PR [#146](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/146) and merged to `main` as commit `da54f6e16c0d202436a87d26de30f58cbc73a1af`.
+- PR CI passed: Backend CI, Backend/Web CI on Python 3.12 and 3.14, and Web CI.
+- Post-merge CI also passed: `backend-tests (3.12)`, `backend-tests (3.14)`, `test`, and `web-check` on the merge commit.
+- The optional Telegram `announce` workflow failed because the repository's `TELEGRAM_CHAT_ID` secret resolves to the bot itself. This does not affect build/test checks or the merged code; correct the repository secret only if Telegram update announcements are desired.
+- A physical Windows MT5 terminal smoke test remains separate and must not be inferred from CI.
 
 ### Remaining limitation / follow-up
 
@@ -38,8 +40,7 @@ The Telegram TP/SL level monitor currently obtains its XAUUSD monitoring price t
 
 ## Next steps
 
-1. Inspect the PR diff and run all relevant GitHub Actions checks.
-2. Fix any failing tests or regressions; merge only after checks pass and the diff is reviewed.
-3. Verify the merged commit on `main`.
-4. Continue with the next highest-priority signal-pipeline issue, including Telegram signal delivery/idempotency and market-data freshness/closed-candle handling.
-5. Keep this file current with exact commits, PRs, check results, blockers and next steps.
+1. Phase 1 is complete and merged; the next phase is MT5-backed XAUUSD TP/SL level monitoring in Telegram, with fresh-provider validation and Twelve Data fallback.
+2. Add regression tests for fresh MT5 quotes, stale/missing quotes and Twelve Data fallback before merging that change.
+3. Continue auditing Telegram signal delivery/idempotency and market-data freshness/closed-candle handling.
+4. Keep this file current with exact commits, PRs, check results, blockers and next steps.

@@ -396,3 +396,45 @@ def test_build_signal_rejects_stale_provider_candles(monkeypatch):
     settings = {"primary": "5", "trend": "60", "enabled": ["5", "60"], "min_score": 7}
     with pytest.raises(signal_engine.MarketDataError, match="stale"):
         asyncio.run(signal_engine.build_signal(settings, "BTCUSDT"))
+
+
+def test_low_price_crypto_signal_levels_keep_required_precision(monkeypatch):
+    import asyncio
+    from app import signal_engine
+
+    now = datetime.now(timezone.utc)
+    def fresh_rows(interval):
+        seconds = signal_engine.INTERVAL_SECONDS[interval]
+        last_open = now - timedelta(seconds=seconds + 30)
+        start = last_open - timedelta(seconds=seconds * 319)
+        rows = []
+        for index in range(320):
+            stamp = start + timedelta(seconds=seconds * index)
+            rows.append({"time": stamp.isoformat(), "open": 0.000012,
+                         "high": 0.000013, "low": 0.000011, "close": 0.00001234})
+        return rows
+
+    async def fake_fetch(interval, _outputsize, _symbol):
+        return fresh_rows(interval)
+
+    structure = {
+        "bos_mss": "BULLISH", "liquidity_sweep": "BULLISH",
+        "bullish_fvg": {"low": 0.000012, "high": 0.000013},
+        "bullish_order_block": None, "bullish_breaker_block": None, "bullish_ifvg": None,
+        "premium_discount": "DISCOUNT", "swing_low": 0.000011, "swing_high": 0.000014,
+    }
+
+    def bullish_analysis(_candles):
+        return {"bias": "BULLISH", "close": 0.00001234, "ema20": 0.0000122,
+                "ema50": 0.0000121, "ema200": 0.0000120, "macd_histogram": 0.0000001,
+                "rsi": 55.0, "adx": 25.0, "atr": 0.000001, "structure": structure}
+
+    monkeypatch.setattr(signal_engine, "fetch_candles", fake_fetch)
+    monkeypatch.setattr(signal_engine, "inspect_tf", bullish_analysis)
+    settings = {"primary": "5", "trend": "60", "enabled": ["5", "60"], "min_score": 6}
+    result = asyncio.run(signal_engine.build_signal(settings, "PEPEUSDT"))
+    signal = result["signal"]
+    assert signal is not None
+    assert 0 < signal["stop_loss"] < signal["entry"] < signal["tp1"] < signal["tp2"] < signal["tp3"]
+    assert signal["entry"] > 0.00001
+    assert result["timeframes"]["5"]["atr"] > 0

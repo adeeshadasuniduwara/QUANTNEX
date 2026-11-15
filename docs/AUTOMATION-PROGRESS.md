@@ -99,3 +99,27 @@ The candle ingestion path removed still-forming candles, but the signal engine d
 1. Inspect CI and review the complete PR diff.
 2. Merge only if all checks pass; verify post-merge CI.
 3. Continue auditing duplicate signal delivery and end-to-end automatic signal generation.
+
+
+## 2026-11-16 — Phase 4: preserve low-price crypto signal precision (in progress)
+
+### Finding
+
+The signal engine rounded every instrument's entry, stop loss, targets, ATR and EMA values to two decimal places. That destroys valid price levels for low-priced supported markets such as PEPEUSDT and SHIBUSDT, often collapsing entry/SL/TP to zero. The Signal Lab plan display also forced all levels to two decimals.
+
+### Changes in branch `fix/crypto-signal-price-precision`
+
+- Keep two decimal places for XAUUSD and eight decimal places for crypto signal levels and price-derived indicators.
+- Format Signal Lab levels according to price magnitude so small crypto prices remain readable.
+- Add an end-to-end mocked PEPEUSDT signal test proving Entry, SL, TP1-TP3 and ATR remain non-zero and correctly ordered.
+
+### Verification
+
+- Implementation and regression tests are on the feature branch.
+- GitHub Actions checks are pending; merge only after all relevant backend and web checks pass.
+
+### Next steps
+
+1. Inspect CI and the complete backend/frontend diff.
+2. Merge only after checks pass and verify post-merge CI.
+3. Continue reviewing supported-market coverage, exchange tick-size precision and duplicate signal delivery.

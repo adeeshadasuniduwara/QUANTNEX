@@ -3,6 +3,13 @@
   const tfKey = "quantnex.signal.timeframes.v1";
   const tfNames = {"1":"M1","5":"M5","15":"M15","30":"M30","50":"M50","60":"H1","240":"H4"};
   const money = v => "$" + Math.abs(v).toFixed(2);
+  const priceText = value => {
+    const number = Number(value), magnitude = Math.abs(number);
+    if (!Number.isFinite(number)) return String(value);
+    const digits = magnitude >= 1000 ? 2 : magnitude >= 1 ? 4 : magnitude >= 0.1 ? 5 :
+      magnitude >= 0.01 ? 6 : magnitude >= 0.001 ? 7 : 10;
+    return number.toFixed(digits);
+  };
   const num = id => Number($(id).value);
   let currentPlan = null;
 
@@ -24,9 +31,9 @@
     const rrs=[p.t1,p.t2,p.t3].map(t=>Math.abs(t-p.entry)/distance);
     const stopPct=Math.max(12,Math.min(42,100*distance/(distance+Math.abs(p.t3-p.entry))));
     $("riskRewardVisual").hidden=false;$("lossZone").style.flex="0 0 "+stopPct+"%";$("profitZone").style.flex="1";
-    $("lossZone").textContent="LOSS / SL "+p.sl.toFixed(2);
-    $("profitZone").textContent="PROFIT · TP1 "+p.t1.toFixed(2)+" · TP2 "+p.t2.toFixed(2)+" · TP3 "+p.t3.toFixed(2);
-    $("entryMarker").textContent="ENTRY "+p.entry.toFixed(2);result.replaceChildren();
+    $("lossZone").textContent="LOSS / SL "+priceText(p.sl);
+    $("profitZone").textContent="PROFIT · TP1 "+priceText(p.t1)+" · TP2 "+priceText(p.t2)+" · TP3 "+priceText(p.t3);
+    $("entryMarker").textContent="ENTRY "+priceText(p.entry);result.replaceChildren();
     [["Risk amount",money(riskCash)],["Estimated size",lots.toFixed(3)+" lots"],["TP1 R:R","1:"+rrs[0].toFixed(2)],["TP2 R:R","1:"+rrs[1].toFixed(2)],["TP3 R:R","1:"+rrs[2].toFixed(2)]].forEach(([a,b])=>{
       const d=document.createElement("div"),s=document.createElement("span"),v=document.createElement("strong");
       d.className="position-stat";s.textContent=a;v.textContent=b;d.append(s,v);result.append(d);

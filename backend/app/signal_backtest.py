@@ -357,6 +357,7 @@ async def run_signal_walk_forward(
         "symbol": symbol,
         "market_type": "BINANCE_SPOT",
         "quote_asset": symbol_info.get("quote_asset"),
+        "pnl_unit": "quote-currency PnL per 1 unit of the base asset; no account position size is assumed",
         "data_quality": {
             "one_minute_candles": len(minute_times),
             "missing_minute_bars": missing_minute_bars,

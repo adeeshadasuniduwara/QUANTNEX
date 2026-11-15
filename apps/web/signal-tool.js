@@ -241,7 +241,7 @@
     if(!container)return;
     container.replaceChildren();
     const heading=document.createElement("strong");
-    heading.textContent=data.symbol+" · Chronological walk-forward validation";
+    heading.textContent=data.symbol+" · "+(data.quote_asset||"quote asset")+" · Chronological walk-forward validation";
     container.append(heading);
     const note=document.createElement("p");
     note.className="signal-feed-note";

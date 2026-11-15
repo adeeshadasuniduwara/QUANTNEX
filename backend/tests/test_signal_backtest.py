@@ -150,3 +150,19 @@ def test_historical_limit_and_exit_fills_handle_gaps_conservatively():
     assert _limit_fill_price("BUY", 100.0, {"open": 101.0, "low": 100.5, "high": 102.0}) is None
     assert _stop_fill_price("BUY", 99.0, {"open": 98.0}) == 98.0
     assert _target_fill_price("BUY", 101.0, {"open": 102.0}) == 102.0
+
+
+def test_signal_walk_forward_rejects_large_historical_minute_gaps():
+    from app import signal_backtest
+
+    minute_rows = _candles(15_000, 1)
+    candles_by_tf = {
+        "1": minute_rows[:5000] + minute_rows[5020:],
+        "5": _candles(3_000, 5),
+        "15": _candles(1_000, 15),
+        "30": _candles(500, 30),
+        "60": _candles(250, 60),
+    }
+    info = {"quote_asset": "USDT", "filters": {"PRICE_FILTER": {"tickSize": "0.01"}}}
+    with __import__("pytest").raises(ValueError, match="missing bars"):
+        asyncio.run(signal_backtest.run_signal_walk_forward("BTCUSDT", candles_by_tf, info))

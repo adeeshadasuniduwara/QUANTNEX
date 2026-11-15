@@ -12,7 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
@@ -1111,29 +1111,92 @@ async def open_paper_trade(payload: dict, user: User = Depends(local_workspace),
 @app.post("/api/v1/paper-trading/trades/{trade_id}/close")
 async def close_paper_trade(trade_id: int, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     from .phase07_engine import get_quote, IntelligenceDataError
-    item=db.scalar(select(PaperTrade).where(PaperTrade.id==trade_id,PaperTrade.user_id==user.id))
-    if item is None: raise HTTPException(status_code=404,detail="Paper trade not found.")
-    if item.status!="OPEN": raise HTTPException(status_code=409,detail="Paper trade is already closed.")
+    from .phase10_engine import execution_gate
+
+    user_id = user.id
+    item = db.scalar(select(PaperTrade).where(
+        PaperTrade.id == trade_id, PaperTrade.user_id == user_id
+    ))
+    if item is None:
+        raise HTTPException(status_code=404, detail="Paper trade not found.")
+    if item.status != "OPEN":
+        raise HTTPException(status_code=409, detail="Paper trade is already closed.")
+
     try:
-        quote=await get_quote(item.symbol)
-        exit_price=float(quote["price"])
+        quote = await get_quote(item.symbol)
+        data_gate = execution_gate(quote)
+        if not data_gate["allowed"]:
+            raise HTTPException(
+                status_code=503,
+                detail={"message": "Paper close blocked by Market Data Guardian.", "data_health": data_gate["health"]},
+            )
+        exit_price = float(quote["price"])
+        if not math.isfinite(exit_price) or exit_price <= 0:
+            raise HTTPException(status_code=503, detail="Provider returned an invalid paper exit price.")
+        pnl = (exit_price - item.entry_price) * item.quantity * (1 if item.side == "BUY" else -1)
+        if not math.isfinite(pnl):
+            raise HTTPException(status_code=503, detail="Paper close P&L is not finite; position remains open.")
+    except HTTPException:
+        raise
     except IntelligenceDataError as exc:
-        raise HTTPException(status_code=502,detail=str(exc))
-    except httpx.HTTPError:
-        raise HTTPException(status_code=502,detail="Market provider request failed. Check API key, quota or network connection.")
-    pnl=(exit_price-item.entry_price)*item.quantity*(1 if item.side=="BUY" else -1)
-    item.exit_price=exit_price
-    item.realized_pnl=round(pnl,8)
-    item.status="CLOSED"
-    item.closed_at=datetime.now(timezone.utc)
-    db.add(PaperTradeEvent(user_id=user.id, trade_id=item.id, event_type="MANUAL_CLOSED",
-        price=exit_price, quantity=item.quantity, pnl=item.realized_pnl,
-        details_json=json.dumps({"provider":"market_quote","mode":"PAPER"})))
-    record_audit_event(db,"paper_trade.closed",{"trade_id":item.id,"symbol":item.symbol,
-        "exit":exit_price,"realized_pnl":item.realized_pnl,"mode":"paper"})
+        raise HTTPException(status_code=502, detail=str(exc))
+    except (httpx.HTTPError, ValueError, TypeError, KeyError):
+        raise HTTPException(
+            status_code=502,
+            detail="Market provider returned an invalid close quote. Check provider data, API key, quota or network.",
+        )
+
+    realized_pnl = round(pnl, 8)
+    closed_at = datetime.now(timezone.utc)
+    try:
+        updated_id = db.execute(
+            update(PaperTrade)
+            .where(
+                PaperTrade.id == trade_id,
+                PaperTrade.user_id == user_id,
+                PaperTrade.status == "OPEN",
+            )
+            .values(
+                exit_price=exit_price,
+                realized_pnl=realized_pnl,
+                status="CLOSED",
+                closed_at=closed_at,
+            )
+            .returning(PaperTrade.id)
+            .execution_options(synchronize_session=False)
+        ).scalar_one_or_none()
+    except OperationalError as exc:
+        db.rollback()
+        if "locked" in str(exc).lower() or "busy" in str(exc).lower():
+            current = db.scalar(select(PaperTrade).where(
+                PaperTrade.id == trade_id, PaperTrade.user_id == user_id
+            ))
+            if current is None:
+                raise HTTPException(status_code=404, detail="Paper trade not found.") from None
+            if current.status != "OPEN":
+                raise HTTPException(status_code=409, detail="Paper trade was closed by another request.") from None
+            raise HTTPException(status_code=503, detail="Paper close is busy. Refresh the ledger and try again.") from None
+        raise
+    if updated_id is None:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Paper trade was closed by another request.")
+
+    db.add(PaperTradeEvent(user_id=user_id, trade_id=trade_id, event_type="MANUAL_CLOSED",
+        price=exit_price, quantity=item.quantity, pnl=realized_pnl,
+        details_json=json.dumps({"provider": quote.get("provider", "market_quote"), "mode": "PAPER",
+                                 "data_health": data_gate["health"]})))
+    record_audit_event(db, "paper_trade.closed", {
+        "trade_id": trade_id, "symbol": item.symbol,
+        "exit": exit_price, "realized_pnl": realized_pnl, "mode": "paper",
+    })
     db.commit()
-    event_hub.publish("paper_trade.changed", "paper_trade", "closed", {"trade_id": item.id, "symbol": item.symbol, "status": item.status, "realized_pnl": item.realized_pnl})
-    return {"id":item.id,"status":item.status,"exit_price":exit_price,"realized_pnl":item.realized_pnl,"mode":"PAPER"}
+    db.refresh(item)
+    event_hub.publish("paper_trade.changed", "paper_trade", "closed", {
+        "trade_id": item.id, "symbol": item.symbol, "status": item.status,
+        "realized_pnl": item.realized_pnl,
+    })
+    return {"id": item.id, "status": item.status, "exit_price": item.exit_price,
+            "realized_pnl": item.realized_pnl, "mode": "PAPER"}
 
 @app.get("/api/v1/paper-trading/summary")
 def paper_trading_summary(user: User = Depends(local_workspace), db: Session = Depends(get_db)):

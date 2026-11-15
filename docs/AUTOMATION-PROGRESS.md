@@ -410,6 +410,7 @@ A signal is not considered good merely because the engine emits it. Validate the
 - Added historical minute-gap checks; reject replay ranges with excessive missing bars rather than silently interpolating or inventing candles.
 - Added deterministic historical candle and execution-context overrides to the same `build_signal` engine used by live scans; replay timestamps and signal expiry are anchored to the historical replay time.
 - Added a chronological walk-forward runner that uses only candles closed by the next primary bar open, splits usable history into training and unseen holdout slices, and simulates MARKET fills, 15-minute LIMIT expiry/fills, SL/TP1 exits, and conservative stop-first same-candle ambiguity.
+- Execution fills and exits are replayed on 1m candles even when the signal timeframe is 15m/30m/M50/1h, so the 15-minute LIMIT expiry cannot accidentally extend to a whole higher-timeframe candle.
 - Includes spread/depth/fee/slippage assumptions, net PnL, win rate, profit factor, expectancy in R, max drawdown, expired limit counts and a buy-and-hold reference.
 - Added a `POST /api/v1/signals/backtest` API and Signal Lab UI action to show training versus out-of-sample results.
 - Backtest limitations are surfaced: no historical order book, no partial TP2/TP3 exits, no position sizing, no funding, and no actual user fee-tier confirmation.

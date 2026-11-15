@@ -1,12 +1,14 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
 import math
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 import sqlite3
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
+import app.database as database_module
 import app.main as main_module
 from app.database import Base, engine
 from app.main import app, local_workspace, backup_legacy_database
@@ -159,6 +161,8 @@ def test_local_wallet_ledger_deposits_withdrawals_and_journal_pnl():
         "transaction_type": "withdrawal", "amount": 999999999
     })
     assert denied.status_code == 409
+    after_denied = client.get("/api/v1/wallet/summary").json()
+    assert round(after_denied["balance"] - before["balance"], 2) == 400.0
 
     trade = client.post("/api/v1/journal", json={
         "symbol": "XAUUSD", "direction": "buy", "outcome": "win", "pnl": 35.25
@@ -170,6 +174,15 @@ def test_local_wallet_ledger_deposits_withdrawals_and_journal_pnl():
     assert round(summary.json()["balance"] - before["balance"], 2) == 435.25
     transactions = client.get("/api/v1/wallet/transactions?limit=500")
     assert len(transactions.json()) == len(before_rows) + 3
+    latest_rows = transactions.json()
+    assert [row["transaction_type"] for row in latest_rows[:3]] == [
+        "trade_pnl", "withdrawal", "deposit"
+    ]
+    latest_one = client.get("/api/v1/wallet/transactions?limit=1")
+    assert latest_one.status_code == 200
+    assert latest_one.json()[0]["id"] == latest_rows[0]["id"]
+    assert client.get("/api/v1/wallet/transactions?limit=0").status_code == 422
+    assert client.get("/api/v1/wallet/transactions?limit=501").status_code == 422
 
     deleted = client.delete(f"/api/v1/journal/{trade.json()['id']}")
     assert deleted.status_code == 204
@@ -197,6 +210,114 @@ def test_wallet_rejects_non_finite_and_out_of_range_amounts_without_mutating_bal
             assert detail[0]["input"] == str(amount).lower()
     after = client.get("/api/v1/wallet/summary").json()
     assert after == before
+
+
+def test_wallet_withdrawals_are_atomic_under_concurrent_requests(tmp_path, monkeypatch):
+    database_path = tmp_path / "wallet-concurrent.db"
+    test_engine = create_engine(
+        "sqlite:///" + database_path.as_posix(),
+        connect_args={"check_same_thread": False, "timeout": 20},
+        pool_pre_ping=True,
+    )
+    with test_engine.connect() as connection:
+        connection.exec_driver_sql("PRAGMA journal_mode=WAL")
+    Base.metadata.create_all(test_engine)
+    monkeypatch.setattr(
+        database_module, "SessionLocal",
+        sessionmaker(bind=test_engine, autoflush=False, autocommit=False),
+    )
+
+    seed_client = TestClient(app)
+    seed = seed_client.post("/api/v1/wallet/transactions", json={
+        "transaction_type": "deposit", "amount": 1000, "description": "Concurrency seed"
+    })
+    assert seed.status_code == 201
+    seed_client.close()
+
+    def withdraw_once():
+        worker = TestClient(app)
+        try:
+            response = worker.post("/api/v1/wallet/transactions", json={
+                "transaction_type": "withdrawal", "amount": 600,
+                "description": "Concurrent withdrawal",
+            })
+            return response.status_code
+        finally:
+            worker.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        statuses = list(pool.map(lambda _index: withdraw_once(), range(2)))
+
+    assert sorted(statuses) == [201, 409]
+    verify_client = TestClient(app)
+    summary = verify_client.get("/api/v1/wallet/summary")
+    rows = verify_client.get("/api/v1/wallet/transactions?limit=500")
+    assert summary.status_code == 200
+    assert summary.json()["balance"] == 400.0
+    assert len([row for row in rows.json() if row["transaction_type"] == "withdrawal"]) == 1
+    verify_client.close()
+    test_engine.dispose()
+
+
+def test_wallet_and_journal_linkage_persist_after_database_engine_restart(tmp_path, monkeypatch):
+    database_path = tmp_path / "wallet-restart.db"
+    database_url = "sqlite:///" + database_path.as_posix()
+    first_engine = create_engine(
+        database_url, connect_args={"check_same_thread": False, "timeout": 20}
+    )
+    Base.metadata.create_all(first_engine)
+    monkeypatch.setattr(
+        database_module, "SessionLocal",
+        sessionmaker(bind=first_engine, autoflush=False, autocommit=False),
+    )
+
+    first_client = TestClient(app)
+    assert first_client.post("/api/v1/wallet/transactions", json={
+        "transaction_type": "deposit", "amount": 250, "description": "Restart deposit"
+    }).status_code == 201
+    assert first_client.post("/api/v1/wallet/transactions", json={
+        "transaction_type": "withdrawal", "amount": 25, "description": "Restart withdrawal"
+    }).status_code == 201
+    trade = first_client.post("/api/v1/journal", json={
+        "symbol": "XAUUSD", "direction": "buy", "outcome": "loss",
+        "pnl": -5, "notes": "Wallet restart linkage",
+    })
+    assert trade.status_code == 201
+    trade_id = trade.json()["id"]
+    before_restart = first_client.get("/api/v1/wallet/transactions?limit=500").json()
+    assert first_client.get("/api/v1/wallet/summary").json()["balance"] == 220.0
+    first_client.close()
+    first_engine.dispose()
+
+    restarted_engine = create_engine(
+        database_url, connect_args={"check_same_thread": False, "timeout": 20}
+    )
+    monkeypatch.setattr(
+        database_module, "SessionLocal",
+        sessionmaker(bind=restarted_engine, autoflush=False, autocommit=False),
+    )
+    restarted_client = TestClient(app)
+    assert restarted_client.get("/api/v1/wallet/summary").json()["balance"] == 220.0
+    after_restart = restarted_client.get("/api/v1/wallet/transactions?limit=500").json()
+    assert [(row["id"], row["amount"], row["trade_id"]) for row in after_restart] == [
+        (row["id"], row["amount"], row["trade_id"]) for row in before_restart
+    ]
+
+    updated = restarted_client.put(f"/api/v1/journal/{trade_id}", json={
+        "symbol": "XAUUSD", "direction": "buy", "outcome": "loss",
+        "pnl": -8, "notes": "Wallet restart linkage corrected",
+    })
+    assert updated.status_code == 200
+    linked = [
+        row for row in restarted_client.get("/api/v1/wallet/transactions?limit=500").json()
+        if row["trade_id"] == trade_id
+    ]
+    assert len(linked) == 1 and linked[0]["amount"] == -8.0
+    assert restarted_client.get("/api/v1/wallet/summary").json()["balance"] == 217.0
+    assert restarted_client.delete(f"/api/v1/journal/{trade_id}").status_code == 204
+    assert restarted_client.get("/api/v1/wallet/summary").json()["balance"] == 225.0
+    restarted_client.close()
+    restarted_engine.dispose()
 
 
 def test_signal_settings_and_telegram_status_work_without_login():

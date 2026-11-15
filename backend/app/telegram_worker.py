@@ -427,6 +427,7 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
             return ("QUANTNEX · "+market+" "+sig["side"]+"\nMarket data: "+str(result.get("provider","Unknown"))+
                 "\nEntry type: "+str(sig.get("entry_type","REFERENCE"))+"\nEntry: "+str(sig["entry"])+
                 ("\nLimit price: "+str(sig["limit_price"]) if sig.get("entry_type")=="LIMIT" else "")+
+                ("\nEntry expires: "+str(sig["entry_expires_at"]) if sig.get("entry_expires_at") else "")+
                 "\nEntry logic: "+str(sig.get("entry_selection_reason",""))+
                 ("\nSpread: "+str(sig["execution_quality"]["spread_bps"])+" bps · estimated round-trip cost: "+str(sig["execution_quality"]["estimated_round_trip_cost_bps"])+" bps" if sig.get("execution_quality") else "")+
                 "\nSL: "+str(sig["stop_loss"])+
@@ -636,6 +637,7 @@ async def telegram_worker() -> None:
                                                 +"Entry type: "+str(candidate.get("entry_type","REFERENCE"))+"\n"
                                                 +"Entry: "+str(candidate["entry"])+
                                                 ("\nLimit price: "+str(candidate["limit_price"]) if candidate.get("entry_type")=="LIMIT" else "")+"\n"
+                                                +("Entry expires: "+str(candidate["entry_expires_at"])+"\n" if candidate.get("entry_expires_at") else "")
                                                 +"Entry logic: "+str(candidate.get("entry_selection_reason",""))+"\n"
                                                 +("Spread: "+str(candidate["execution_quality"]["spread_bps"])+" bps · estimated round-trip cost: "+str(candidate["execution_quality"]["estimated_round_trip_cost_bps"])+" bps\n" if candidate.get("execution_quality") else "")
                                                 +"SL: "+str(candidate["stop_loss"])+"\n"

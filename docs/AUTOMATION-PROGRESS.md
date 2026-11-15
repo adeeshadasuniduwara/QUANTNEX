@@ -304,13 +304,16 @@ The Twelve Data Gold candle cache currently has a 15-second TTL. Each signal sca
 
 ### Verification boundary
 
+- PR [#163](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/163) merged to `main` as commit `c1ff57e1f6071500e44aedbece93b60ce989db11`.
+- PR CI and post-merge CI passed on Python 3.12 and 3.14, plus web checks.
+- The workflow is present on `main`, scheduled daily at 01:17 UTC, and can also be started manually from GitHub Actions.
+- The first scheduled live run is pending; this session has no workflow-dispatch action to start it immediately.
 - The workflow checks public crypto feeds only; Gold/MT5 remains a separate local smoke test.
-- The scheduled run begins only after the workflow is merged to the default branch.
 - Passing the workflow does not establish profitability or verify the user's local terminal.
-- No workflow-dispatch tool is available in this session, so the first live run must be confirmed from GitHub Actions after merge.
+- The optional Telegram `announce` workflow failed because the repository's `TELEGRAM_CHAT_ID` secret resolves to the bot itself; this is separate from signal-smoke and code CI.
 
 ### Next steps
 
-1. Inspect workflow YAML, script invocation and CI checks.
-2. Merge only after CI passes and verify the workflow is present on main.
-3. Check the first scheduled/manual Actions run and continue provider reliability audit.
+1. Phase 12: inspect the first scheduled live crypto smoke run and diagnose any actual Binance/Coinbase data or validation failures.
+2. Review output semantics for SIGNAL vs WAIT vs ERROR; do not treat a WAIT as failure.
+3. Continue local Windows/MT5 verification using the smoke script when the user's terminal is available.

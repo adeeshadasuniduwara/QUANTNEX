@@ -8,6 +8,7 @@ from datetime import datetime, timezone, timedelta
 from contextlib import asynccontextmanager
 import math
 import time
+from decimal import Decimal, ROUND_DOWN, ROUND_UP
 from weakref import WeakKeyDictionary
 from typing import Any
 import httpx
@@ -37,7 +38,7 @@ CRYPTO_SYMBOLS = {"BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSD
 
 # Binance Spot is the authoritative crypto universe. CRYPTO_SYMBOLS remains a
 # compatibility set for older callers; new symbols are resolved dynamically.
-_BINANCE_SPOT_SYMBOLS_CACHE: tuple[float, frozenset[str]] | None = None
+_BINANCE_SPOT_SYMBOLS_CACHE: tuple[float, dict[str, dict[str, Any]]] | None = None
 _BINANCE_SPOT_SYMBOLS_TTL = 300.0
 _BINANCE_SYMBOL_LOCKS: WeakKeyDictionary = WeakKeyDictionary()
 
@@ -58,7 +59,7 @@ async def get_binance_spot_symbols(force_refresh: bool = False) -> list[str]:
     global _BINANCE_SPOT_SYMBOLS_CACHE
     cached = _BINANCE_SPOT_SYMBOLS_CACHE
     if not force_refresh and cached and time.monotonic() - cached[0] < _BINANCE_SPOT_SYMBOLS_TTL:
-        return sorted(cached[1])
+        return sorted(cached[1].keys())
 
     async with _binance_symbol_cache_guard():
         cached = _BINANCE_SPOT_SYMBOLS_CACHE
@@ -74,7 +75,7 @@ async def get_binance_spot_symbols(force_refresh: bool = False) -> list[str]:
 
         if not isinstance(payload, dict) or not isinstance(payload.get("symbols"), list):
             raise MarketDataError("Binance returned invalid Spot exchange metadata.")
-        symbols = set()
+        symbols: dict[str, dict[str, Any]] = {}
         for item in payload["symbols"]:
             if not isinstance(item, dict) or item.get("status") != "TRADING":
                 continue
@@ -92,11 +93,32 @@ async def get_binance_spot_symbols(force_refresh: bool = False) -> list[str]:
                 continue
             if not symbol.isalnum() or not base or not quote or symbol != base + quote:
                 continue
-            symbols.add(symbol)
+            filters = {
+                str(value.get("filterType")): value
+                for value in (item.get("filters") or [])
+                if isinstance(value, dict) and value.get("filterType")
+            }
+            symbols[symbol] = {
+                "symbol": symbol,
+                "base_asset": base,
+                "quote_asset": quote,
+                "filters": filters,
+            }
         if not symbols:
             raise MarketDataError("Binance exchange metadata contained no eligible Spot trading pairs.")
-        _BINANCE_SPOT_SYMBOLS_CACHE = (time.monotonic(), frozenset(symbols))
-        return sorted(symbols)
+        _BINANCE_SPOT_SYMBOLS_CACHE = (time.monotonic(), symbols)
+        return sorted(symbols.keys())
+
+
+async def get_binance_spot_symbol_info(symbol: str) -> dict[str, Any]:
+    """Return cached Binance exchange filters for one active Spot symbol."""
+    normalized = str(symbol or "").strip().upper()
+    await get_binance_spot_symbols()
+    cached = _BINANCE_SPOT_SYMBOLS_CACHE
+    info = cached[1].get(normalized) if cached else None
+    if info is None:
+        raise MarketDataError(f"{normalized} is not a currently tradable Binance Spot pair.")
+    return info
 
 
 async def is_binance_spot_symbol(symbol: str) -> bool:
@@ -107,6 +129,135 @@ async def is_binance_spot_symbol(symbol: str) -> bool:
     if normalized in CRYPTO_SYMBOLS:
         return True
     return normalized in set(await get_binance_spot_symbols())
+
+
+async def get_binance_spot_execution_context(symbol: str) -> dict[str, Any]:
+    """Fetch fresh top-of-book and depth plus the pair's exchange price filters."""
+    normalized = str(symbol or "").strip().upper()
+    info = await get_binance_spot_symbol_info(normalized)
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(12, connect=5)) as client:
+            quote_response = await client.get(
+                "https://api.binance.com/api/v3/ticker/bookTicker", params={"symbol": normalized}
+            )
+            quote_response.raise_for_status()
+            quote = quote_response.json()
+            depth_response = await client.get(
+                "https://api.binance.com/api/v3/depth", params={"symbol": normalized, "limit": 20}
+            )
+            depth_response.raise_for_status()
+            depth = depth_response.json()
+    except (httpx.HTTPError, ValueError, TypeError) as exc:
+        raise MarketDataError(f"Could not retrieve fresh Binance Spot execution data for {normalized}.") from exc
+
+    try:
+        bid = float(quote["bidPrice"])
+        ask = float(quote["askPrice"])
+        bid_qty = float(quote["bidQty"])
+        ask_qty = float(quote["askQty"])
+        if not all(math.isfinite(value) for value in (bid, ask, bid_qty, ask_qty)):
+            raise ValueError()
+        if bid <= 0 or ask < bid or bid_qty < 0 or ask_qty < 0:
+            raise ValueError()
+        bids = depth.get("bids", [])
+        asks = depth.get("asks", [])
+        bid_depth_quote = sum(float(row[0]) * float(row[1]) for row in bids[:10])
+        ask_depth_quote = sum(float(row[0]) * float(row[1]) for row in asks[:10])
+        if not all(math.isfinite(value) and value >= 0 for value in (bid_depth_quote, ask_depth_quote)):
+            raise ValueError()
+    except (KeyError, IndexError, TypeError, ValueError, OverflowError):
+        raise MarketDataError(f"Binance returned invalid top-of-book/depth data for {normalized}.") from None
+
+    mid = (bid + ask) / 2
+    spread_bps = ((ask - bid) / mid) * 10000 if mid > 0 else float("inf")
+    filters = info.get("filters", {})
+    price_filter = filters.get("PRICE_FILTER", {})
+    lot_filter = filters.get("LOT_SIZE", {})
+    notional_filter = filters.get("NOTIONAL") or filters.get("MIN_NOTIONAL") or {}
+    tick_size = str(price_filter.get("tickSize") or "0.00000001")
+    return {
+        "symbol": normalized,
+        "provider": "Binance Spot",
+        "best_bid": bid,
+        "best_ask": ask,
+        "best_bid_quantity": bid_qty,
+        "best_ask_quantity": ask_qty,
+        "mid_price": mid,
+        "spread_bps": spread_bps,
+        "bid_depth_quote": bid_depth_quote,
+        "ask_depth_quote": ask_depth_quote,
+        "tick_size": tick_size,
+        "step_size": str(lot_filter.get("stepSize") or ""),
+        "min_quantity": str(lot_filter.get("minQty") or ""),
+        "min_notional": str(notional_filter.get("minNotional") or notional_filter.get("minNotionalValue") or ""),
+        "observed_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def round_price_to_tick(value: float, tick_size: str, *, round_up: bool) -> float:
+    """Round a price to the exchange tick without introducing float-step errors."""
+    try:
+        price = Decimal(str(value))
+        tick = Decimal(str(tick_size))
+        if not price.is_finite() or not tick.is_finite() or price <= 0 or tick <= 0:
+            raise ValueError()
+        units = (price / tick).to_integral_value(rounding=ROUND_UP if round_up else ROUND_DOWN)
+        return float(units * tick)
+    except (ArithmeticError, ValueError, TypeError):
+        raise MarketDataError("Binance returned an invalid price tick size.") from None
+
+
+def select_binance_entry(
+    side: str, close: float, atr_value: float, zone: dict[str, float] | None,
+    execution: dict[str, Any], settings: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Choose a marketable entry or a technically justified resting limit."""
+    settings = settings or {}
+    spread = float(execution["spread_bps"])
+    depth = float(execution["ask_depth_quote"] if side == "BUY" else execution["bid_depth_quote"])
+    bid = float(execution["best_bid"])
+    ask = float(execution["best_ask"])
+    mid = float(execution["mid_price"])
+    if not all(math.isfinite(value) for value in (spread, depth, bid, ask, mid, close, atr_value)):
+        return None
+    if atr_value <= 0 or spread < 0 or depth < 0 or ask < bid:
+        return None
+
+    market_spread_cap = float(settings.get("max_market_spread_bps", 10.0))
+    limit_spread_cap = float(settings.get("max_limit_spread_bps", 25.0))
+    market_depth_floor = float(settings.get("min_market_depth_quote", 5000.0))
+    limit_depth_floor = float(settings.get("min_limit_depth_quote", 1000.0))
+    market_drift_cap = float(settings.get("max_market_entry_deviation_atr", 0.20))
+    limit_distance_cap = float(settings.get("max_limit_entry_distance_atr", 0.75))
+    market_price = ask if side == "BUY" else bid
+    market_drift = abs(market_price - close) / atr_value
+
+    if spread <= market_spread_cap and depth >= market_depth_floor and market_drift <= market_drift_cap:
+        return {
+            "entry_type": "MARKET",
+            "entry_price": market_price,
+            "reason": "Fresh spread and top-book liquidity are acceptable, and price remains close to the confirmed signal candle.",
+        }
+
+    if zone and isinstance(zone, dict):
+        try:
+            candidate = (float(zone["low"]) + float(zone["high"])) / 2
+        except (KeyError, TypeError, ValueError, OverflowError):
+            candidate = 0.0
+        favorable = candidate < ask if side == "BUY" else candidate > bid
+        distance = abs(mid - candidate) / atr_value if candidate > 0 else float("inf")
+        if (
+            spread <= limit_spread_cap
+            and depth >= limit_depth_floor
+            and favorable
+            and distance <= limit_distance_cap
+        ):
+            return {
+                "entry_type": "LIMIT",
+                "entry_price": candidate,
+                "reason": "Price has moved away from the signal close; a resting limit is placed at the confirmed OB/FVG zone midpoint.",
+            }
+    return None
 
 
 BINANCE_INTERVALS = {"1min":"1m", "5min":"5m", "15min":"15m", "30min":"30m", "1h":"1h", "4h":"4h"}

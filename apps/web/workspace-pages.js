@@ -175,7 +175,7 @@ async function loadIntegrations(){
   const root=$("integrationCards");root.replaceChildren();
   const items=[
    ["AI assistant",ai.configured?"Configured":"Not configured",ai.configured?"Model "+(ai.model||"available"):"Optional server-side AI provider is disabled.",ai.configured],
-   ["Telegram bot",telegram.connected?"Connected":"Not connected",telegram.connected?"Local bot connection is active.":"Connect from Signal Lab; bot token stays encrypted locally.",telegram.connected],
+   ["Telegram bot",telegram.connected?"Connected":"Not connected",telegram.connected?"Local bot connection is active.":"Manage connection in the Telegram Bot tool; bot token stays encrypted locally.",telegram.connected],
    ["XAUUSD signal feed",signals.configured?"Configured":"Not configured",signals.note||"Twelve Data configuration status.",signals.configured],
    ["Trading execution","Disabled","No broker connection or live order routing is enabled.",false],
    ["Workspace security","Local-only / no login","Loopback API and local device workspace.",true]
@@ -189,7 +189,7 @@ async function loadIntegrations(){
 function init(){
  const connectBot=$("integrationConnectBot");
  if(connectBot)connectBot.addEventListener("click",()=>{
-  window.location.hash="#signal-lab";
+  if(typeof window.quantnexNavigate==="function")window.quantnexNavigate("telegram-bot");else window.location.hash="#telegram-bot";
   window.setTimeout(()=>{
    const target=$("telegram-bot-connect");
    if(target)target.scrollIntoView({behavior:"smooth",block:"start"});

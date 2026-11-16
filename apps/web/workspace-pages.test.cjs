@@ -13,7 +13,7 @@ assert.deepEqual(missingTargets, [], "Every sidebar link must point to an existi
 const requiredPages = [
   "watchlist-desk", "forex-desk", "crypto-desk", "gold-desk", "price-alerts",
   "economic-calendar", "trade-history", "strategy-library", "portfolio-monitor",
-  "integrations-center"
+  "integrations-center", "telegram-bot"
 ];
 for (const page of requiredPages) {
   assert.ok(sectionIds.includes(page), "Missing page section: " + page);
@@ -37,6 +37,18 @@ assert.ok(html.includes('id="goalJournalImport"'), "Personal goals must require 
 assert.ok(html.includes('src="phase12-20.js"'), "Paper platform client must be loaded");
 assert.ok(fs.existsSync("apps/web/phase12-20.js"), "Paper platform client asset must exist");
 console.log("Workspace page checks passed: 10 new pages, unique section IDs, valid navigation and local event client.");
+const telegramArticleStart = html.indexOf('id="telegram-bot-connect"');
+const telegramPageStart = html.indexOf('id="telegram-bot"');
+const signalPageStart = html.indexOf('id="signal-lab"');
+assert.ok(telegramPageStart > signalPageStart, "Telegram Bot must be a dedicated page after the signal workspace content.");
+assert.ok(navTargets.includes("telegram-bot"), "Telegram Bot must have its own sidebar entry.");
+assert.ok(telegramArticleStart > telegramPageStart, "Bot credentials and delivery controls must live inside the Telegram Bot page.");
+assert.ok(html.includes('id="openTelegramBotTool"'), "Signal Lab must link to the separate Telegram Bot tool.");
+assert.ok(html.includes('id="signalTelegramStatus"'), "Signal Lab must display the shared Telegram connection/delivery status.");
+assert.match(fs.readFileSync("apps/web/signal-tool.js", "utf8"), /new MutationObserver\(syncTelegramStatus/, "Signal Lab status must stay synchronized with Telegram Bot actions.");
+assert.match(fs.readFileSync("apps/web/workspace-pages.js", "utf8"), /quantnexNavigate\("telegram-bot"\)/, "Connections & Integrations must open the dedicated Telegram Bot tool.");
+console.log("Telegram Bot separation checks passed: dedicated sidebar page, retained signal actions and shared connection status.");
+
 
 assert.match(realtime, /connectedOnce&&current!==lastEventId/, "A restarted event gateway must trigger a workspace snapshot resync");
 assert.match(realtime, /event_stream_restarted/, "A lower sequence after reconnect must be identified as an event-service restart");

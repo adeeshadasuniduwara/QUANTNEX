@@ -98,6 +98,13 @@ class LauncherRuntimeTests(unittest.TestCase):
         self.assertEqual(args[0][1], str(script.resolve()))
         self.assertEqual(kwargs["cwd"], str(root))
         self.assertNotIn("shell", kwargs)
+        self.assertEqual(kwargs["env"]["QUANTNEX_SUPPRESS_BROWSER_OPEN"], "1")
+
+    def test_update_restart_flag_is_consumed_and_does_not_leak_to_normal_launch(self):
+        with patch.dict(launcher.os.environ, {"QUANTNEX_SUPPRESS_BROWSER_OPEN": "1"}):
+            suppress = launcher.consume_browser_open_suppression()
+        self.assertTrue(suppress)
+        self.assertNotIn("QUANTNEX_SUPPRESS_BROWSER_OPEN", launcher.os.environ)
 
     def test_log_tee_writes_to_each_destination(self):
         class Sink:

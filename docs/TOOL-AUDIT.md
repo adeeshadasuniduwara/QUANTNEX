@@ -27,7 +27,7 @@
 | Strategy Laboratory | Replay, backtest, optimize, forward evaluation and walk-forward routes | Implemented in code | Test deterministic fixtures, invalid parameters and result persistence |
 | Performance Analytics | Intelligence and advanced performance routes | Implemented; ledger-derived estimates | Verify calculations, time boundaries and empty states |
 | Prop Firm Challenge | Virtual challenge routes and optional MT5 DEMO monitoring | Implemented with external MT5 dependency | Verify daily/overall/trailing drawdown; DEMO-only terminal testing remains device-level |
-| Web + Backend source updater | Pinned-main source download, bounded archive, staging, backups, startup confirmation and rollback | Implemented; automated tests present | Verify real install/restart/rollback on the user's Windows host |
+| Web + Backend source updater | Pinned-main source download, bounded archive, staging, backups, startup confirmation and rollback; update restarts suppress browser re-open and the existing tab performs a cache-busted same-tab refresh preserving its workspace hash | **PARTIAL** — restart/browser suppression and same-tab refresh contracts covered by regression tests; real browser/device install remains unverified | Verify live update in the existing browser tab on the user's Windows host, confirm no extra tab and Telegram/update details after refresh |
 | Launcher / startup | Batch launcher, virtual environment creation, dependency install, Backend preflight, API/Web health checks | Maintenance fix in this branch: persistent log + keep-open error handling | Confirm first-run dependency install and launch on the user's device |
 | Android APK updater | Latest GitHub Release check, APK download, SHA256 manifest validation and Android package installer | Implemented in Android shell | Verify a signed production update on a physical Android device |
 | Android release pipeline | Signed APK + SHA256-only release workflow; stable PKCS#12 signing key required | Pipeline updated in this branch | Confirm required signing secrets and perform a tagged release build |
@@ -101,6 +101,16 @@ These CI results establish that the tested code passed in GitHub's runner. They 
 - Connections & Integrations now opens the dedicated Telegram Bot page rather than scrolling to a panel inside Signal Lab. Existing local API routes and encrypted backend credential storage are unchanged; no bot token is copied into browser storage or exposed to the UI.
 - Web regression coverage asserts unique section IDs, a valid dedicated sidebar target, relocated credential panel, Signal Lab shortcut/status, status synchronization observer and Connections & Integrations navigation.
 - Evidence level: source-contract tests and Web CI can verify DOM/navigation wiring only. No real browser, local backend, Telegram account, bot token, destination ID or posting permission was available in this run. Actual bot connection and message delivery remain **PARTIAL / EXTERNAL BLOCKER** until a valid user-owned bot and destination are configured and exercised. Signal delivery still depends on the local API running; broker execution remains disabled.
+
+
+## Update 024 — Keep automatic updates in the existing browser tab
+
+- Root cause: `run_quantnex_services.py` unconditionally called `webbrowser.open()` every time the supervisor started. A source update safely restarted the supervisor, but the restarted process opened a second QUANTNEX browser tab.
+- Fix: every supervisor restart now passes a one-shot `QUANTNEX_SUPPRESS_BROWSER_OPEN=1` flag to the child. The restarted process consumes the flag and skips `webbrowser.open()`; ordinary first launch still opens the workspace normally. The flag does not leak into later restarts or child processes.
+- Existing browser update watchers still wait for the installed revision to match GitHub main. They now call one same-tab refresh helper that uses the current full URL, preserves the active workspace hash/route and existing query parameters, adds a cache-busting update nonce, and uses `location.replace` (not `window.open`). The local Web server already sends no-store/no-cache headers for HTML, JS and CSS, so the refreshed tab requests current assets.
+- The existing post-refresh completion flow continues to show the installed-update toast and send the update details through the already-configured local Telegram integration when available. Wallet, Journal and Settings persistence is unchanged.
+- Regression tests cover restart environment propagation, one-shot flag consumption, same-tab navigation, hash preservation, cache-busting and absence of `window.open` in the update client.
+- Evidence level: automated launcher and source-contract tests can verify the fix's control flow; they do not operate a real Windows browser. Real browser tab count, hard refresh, actual update notification and data survival through a live Windows restart remain **PARTIAL / DEVICE VERIFICATION REQUIRED**.
 
 ## Audit status vocabulary
 

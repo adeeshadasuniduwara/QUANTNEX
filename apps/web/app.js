@@ -158,6 +158,14 @@ let updatePolling=false;
 let updateChecking=false;
 let latestUpdateCommit="";
 
+function refreshWorkspaceAfterUpdate(){
+  // Keep the current tab and workspace route; the local server sends no-store headers
+  // for HTML, JavaScript and CSS, while the query nonce forces a fresh document request.
+  const refreshUrl=new URL(window.location.href);
+  refreshUrl.searchParams.set("updated",String(Date.now()));
+  window.location.replace(refreshUrl.toString());
+}
+
 function showUpdateToast(message){
   let toast=$("quantnexUpdateToast");
   if(!toast){
@@ -268,7 +276,7 @@ async function watchUpdateInstall(){
         sessionStorage.setItem("quantnex.webUpdateComplete","1");
         sessionStorage.setItem("quantnex.webUpdateVersion",latestUpdateCommit||"");
         sessionStorage.setItem("quantnex.webUpdateHeadline",$("webUpdateSummary")?.textContent||"QUANTNEX Web update");
-        window.setTimeout(()=>window.location.replace(window.location.pathname+"?updated="+Date.now()),900);
+        window.setTimeout(refreshWorkspaceAfterUpdate,900);
         return;
       }
       if(state.status==="error")throw new Error(state.message||"Update installation failed.");
@@ -319,8 +327,8 @@ function watchSupervisorUpdate(target){
           supervisorWatchTarget="";
           sessionStorage.setItem("quantnex.webUpdateComplete","1");
           sessionStorage.setItem("quantnex.webUpdateVersion",state.latest||target);
-          sessionStorage.setItem("quantnex.webUpdateHeadline","Automatic full-source update");
-          window.location.replace(window.location.pathname+"?updated="+Date.now());
+          sessionStorage.setItem("quantnex.webUpdateHeadline",$("webUpdateSummary")?.textContent||"Automatic full-source update");
+          refreshWorkspaceAfterUpdate();
           return;
         }
       }

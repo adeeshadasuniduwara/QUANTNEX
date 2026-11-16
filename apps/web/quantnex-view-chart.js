@@ -57,7 +57,7 @@ function draw(){
  const light=$("qxChartTheme")?.value==="light";
  ctx.fillStyle=light?"#eef2f7":"#0c131d";ctx.fillRect(right,top,w-right,bottom-top);ctx.fillRect(left,bottom,plotW,h-bottom);
  ctx.fillStyle=textColor();ctx.font="9px system-ui";ctx.textAlign="left";ctx.textBaseline="middle";
- ctx.fillText("PRICE",right+8,top-7);ctx.fillText("TIME",left,bottom+10);
+ ctx.fillText("PRICE",right+8,top-7);ctx.fillText("TIME",left,bottom+8);
  for(let i=0;i<=5;i++){
   const yy=top+i*plotH/5,val=unscale(hi-i*(hi-lo)/5);
   ctx.strokeStyle=$("qxGrid")?.checked?"rgba(130,150,175,.16)":"transparent";
@@ -67,15 +67,17 @@ function draw(){
  }
  if($("qxGrid")?.checked){for(let i=0;i<=8;i++){const xx=left+i*plotW/8;ctx.strokeStyle="rgba(130,150,175,.08)";ctx.beginPath();ctx.moveTo(xx,top);ctx.lineTo(xx,bottom);ctx.stroke();}}
  const timeLabel=seconds=>{
-  const date=new Date(seconds*1000),now=new Date();
-  return date.toDateString()===now.toDateString()?date.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):date.toLocaleDateString([],{month:"short",day:"2-digit"})+" "+date.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+  const date=new Date(seconds*1000),now=new Date(),clock=date.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+  return w<600?clock:(date.toDateString()===now.toDateString()?clock:date.toLocaleDateString([],{month:"short",day:"2-digit"})+" "+clock);
  };
  ctx.font="9px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";
- for(let i=0;i<=6;i++){
-  const index=Math.max(0,Math.min(rows.length-1,Math.round(i*(rows.length-1)/6))),xx=left+(i/6)*plotW;
-  const label=timeLabel(rows[index].time);ctx.strokeStyle=light?"rgba(50,65,85,.28)":"rgba(160,180,205,.24)";
+ const timeTicks=w<520?4:6;
+ for(let i=0;i<=timeTicks;i++){
+  const index=Math.max(0,Math.min(rows.length-1,Math.round(i*(rows.length-1)/timeTicks))),xx=left+(i/timeTicks)*plotW;
+  const label=timeLabel(rows[index].time),labelX=Math.max(left+26,Math.min(right-26,xx));
+  ctx.strokeStyle=light?"rgba(50,65,85,.28)":"rgba(160,180,205,.24)";
   ctx.beginPath();ctx.moveTo(xx,bottom);ctx.lineTo(xx,bottom+5);ctx.stroke();
-  ctx.fillStyle=textColor();ctx.fillText(label,xx,bottom+19);
+  ctx.fillStyle=textColor();ctx.fillText(label,labelX,bottom+27);
  }
  const ind=calcIndicators(),sliceLine=a=>a.slice(start,end-view.start||undefined);
  const drawLine=(vals,color,width=1.4)=>{ctx.beginPath();let begun=false;vals.forEach((v,i)=>{if(!Number.isFinite(v))return;const xx=x(i),yy=y(v);if(!begun){ctx.moveTo(xx,yy);begun=true;}else ctx.lineTo(xx,yy);});ctx.strokeStyle=color;ctx.lineWidth=width;ctx.stroke();};
@@ -121,7 +123,6 @@ function draw(){
    ctx.fillStyle="#d8e4f2";ctx.fillRect(Math.max(left,Math.min(right-92,cx-46)),bottom+3,92,18);ctx.fillStyle="#071018";ctx.textAlign="center";ctx.fillText(timeLabel(bar.time),Math.max(left+46,Math.min(right-46,cx)),bottom+12);
   }
  }
- ctx.fillStyle=textColor();ctx.font="9px system-ui";ctx.textAlign="left";ctx.fillText(timeLabel(last.time),left,bottom+39);
  if($("qxChartLastPrice"))$("qxChartLastPrice").textContent=fmt(last.close);
  const first=candles[Math.max(0,candles.length-Math.max(1,view.count))],change=first?.close?100*(last.close-first.close)/first.close:0;
  if($("qxChartChange")){$("qxChartChange").textContent=(change>=0?"+":"")+change.toFixed(2)+"% visible range · "+candles.length+" candles";$("qxChartChange").dataset.direction=change>=0?"up":"down";}

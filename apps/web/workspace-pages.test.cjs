@@ -59,6 +59,7 @@ assert.ok(signalTool.includes("/api/v1/signals/scan"), "QUANTNEX VIEW must retai
 assert.ok(fs.readFileSync("apps/web/quantnex-view-intelligence.js", "utf8").includes("/api/v1/quantnex-view/analyze"), "QUANTNEX VIEW must retain its chart intelligence API.");
 assert.ok(fs.readFileSync("apps/web/workspace-pages.js", "utf8").includes('quantnexNavigate("telegram-bot")'), "Connections & Integrations must open the dedicated Telegram Bot tool.");
 console.log("Signal consolidation checks passed: no duplicate pages; all signal analysis, cross-market scanning, research and trade planning live inside QUANTNEX VIEW.");
+assert.ok(fs.readFileSync("apps/web/app.js", "utf8").includes('window.quantnexNavigate("paper-trading")'), "Cross-market scan handoff must open the Paper Trading workspace.");
 
 assert.match(realtime, /connectedOnce&&current!==lastEventId/, "A restarted event gateway must trigger a workspace snapshot resync");
 assert.match(realtime, /event_stream_restarted/, "A lower sequence after reconnect must be identified as an event-service restart");

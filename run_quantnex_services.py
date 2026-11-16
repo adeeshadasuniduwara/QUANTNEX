@@ -205,6 +205,9 @@ def restart_launcher() -> None:
     """
     script = Path(__file__).resolve()
     command = [sys.executable, str(script)]
+    restart_env = os.environ.copy()
+    # A source-update restart must reconnect the already-open browser tab, not spawn another one.
+    restart_env["QUANTNEX_SUPPRESS_BROWSER_OPEN"] = "1"
     print("[RESTART] Python: " + sys.executable, flush=True)
     print("[RESTART] Script: " + str(script), flush=True)
     try:
@@ -216,6 +219,7 @@ def restart_launcher() -> None:
             stderr=None,
             close_fds=False,
             creationflags=0,
+            env=restart_env,
         )
     except OSError as exc:
         raise RuntimeError(
@@ -226,6 +230,7 @@ def restart_launcher() -> None:
 
 def main() -> int:
     configure_logging()
+    suppress_browser_open = os.environ.pop("QUANTNEX_SUPPRESS_BROWSER_OPEN", "") == "1"
     try:
         print("==============================================", flush=True)
         print("             QUANTNEX WEB WORKSPACE", flush=True)
@@ -270,7 +275,10 @@ def main() -> int:
         except Exception as confirm_error:
             print(f"[AUTO UPDATE] Startup confirmation deferred: {confirm_error}", flush=True)
 
-        webbrowser.open("http://127.0.0.1:5500/")
+        if suppress_browser_open:
+            print("[BROWSER] Update restart detected; keeping the existing browser tab open.", flush=True)
+        else:
+            webbrowser.open("http://127.0.0.1:5500/")
         print("\nQUANTNEX Web + Backend are running.", flush=True)
         print("Keep this CMD window open. Do not close it while using the workspace.", flush=True)
         print("Automatic GitHub source checks run every 5 minutes.", flush=True)

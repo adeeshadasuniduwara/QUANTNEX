@@ -113,6 +113,14 @@ class AutomaticUpdateTests(unittest.TestCase):
         self.assertIn("SUPERVISOR_CHECK_FILE", UPDATER)
         self.assertIn("consume_manual_update_request()", LAUNCHER)
 
+    def test_update_refresh_stays_in_the_current_tab_and_preserves_workspace_hash(self):
+        self.assertIn("function refreshWorkspaceAfterUpdate()", APP)
+        self.assertIn("new URL(window.location.href)", APP)
+        self.assertIn("refreshUrl.searchParams.set(\"updated\",String(Date.now()))", APP)
+        self.assertIn("window.location.replace(refreshUrl.toString())", APP)
+        self.assertEqual(APP.count("refreshWorkspaceAfterUpdate();") + APP.count("window.setTimeout(refreshWorkspaceAfterUpdate,900);"), 2)
+        self.assertNotIn("window.open(", APP)
+
     def test_updater_still_pins_and_validates_the_github_archive(self):
         self.assertIn("codeload.github.com/{REPO}/zip/{sha}", UPDATER)
         self.assertIn("validate", UPDATER.lower())

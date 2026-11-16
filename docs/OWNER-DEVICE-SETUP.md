@@ -11,18 +11,18 @@ The signed claim also contains a SHA-256 fingerprint derived from the Windows Ma
 ## One-time setup on the owner's Windows laptop
 
 1. Update the local QUANTNEX source to the reviewed version containing `backend/app/owner_device.py`.
-2. If this is the first launch, run `run_quantnex.bat` and choose option **1** once so the launcher creates `backend\\.venv` and installs the backend dependencies. You can close QUANTNEX after the setup finishes.
+2. If this is the first launch, run `run_quantnex.bat` and choose option **1** once so the launcher creates `backend\.venv` and installs the backend dependencies. You can close QUANTNEX after the setup finishes.
 3. Open PowerShell in the QUANTNEX repository's `backend` folder.
 4. Run:
 
    ```powershell
-   .\\.venv\\Scripts\\python.exe -m app.owner_device --provision
+   .\.venv\Scripts\python.exe -m app.owner_device --provision
    ```
 
 5. The command prints a **Public key** and saves a signed device claim in:
 
    ```text
-   %LOCALAPPDATA%\\QUANTNEX\\Owner\\owner-device-claim.json
+   %LOCALAPPDATA%\QUANTNEX\Owner\owner-device-claim.json
    ```
 
 6. Send only the printed public key to the QUANTNEX maintainer so it can be pinned in the reviewed source update.
@@ -32,7 +32,7 @@ The signed claim also contains a SHA-256 fingerprint derived from the Windows Ma
 The private key is stored at:
 
 ```text
-%LOCALAPPDATA%\\QUANTNEX\\Owner\\owner-device-key.dpapi
+%LOCALAPPDATA%\QUANTNEX\Owner\owner-device-key.dpapi
 ```
 
 - Never paste, upload, email, commit, or send this `.dpapi` file.

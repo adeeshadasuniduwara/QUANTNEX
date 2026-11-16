@@ -135,7 +135,7 @@ SUBMENUS = {
     ]},
     "qx:menu:reports": {"inline_keyboard": [
         [{"text":"📄 Today's PDF report","callback_data":"qx:daily"}],
-        [{"text":"🕗 Daily PDF 20:00 ON/OFF","callback_data":"qx:daily_toggle"}],
+        [{"text":"🕘 Daily PDF 21:00 ON/OFF","callback_data":"qx:daily_toggle"}],
         [{"text":"🎯 Personal goals","callback_data":"qx:goals"}],
         [{"text":"🏠 Main menu","callback_data":"qx:menu:home"}]
     ]},
@@ -245,14 +245,14 @@ async def _edit_message(client, token: str, chat_id: str, message_id: int, text:
     return await _telegram_post(client,token,"editMessageText",payload)
 
 async def _deliver_daily_pdf(client, db, user_id: int, token: str, chat_id: str, report_day=None):
-    from .telegram_reporting import build_daily_paper_pdf
-    pdf, stats=build_daily_paper_pdf(db,user_id,report_day)
-    caption=("📊 QUANTNEX Daily Paper Report · "+stats["date"]+"\n"
-        +"Closed: "+str(stats["closed"])+" · Win rate: "+format(stats["win_rate"],".2f")+"%\n"
-        +"Gross profit: $"+format(stats["gross_profit"],".2f")+" · Losses: $"+format(stats["total_loss"],".2f")+"\n"
-        +"Recorded paper P&L: $"+format(stats["net"],".2f")+" · Open at cutoff: "+str(stats["open_at_cutoff"])+"\n"
-        +"Profit factor: "+(stats["profit_factor"] is not None and str(stats["profit_factor"]) or "—")+" · simulated ledger only; costs may be excluded.")
-    await _send_pdf(client,token,chat_id,pdf,"QUANTNEX-Paper-Report-"+stats["date"]+".pdf",caption)
+    from .telegram_reporting import build_daily_signal_pdf
+    pdf, stats=build_daily_signal_pdf(db,user_id,report_day)
+    caption=("📊 QUANTNEX Daily Signal Report · "+stats["date"]+"\n"
+        +"Closed signals: "+str(stats["closed"])+" · Win rate: "+format(stats["win_rate"],".2f")+"%\n"
+        +"Wins: "+str(stats["wins"])+" · Losses: "+str(stats["losses"])+" · BE: "+str(stats["breakeven"])+"\n"
+        +"Net result: "+format(stats["net_r"],"+.2f")+"R · Open at cutoff: "+str(stats["open_at_cutoff"])+"\n"
+        +"Pair-by-pair win rates included · vector-quality PDF · simulated signal ledger.")
+    await _send_pdf(client,token,chat_id,pdf,"QUANTNEX-Signal-Report-"+stats["date"]+".pdf",caption)
     return stats
 
 def _paper_dashboard(db, user_id: int) -> str:
@@ -672,17 +672,17 @@ async def telegram_worker() -> None:
                                                 else:
                                                     answer="⚠️ Unsupported trend timeframe.";keyboard=SUBMENUS["qx:menu:signals"]
                                             elif action=="qx:daily_toggle":
-                                                enabled=_get(db,user_id,"telegram_daily_report_enabled","false")=="true"
+                                                enabled=_get(db,user_id,"telegram_daily_report_enabled","true")=="true"
                                                 _set(db,user_id,"telegram_daily_report_enabled","false" if enabled else "true")
                                                 db.commit()
-                                                answer="🕗 Daily PDF at 20:00 Asia/Colombo is now "+("OFF" if enabled else "ON")+"."
+                                                answer="🕘 Daily PDF at 21:00 Asia/Colombo is now "+("OFF" if enabled else "ON")+"."
                                             elif action=="qx:daily":
                                                 try:
                                                     stats=await _deliver_daily_pdf(client,db,user_id,token,chat_id)
-                                                    answer="📄 Today report sent · Closed "+str(stats["closed"])+" · Win rate "+format(stats["win_rate"],".2f")+"% · Net $"+format(stats["net"],".2f")
+                                                    answer="📄 Today signal report sent · Closed "+str(stats["closed"])+" · Win rate "+format(stats["win_rate"],".2f")+"% · Net "+format(stats["net_r"],"+.2f")+"R"
                                                 except Exception as exc:
                                                     logger.warning("Daily PDF request failed for local user %s: %s",user_id,type(exc).__name__)
-                                                    answer="Could not generate/send PDF. Check the PaperTrade ledger and Telegram connection."
+                                                    answer="Could not generate/send PDF. Check the signal outcome ledger and Telegram connection."
                                             elif action.startswith("qx:scan:"): answer=await _handle_command(client,db,user_id,token,chat_id,"/scan "+action.split(":")[-1])
                                             elif action=="qx:status": answer=await _handle_command(client,db,user_id,token,chat_id,"/status")
                                             elif action=="qx:timeframes": answer=await _handle_command(client,db,user_id,token,chat_id,"/timeframes")
@@ -795,11 +795,11 @@ async def telegram_worker() -> None:
                                     logger.warning("Auto-signal scan failed for local user %s market %s: %s",
                                                    user_id,market_symbol,type(exc).__name__)
                             last_monitor[auto_key]=now
-                        # Optional daily PDF delivery, once per Colombo calendar day at/after 20:00.
-                        if _get(db,user_id,"telegram_daily_report_enabled","false")=="true":
+                        # Automatic per-bot signal PDF delivery, once per Colombo calendar day at/after 21:00.
+                        if _get(db,user_id,"telegram_daily_report_enabled","true")=="true":
                             local_now=datetime.now(ZoneInfo("Asia/Colombo"))
                             sent_day=_get(db,user_id,"telegram_daily_report_sent_date","")
-                            if local_now.hour>=20 and sent_day!=local_now.date().isoformat() and now-last_daily_attempt.get(user_id,0)>=300:
+                            if local_now.hour>=21 and sent_day!=local_now.date().isoformat() and now-last_daily_attempt.get(user_id,0)>=300:
                                 last_daily_attempt[user_id]=now
                                 try:
                                     await _deliver_daily_pdf(client,db,user_id,token,chat_id,local_now.date())

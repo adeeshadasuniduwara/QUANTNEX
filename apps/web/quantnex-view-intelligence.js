@@ -60,9 +60,13 @@
     const rows=$("qxSignalLedgerRows"),summary=$("qxSignalLedgerSummary");
     if(!rows||!summary)return;
     rows.replaceChildren();
-    const counts={tracked:trades.length,tp1:trades.filter(x=>x.tp1_hit).length,tp2:trades.filter(x=>x.tp2_hit).length,complete:trades.filter(x=>x.status==="TARGETS_COMPLETE").length};
+    const terminal=["SL_HIT","STOPPED","PROTECTED_EXIT","LOCKED_PROFIT_EXIT","TARGETS_COMPLETE"];
+    const closed=trades.filter(x=>terminal.includes(x.status));
+    const counts={tracked:trades.length,open:trades.filter(x=>["OPEN","PENDING","AMBIGUOUS"].includes(x.status)).length,
+      wins:closed.filter(x=>Number(x.realized_r)>0).length,losses:closed.filter(x=>Number(x.realized_r)<0).length,
+      tp1:trades.filter(x=>x.tp1_hit).length,tp2:trades.filter(x=>x.tp2_hit).length,complete:trades.filter(x=>x.status==="TARGETS_COMPLETE").length};
     summary.replaceChildren();
-    [["Tracked",counts.tracked],["TP1",counts.tp1],["TP2",counts.tp2],["Completed",counts.complete]].forEach(([label,value])=>{
+    [["Tracked",counts.tracked],["Open",counts.open],["Wins",counts.wins],["Losses",counts.losses],["TP1",counts.tp1],["TP2",counts.tp2],["Completed",counts.complete]].forEach(([label,value])=>{
       const box=document.createElement("div"),name=document.createElement("span"),number=document.createElement("strong");
       name.textContent=label;number.textContent=String(value);box.append(name,number);summary.append(box);
     });
@@ -77,7 +81,8 @@
       tr.append(target(item.tp1,item.tp1_hit),target(item.tp2,item.tp2_hit),target(item.tp3,item.tp3_hit));
       const outcome=document.createElement("td");
       const recovery=item.recovery_status&&item.recovery_status!=="COMPLETE"?" · "+item.recovery_status.replaceAll("_"," ")+" HISTORY":"";
-      outcome.textContent=item.status.replaceAll("_"," ")+recovery;outcome.className="qx-ledger-outcome";outcome.dataset.status=item.status;tr.append(outcome);
+      const labels={STOPPED:"SL HIT",SL_HIT:"SL HIT",PROTECTED_EXIT:"BREAKEVEN / PROTECTED",LOCKED_PROFIT_EXIT:"PROFIT LOCKED",TARGETS_COMPLETE:"TP3 COMPLETED",OPEN:"ACTIVE · HOLDING",PENDING:"WAITING FOR ENTRY",AMBIGUOUS:"ACTIVE · REVIEW BAR"};
+      outcome.textContent=(labels[item.status]||item.status.replaceAll("_"," "))+recovery;outcome.className="qx-ledger-outcome";outcome.dataset.status=item.status;tr.append(outcome);
       const result=document.createElement("td");result.textContent=(Number(item.realized_r)>=0?"+":"")+Number(item.realized_r||0).toFixed(2)+"R";tr.append(result);
       rows.append(tr);
     });

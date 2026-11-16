@@ -158,7 +158,7 @@ Do not convert static code inspection or CI success into a claim that a real ext
 
 ## Update 027 — Windows Owner Device identity bootstrap
 
-- Added `backend/app/owner_device.py` to provision a per-Windows-user Ed25519 identity. The private key is protected with Windows DPAPI current-user scope and stored under `%LOCALAPPDATA%\\QUANTNEX\\Owner`, outside the repository and updater-managed files.
+- Added `backend/app/owner_device.py` to provision a per-Windows-user Ed25519 identity. The private key is protected with Windows DPAPI current-user scope and stored under `%LOCALAPPDATA%\QUANTNEX\Owner`, outside the repository and updater-managed files.
 - Added a signed device claim containing the QUANTNEX product/schema and a SHA-256 fingerprint derived from the Windows MachineGuid. Verification checks the pinned public key, signature and current machine fingerprint, and fails closed when no public key is pinned.
 - Added an idempotent first-run CLI: `python -m app.owner_device --provision`. It prints only the shareable public key and local file paths; it never prints the private key.
 - Added tests for provision/reuse, signature verification, missing-key fail-closed behavior, wrong-device rejection, tampered claims, unknown key-file formats and non-Windows rejection. Added the one-time setup and recovery guide at `docs/OWNER-DEVICE-SETUP.md`.

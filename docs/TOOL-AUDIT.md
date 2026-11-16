@@ -174,3 +174,13 @@ Do not convert static code inspection or CI success into a claim that a real ext
 - The full launcher now starts the supervisor with the resolved interpreter. The Backend-only launcher uses the same resolver before creating its virtual environment.
 - Added regression checks for runtime detection, explicit installation consent and both launcher integrations.
 - Evidence level: source-level regression tests and CI; a clean Windows PC first-run installation still requires physical-device verification.
+
+
+## Update 029 — Signal outcome integrity and TradingView-style chart navigation
+
+- Signal lifecycle now ignores the candle that generated the signal, preventing pre-entry OHLC movement from immediately closing a newly recorded position.
+- When one OHLC candle contains both the active stop and next target, intrabar order remains unknown: the trade stays OPEN, records an ambiguity event, and waits for a later unambiguous closed candle. No win/loss is guessed.
+- Confirmed exits remain price-driven: original SL, protected/break-even stop after TP1, locked stop after TP2, and staged TP1/TP2/TP3 completion. Signal eligibility/confirmation gates are unchanged.
+- Native chart now reserves a 12-bar right-side gutter so the latest candle is not pinned to the chart edge. The viewport stays stable while live candles append.
+- Mouse/touch chart gestures now support horizontal history pan (including limited future space), vertical price pan, independent price-axis scaling and time zoom; pointer geometry uses the same responsive price-axis width as rendering.
+- Evidence: lifecycle and chart contract tests added/updated. Real browser interaction, provider-driven live tick speed and visual verification on desktop/mobile remain device-level checks.

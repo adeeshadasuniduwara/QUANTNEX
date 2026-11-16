@@ -132,7 +132,10 @@ def process_trade_candles(db, trade: SignalTrade, candles: list[dict[str, Any]])
     processed = 0
     for row in ordered:
         candle_time = as_utc(row["time"])
-        if candle_time < signal_time or (last_processed and candle_time <= last_processed):
+        # A signal is created from a confirmed candle close. Never evaluate the
+        # candle that produced the signal as post-entry price action: its OHLC
+        # may include movement that happened before the entry existed.
+        if candle_time <= signal_time or (last_processed and candle_time <= last_processed):
             continue
         try:
             op, high, low, close = (float(row[key]) for key in ("open", "high", "low", "close"))
@@ -167,12 +170,14 @@ def process_trade_candles(db, trade: SignalTrade, candles: list[dict[str, Any]])
         stop_hit = _touches(trade.side, high, low, stop, False)
         target_hit = next_target is not None and _touches(trade.side, high, low, float(next_target), True)
         if stop_hit and target_hit:
-            trade.status = "AMBIGUOUS"
+            # OHLC cannot tell which level was reached first. Keep the position
+            # active and wait for a later unambiguous closed candle; do not
+            # fabricate a STOPPED / TP outcome from an unknowable intrabar path.
             _event(db, trade, "AMBIGUOUS_BAR", close, candle_time, {
                 "active_stop": stop, "next_target": next_target,
-                "note": "The same OHLC candle touched both the active stop and next target; intrabar order is unknown.",
+                "note": "Both levels were inside this candle. Trade remains OPEN until a later candle confirms SL or TP.",
             })
-            break
+            continue
         if stop_hit:
             if trade.tp2_hit:
                 locked_r = 0.3 * abs(float(trade.tp1) - float(trade.entry_price)) / max(float(trade.risk_distance or 0), 1e-12)

@@ -95,3 +95,11 @@ assert.ok(js.includes("restoreChartSelection") && js.includes("quantnex.chart.se
 assert.ok(intel.includes("replayHistory(selected())"), "Selected-market historical replay must begin on application startup, not only after manually opening QUANTNEX VIEW.");
 assert.ok(js.includes("saveDrawings()"), "Drawing edits and clear actions must save to local chart storage.");
 assert.ok(intel.includes("ENTRY · MARKET") && intel.includes("MARKET ("), "Scalp entry must display MARKET with its reference price.");
+
+assert.match(js, /view=\{start:0,count:120/, "The chart must keep a right-side future-bar gutter in live and historical views.");
+assert.match(js, /plotSlots=Math\.max\(24,view\.count\+12\)/, "Candle spacing must reserve room for future bars instead of stretching the last candle to the edge.");
+assert.match(js, /Math\.min\(48,view\.count-1\)/, "Horizontal chart panning must allow a small future-space offset.");
+assert.match(js, /view\.priceShift=view\.drag\.priceShift\+\(e\.clientY-view\.drag\.y\)/, "Dragging inside the plot must pan the visible price range vertically.");
+assert.match(js, /right=r\.width-priceAxisWidth\(r\.width\)/, "Pointer gestures must use the same responsive price-axis boundary as drawing.");
+assert.match(css, /touch-action:none/, "Touch gestures must be routed to chart pan/zoom instead of browser page scrolling.");
+console.log("QUANTNEX VIEW free pan, future-bar gutter and touch gesture checks passed.");

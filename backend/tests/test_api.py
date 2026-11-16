@@ -1212,14 +1212,9 @@ def test_signal_backtest_api_returns_training_and_out_of_sample_metrics(monkeypa
     assert response.json()["out_of_sample"]["trade_count"] == 2
 
 
-def test_retired_ai_signal_center_route_is_removed_and_quantnex_view_signal_routes_remain():
+def test_cross_market_signal_scan_route_remains_available_for_quantnex_view():
     client = TestClient(app)
-    removed = client.post("/api/v1/intelligence/signals/scan", json={
-        "symbol": "BTCUSDT", "min_score": 6,
-    })
-    assert removed.status_code == 404
-
     paths = client.get("/openapi.json").json()["paths"]
-    assert "/api/v1/intelligence/signals/scan" not in paths
+    assert "/api/v1/intelligence/signals/scan" in paths
     assert "/api/v1/signals/scan" in paths
     assert "/api/v1/quantnex-view/analyze" in paths

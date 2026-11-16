@@ -45,7 +45,7 @@ assert.ok(!sectionIds.includes("signal-lab") && !navTargets.includes("signal-lab
 assert.ok(!sectionIds.includes("ai-signal-center") && !navTargets.includes("ai-signal-center"), "The duplicate AI Signal Center page and sidebar link must be removed.");
 assert.doesNotMatch(html, /Signal Lab|AI Signal Center/, "Retired signal workspace names must not remain in the active Web UI.");
 const tradingViewMarkup = html.slice(tradingViewStart, telegramPageStart);
-for (const id of ["signalMarketSymbol", "runSignalScan", "runSignalBacktest", "signalResult", "qxSignalIntelligence", "qxMainSignal", "qxPositionPreview"]) {
+for (const id of ["signalMarketSymbol", "runSignalScan", "runSignalBacktest", "signalResult", "p7SignalSymbol", "p7SignalThreshold", "p7RunScan", "p7SignalResult", "p7SignalFrames", "p7UseSignal", "qxSignalIntelligence", "qxMainSignal", "qxPositionPreview"]) {
   assert.ok(tradingViewMarkup.includes(`id="${id}"`), "QUANTNEX VIEW must retain signal functionality: " + id);
 }
 assert.ok(navTargets.includes("telegram-bot"), "Telegram Bot must have its own sidebar entry.");
@@ -58,7 +58,7 @@ assert.doesNotMatch(signalTool, /Signal Lab/, "Signal client must not reference 
 assert.ok(signalTool.includes("/api/v1/signals/scan"), "QUANTNEX VIEW must retain the multi-timeframe signal API.");
 assert.ok(fs.readFileSync("apps/web/quantnex-view-intelligence.js", "utf8").includes("/api/v1/quantnex-view/analyze"), "QUANTNEX VIEW must retain its chart intelligence API.");
 assert.ok(fs.readFileSync("apps/web/workspace-pages.js", "utf8").includes('quantnexNavigate("telegram-bot")'), "Connections & Integrations must open the dedicated Telegram Bot tool.");
-console.log("Signal consolidation checks passed: no duplicate pages; signal analysis, research and trade planning live inside QUANTNEX VIEW.");
+console.log("Signal consolidation checks passed: no duplicate pages; all signal analysis, cross-market scanning, research and trade planning live inside QUANTNEX VIEW.");
 
 assert.match(realtime, /connectedOnce&&current!==lastEventId/, "A restarted event gateway must trigger a workspace snapshot resync");
 assert.match(realtime, /event_stream_restarted/, "A lower sequence after reconnect must be identified as an event-service restart");

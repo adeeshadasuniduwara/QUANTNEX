@@ -339,6 +339,21 @@
         <p class="qx-intel-disclaimer">Confluence score is not a win probability. No 70% accuracy is promised. Backtest outcomes are historical simulations, not live results or financial advice. This engine does not place broker orders.</p>
       </section>
 
+      <section class="panel phase07-panel" id="qxCrossMarketSignalScan">
+        <div class="phase07-toolbar">
+          <div><strong>Cross-Market Signal Scan</strong><p>15m / 1h / 4h confirmation across Crypto, Gold and Forex when the selected provider is available.</p></div>
+          <span class="pill">PAPER / ALERTS ONLY</span>
+        </div>
+        <div class="p7-form-row">
+          <label>Market <select id="p7SignalSymbol"><option value="XAUUSD">XAUUSD</option><option value="BTCUSDT">BTCUSDT</option><option value="ETHUSDT">ETHUSDT</option><option value="SOLUSDT">SOLUSDT</option><option value="EURUSD">EURUSD</option><option value="GBPUSD">GBPUSD</option><option value="USDJPY">USDJPY</option></select></label>
+          <label>Minimum score <select id="p7SignalThreshold"><option value="6">6 / 10</option><option value="7">7 / 10</option><option value="8">8 / 10</option></select></label>
+          <button class="primary-btn" id="p7RunScan" type="button">Scan market</button>
+        </div>
+        <div class="p7-signal-result" id="p7SignalResult"><div class="p7-empty">Choose a market and run a cross-market confirmation scan.</div></div>
+        <div class="p7-table-wrap"><table><thead><tr><th>Timeframe</th><th>Bias</th><th>Price</th><th>RSI</th><th>ADX</th><th>ATR</th></tr></thead><tbody id="p7SignalFrames"><tr><td colspan="6" class="empty-row">No analysis yet.</td></tr></tbody></table></div>
+        <div class="p7-signal-ticket" id="p7SignalTicket" hidden><strong>Send this setup to Paper Trading</strong><button class="secondary-btn" id="p7UseSignal" type="button">Use signal in paper ticket</button></div>
+      </section>
+
       <section class="section-heading" id="telegram-bot"><div><div class="overline">WORKSPACE TOOL · TELEGRAM INTEGRATION</div><h2>Telegram Bot</h2><p>Connect your personal bot, manage alert delivery and configure scheduled reports. Signal analysis and trade planning are available inside QUANTNEX VIEW.</p></div><span class="pill">LOCAL · ENCRYPTED</span></section>
       <section class="signal-workspace telegram-tool-layout">
         <article class="panel signal-panel" id="telegram-bot-connect">

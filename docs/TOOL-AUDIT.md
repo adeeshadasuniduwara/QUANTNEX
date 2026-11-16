@@ -94,12 +94,12 @@ These CI results establish that the tested code passed in GitHub's runner. They 
 - Evidence level: controlled API/provider mocks and SQLite engine restart are verified in CI. The test does not run an enabled live provider-driven autopilot loop or restart the user's Windows process. Paper Trading remains simulated; no broker orders are sent. Status remains **PARTIAL** pending browser/device and provider verification.
 
 
-## Update 023 — Dedicated Telegram Bot workspace tool
+## Update 023 — Dedicated Telegram Bot workspace tool (historical; superseded by Update 025)
 
-- Removed the Telegram credential/configuration panel from the Signal Lab page and placed it under a dedicated **Telegram Bot** sidebar page. The existing bot token, chat ID, display name, connect/test/disconnect actions, Auto Signals market/interval settings, daily PDF report settings and setup guide are retained in the new page.
-- Signal Lab remains the place to configure timeframes, scan markets, review signal results, run historical validation and send manual XAUUSD plans / TP1 warnings. It now has a **Manage Telegram bot** shortcut and a mirrored Telegram connection/delivery status so separating the UI does not break the signal-to-bot workflow.
-- Connections & Integrations now opens the dedicated Telegram Bot page rather than scrolling to a panel inside Signal Lab. Existing local API routes and encrypted backend credential storage are unchanged; no bot token is copied into browser storage or exposed to the UI.
-- Web regression coverage asserts unique section IDs, a valid dedicated sidebar target, relocated credential panel, Signal Lab shortcut/status, status synchronization observer and Connections & Integrations navigation.
+- At that stage of development, the Telegram credential/configuration panel was moved from the then-existing signal workspace into a dedicated **Telegram Bot** sidebar page. The existing bot token, chat ID, display name, connect/test/disconnect actions, Auto Signals market/interval settings, daily PDF report settings and setup guide are retained in the new page.
+- At that time, the signal workspace retained timeframe configuration, market scans, historical validation and manual XAUUSD plan / TP1 alerts, with a **Manage Telegram bot** shortcut and mirrored connection status. Update 025 later consolidated these functions into QUANTNEX VIEW.
+- Connections & Integrations was changed to open the dedicated Telegram Bot page rather than scrolling to the former signal workspace. Existing local API routes and encrypted backend credential storage are unchanged; no bot token is copied into browser storage or exposed to the UI.
+- The original regression coverage asserted unique section IDs, a valid dedicated sidebar target, relocated credential panel, signal-workspace shortcut/status, status synchronization observer and Connections & Integrations navigation.
 - Evidence level: source-contract tests and Web CI can verify DOM/navigation wiring only. No real browser, local backend, Telegram account, bot token, destination ID or posting permission was available in this run. Actual bot connection and message delivery remain **PARTIAL / EXTERNAL BLOCKER** until a valid user-owned bot and destination are configured and exercised. Signal delivery still depends on the local API running; broker execution remains disabled.
 
 

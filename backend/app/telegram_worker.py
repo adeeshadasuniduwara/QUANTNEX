@@ -220,6 +220,9 @@ def _format_telegram_message(message: str) -> str:
             rendered.append("<b>✨ " + safe + "</b>" if "QUANTNEX" in line.upper() else "<b>" + safe + "</b>")
         elif (line.strip().isupper() and len(line.strip()) > 3) or line.strip().startswith(("📈", "🧠", "🛡", "🎯", "📊", "⚙", "🚀", "🏅", "🔒")):
             rendered.append("<b>" + safe + "</b>")
+        elif ":" in line and len(line.split(":", 1)[0]) <= 24:
+            label, value = safe.split(":", 1)
+            rendered.append("<b>" + label + ":</b>" + value)
         else:
             rendered.append(safe)
     return "\n".join(rendered)[:3900]
@@ -391,29 +394,19 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
         return "\n".join(lines)
     if command in {"/start","/help"}:
         return (
-            "QUANTNEX · YOUR SMART TRADING COMPANION\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "🌍 ENGLISH\n"
-            "Welcome to QUANTNEX — a trading intelligence workspace built to help you study markets, analyse setups and manage your trading routine.\n\n"
-            "✨ WHAT YOU CAN DO\n"
-            "📈 Scan supported crypto markets and Gold (when its local data feed is configured).\n"
-            "🧠 Review multi-timeframe signals, confirmations and Entry / SL / TP plans.\n"
-            "🛡 Manage alert settings and monitor your paper-trading workspace.\n"
-            "📊 View your paper ledger, daily PDF reports and personal goals.\n"
-            "🔐 Your workspace settings and personal records remain in your local QUANTNEX environment.\n\n"
-            "🇱🇰 සිංහල\n"
-            "QUANTNEX වෙත සාදරයෙන් පිළිගනිමු! මෙය වෙළඳපොළ අධ්‍යයනය, trade setups විශ්ලේෂණය සහ ඔබගේ trading routine එක කළමනාකරණය සඳහා නිර්මාණය කළ intelligent workspace එකකි.\n\n"
-            "✨ ඔබට මෙයින් කළ හැක්කේ\n"
-            "📈 සහාය දක්වන Crypto markets සහ Gold market scan කිරීම.\n"
-            "🧠 Multi-timeframe signals, confirmations, Entry / SL / TP සැලසුම් බැලීම.\n"
-            "🛡 Alerts සහ Paper Trading පාලනය කිරීම.\n"
-            "📊 Paper ledger, Daily PDF reports සහ Personal Goals පරීක්ෂා කිරීම.\n"
-            "🔐 ඔබගේ පුද්ගලික දත්ත සහ settings ඔබගේ local QUANTNEX workspace එකේම පවතී.\n\n"
-            "⚠️ IMPORTANT · ආරක්ෂාව\n"
-            "Signals are analysis only. Paper mode is simulated. No live broker orders are placed by this Telegram assistant. Always verify market data, spread and risk yourself.\n"
-            "Signals යනු විශ්ලේෂණ තොරතුරු පමණයි. මෙය profit හෝ win-rate සහතිකයක් නොවේ.\n\n"
-            "👇 TAP A BUTTON BELOW TO OPEN YOUR WORKSPACE\n"
-            "👇 පහත Button එකක් තෝරාගෙන ආරම්භ කරන්න."
+            "💎 QUANTNEX SIGNALS\\n"
+            "━━━━━━━━━━━━━━━━━━━━\\n"
+            "Welcome aboard. Your market intelligence feed is ready.\\n\\n"
+            "📡 WHAT YOU WILL RECEIVE\\n"
+            "• Fresh confirmed BUY / SELL setups\\n"
+            "• Entry, Stop Loss, TP 1, TP 2 and All TP levels\\n"
+            "• One clean signal card per trade, updated as it develops\\n"
+            "• No historical trade dump when you connect\\n\\n"
+            "🛡 RISK MANAGEMENT IS THE KEY 🔑\\n"
+            "Signals are analysis only. Check the market, position size and risk before taking a trade.\\n\\n"
+            "🇱🇰 QUANTNEX වෙත සාදරයෙන් පිළිගනිමු! අලුත් confirmed signals පමණක් මෙතැනට ලැබේවි.\\n"
+            "━━━━━━━━━━━━━━━━━━━━\\n"
+            "Trade smart. Stay disciplined."
         )
     if command=="/timeframes":
         enabled=", ".join(names.get(str(x),str(x)) for x in settings.get("enabled",[]))

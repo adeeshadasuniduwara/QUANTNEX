@@ -189,7 +189,7 @@ def process_trade_candles(db, trade: SignalTrade, candles: list[dict[str, Any]])
                 event_type = "PROTECTED_STOP_HIT"
             else:
                 trade.realized_r = -1.0
-                trade.status = "STOPPED"
+                trade.status = "SL_HIT"
                 event_type = "SL_HIT"
             trade.stopped_at = candle_time
             observed = op if _touches(trade.side, op, op, stop, False) else stop

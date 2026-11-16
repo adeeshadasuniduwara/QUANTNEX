@@ -163,3 +163,163 @@ def build_daily_paper_pdf(db, user_id: int, report_day: date | None = None) -> t
                         ParagraphStyle("foot", parent=styles["Normal"], fontSize=7, textColor=colors.HexColor("#555555")))]
     doc.build(story, onFirstPage=decorate, onLaterPages=decorate)
     return buffer.getvalue(), stats
+
+
+def build_daily_signal_pdf(db, user_id: int, report_day: date | None = None) -> tuple[bytes, dict]:
+    """Create a vector-quality daily PDF from confirmed SignalTrade outcomes and pair history."""
+    from collections import defaultdict
+    from sqlalchemy import select
+    from .models import SignalTrade, SignalTradeEvent
+    from reportlab.lib.pagesizes import landscape
+    from reportlab.lib import colors as c
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether
+
+    day = report_day or datetime.now(COLOMBO).date()
+    rows = list(db.scalars(select(SignalTrade).where(
+        SignalTrade.user_id == user_id).order_by(SignalTrade.signal_time.desc())))
+    terminal = {"SL_HIT", "STOPPED", "PROTECTED_EXIT", "LOCKED_PROFIT_EXIT", "TARGETS_COMPLETE"}
+    def closed_at(trade):
+        return trade.stopped_at or trade.tp3_at or (trade.updated_at if trade.status in terminal else None)
+    opened_today, closed_today, open_at_cutoff = [], [], []
+    cutoff = datetime.combine(day, datetime.max.time(), tzinfo=COLOMBO)
+    for trade in rows:
+        opened = _local(trade.created_at or trade.signal_time)
+        closed = _local(closed_at(trade))
+        if opened and opened.date() == day:
+            opened_today.append(trade)
+        if trade.status in terminal and closed and closed.date() == day:
+            closed_today.append(trade)
+        if opened and opened <= cutoff and (trade.status not in terminal):
+            open_at_cutoff.append(trade)
+
+    def outcome_value(trade):
+        return float(trade.realized_r or 0)
+    wins = sum(outcome_value(t) > 0 for t in closed_today)
+    losses = sum(outcome_value(t) < 0 for t in closed_today)
+    breakeven = sum(outcome_value(t) == 0 for t in closed_today)
+    net_r = sum(outcome_value(t) for t in closed_today)
+    gross_win_r = sum(outcome_value(t) for t in closed_today if outcome_value(t) > 0)
+    gross_loss_r = abs(sum(outcome_value(t) for t in closed_today if outcome_value(t) < 0))
+    pair_stats = defaultdict(lambda: {"trades": 0, "wins": 0, "losses": 0, "be": 0, "r": 0.0})
+    for trade in rows:
+        if trade.status not in terminal:
+            continue
+        stats = pair_stats[trade.symbol]
+        stats["trades"] += 1
+        value = outcome_value(trade)
+        stats["wins"] += value > 0
+        stats["losses"] += value < 0
+        stats["be"] += value == 0
+        stats["r"] += value
+    stats = {
+        "date": day.isoformat(), "opened": len(opened_today), "closed": len(closed_today),
+        "open_at_cutoff": len(open_at_cutoff), "wins": wins, "losses": losses,
+        "breakeven": breakeven, "win_rate": round(wins / len(closed_today) * 100, 2) if closed_today else 0.0,
+        "net_r": round(net_r, 3), "gross_win_r": round(gross_win_r, 3),
+        "gross_loss_r": round(gross_loss_r, 3),
+        "profit_factor": round(gross_win_r / gross_loss_r, 2) if gross_loss_r else ("infinite" if gross_win_r else None),
+        "pairs": {symbol: {**value, "win_rate": round(value["wins"] / value["trades"] * 100, 2),
+                           "net_r": round(value["r"], 3)}
+                  for symbol, value in sorted(pair_stats.items())},
+    }
+
+    page = landscape(A4)
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=page, rightMargin=12*mm, leftMargin=12*mm,
+                            topMargin=20*mm, bottomMargin=13*mm,
+                            title=f"QUANTNEX Signal Performance {day}")
+    styles = getSampleStyleSheet()
+    title = ParagraphStyle("QXSigTitle", parent=styles["Title"], fontName="Helvetica-Bold",
+                           fontSize=24, leading=28, alignment=TA_CENTER, textColor=c.HexColor("#111827"))
+    sub = ParagraphStyle("QXSigSub", parent=styles["Normal"], fontSize=9,
+                         alignment=TA_CENTER, textColor=c.HexColor("#64748b"))
+    head = ParagraphStyle("QXSigHead", parent=styles["Heading2"], fontSize=12, leading=15,
+                          textColor=c.HexColor("#0f172a"), spaceBefore=9, spaceAfter=5)
+    small = ParagraphStyle("QXSigSmall", parent=styles["Normal"], fontSize=7,
+                           textColor=c.HexColor("#64748b"), leading=9)
+    def decorate(canvas, _doc):
+        canvas.saveState()
+        width, height = page
+        canvas.setFillColor(c.HexColor("#0b1220"))
+        canvas.rect(0, height-13*mm, width, 13*mm, fill=1, stroke=0)
+        canvas.setFillColor(c.HexColor("#e2e8f0"))
+        canvas.setFont("Helvetica-Bold", 10)
+        canvas.drawString(12*mm, height-8.5*mm, "QUANTNEX  /  SIGNAL PERFORMANCE")
+        canvas.setFont("Helvetica", 7)
+        canvas.drawRightString(width-12*mm, height-8.5*mm, "CONFIRMED SIGNAL LEDGER  ·  ASIA/COLOMBO")
+        canvas.setStrokeColor(c.HexColor("#cbd5e1"))
+        canvas.line(12*mm, 9*mm, width-12*mm, 9*mm)
+        canvas.setFillColor(c.HexColor("#64748b"))
+        canvas.setFont("Helvetica", 7)
+        canvas.drawString(12*mm, 5.5*mm, "Simulated signal outcomes · Not broker execution or guaranteed future performance")
+        canvas.drawRightString(width-12*mm, 5.5*mm, f"Page {_doc.page}")
+        canvas.restoreState()
+
+    story = [Spacer(1, 2*mm), Paragraph("DAILY SIGNAL REPORT", title),
+             Paragraph(day.strftime("%A · %d %B %Y") + "  |  21:00 scheduled snapshot  |  All figures in R-multiples",
+                       sub), Spacer(1, 7*mm)]
+    summary = [
+        ["CLOSED SIGNALS", "WIN RATE", "WINS / LOSSES / BE", "NET RESULT", "OPEN AT CUTOFF"],
+        [str(stats["closed"]), f'{stats["win_rate"]:.2f}%', f'{wins} / {losses} / {breakeven}',
+         f'{net_r:+.2f}R', str(stats["open_at_cutoff"])],
+        ["GROSS WIN R", "GROSS LOSS R", "PROFIT FACTOR", "NEW SIGNALS", "MARKETS TRACKED"],
+        [f'{gross_win_r:.2f}R', f'{gross_loss_r:.2f}R',
+         str(stats["profit_factor"] or "—"), str(stats["opened"]), str(len(pair_stats))],
+    ]
+    summary_table = Table(summary, colWidths=[(page[0]-24*mm)/5]*5,
+                          rowHeights=[8*mm, 12*mm, 8*mm, 12*mm])
+    summary_table.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,0),c.HexColor("#172554")),
+        ("BACKGROUND",(0,2),(-1,2),c.HexColor("#172554")),
+        ("TEXTCOLOR",(0,0),(-1,0),c.white),("TEXTCOLOR",(0,2),(-1,2),c.white),
+        ("BACKGROUND",(0,1),(-1,1),c.HexColor("#eff6ff")),
+        ("BACKGROUND",(0,3),(-1,3),c.HexColor("#eff6ff")),
+        ("TEXTCOLOR",(0,1),(-1,1),c.HexColor("#0f172a")),
+        ("TEXTCOLOR",(0,3),(-1,3),c.HexColor("#0f172a")),
+        ("FONTNAME",(0,0),(-1,-1),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),9),
+        ("ALIGN",(0,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("GRID",(0,0),(-1,-1),0.4,c.HexColor("#cbd5e1")),
+    ]))
+    story += [summary_table, Paragraph("PAIR-BY-PAIR WIN RATE · ALL RECORDED CLOSED SIGNALS", head)]
+    pair_data = [["PAIR", "CLOSED", "WINS", "LOSSES", "BREAKEVEN", "WIN RATE", "NET RESULT"]]
+    for symbol, item in stats["pairs"].items():
+        pair_data.append([symbol, str(item["trades"]), str(item["wins"]), str(item["losses"]),
+                          str(item["be"]), f'{item["win_rate"]:.2f}%', f'{item["net_r"]:+.2f}R'])
+    if len(pair_data) == 1:
+        pair_data.append(["No completed signal outcomes yet", "0", "0", "0", "0", "0.00%", "0.00R"])
+    pair_table = Table(pair_data, repeatRows=1,
+                       colWidths=[42*mm,25*mm,25*mm,25*mm,30*mm,35*mm,40*mm])
+    pair_table.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,0),c.HexColor("#0f172a")),("TEXTCOLOR",(0,0),(-1,0),c.white),
+        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),8),
+        ("GRID",(0,0),(-1,-1),0.35,c.HexColor("#cbd5e1")),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[c.white,c.HexColor("#f8fafc")]),
+        ("ALIGN",(1,1),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("TOPPADDING",(0,0),(-1,-1),6),("BOTTOMPADDING",(0,0),(-1,-1),6),
+    ]))
+    story += [pair_table, Paragraph("SIGNALS CLOSED TODAY", head)]
+    detail = [["PAIR", "SIDE", "ENTRY", "ORIGINAL SL", "ACTIVE SL", "TP1 / TP2 / TP3", "OUTCOME", "RESULT"]]
+    for trade in closed_today:
+        status = {"STOPPED":"SL HIT", "SL_HIT":"SL HIT", "PROTECTED_EXIT":"PROTECTED EXIT",
+                  "LOCKED_PROFIT_EXIT":"PROFIT LOCKED", "TARGETS_COMPLETE":"TP3 COMPLETED"}.get(trade.status, trade.status)
+        detail.append([trade.symbol, trade.side, f'{trade.entry_price:g}', f'{trade.stop_loss:g}',
+                       f'{trade.active_stop_loss:g}', f'{trade.tp1:g} / {trade.tp2:g} / {trade.tp3:g}',
+                       status, f'{outcome_value(trade):+.2f}R'])
+    if len(detail) == 1:
+        detail.append(["No signals closed today", "", "", "", "", "", "", ""])
+    detail_table = Table(detail, repeatRows=1,
+                         colWidths=[29*mm,20*mm,27*mm,27*mm,27*mm,63*mm,43*mm,24*mm])
+    detail_table.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,0),c.HexColor("#0f172a")),("TEXTCOLOR",(0,0),(-1,0),c.white),
+        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),7),
+        ("GRID",(0,0),(-1,-1),0.35,c.HexColor("#cbd5e1")),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[c.white,c.HexColor("#f8fafc")]),
+        ("ALIGN",(2,1),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5),
+    ]))
+    story += [detail_table, Spacer(1, 4*mm),
+              Paragraph("Outcome rules: only closed signals count in win rate. TP1/TP2 partials, protected exits and profit-lock exits use the persisted realized R value. Open signals remain active and are excluded until SL/TP resolution. R results are simulated level-based estimates and exclude fees, spread and slippage unless separately modelled.", small)]
+    doc.build(story, onFirstPage=decorate, onLaterPages=decorate)
+    return buffer.getvalue(), stats

@@ -53,3 +53,6 @@
 .qx-ledger-outcome[data-status="TARGETS_COMPLETE"]{color:#36c995}
 .qx-ledger-outcome[data-status="PROTECTED_EXIT"],.qx-ledger-outcome[data-status="LOCKED_PROFIT_EXIT"]{color:#78b8ff}
 @media(max-width:620px){.qx-ledger-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.qx-ledger-head h3{font-size:13px}}
+
+/* Keep the live quote readable and prevent the canvas price axis from clipping on narrow screens. */
+.qx-native-chart-canvas{overflow:visible}

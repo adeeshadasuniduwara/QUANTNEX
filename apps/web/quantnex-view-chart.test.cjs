@@ -79,7 +79,11 @@ assert.match(js, /fillText\("PRICE"/, "Chart must show a dedicated price scale."
 assert.match(js, /fillText\("TIME"/, "Chart must show a dedicated time scale.");
 assert.match(js, /view\.priceZoom/, "Price scale must be interactively zoomable.");
 assert.match(js, /timeLabel\(bar\.time\)/, "Crosshair must display the selected candle time on the time axis.");
-assert.match(js, /function wheel\(e\)[\s\S]*?cx>=r\.width-92/, "Mouse wheel over the price axis must zoom price independently.");
+assert.match(js, /function priceAxisWidth\(width\)/, "Price axis must reserve a responsive, explicit width for readable live prices.");
+assert.match(js, /cx>=r\.width-priceAxisWidth\(r\.width\)/, "Mouse wheel over the full responsive price axis must zoom price independently.");
+assert.match(js, /const priceLabelPlacements=\[\]/, "Trade and structure labels must avoid vertical collisions.");
+assert.match(js, /ctx\.measureText\(liveText\)\.width>axisWidth-12/, "Live price text must fit within the reserved axis instead of being clipped.");
+assert.match(js, /ctx\.rect\(right\+1,top,axisWidth-2,plotH\)/, "Live and crosshair price markers must be clipped to the dedicated price axis.");
 assert.match(intel, /\/api\/v1\/quantnex-view\/replay/, "QUANTNEX VIEW must request a historical signal replay on chart entry.");
 assert.match(intel, /\/api\/v1\/signals\/trades/, "QUANTNEX VIEW must display persisted signal outcomes.");
 assert.match(intel, /MARKET \(/, "Market scalp entries must be labelled MARKET with the reference price.");

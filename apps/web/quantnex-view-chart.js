@@ -13,7 +13,7 @@ restoreChartSelection();
 const isChartViewActive=()=>!document.hidden&&document.querySelector(".workspace-view:not([hidden])")?.dataset.workspaceView==="tradingview";
 let candles=[],analysis=null,ws=null,retry=null,historyRequests=new Map(),resize=null,reconnectAttempts=0,lastFeedMessageAt=0,staleWatchdog=null;
 let candleRevision=0,indicatorCache=null,indicatorCacheRevision=-1,drawFrame=null;
-let canvas,ctx,view={start:-12,count:120,priceZoom:1,priceShift:0,drag:null,crosshair:null},drawMode="cursor",drawings=[],pendingDrawing=null,tradePlan=null,lastPrice=null,feedName="",feedState="connecting";
+let canvas,ctx,view={start:0,count:120,priceZoom:1,priceShift:0,drag:null,crosshair:null},drawMode="cursor",drawings=[],pendingDrawing=null,tradePlan=null,lastPrice=null,feedName="",feedState="connecting";
 const chartBg=()=> $("qxChartTheme")?.value==="light"?"#f7f9fc":"#080d13";
 const textColor=()=> $("qxChartTheme")?.value==="light"?"#263244":"#b8c4d4";
 function setStatus(message,state=""){const e=$("qxChartStatus");if(e){e.textContent=message;e.dataset.state=state;}const t=$("qxChartIntelState");if(t)t.textContent=state==="error"?(message.startsWith("ANALYSIS ERROR")?"ANALYSIS ERROR":"FEED ERROR"):message.includes("CONFIRMED")?"CONFIRMED":message.includes("WAITING")?"SCANNING":feedState.toUpperCase();}
@@ -43,7 +43,7 @@ function draw(){
  if(!canvas||!ctx)return;
  const{w,h}=dimensions();ctx.clearRect(0,0,w,h);ctx.fillStyle=chartBg();ctx.fillRect(0,0,w,h);
  if(!candles.length){ctx.fillStyle=textColor();ctx.font="13px system-ui";ctx.fillText("Waiting for market candles…",24,36);return;}
- const end=candles.length,start=Math.max(0,end-view.count-view.start),rows=candles.slice(start,end-view.start||undefined);if(!rows.length)return;const plotSlots=Math.max(24,view.count);
+ const end=candles.length,start=Math.max(0,end-view.count-view.start),rows=candles.slice(start,end-view.start||undefined);if(!rows.length)return;const plotSlots=Math.max(24,view.count+12);
  const left=12,axisWidth=priceAxisWidth(w),right=w-axisWidth,top=18,bottom=h-70,plotW=right-left,plotH=bottom-top;
  const type=$("qxChartType")?.value||"candles",src=type==="heikin"?heikin(rows):rows;
  const rawMin=Math.min(...src.map(x=>x.low)),rawMax=Math.max(...src.map(x=>x.high));
@@ -164,7 +164,7 @@ function renderIndicatorPanels(ind=calcIndicators()){
 function drawingsStorageKey(){const pick=selected();return "quantnex.chart.drawings.v1."+pick.symbol+"."+pick.interval;}
 function loadDrawings(){try{const saved=JSON.parse(localStorage.getItem(drawingsStorageKey())||"[]");drawings=Array.isArray(saved)?saved.filter(d=>d&&["horizontal","vertical","trend","rectangle","fib"].includes(d.type)&&[d.x1,d.y1,d.x2,d.y2].every(v=>Number.isFinite(Number(v)))):[];}catch{drawings=[];}}
 function saveDrawings(){try{localStorage.setItem(drawingsStorageKey(),JSON.stringify(drawings.slice(-100)));}catch{}}
-function fit(){view.count=Math.min(500,Math.max(120,candles.length));view.start=-12;view.priceZoom=1;view.priceShift=0;draw();}
+function fit(){view.count=Math.min(500,Math.max(120,candles.length));view.start=0;view.priceZoom=1;view.priceShift=0;draw();}
 function pointerDown(e){
  const r=canvas.getBoundingClientRect(),cx=e.clientX-r.left,cy=e.clientY-r.top,left=12,right=r.width-priceAxisWidth(r.width),top=18,bottom=r.height-70;
  canvas.setPointerCapture(e.pointerId);

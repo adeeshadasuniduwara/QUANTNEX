@@ -36,7 +36,7 @@ async def _wait_telegram_rate_limit(chat_id: str | int) -> None:
             await asyncio.sleep(wait)
         async with _TELEGRAM_GLOBAL_LOCK:
             now = time.monotonic()
-            global_wait = _TELEGRAM_GLOBAL_INTERVAL_SECONDS - (now - _TELEGRAM_GLOBAL_LAST_SENT)
+            global_wait = (_TELEGRAM_GLOBAL_INTERVAL_SECONDS - (now - _TELEGRAM_GLOBAL_LAST_SENT)) if _TELEGRAM_GLOBAL_LAST_SENT > 0 else 0.0
             if global_wait > 0:
                 await asyncio.sleep(global_wait)
             _TELEGRAM_GLOBAL_LAST_SENT = time.monotonic()
@@ -409,6 +409,7 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
     if command in {"/start","/help"}:
         return (
             "💎 QUANTNEX SIGNALS\n"
+            "YOUR SMART TRADING COMPANION\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "Welcome aboard. Your market intelligence feed is ready.\n\n"
             "📡 WHAT YOU WILL RECEIVE\n"
@@ -571,10 +572,10 @@ def _signal_live_message(trade) -> str:
         "Status: "+outcome,
         "━━━━━━━━━━━━━━━━━━━━",
         "Entry : "+format(float(trade.entry_price), ".10g"),
-        "TP 1 : "+format(float(trade.tp1), ".10g") + (" ✓" if trade.tp1_hit else ""),
-        "TP 2 : "+format(float(trade.tp2), ".10g") + (" ✓" if trade.tp2_hit else ""),
-        "All TP : "+format(float(trade.tp3), ".10g") + (" ✓" if trade.tp3_hit else ""),
-        "Stop Loss : "+format(float(trade.active_stop_loss or trade.stop_loss), ".10g"),
+        "TP1: "+format(float(trade.tp1), ".10g") + (" ✓" if trade.tp1_hit else ""),
+        "TP2: "+format(float(trade.tp2), ".10g") + (" ✓" if trade.tp2_hit else ""),
+        "TP3: "+format(float(trade.tp3), ".10g") + (" ✓" if trade.tp3_hit else ""),
+        "SL: "+format(float(trade.active_stop_loss or trade.stop_loss), ".10g"),
         "━━━━━━━━━━━━━━━━━━━━",
     ]
     if terminal:

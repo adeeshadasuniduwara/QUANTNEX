@@ -99,3 +99,44 @@ def test_failed_auto_signal_send_does_not_mark_fingerprint_as_delivered(monkeypa
     db.close()
     Base.metadata.drop_all(engine)
     engine.dispose()
+
+
+def test_telegram_outbound_rate_limit_applies_per_chat_and_globally(monkeypatch):
+    clock = [100.0]
+    sleeps = []
+
+    def fake_monotonic():
+        return clock[0]
+
+    async def fake_sleep(seconds):
+        sleeps.append(seconds)
+        clock[0] += seconds
+
+    monkeypatch.setattr(telegram_worker.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(telegram_worker.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(telegram_worker, "_TELEGRAM_CHAT_LOCKS", {})
+    monkeypatch.setattr(telegram_worker, "_TELEGRAM_CHAT_LAST_SENT", {})
+    monkeypatch.setattr(telegram_worker, "_TELEGRAM_GLOBAL_LOCK", asyncio.Lock())
+    monkeypatch.setattr(telegram_worker, "_TELEGRAM_GLOBAL_LAST_SENT", 0.0)
+
+    async def run():
+        await telegram_worker._wait_telegram_rate_limit("chat-a")
+        await telegram_worker._wait_telegram_rate_limit("chat-a")
+        await telegram_worker._wait_telegram_rate_limit("chat-b")
+
+    asyncio.run(run())
+    assert any(delay >= 1.19 for delay in sleeps)
+    assert any(0 < delay <= 0.05 for delay in sleeps)
+
+
+def test_send_does_not_issue_extra_typing_action(monkeypatch):
+    methods = []
+
+    async def fake_post(_client, _token, method, payload):
+        methods.append((method, payload))
+        return {"message_id": 321}
+
+    monkeypatch.setattr(telegram_worker, "_telegram_post", fake_post)
+    result = asyncio.run(telegram_worker._send(None, "token", "chat-a", "hello"))
+    assert result["message_id"] == 321
+    assert [method for method, _payload in methods] == ["sendMessage"]

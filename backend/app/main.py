@@ -1129,28 +1129,6 @@ async def intelligence_orderbook(symbol: str, user: User = Depends(local_workspa
     except httpx.HTTPError:
         raise HTTPException(status_code=502,detail="Order-book provider is temporarily unavailable.")
 
-@app.post("/api/v1/intelligence/signals/scan")
-async def intelligence_signal_scan(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
-    from .phase07_engine import scan_market_signal, market_info, IntelligenceDataError
-    symbol=payload.get("symbol","XAUUSD")
-    threshold=payload.get("min_score",6)
-    if not isinstance(threshold,int) or not 4<=threshold<=10:
-        raise HTTPException(status_code=422,detail="min_score must be an integer between 4 and 10.")
-    try:
-        info=market_info(symbol)
-        result=await scan_market_signal(info["symbol"],threshold)
-    except (ValueError,TypeError) as exc:
-        raise HTTPException(status_code=422,detail=str(exc))
-    except IntelligenceDataError as exc:
-        raise HTTPException(status_code=502,detail=str(exc))
-    except httpx.HTTPError:
-        raise HTTPException(status_code=502,detail="Market provider request failed. Check API key, quota or network connection.")
-    if result.get("signal"):
-        record_audit_event(db,"phase07.signal_generated",{"symbol":result["symbol"],"side":result["signal"]["side"],
-            "score":result["signal"]["score"],"mode":"paper_only"})
-        db.commit()
-    return result
-
 @app.get("/api/v1/intelligence/news")
 async def intelligence_news(days: int = 7, user: User = Depends(local_workspace)):
     from .phase07_engine import get_economic_calendar, IntelligenceDataError

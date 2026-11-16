@@ -7,7 +7,7 @@
   <link rel="icon" type="image/svg+xml" href="quantnex-mark.svg">
   <meta name="description" content="QUANTNEX is a modern trading workspace for risk planning and trade review.">
   <title>QUANTNEX — QUANTNEX VIEW</title>
-  <link rel="stylesheet" href="styles.css?v=20261112-quantnex-view3">
+  <link rel="stylesheet" href="styles.css?v=20261116-qx-signal-consolidation1">
   <link rel="stylesheet" href="signal-tool.css">
   <link rel="stylesheet" href="quantnex-view-intelligence.css">
   <link rel="stylesheet" href="quantnex-view-chart.css?v=0.6.1">
@@ -29,7 +29,6 @@
         <a class="nav-link" href="#tools">Position calculator</a>
         <a class="nav-link" href="#journal">Trade journal</a>
         <a class="nav-link" href="#account">Account &amp; wallet</a>
-        <a class="nav-link" href="#signal-lab">Signal Lab</a>
         <a class="nav-link" href="#updates">Updates</a>
         <div class="side-caption">INTELLIGENCE</div>
         <a class="nav-link" href="#market-intelligence">Market Intelligence</a>
@@ -104,7 +103,6 @@
           <p class="helper">These are manual records only, not verified bank transfers. Journal P&amp;L is added automatically when a trade is recorded through the local QUANTNEX API. Your browser-local journal remains stored separately in this browser.</p>
         </div>
       </section>
-      <section class="section-heading" id="signal-lab"><div><div class="overline">QUANTNEX · MARKET INTELLIGENCE</div><h2>Signal Lab</h2><p>Multi-timeframe technical analysis and optional Telegram signal delivery.</p></div><span class="pill live-pill">PAPER / ALERTS ONLY</span></section>
       <section class="section-heading" id="market-intelligence"><div><div class="overline">PHASE 07 · MULTI-ASSET MONITOR</div><h2>Market Intelligence</h2><p>Live provider quotes, daily range and market availability across Crypto, Gold and Forex.</p></div><span class="pill">PROVIDER DATA</span></section>
       <section class="panel phase07-panel">
         <div class="phase07-toolbar"><div><strong>Market watch</strong><p>BTC, ETH, SOL, XAUUSD, EURUSD, GBPUSD and USDJPY.</p></div><button class="secondary-btn" id="p7RefreshMarkets">Refresh markets</button></div>
@@ -122,13 +120,6 @@
           <div id="p10DetailResult" class="p10-detail-result"><p class="p7-note">Select a market to validate its latest candle series.</p></div>
         </div>
         <p class="p7-note">UNSAFE data blocks new QUANTNEX paper entries. DEGRADED data is shown with warnings; candle gaps can occur during legitimate market closures. Existing positions are not forcibly closed by this monitor.</p>
-      </section>
-      <section class="section-heading" id="ai-signal-center"><div><div class="overline">PHASE 07 · MULTI-TIMEFRAME ANALYSIS</div><h2>AI Signal Center</h2><p>Transparent rule-based analysis. Signal scores are confluence counts, not win probabilities.</p></div><span class="pill">WAIT / BUY / SELL</span></section>
-      <section class="panel phase07-panel">
-        <div class="p7-form-row"><label>Market <select id="p7SignalSymbol"><option value="XAUUSD">XAUUSD</option><option value="BTCUSDT">BTCUSDT</option><option value="ETHUSDT">ETHUSDT</option><option value="SOLUSDT">SOLUSDT</option><option value="EURUSD">EURUSD</option><option value="GBPUSD">GBPUSD</option><option value="USDJPY">USDJPY</option></select></label><label>Minimum score <select id="p7SignalThreshold"><option value="6">6 / 10</option><option value="7">7 / 10</option><option value="8">8 / 10</option></select></label><button class="primary-btn" id="p7RunScan">Scan market</button></div>
-        <div class="p7-signal-result" id="p7SignalResult"><div class="p7-empty">Choose a market and run a multi-timeframe scan.</div></div>
-        <div class="p7-table-wrap"><table><thead><tr><th>Timeframe</th><th>Bias</th><th>Price</th><th>RSI</th><th>ADX</th><th>ATR</th></tr></thead><tbody id="p7SignalFrames"><tr><td colspan="6" class="empty-row">No analysis yet.</td></tr></tbody></table></div>
-        <div class="p7-signal-ticket" id="p7SignalTicket" hidden><strong>Send this setup to Paper Trading</strong><button class="secondary-btn" id="p7UseSignal">Use signal in paper ticket</button></div>
       </section>
       <section class="section-heading" id="orderflow-liquidity"><div><div class="overline">PHASE 07 · EXCHANGE DEPTH</div><h2>Order Flow &amp; Liquidity</h2><p>Live Binance Spot order-book depth stream for supported crypto pairs. Gold/Forex depth is not simulated.</p></div><span class="pill">ORDER BOOK</span></section>
       <section class="panel phase07-panel">
@@ -319,7 +310,37 @@
 
       </section>
 
-      <section class="section-heading" id="telegram-bot"><div><div class="overline">WORKSPACE TOOL · TELEGRAM INTEGRATION</div><h2>Telegram Bot</h2><p>Connect your personal bot, manage signal delivery and configure scheduled reports. Signal generation remains in Signal Lab.</p></div><span class="pill">LOCAL · ENCRYPTED</span></section>
+      <section class="panel qx-intelligence-panel" id="qxSignalIntelligence">
+        <div class="qx-intel-heading"><div><div class="overline">QUANTNEX VIEW · SIGNAL INTELLIGENCE</div><h2>Live Strategy Engine</h2><p>100 catalogue variants across ICT, SMC, trend and volume setup families.</p></div><span class="pill" id="qxIntelStatus">INITIALISING</span></div>
+        <div class="qx-intel-controls">
+          <label>Minimum confluence <select id="qxIntelMinScore"><option value="4">4 / 20</option><option value="6" selected>6 / 20</option><option value="8">8 / 20</option><option value="10">10 / 20</option><option value="12">12 / 20</option></select></label>
+          <label>Paper balance ($) <input id="qxBacktestBalance" type="number" min="100" max="10000000" value="10000"></label>
+          <label>Risk per trade (%) <input id="qxBacktestRisk" type="number" min="0.05" max="2" step="0.05" value="1"></label>
+          <button class="primary-btn" id="qxRunBacktest" type="button">Run historical backtest</button>
+        </div>
+        <div class="qx-intel-grid">
+          <div class="qx-intel-card"><span>EMA 20 / 50 / 200</span><strong id="qxIndEma">—</strong></div>
+          <div class="qx-intel-card"><span>RSI · MACD</span><strong id="qxIndMomentum">—</strong></div>
+          <div class="qx-intel-card"><span>ADX · ATR</span><strong id="qxIndVolatility">—</strong></div>
+          <div class="qx-intel-card"><span>Relative volume</span><strong id="qxIndVolume">—</strong></div>
+          <div class="qx-intel-card"><span>Market structure</span><strong id="qxIndStructure">—</strong></div>
+          <div class="qx-intel-card"><span>Premium / Discount</span><strong id="qxIndLocation">—</strong></div>
+        </div>
+        <div class="qx-signal-card" id="qxMainSignal"><div class="qx-signal-empty">Waiting for a confirmed setup. The engine will show one selected trade only.</div></div>
+        <div class="qx-position-preview" id="qxPositionPreview" hidden>
+          <div class="qx-position-controls"><label>Stop colour <input type="color" id="qxStopColor" value="#e6535d"></label><label>Target colour <input type="color" id="qxTargetColor" value="#20c997"></label><label>Entry colour <input type="color" id="qxEntryColor" value="#e5c15b"></label></div>
+          <div class="qx-position-levels" id="qxPositionLevels"></div>
+          <p>TP1 hit → stop moves to entry (break-even). Remaining size is managed toward TP2 and TP3.</p>
+        </div>
+        <div class="qx-backtest-card">
+          <div class="qx-intel-heading"><div><h3>Autonomous Research Backtest</h3><p>Runs on historical closed candles; one position per symbol. Results are separate from live signals.</p></div><span class="pill" id="qxBacktestStatus">NOT RUN</span></div>
+          <div class="qx-backtest-metrics" id="qxBacktestMetrics"><span>Run a backtest to populate win rate, profit factor, drawdown and simulated balance.</span></div>
+        </div>
+        <div class="qx-strategy-details"><details><summary>View setup catalogue and active confluence</summary><div id="qxStrategyList">Loading strategy catalogue…</div></details></div>
+        <p class="qx-intel-disclaimer">Confluence score is not a win probability. No 70% accuracy is promised. Backtest outcomes are historical simulations, not live results or financial advice. This engine does not place broker orders.</p>
+      </section>
+
+      <section class="section-heading" id="telegram-bot"><div><div class="overline">WORKSPACE TOOL · TELEGRAM INTEGRATION</div><h2>Telegram Bot</h2><p>Connect your personal bot, manage alert delivery and configure scheduled reports. Signal analysis and trade planning are available inside QUANTNEX VIEW.</p></div><span class="pill">LOCAL · ENCRYPTED</span></section>
       <section class="signal-workspace telegram-tool-layout">
         <article class="panel signal-panel" id="telegram-bot-connect">
           <div class="signal-intro"><div><strong>Telegram bot connection</strong><p>Use your own private bot and chat.</p></div><span class="signal-pill">LOCAL SETUP</span></div>
@@ -365,35 +386,6 @@
       </section>
 
 
-      <section class="panel qx-intelligence-panel" id="qxSignalIntelligence">
-        <div class="qx-intel-heading"><div><div class="overline">QUANTNEX VIEW · SIGNAL INTELLIGENCE</div><h2>Live Strategy Engine</h2><p>100 catalogue variants across ICT, SMC, trend and volume setup families.</p></div><span class="pill" id="qxIntelStatus">INITIALISING</span></div>
-        <div class="qx-intel-controls">
-          <label>Minimum confluence <select id="qxIntelMinScore"><option value="4">4 / 20</option><option value="6" selected>6 / 20</option><option value="8">8 / 20</option><option value="10">10 / 20</option><option value="12">12 / 20</option></select></label>
-          <label>Paper balance ($) <input id="qxBacktestBalance" type="number" min="100" max="10000000" value="10000"></label>
-          <label>Risk per trade (%) <input id="qxBacktestRisk" type="number" min="0.05" max="2" step="0.05" value="1"></label>
-          <button class="primary-btn" id="qxRunBacktest" type="button">Run historical backtest</button>
-        </div>
-        <div class="qx-intel-grid">
-          <div class="qx-intel-card"><span>EMA 20 / 50 / 200</span><strong id="qxIndEma">—</strong></div>
-          <div class="qx-intel-card"><span>RSI · MACD</span><strong id="qxIndMomentum">—</strong></div>
-          <div class="qx-intel-card"><span>ADX · ATR</span><strong id="qxIndVolatility">—</strong></div>
-          <div class="qx-intel-card"><span>Relative volume</span><strong id="qxIndVolume">—</strong></div>
-          <div class="qx-intel-card"><span>Market structure</span><strong id="qxIndStructure">—</strong></div>
-          <div class="qx-intel-card"><span>Premium / Discount</span><strong id="qxIndLocation">—</strong></div>
-        </div>
-        <div class="qx-signal-card" id="qxMainSignal"><div class="qx-signal-empty">Waiting for a confirmed setup. The engine will show one selected trade only.</div></div>
-        <div class="qx-position-preview" id="qxPositionPreview" hidden>
-          <div class="qx-position-controls"><label>Stop colour <input type="color" id="qxStopColor" value="#e6535d"></label><label>Target colour <input type="color" id="qxTargetColor" value="#20c997"></label><label>Entry colour <input type="color" id="qxEntryColor" value="#e5c15b"></label></div>
-          <div class="qx-position-levels" id="qxPositionLevels"></div>
-          <p>TP1 hit → stop moves to entry (break-even). Remaining size is managed toward TP2 and TP3.</p>
-        </div>
-        <div class="qx-backtest-card">
-          <div class="qx-intel-heading"><div><h3>Autonomous Research Backtest</h3><p>Runs on historical closed candles; one position per symbol. Results are separate from live signals.</p></div><span class="pill" id="qxBacktestStatus">NOT RUN</span></div>
-          <div class="qx-backtest-metrics" id="qxBacktestMetrics"><span>Run a backtest to populate win rate, profit factor, drawdown and simulated balance.</span></div>
-        </div>
-        <div class="qx-strategy-details"><details><summary>View setup catalogue and active confluence</summary><div id="qxStrategyList">Loading strategy catalogue…</div></details></div>
-        <p class="qx-intel-disclaimer">Confluence score is not a win probability. No 70% accuracy is promised. Backtest outcomes are historical simulations, not live results or financial advice. This engine does not place broker orders.</p>
-      </section>
       <section class="section-heading" id="paper-autopilot"><div><div class="overline">PHASES 12–20 · LOCAL AUTOMATION</div><h2>Autonomous Paper Desk</h2><p>Opt-in simulated trading, risk guard, market universe and performance. No broker execution.</p></div><span class="pill" id="paperEngineState">DISABLED</span></section>
       <section class="panel workspace-page-panel paper-engine-panel">
         <div class="workspace-page-toolbar"><div><strong>Paper engine controls</strong><p>The worker runs only while this local API is open. Automatic mode starts OFF. Telegram menu also provides explicit Start/Pause controls.</p></div><div class="paper-engine-actions"><button class="secondary-btn" id="paperEngineSave" type="button">Save settings</button><button class="primary-btn" id="paperEngineToggle" type="button">Start paper mode</button></div></div>
@@ -455,7 +447,7 @@
       </section>
 
       <section class="section-heading" id="automation"><div><div class="overline">AUTOMATION</div><h2>Telegram signal delivery</h2><p>Personal bot connection and automatic signal delivery status.</p></div></section>
-      <section class="panel bot-panel"><div class="bot-icon">◉</div><div><strong id="telegramMonitorTitle">Telegram bot not connected</strong><p id="telegramMonitorDescription">Open Signal Lab to connect your BotFather bot and explicitly enable Auto Signals. Alerts run while the QUANTNEX API is active.</p></div><span class="pill" id="telegramMonitorPill">OFFLINE</span></section>
+      <section class="panel bot-panel"><div class="bot-icon">◉</div><div><strong id="telegramMonitorTitle">Telegram bot not connected</strong><p id="telegramMonitorDescription">Connect your BotFather bot here and enable Auto Signals. Review signal analysis and trade plans inside QUANTNEX VIEW. Alerts run while the QUANTNEX API is active.</p></div><span class="pill" id="telegramMonitorPill">OFFLINE</span></section>
       <section class="section-heading" id="updates"><div><div class="overline">SOFTWARE</div><h2>Updates</h2><p>QUANTNEX checks for verified updates automatically and installs them in the background.</p></div></section>
       <section class="panel update-panel">
         <img class="update-orbit-img" src="quantnex-mark.svg" alt="">
@@ -774,13 +766,13 @@
   </div>
   <script src="shared-news-config.js?v=20261113-shared-news1"></script>
   <script src="journal-export.js?v=20261114-csvsafe1"></script>
-  <script src="app.js?v=20261116-paper-lifecycle1"></script>
+  <script src="app.js?v=20261116-qx-signal-consolidation1"></script>
   <script src="realtime-events.js"></script>
   <script src="workspace-pages.js"></script>
   <script src="phase12-20.js"></script>
   <script src="goals.js?v=20261113-goalscomplete2"></script>
 
-  <script src="signal-tool.js?v=0.6.1"></script>
+  <script src="signal-tool.js?v=20261116-qx-signal-consolidation1"></script>
   <script src="quantnex-view-chart.js?v=20261114-coinbase-goldfeed1"></script>
   <script src="quantnex-view-intelligence.js?v=20261113-visible-intel1"></script>
   <script src="workspace-polish.js?v=20261114-single-icon2"></script>

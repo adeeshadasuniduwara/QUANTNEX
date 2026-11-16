@@ -12,7 +12,6 @@ from datetime import datetime, timezone, date, timedelta
 from typing import Any
 import httpx
 from .config import TWELVE_DATA_API_KEY, FINNHUB_API_KEY, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
-from .signal_engine import closed_candles, inspect_tf
 
 BINANCE = "https://api.binance.com"
 TWELVE = "https://api.twelvedata.com"
@@ -106,73 +105,6 @@ async def get_candles(symbol: str, timeframe: str="15m", limit: int=250) -> list
     if len(candles)<210:
         raise IntelligenceDataError(f"Not enough {timeframe} candles for stable analysis ({len(candles)} received; 210 required).")
     return candles
-
-async def scan_market_signal(symbol: str, threshold: int=6) -> dict:
-    info=market_info(symbol)
-    frames=["15m","1h","4h"]
-    results=await asyncio.gather(*(get_candles(info["symbol"],tf,250) for tf in frames))
-    results=[closed_candles(rows,tf) for rows,tf in zip(results,frames)]
-    if any(len(rows)<210 for rows in results):
-        counts=", ".join(f"{tf}: {len(rows)}" for tf,rows in zip(frames,results))
-        raise IntelligenceDataError("Not enough fully closed candles for reliable market analysis ("+counts+").")
-    analysis={tf:inspect_tf(results[i]) for i,tf in enumerate(frames)}
-    sides=[]
-    for tf,data in analysis.items():
-        sides.append("BUY" if data["bias"]=="BULLISH" else "SELL" if data["bias"]=="BEARISH" else "WAIT")
-    latest=analysis["15m"]; trend=analysis["1h"]; close=latest["close"]; atr=latest["atr"]
-    buy_checks=[];sell_checks=[]
-    for tf,data in analysis.items():
-        if data["bias"]=="BULLISH": buy_checks.append(tf+" EMA structure")
-        elif data["bias"]=="BEARISH": sell_checks.append(tf+" EMA structure")
-    if latest["macd_histogram"]>0: buy_checks.append("15m MACD momentum")
-    elif latest["macd_histogram"]<0: sell_checks.append("15m MACD momentum")
-    if 50<=latest["rsi"]<=68: buy_checks.append("RSI bullish range")
-    elif 32<=latest["rsi"]<=50: sell_checks.append("RSI bearish range")
-    if latest["adx"]>=18:
-        (buy_checks if latest["macd_histogram"]>0 else sell_checks).append("ADX trend strength")
-    structure=latest["structure"]
-    if structure["bos_mss"]=="BULLISH": buy_checks.append("Bullish BOS / MSS")
-    elif structure["bos_mss"]=="BEARISH": sell_checks.append("Bearish BOS / MSS")
-    if structure["liquidity_sweep"]=="BULLISH": buy_checks.append("Sell-side liquidity sweep")
-    elif structure["liquidity_sweep"]=="BEARISH": sell_checks.append("Buy-side liquidity sweep")
-    bullish_zone=(structure.get("bullish_fvg") or structure.get("bullish_order_block") or
-                  structure.get("bullish_breaker_block") or structure.get("bullish_ifvg"))
-    bearish_zone=(structure.get("bearish_fvg") or structure.get("bearish_order_block") or
-                  structure.get("bearish_breaker_block") or structure.get("bearish_ifvg"))
-    if bullish_zone and bullish_zone["low"]<=close<=bullish_zone["high"]:
-        buy_checks.append("Bullish OB / FVG reaction zone")
-    if bearish_zone and bearish_zone["low"]<=close<=bearish_zone["high"]:
-        sell_checks.append("Bearish OB / FVG reaction zone")
-    if structure.get("premium_discount")=="DISCOUNT": buy_checks.append("Discount pricing")
-    elif structure.get("premium_discount")=="PREMIUM": sell_checks.append("Premium pricing")
-    bscore=min(10,len(buy_checks));sscore=min(10,len(sell_checks))
-    side="BUY" if bscore>=threshold and bscore>sscore else "SELL" if sscore>=threshold and sscore>bscore else None
-    filters={}
-    if side:
-        wanted="BULLISH" if side=="BUY" else "BEARISH"
-        filters={"15m_bias":latest["bias"]==wanted,"1h_bias":trend["bias"]==wanted,
-                 "4h_bias":analysis["4h"]["bias"]==wanted,"adx":latest["adx"]>=18,
-                 "macd":(latest["macd_histogram"]>0 if side=="BUY" else latest["macd_histogram"]<0)}
-        if not all(filters.values()): side=None
-    score=max(bscore,sscore)
-    signal=None
-    if side:
-        risk=max(float(atr)*1.5,0.00000001)
-        sign=1 if side=="BUY" else -1
-        signal={"symbol":info["symbol"],"side":side,"timeframe":"15m","trend_timeframe":"1h",
-                "entry":round(close,8),"stop_loss":round(close-sign*risk,8),
-                "tp1":round(close+sign*risk,8),"tp2":round(close+sign*risk*2,8),
-                "tp3":round(close+sign*risk*3,8),"risk_distance":round(risk,8),
-                "score":score,"out_of":10,"confirmations":buy_checks if side=="BUY" else sell_checks,
-                "generated_at":datetime.now(timezone.utc).isoformat()}
-    return {"symbol":info["symbol"],"provider":info["provider"],"status":"SIGNAL" if signal else "WAIT",
-            "signal":signal,"confluence_score":score,"score_out_of":10,
-            "score_note":"Transparent rule-based confluence count, not a win probability.",
-            "timeframes":{tf:{"bias":v["bias"],"close":v["close"],"ema20":v["ema20"],"ema50":v["ema50"],
-                "rsi":v["rsi"],"adx":v["adx"],"atr":v["atr"],"macd_histogram":v["macd_histogram"],
-                "structure":v["structure"]} for tf,v in analysis.items()},
-            "quality_filters":filters,"timeframe_alignment":sides,
-            "message":"All directional filters passed." if signal else "WAIT — no sufficiently aligned setup. No trade is recommended."}
 
 async def get_order_book(symbol: str, limit: int=20) -> dict:
     info=market_info(symbol)

@@ -22,6 +22,7 @@ CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 PROCESSES: list[tuple[str, subprocess.Popen]] = []
 UPDATE_INTERVAL_SECONDS = 300
 UPDATE_REQUEST_FILE = ROOT / "data" / "updates" / "check_requested.json"
+UPDATE_ROLLBACK_MARKER = ROOT / "data" / "updates" / "last_update.json"
 
 
 class Tee:
@@ -238,9 +239,14 @@ def consume_browser_open_suppression() -> bool:
     return os.environ.pop("QUANTNEX_SUPPRESS_BROWSER_OPEN", "") == "1"
 
 
+def pending_source_update_restart() -> bool:
+    """Detect the first launch after an updater install, even from an older launcher."""
+    return UPDATE_ROLLBACK_MARKER.is_file()
+
+
 def main() -> int:
     configure_logging()
-    suppress_browser_open = consume_browser_open_suppression()
+    suppress_browser_open = consume_browser_open_suppression() or pending_source_update_restart()
     try:
         print("==============================================", flush=True)
         print("             QUANTNEX WEB WORKSPACE", flush=True)

@@ -241,7 +241,7 @@ def trade_payload(trade: SignalTrade, events: list[SignalTradeEvent] | None = No
         "entry_price": trade.entry_price, "limit_price": trade.limit_price,
         "stop_loss": trade.stop_loss, "active_stop_loss": trade.active_stop_loss,
         "tp1": trade.tp1, "tp2": trade.tp2, "tp3": trade.tp3,
-        "status": trade.status, "signal_time": stamp(trade.signal_time),
+        "status": "SL_HIT" if trade.status == "STOPPED" else trade.status, "signal_time": stamp(trade.signal_time),
         "filled_at": stamp(trade.filled_at), "tp1_hit": trade.tp1_hit,
         "tp2_hit": trade.tp2_hit, "tp3_hit": trade.tp3_hit,
         "tp1_at": stamp(trade.tp1_at), "tp2_at": stamp(trade.tp2_at), "tp3_at": stamp(trade.tp3_at),

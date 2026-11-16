@@ -4,6 +4,7 @@
   const price = n => Number(n).toLocaleString(undefined,{maximumFractionDigits:8});
   let lastAnalysis = null;
   let busy = false, analyzeQueued = false, backtestBusy = false, backtestQueued = false;
+  let replayKey = "", replayBusy = false, ledgerBusy = false;
   const isTradingViewActive=()=>!document.hidden&&document.querySelector(".workspace-view:not([hidden])")?.dataset.workspaceView==="tradingview";
 
   function setText(id,value){const el=$(id);if(el)el.textContent=value;}
@@ -30,15 +31,17 @@
     const title=document.createElement("strong");title.className=s.side==="BUY"?"qx-buy":"qx-sell";title.textContent=s.side+" · "+s.symbol;
     const score=document.createElement("span");score.textContent=s.confidence_label+" · "+s.score+"/20 confluence";
     head.append(title,score);host.append(head);
-    const details=document.createElement("p");details.textContent="Selected setup: "+s.confirmations.join(" + ")+" · "+s.timeframe;
+    const details=document.createElement("p");details.textContent="Selected setup: "+s.confirmations.join(" + ")+" · "+s.timeframe+
+      " · Entry: "+(s.entry_type==="MARKET"?"MARKET ("+price(s.entry)+")":"LIMIT ("+price(s.limit_price||s.entry)+")")+
+      (s.entry_reference_note?" · "+s.entry_reference_note:"");
     host.append(details);
     const reason=document.createElement("p");reason.className="qx-signal-reasons";reason.textContent=s.reasons.join(" · ");host.append(reason);
     const colorStop=$("qxStopColor")?.value||"#e6535d",colorTarget=$("qxTargetColor")?.value||"#20c997",colorEntry=$("qxEntryColor")?.value||"#e5c15b";
     levels.replaceChildren();
-    [["STOP LOSS",s.stop_loss,colorStop],["ENTRY",s.entry,colorEntry],["TP1",s.tp1,colorTarget],["TP2",s.tp2,colorTarget],["TP3",s.tp3,colorTarget]].forEach(([label,value,color])=>{
+    [["STOP LOSS",s.stop_loss,colorStop],[s.entry_type==="MARKET"?"ENTRY · MARKET":"ENTRY · LIMIT",s.entry,colorEntry],["TP1",s.tp1,colorTarget],["TP2",s.tp2,colorTarget],["TP3",s.tp3,colorTarget]].forEach(([label,value,color])=>{
       const item=document.createElement("div");item.className="qx-position-level";
       item.style.borderColor=color;const name=document.createElement("span"),val=document.createElement("strong");
-      name.textContent=label;val.textContent=price(value);val.style.color=color;item.append(name,val);levels.append(item);
+      name.textContent=label;val.textContent=label.startsWith("ENTRY")&&s.entry_type==="MARKET"?"MARKET ("+price(value)+")":price(value);val.style.color=color;item.append(name,val);levels.append(item);
     });
     preview.hidden=false;window.quantnexViewSetTradePlan?.(s,{stop:colorStop,target:colorTarget,entry:colorEntry});
   }
@@ -53,6 +56,62 @@
     });
     setText("qxBacktestStatus","COMPLETED · "+data.interval);
   }
+  function renderLifecycleTrades(trades){
+    const rows=$("qxSignalLedgerRows"),summary=$("qxSignalLedgerSummary");
+    if(!rows||!summary)return;
+    rows.replaceChildren();
+    const counts={tracked:trades.length,tp1:trades.filter(x=>x.tp1_hit).length,tp2:trades.filter(x=>x.tp2_hit).length,complete:trades.filter(x=>x.status==="TARGETS_COMPLETE").length};
+    summary.replaceChildren();
+    [["Tracked",counts.tracked],["TP1",counts.tp1],["TP2",counts.tp2],["Completed",counts.complete]].forEach(([label,value])=>{
+      const box=document.createElement("div"),name=document.createElement("span"),number=document.createElement("strong");
+      name.textContent=label;number.textContent=String(value);box.append(name,number);summary.append(box);
+    });
+    if(!trades.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=10;td.className="empty-row";td.textContent="No signals tracked for this market yet.";tr.append(td);rows.append(tr);return;}
+    const stamp=value=>value?new Date(value).toLocaleString():"—";
+    trades.forEach(item=>{
+      const tr=document.createElement("tr");
+      const entry=item.entry_type==="MARKET"?"MARKET ("+price(item.entry_price)+")":"LIMIT ("+price(item.limit_price||item.entry_price)+")";
+      const target=(n,hit)=>{const td=document.createElement("td");td.textContent=(hit?"✓ ":"")+price(n);if(hit)td.className="qx-ledger-hit";return td;};
+      const cells=[stamp(item.signal_time),item.symbol,item.side,entry,price(item.stop_loss)+" / "+price(item.active_stop_loss)];
+      cells.forEach(value=>{const td=document.createElement("td");td.textContent=String(value);tr.append(td);});
+      tr.append(target(item.tp1,item.tp1_hit),target(item.tp2,item.tp2_hit),target(item.tp3,item.tp3_hit));
+      const outcome=document.createElement("td");
+      const recovery=item.recovery_status&&item.recovery_status!=="COMPLETE"?" · "+item.recovery_status.replaceAll("_"," ")+" HISTORY":"";
+      outcome.textContent=item.status.replaceAll("_"," ")+recovery;outcome.className="qx-ledger-outcome";outcome.dataset.status=item.status;tr.append(outcome);
+      const result=document.createElement("td");result.textContent=(Number(item.realized_r)>=0?"+":"")+Number(item.realized_r||0).toFixed(2)+"R";tr.append(result);
+      rows.append(tr);
+    });
+  }
+  async function refreshLifecycle(symbol=selected().symbol){
+    if(ledgerBusy||!$("qxSignalLedgerRows"))return;ledgerBusy=true;
+    try{
+      const rows=await apiRequest("/api/v1/signals/trades?symbol="+encodeURIComponent(symbol)+"&limit=100");
+      renderLifecycleTrades(rows);
+      const status=$("qxSignalLedgerStatus");if(status){status.textContent="SYNCED · "+rows.length+" records";status.dataset.state="ok";}
+    }catch(error){const status=$("qxSignalLedgerStatus");if(status){status.textContent="HISTORY UNAVAILABLE · "+error.message;status.dataset.state="error";}}
+    finally{ledgerBusy=false;}
+  }
+  async function replayHistory(selection){
+    const day=new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Colombo"});
+    const key=[selection.symbol,selection.interval,selection.min,day].join("|");
+    if(replayBusy||replayKey===key)return;replayBusy=true;replayKey=key;
+    const note=$("qxSignalReplayNote"),status=$("qxSignalLedgerStatus");
+    if(status){status.textContent="REPLAYING AVAILABLE HISTORY…";status.dataset.state="";}
+    try{
+      const data=await apiRequest("/api/v1/quantnex-view/replay",{method:"POST",body:JSON.stringify({symbol:selection.symbol,interval:selection.interval,min_score:selection.min})});
+      if(note)note.textContent=data.note+" Replayed "+data.signals_replayed+" signals · "+data.new_trades+" new records · coverage from "+new Date(data.coverage_start).toLocaleString()+".";
+      await refreshLifecycle(selection.symbol);
+    }catch(error){
+      replayKey="";
+      if(note)note.textContent="Historical replay unavailable: "+error.message+" Existing tracked trades will still reconcile from the background feed when available.";
+    }finally{replayBusy=false;}
+  }
+  $("qxSignalLedgerRefresh")?.addEventListener("click",()=>refreshLifecycle());
+  window.addEventListener("quantnex:workspace-event",event=>{
+    if(event.detail?.type==="signals.lifecycle.changed"&&isTradingViewActive())refreshLifecycle();
+  });
+  window.setInterval(()=>{if(isTradingViewActive())refreshLifecycle();},20000);
+
   async function analyze(){
     if(!isTradingViewActive())return;
     if(busy){analyzeQueued=true;return;}busy=true;setStatus("ANALYSING");
@@ -62,6 +121,8 @@
       const current=selected();
       if(!isTradingViewActive()||current.symbol!==s.symbol||current.interval!==s.interval||current.min!==s.min)return;
       lastAnalysis=data;renderFeatures(data.features);renderSignal(data);window.quantnexViewSetAnalysis?.(data);
+      refreshLifecycle(s.symbol);
+      replayHistory(s);
       setStatus(data.status+" · "+data.eligible_setups+" ELIGIBLE / 100");
       const list=$("qxStrategyList");
       if(list){
@@ -103,4 +164,8 @@
   document.addEventListener("visibilitychange",()=>{if(isTradingViewActive())analyze();});
   // Historical backtests are user-triggered; do not run 1,000-candle simulations on view entry or on a timer.
   setInterval(()=>{if(isTradingViewActive())analyze();},60000);
+  // Recover the selected market's Colombo-day signals as soon as QUANTNEX starts,
+  // even if the user initially lands on Overview rather than opening the chart tab.
+  refreshLifecycle(selected().symbol);
+  replayHistory(selected());
 })();

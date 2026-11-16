@@ -5,7 +5,7 @@ only, one open position per symbol, conservative stop-first intrabar ordering an
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -159,7 +159,15 @@ def analyze_candles(candles: list[dict[str, Any]], symbol: str, interval: str,
         sign = 1 if side == "BUY" else -1
         entry = f["close"]
         stop = entry - sign * risk
-        signal = {"symbol": symbol, "side": side, "timeframe": interval, "entry": round(entry, 8),
+        raw_candle_time = datetime.fromisoformat(str(candles[-1]["time"]).replace("Z", "+00:00"))
+        if raw_candle_time.tzinfo is None:
+            raw_candle_time = raw_candle_time.replace(tzinfo=timezone.utc)
+        signal_time = raw_candle_time.astimezone(timezone.utc) + timedelta(
+            seconds={"1m":60,"5m":300,"15m":900,"30m":1800,"1h":3600,"4h":14400}[interval]
+        )
+        signal = {"symbol": symbol, "side": side, "timeframe": interval, "entry_type": "MARKET",
+                  "entry": round(entry, 8), "signal_candle_time": raw_candle_time.astimezone(timezone.utc).isoformat(),
+                  "signal_time": signal_time.isoformat(), "entry_reference_note": "Last fully closed candle reference; not a broker fill.",
                   "stop_loss": round(stop, 8), "tp1": round(entry + sign*risk, 8),
                   "tp2": round(entry + sign*risk*2, 8), "tp3": round(entry + sign*risk*3, 8),
                   "risk_distance": round(risk, 8), "score": score, "score_out_of": 20,

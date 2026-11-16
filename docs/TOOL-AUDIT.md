@@ -141,3 +141,16 @@ Do not convert static code inspection or CI success into a claim that a real ext
 - Kept the cross-market scanner's frontend renderer, paper-ticket handoff and styling as an integrated QUANTNEX VIEW panel. Market Intelligence, Order Flow, News, Paper Trading and the existing QUANTNEX VIEW signal engines remain intact.
 - Added Web regression checks for removed page IDs/names, QUANTNEX VIEW ownership of signal controls and preserved signal API routes; added a Backend TestClient check for the retired route returning 404 while the QUANTNEX VIEW routes remain registered.
 - Evidence level: automated source/contract and Backend API tests cover the consolidation. Actual provider-backed signal generation and visual layout still require a live local browser/provider session and remain **PARTIAL / DEVICE VERIFICATION REQUIRED**.
+
+
+## Update 026 — Signal lifecycle recovery, staged risk and chart usability
+
+- Added a persistent local signal-trade ledger. QUANTNEX VIEW analysis, the cross-market scan, the multi-timeframe scanner and opt-in Telegram Auto Signals now save deterministic signal records; repeat scans of the same candle are idempotent and same-direction one-minute refreshes are deduplicated during a four-bar cooldown.
+- Added a Colombo-day historical replay for the selected QUANTNEX VIEW symbol/timeframe. It rebuilds signal candidates from closed historical candles and stores them before outcome reconciliation. Coverage is disclosed; missing provider history is marked partial instead of inventing earlier outcomes.
+- Added a restart-safe lifecycle worker that replays available one-minute candles for open signals and records TP1, TP2, TP3, original SL, breakeven protection, locked-profit exit and ambiguous same-candle outcomes.
+- Staged virtual risk plan: 40% at TP1 then move the virtual stop to Entry; 30% at TP2 then move it to TP1; remaining 30% at TP3. Realized results are expressed in R. This is a research/alert simulation only and does not modify broker orders or prove an external broker fill.
+- Added a persistent Telegram event outbox. TP/SL/protection/ambiguity events are sent once after Telegram delivery succeeds; temporary failures are retried with a 30-second backoff. Messages distinguish a candle-level price touch from a broker execution.
+- Added a QUANTNEX VIEW signal outcome table with replay coverage, active-stop levels, target-hit markers and realized R. Market entries are explicitly labelled MARKET with their reference price.
+- Upgraded the native chart with visible PRICE and TIME axes, crosshair axis readouts, independent price-scale zoom, and horizontal/trend/vertical/rectangle/Fibonacci drawing tools. Drawings persist per symbol/timeframe in local browser storage.
+- The shared crypto ticker now starts with the workspace and remains active across visible views; it pauses only while the browser tab is hidden and reconnects on return. The chart keeps its existing provider-specific WebSocket failover and Gold quote polling.
+- Automated evidence includes deterministic BUY/SELL target progression, staged stop changes, breakeven exit, original SL loss, ambiguous intrabar ordering, restart replay idempotency, chart axis/tool/ledger contract checks and global feed lifecycle checks. Physical device rendering and live provider/Telegram delivery remain external/device verification requirements.

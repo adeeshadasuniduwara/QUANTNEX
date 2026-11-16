@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="styles.css?v=20261112-quantnex-view3">
   <link rel="stylesheet" href="signal-tool.css">
   <link rel="stylesheet" href="quantnex-view-intelligence.css">
-  <link rel="stylesheet" href="quantnex-view-chart.css?v=0.6.1">
+  <link rel="stylesheet" href="quantnex-view-chart.css?v=20261116-signal-ledger1">
   <link rel="stylesheet" href="workspace-pages.css?v=20261113-goalscomplete2">
   <link rel="stylesheet" href="workspace-polish.css?v=20261116-sidebar-compact1">
   <link rel="stylesheet" href="welcome-whats-new.css?v=20261113-1">
@@ -208,8 +208,11 @@
         <div class="qx-drawing-toolbar">
           <span>Draw</span>
           <button class="secondary-btn compact-btn active" type="button" data-qx-draw="cursor">Cursor</button>
-          <button class="secondary-btn compact-btn" type="button" data-qx-draw="horizontal">Horizontal line</button>
+          <button class="secondary-btn compact-btn" type="button" data-qx-draw="horizontal">Horizontal</button>
           <button class="secondary-btn compact-btn" type="button" data-qx-draw="trend">Trend line</button>
+          <button class="secondary-btn compact-btn" type="button" data-qx-draw="vertical">Vertical</button>
+          <button class="secondary-btn compact-btn" type="button" data-qx-draw="rectangle">Rectangle</button>
+          <button class="secondary-btn compact-btn" type="button" data-qx-draw="fib">Fib retracement</button>
           <button class="secondary-btn compact-btn" type="button" id="qxClearDrawings">Clear drawings</button>
           <span class="qx-chart-status" id="qxChartStatus" role="status">Connecting to local market data…</span>
         </div>
@@ -229,6 +232,20 @@
           <div class="qx-chart-intel-metric"><span>RSI</span><strong>—</strong></div><div class="qx-chart-intel-metric"><span>ADX</span><strong>—</strong></div>
           <div class="qx-chart-intel-metric"><span>Structure</span><strong>—</strong></div><div class="qx-chart-intel-metric"><span>Liquidity</span><strong>—</strong></div>
         </div>
+      </section>
+
+      <section class="panel qx-signal-ledger" id="qxSignalLedger" aria-label="Signal outcome history">
+        <div class="qx-ledger-head">
+          <div><div class="overline">QUANTNEX VIEW · SIGNAL LIFECYCLE</div><h3>Signal Outcomes &amp; Smart Risk Management</h3>
+            <p>Closed-candle replay from Colombo midnight where provider history allows, plus automatic recovery after restart.</p></div>
+          <div class="qx-ledger-actions"><span id="qxSignalLedgerStatus" role="status">Waiting for signal history…</span><button class="secondary-btn compact-btn" id="qxSignalLedgerRefresh" type="button">Refresh</button></div>
+        </div>
+        <p class="qx-ledger-note" id="qxSignalReplayNote">Historical outcomes are reconstructed only from available provider candles. Ambiguous stop/target candles are never guessed.</p>
+        <div class="qx-ledger-summary" id="qxSignalLedgerSummary">
+          <div><span>Tracked</span><strong>—</strong></div><div><span>TP1</span><strong>—</strong></div><div><span>TP2</span><strong>—</strong></div><div><span>Completed</span><strong>—</strong></div>
+        </div>
+        <div class="qx-ledger-table-wrap"><table class="qx-ledger-table"><thead><tr><th>Signal time</th><th>Market</th><th>Side</th><th>Entry</th><th>SL / Active SL</th><th>TP1</th><th>TP2</th><th>TP3</th><th>Outcome</th><th>Result (R)</th></tr></thead>
+          <tbody id="qxSignalLedgerRows"><tr><td colspan="10" class="empty-row">No tracked signals yet.</td></tr></tbody></table></div>
       </section>
 
       <section class="qx-indicator-panels" aria-label="Technical indicator panels">
@@ -787,8 +804,8 @@
   <script src="goals.js?v=20261113-goalscomplete2"></script>
 
   <script src="signal-tool.js?v=20261116-qx-signal-consolidation1"></script>
-  <script src="quantnex-view-chart.js?v=20261114-coinbase-goldfeed1"></script>
-  <script src="quantnex-view-intelligence.js?v=20261113-visible-intel1"></script>
+  <script src="quantnex-view-chart.js?v=20261116-tradingview-axes-tools1"></script>
+  <script src="quantnex-view-intelligence.js?v=20261116-signal-lifecycle1"></script>
   <script src="workspace-polish.js?v=20261114-single-icon2"></script>
   <script src="welcome-whats-new.js?v=20261113-1"></script>
   <script src="prop-challenge.js"></script>

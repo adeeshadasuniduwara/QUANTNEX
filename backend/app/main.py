@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, DATABASE_URL, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
 from .database import Base, engine, get_db, SessionLocal
-from .models import AuditEvent, GoalContribution, JournalImport, PaperTrade, PaperTradeEvent, PersonalGoal, Preference, StrategyLabRun, Trade, User, WalletTransaction
+from .models import AuditEvent, GoalContribution, JournalImport, PaperTrade, PaperTradeEvent, PersonalGoal, Preference, SignalTrade, SignalTradeEvent, StrategyLabRun, Trade, User, WalletTransaction
 from .schemas import AIChatRequest, AIChatResponse, LegacyJournalImportRequest, LegacyJournalImportResponse, PreferenceResponse, PreferenceWrite, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TradeCreate, TradeResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
 from .security import decrypt_secret, encrypt_secret
 from .maintenance import daily_backup_worker, record_audit_event
@@ -34,6 +34,7 @@ async def lifespan(app: FastAPI):
     """Own all local background workers in one explicit application lifecycle."""
     await prepare_local_workspace()
     try:
+        await start_signal_lifecycle_worker()
         await start_telegram_background_worker()
         await start_prop_challenge_guardian()
         await start_daily_backup_worker()
@@ -44,6 +45,7 @@ async def lifespan(app: FastAPI):
         await stop_daily_backup_worker()
         await stop_prop_challenge_guardian()
         await stop_telegram_background_worker()
+        await stop_signal_lifecycle_worker()
 
 
 app = FastAPI(title="QUANTNEX Local API",
@@ -134,6 +136,10 @@ def local_workspace(db: Session = Depends(get_db)) -> User:
             paper_event.user_id = owner.id
         for research_run in db.scalars(select(StrategyLabRun).where(StrategyLabRun.user_id == legacy.id)):
             research_run.user_id = owner.id
+        for signal_trade in db.scalars(select(SignalTrade).where(SignalTrade.user_id == legacy.id)):
+            signal_trade.user_id = owner.id
+        for signal_event in db.scalars(select(SignalTradeEvent).where(SignalTradeEvent.user_id == legacy.id)):
+            signal_event.user_id = owner.id
         for personal_goal in db.scalars(select(PersonalGoal).where(PersonalGoal.user_id == legacy.id)):
             personal_goal.user_id = owner.id
         for goal_contribution in db.scalars(select(GoalContribution).where(GoalContribution.user_id == legacy.id)):
@@ -266,16 +272,24 @@ def quantnex_view_strategies():
 
 
 @app.get("/api/v1/quantnex-view/analyze")
-async def quantnex_view_analyze(symbol: str = "BTCUSDT", interval: str = "15m", min_score: int = 6):
+async def quantnex_view_analyze(symbol: str = "BTCUSDT", interval: str = "15m", min_score: int = 6,
+                                user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     from .quantnex_view_intelligence import analyze_candles
     from .signal_engine import fetch_candles, MarketDataError
+    from .signal_lifecycle import record_signal
     allowed = {"1m", "5m", "15m", "30m", "1h", "4h"}
     if interval not in allowed or not 4 <= min_score <= 20:
         raise HTTPException(status_code=422, detail="Choose a supported timeframe and confluence threshold 4–20.")
     symbol = symbol.upper()
     try:
         candles = await fetch_candles({"1m":"1min","5m":"5min","15m":"15min","30m":"30min","1h":"1h","4h":"4h"}[interval], 320, symbol)
-        return analyze_candles(candles, symbol, interval, min_score)
+        result = analyze_candles(candles, symbol, interval, min_score)
+        if result.get("signal"):
+            trade, created = record_signal(db, user.id, result["signal"], "QUANTNEX_VIEW")
+            db.commit()
+            if created:
+                event_hub.publish("signals.lifecycle.changed", "signal_trade", "created", {"trade_id": trade.id, "symbol": trade.symbol})
+        return result
     except MarketDataError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     except (ValueError, KeyError, IndexError) as exc:
@@ -298,6 +312,86 @@ async def quantnex_view_backtest(symbol: str = "BTCUSDT", interval: str = "15m",
     except MarketDataError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@app.get("/api/v1/signals/trades")
+def list_signal_trades(symbol: str | None = None, limit: int = 100,
+                       user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .signal_lifecycle import trade_payload
+    if not 1 <= limit <= 500:
+        raise HTTPException(status_code=422, detail="Limit must be between 1 and 500.")
+    query = select(SignalTrade).where(SignalTrade.user_id == user.id)
+    if symbol:
+        query = query.where(SignalTrade.symbol == symbol.strip().upper())
+    rows = list(db.scalars(query.order_by(SignalTrade.signal_time.desc(), SignalTrade.id.desc()).limit(limit)))
+    result = []
+    for trade in rows:
+        events = list(db.scalars(select(SignalTradeEvent).where(
+            SignalTradeEvent.trade_id == trade.id
+        ).order_by(SignalTradeEvent.created_at)))
+        result.append(trade_payload(trade, events))
+    return result
+
+
+@app.post("/api/v1/quantnex-view/replay")
+async def replay_quantnex_view_signals(payload: dict, user: User = Depends(local_workspace),
+                                       db: Session = Depends(get_db)):
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+    from .signal_engine import fetch_candles, MarketDataError, closed_candles
+    from .quantnex_view_intelligence import analyze_candles
+    from .signal_lifecycle import record_signal, as_utc
+    symbol = str(payload.get("symbol") or "BTCUSDT").strip().upper()
+    interval = str(payload.get("interval") or "15m")
+    min_score = int(payload.get("min_score", 6))
+    intervals = {"1m":"1min","5m":"5min","15m":"15min","30m":"30min","1h":"1h","4h":"4h"}
+    if interval not in intervals or not 4 <= min_score <= 20:
+        raise HTTPException(status_code=422, detail="Choose a supported chart timeframe and confluence threshold 4–20.")
+    try:
+        candles = closed_candles(await fetch_candles(intervals[interval], 3200, symbol), intervals[interval])
+        now_local = datetime.now(ZoneInfo("Asia/Colombo"))
+        day_start = now_local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+        seconds = {"1m":60,"5m":300,"15m":900,"30m":1800,"1h":3600,"4h":14400}[interval]
+        first_time = as_utc(candles[0]["time"])
+        coverage_complete = first_time <= day_start - timedelta(seconds=seconds * 210)
+        start_index = next((i for i, row in enumerate(candles) if as_utc(row["time"]) >= day_start), len(candles))
+        def replay_rows():
+            candidates = []
+            previous_side = None
+            for index in range(max(209, start_index), len(candles)):
+                window = candles[max(0, index - 319):index + 1]
+                result = analyze_candles(window, symbol, interval, min_score)
+                signal = result.get("signal")
+                if not signal:
+                    previous_side = None
+                    continue
+                side = signal["side"]
+                if side != previous_side:
+                    signal["signal_candle_time"] = candles[index]["time"]
+                    signal["signal_time"] = (as_utc(candles[index]["time"]) + timedelta(seconds=seconds)).isoformat()
+                    candidates.append(signal)
+                previous_side = side
+            return candidates
+        candidates = await asyncio.to_thread(replay_rows)
+        created = 0
+        for signal in candidates:
+            _trade, was_created = record_signal(db, user.id, signal, "QUANTNEX_VIEW", deduplicate_active=False)
+            created += int(was_created)
+        db.commit()
+        event_hub.publish("signals.lifecycle.changed", "signal_trade", "history_replayed", {
+            "symbol": symbol, "new_trades": created,
+        })
+        return {
+            "symbol": symbol, "interval": interval, "day_start": day_start.isoformat(),
+            "coverage_start": first_time.isoformat(), "coverage_complete": coverage_complete,
+            "signals_replayed": len(candidates), "new_trades": created,
+            "note": ("Full Colombo-day warm-up history is available." if coverage_complete else
+                     "PARTIAL HISTORY: provider did not supply 210 warm-up candles before Colombo midnight. Outcomes before the available history will not be guessed."),
+        }
+    except MarketDataError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except (ValueError, TypeError, KeyError, IndexError) as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
 
@@ -758,8 +852,10 @@ async def scan_market_signal(symbol: str = "BTCUSDT", user: User = Depends(local
         raise HTTPException(status_code=502,detail="Could not retrieve "+symbol+" candles from the configured market-data provider.")
     signal=result.get("signal")
     if signal:
-        if symbol=="XAUUSD":
-            _save_preference(db,user.id,"active_signal",json.dumps({**signal,"tp1_notified":False,"tp2_notified":False,"tp3_notified":False,"sl_notified":False}))
+        from .signal_lifecycle import record_signal
+        tracked, created = record_signal(db, user.id, signal, "MULTI_TF_SCAN")
+        if created:
+            event_hub.publish("signals.lifecycle.changed", "signal_trade", "created", {"trade_id": tracked.id, "symbol": tracked.symbol})
         token_enc=_preference(db,user.id,"telegram_bot_token_enc")
         chat_id=_preference(db,user.id,"telegram_chat_id")
         if token_enc and chat_id:
@@ -767,7 +863,8 @@ async def scan_market_signal(symbol: str = "BTCUSDT", user: User = Depends(local
                 token=decrypt_secret(token_enc)
                 market_symbol=result.get("symbol",symbol)
                 message=("QUANTNEX · "+market_symbol+" "+signal["side"]+" SIGNAL\nMarket data: "+str(result.get("provider","Unknown"))+
-                    "\nEntry type: "+str(signal.get("entry_type","REFERENCE"))+"\nEntry: "+str(signal["entry"])+
+                    "\nEntry type: "+str(signal.get("entry_type","REFERENCE"))+"\nEntry: "+("MARKET ("+str(signal["entry"])+")" if signal.get("entry_type")=="MARKET" else "LIMIT ("+str(signal.get("limit_price") or signal["entry"])+")")+
+                    ("\nEntry reference: "+str(signal.get("entry_reference_note")) if signal.get("entry_reference_note") else "")+
                     ("\nLimit price: "+str(signal["limit_price"]) if signal.get("entry_type")=="LIMIT" else "")+
                     ("\nEntry expires: "+str(signal["entry_expires_at"]) if signal.get("entry_expires_at") else "")+
                     "\nEntry logic: "+str(signal.get("entry_selection_reason",""))+
@@ -927,6 +1024,21 @@ async def prepare_local_workspace():
 async def start_telegram_background_worker():
     from .telegram_worker import telegram_worker
     app.state.telegram_worker_task=asyncio.create_task(telegram_worker())
+
+async def start_signal_lifecycle_worker():
+    from .signal_lifecycle import signal_lifecycle_worker
+    app.state.signal_lifecycle_task = asyncio.create_task(signal_lifecycle_worker())
+
+
+async def stop_signal_lifecycle_worker():
+    task = getattr(app.state, "signal_lifecycle_task", None)
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
 
 async def stop_telegram_background_worker():
     task=getattr(app.state,"telegram_worker_task",None)
@@ -1146,9 +1258,13 @@ async def intelligence_signal_scan(payload: dict, user: User = Depends(local_wor
     except httpx.HTTPError:
         raise HTTPException(status_code=502,detail="Market provider request failed. Check API key, quota or network connection.")
     if result.get("signal"):
+        from .signal_lifecycle import record_signal
+        tracked, created = record_signal(db, user.id, result["signal"], "CROSS_MARKET_SCAN")
         record_audit_event(db,"phase07.signal_generated",{"symbol":result["symbol"],"side":result["signal"]["side"],
-            "score":result["signal"]["score"],"mode":"paper_only"})
+            "score":result["signal"]["score"],"mode":"paper_only","tracked_trade_id":tracked.id})
         db.commit()
+        if created:
+            event_hub.publish("signals.lifecycle.changed", "signal_trade", "created", {"trade_id": tracked.id, "symbol": tracked.symbol})
     return result
 
 @app.get("/api/v1/intelligence/news")

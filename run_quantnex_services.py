@@ -228,9 +228,14 @@ def restart_launcher() -> None:
     raise SystemExit(0)
 
 
+def consume_browser_open_suppression() -> bool:
+    """Consume the one-shot flag used only for update/rollback restarts."""
+    return os.environ.pop("QUANTNEX_SUPPRESS_BROWSER_OPEN", "") == "1"
+
+
 def main() -> int:
     configure_logging()
-    suppress_browser_open = os.environ.pop("QUANTNEX_SUPPRESS_BROWSER_OPEN", "") == "1"
+    suppress_browser_open = consume_browser_open_suppression()
     try:
         print("==============================================", flush=True)
         print("             QUANTNEX WEB WORKSPACE", flush=True)

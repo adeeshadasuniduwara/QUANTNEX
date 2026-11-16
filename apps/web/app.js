@@ -327,7 +327,7 @@ function watchSupervisorUpdate(target){
           supervisorWatchTarget="";
           sessionStorage.setItem("quantnex.webUpdateComplete","1");
           sessionStorage.setItem("quantnex.webUpdateVersion",state.latest||target);
-          sessionStorage.setItem("quantnex.webUpdateHeadline","Automatic full-source update");
+          sessionStorage.setItem("quantnex.webUpdateHeadline",$("webUpdateSummary")?.textContent||"Automatic full-source update");
           refreshWorkspaceAfterUpdate();
           return;
         }

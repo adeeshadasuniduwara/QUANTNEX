@@ -102,7 +102,7 @@ class LauncherRuntimeTests(unittest.TestCase):
 
     def test_update_restart_flag_is_consumed_and_does_not_leak_to_normal_launch(self):
         with patch.dict(launcher.os.environ, {"QUANTNEX_SUPPRESS_BROWSER_OPEN": "1"}):
-            suppress = launcher.os.environ.pop("QUANTNEX_SUPPRESS_BROWSER_OPEN", "") == "1"
+            suppress = launcher.consume_browser_open_suppression()
         self.assertTrue(suppress)
         self.assertNotIn("QUANTNEX_SUPPRESS_BROWSER_OPEN", launcher.os.environ)
 

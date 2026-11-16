@@ -194,3 +194,72 @@ def test_first_connection_signal_watermark_excludes_existing_trade_backlog(monke
     db.close()
     Base.metadata.drop_all(engine)
     engine.dispose()
+
+
+
+def test_telegram_pause_and_resume_skip_paused_signal_backlog(monkeypatch):
+    from datetime import datetime, timezone
+    from app.signal_lifecycle import record_signal
+
+    engine, _factory, db, user_id = _memory_session()
+    now = datetime(2026, 11, 16, 12, 0, tzinfo=timezone.utc)
+    trade, _ = record_signal(db, user_id, {
+        "symbol": "BTCUSDT", "side": "BUY", "timeframe": "1m",
+        "entry": 100, "stop_loss": 95, "tp1": 105, "tp2": 110, "tp3": 115,
+        "signal_time": now.isoformat(),
+    }, source="QUANTNEX_VIEW")
+    db.commit()
+
+    paused = asyncio.run(telegram_worker._handle_command(
+        None, db, user_id, "token", "chat", "/pause"
+    ))
+    assert "PAUSED" in paused
+    assert telegram_worker._get(db, user_id, "telegram_notifications_paused") == "true"
+
+    resumed = asyncio.run(telegram_worker._handle_command(
+        None, db, user_id, "token", "chat", "/resume"
+    ))
+    assert "RESUMED" in resumed
+    assert telegram_worker._get(db, user_id, "telegram_notifications_paused") == "false"
+    assert telegram_worker._get(db, user_id, "telegram_signal_start_after_id") == str(trade.id)
+
+    sent = []
+    async def fake_send(_client, _token, _chat_id, message):
+        sent.append(message)
+        return {"message_id": 99}
+
+    monkeypatch.setattr(telegram_worker, "_send", fake_send)
+    asyncio.run(telegram_worker._sync_signal_trade_messages(None, db, user_id, "token", "chat"))
+    assert sent == []
+
+    db.close()
+    Base.metadata.drop_all(engine)
+    engine.dispose()
+
+
+def test_telegram_signal_sync_ignores_backtest_source_rows(monkeypatch):
+    from datetime import datetime, timezone
+    from app.signal_lifecycle import record_signal
+
+    engine, _factory, db, user_id = _memory_session()
+    record_signal(db, user_id, {
+        "symbol": "BTCUSDT", "side": "SELL", "timeframe": "1m",
+        "entry": 100, "stop_loss": 105, "tp1": 95, "tp2": 90, "tp3": 85,
+        "signal_time": datetime(2026, 11, 16, 12, 0, tzinfo=timezone.utc).isoformat(),
+    }, source="BACKTEST")
+    db.commit()
+    telegram_worker._set(db, user_id, "telegram_signal_start_after_id", "0")
+    db.commit()
+
+    sent = []
+    async def fake_send(_client, _token, _chat_id, message):
+        sent.append(message)
+        return {"message_id": 100}
+
+    monkeypatch.setattr(telegram_worker, "_send", fake_send)
+    asyncio.run(telegram_worker._sync_signal_trade_messages(None, db, user_id, "token", "chat"))
+    assert sent == []
+
+    db.close()
+    Base.metadata.drop_all(engine)
+    engine.dispose()

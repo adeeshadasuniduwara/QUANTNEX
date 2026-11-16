@@ -154,3 +154,13 @@ Do not convert static code inspection or CI success into a claim that a real ext
 - Upgraded the native chart with visible PRICE and TIME axes, crosshair axis readouts, independent price-scale zoom, and horizontal/trend/vertical/rectangle/Fibonacci drawing tools. Drawings persist per symbol/timeframe in local browser storage.
 - The shared crypto ticker now starts with the workspace and remains active across visible views; it pauses only while the browser tab is hidden and reconnects on return. The chart keeps its existing provider-specific WebSocket failover and Gold quote polling.
 - Automated evidence includes deterministic BUY/SELL target progression, staged stop changes, breakeven exit, original SL loss, ambiguous intrabar ordering, restart replay idempotency, chart axis/tool/ledger contract checks and global feed lifecycle checks. Physical device rendering and live provider/Telegram delivery remain external/device verification requirements.
+
+
+## Update 027 — Windows Owner Device identity bootstrap
+
+- Added `backend/app/owner_device.py` to provision a per-Windows-user Ed25519 identity. The private key is protected with Windows DPAPI current-user scope and stored under `%LOCALAPPDATA%\\QUANTNEX\\Owner`, outside the repository and updater-managed files.
+- Added a signed device claim containing the QUANTNEX product/schema and a SHA-256 fingerprint derived from the Windows MachineGuid. Verification checks the pinned public key, signature and current machine fingerprint, and fails closed when no public key is pinned.
+- Added an idempotent first-run CLI: `python -m app.owner_device --provision`. It prints only the shareable public key and local file paths; it never prints the private key.
+- Added tests for provision/reuse, signature verification, missing-key fail-closed behavior, wrong-device rejection, tampered claims, unknown key-file formats and non-Windows rejection. Added the one-time setup and recovery guide at `docs/OWNER-DEVICE-SETUP.md`.
+- **Status: PARTIAL — identity bootstrap only.** No Owner public key has been pinned yet; Admin Mode remains disabled. Backend login/session enforcement, privileged API authorization and the Public User UI gate are deliberately deferred to Stage 2 after the owner laptop generates its public key. The existing Backend remains loopback-only and must not be exposed to a LAN or public internet.
+- CI can test signature and policy behavior with isolated fixtures. Actual Windows DPAPI provisioning and same-user/different-machine behavior require a real Windows device and remain **DEVICE VERIFICATION REQUIRED**.

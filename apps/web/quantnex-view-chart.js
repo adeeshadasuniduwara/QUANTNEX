@@ -118,7 +118,7 @@ function draw(){
   if(!Number.isFinite(stamp))return;
   let index=-1,best=Infinity;
   rows.forEach((bar,i)=>{const delta=Math.abs(bar.time-stamp);if(delta<best){best=delta;index=i;}});
-  if(index<0||best>Math.max(1800,Number(item.timeframe||15)*60*2))return;
+  if(index<0||best>Math.max(1800,(parseInt(item.timeframe,10)||15)*60*2))return;
   const bar=rows[index],buy=item.side==="BUY",xx=x(index),yy=y(buy?bar.low:bar.high)+(buy?12:-12);
   if(yy<top+7||yy>bottom-7)return;
   const color=buy?up:down,label=buy?"BUY":"SELL";

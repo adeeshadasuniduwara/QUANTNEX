@@ -123,3 +123,10 @@ These CI results establish that the tested code passed in GitHub's runner. They 
 - **NOT IMPLEMENTED:** no functional implementation found.
 
 Do not convert static code inspection or CI success into a claim that a real external feed, Telegram message, APK install or local-device startup was verified.
+
+
+## Sidebar readability update — 2026-11-16
+
+- Reduced expanded sidebar navigation labels to 9.5px with tighter line-height and spacing. Labels and captions now stay on one line; constrained labels use ellipsis rather than wrapping into stacked words. Icons retain their existing compact size and collapsed/mobile icon-only navigation is unchanged.
+- Added a CSS contract regression test and cache-busted the workspace stylesheet URL.
+- Status: **PARTIAL** pending visual verification in the user's browser at desktop and mobile widths; CI/static checks do not prove physical rendering.

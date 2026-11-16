@@ -112,3 +112,51 @@ td{font-size:10px}
  .sidebar.is-collapsed .nav-link{min-height:38px}
 }
 @media(prefers-reduced-motion:reduce){.main,.qx-sidebar-toggle{transition:none!important}}
+
+
+/* Sidebar readability: compact labels stay on one line instead of stacking. */
+.sidebar .sidebar-nav .nav-link{
+  display:flex;
+  flex-wrap:nowrap;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+  padding:9px 10px;
+  font-size:9.5px;
+  line-height:1.2;
+  white-space:nowrap;
+}
+.sidebar .sidebar-nav .nav-link .qx-nav-label{
+  display:block;
+  flex:1 1 auto;
+  min-width:0;
+  width:auto;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:9.5px;
+  line-height:1.2;
+}
+.sidebar .sidebar-nav .nav-link .qx-nav-icon{
+  flex:0 0 17px;
+  width:17px;
+  height:17px;
+}
+.sidebar .sidebar-nav .nav-link .qx-nav-icon svg{
+  width:15px;
+  height:15px;
+}
+.sidebar .sidebar-nav .side-caption{
+  font-size:8px;
+  line-height:1.2;
+  letter-spacing:.14em;
+  margin:18px 10px 7px;
+  white-space:nowrap;
+}
+@media(max-width:720px){
+  .sidebar:not(.is-collapsed) .sidebar-nav .nav-link{
+    min-height:36px;
+    padding:8px 9px;
+    font-size:9.5px;
+  }
+}

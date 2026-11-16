@@ -82,5 +82,18 @@ class WebSourceUpdaterDownloadTests(unittest.TestCase):
         self.assertEqual(str(UPDATER._safe_web_relative(("index.html",))), "index.html")
 
 
+
+    def test_sidebar_labels_are_compact_and_never_wrap_into_multiple_lines(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[1]
+        css = (root / "apps" / "web" / "workspace-polish.css").read_text(encoding="utf-8")
+        html = (root / "apps" / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn(".sidebar .sidebar-nav .nav-link{", css)
+        self.assertIn("font-size:9.5px;", css)
+        self.assertIn("white-space:nowrap;", css)
+        self.assertIn("text-overflow:ellipsis;", css)
+        self.assertIn("flex-wrap:nowrap;", css)
+        self.assertIn("workspace-polish.css?v=20261116-sidebar-compact1", html)
+
 if __name__ == "__main__":
     unittest.main()

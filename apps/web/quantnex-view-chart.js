@@ -13,7 +13,7 @@ restoreChartSelection();
 const isChartViewActive=()=>!document.hidden&&document.querySelector(".workspace-view:not([hidden])")?.dataset.workspaceView==="tradingview";
 let candles=[],analysis=null,ws=null,retry=null,historyRequests=new Map(),resize=null,reconnectAttempts=0,lastFeedMessageAt=0,staleWatchdog=null;
 let candleRevision=0,indicatorCache=null,indicatorCacheRevision=-1,drawFrame=null;
-let canvas,ctx,view={start:0,count:120,priceZoom:1,priceShift:0,drag:null,crosshair:null},drawMode="cursor",drawings=[],pendingDrawing=null,tradePlan=null,lastPrice=null,feedName="",feedState="connecting";
+let canvas,ctx,view={start:-12,count:120,priceZoom:1,priceShift:0,drag:null,crosshair:null},drawMode="cursor",drawings=[],pendingDrawing=null,tradePlan=null,lastPrice=null,feedName="",feedState="connecting";
 const chartBg=()=> $("qxChartTheme")?.value==="light"?"#f7f9fc":"#080d13";
 const textColor=()=> $("qxChartTheme")?.value==="light"?"#263244":"#b8c4d4";
 function setStatus(message,state=""){const e=$("qxChartStatus");if(e){e.textContent=message;e.dataset.state=state;}const t=$("qxChartIntelState");if(t)t.textContent=state==="error"?(message.startsWith("ANALYSIS ERROR")?"ANALYSIS ERROR":"FEED ERROR"):message.includes("CONFIRMED")?"CONFIRMED":message.includes("WAITING")?"SCANNING":feedState.toUpperCase();}
@@ -43,7 +43,7 @@ function draw(){
  if(!canvas||!ctx)return;
  const{w,h}=dimensions();ctx.clearRect(0,0,w,h);ctx.fillStyle=chartBg();ctx.fillRect(0,0,w,h);
  if(!candles.length){ctx.fillStyle=textColor();ctx.font="13px system-ui";ctx.fillText("Waiting for market candles…",24,36);return;}
- const end=candles.length,start=Math.max(0,end-view.count-view.start),rows=candles.slice(start,end-view.start||undefined);if(!rows.length)return;
+ const end=candles.length,start=Math.max(0,end-view.count-view.start),rows=candles.slice(start,end-view.start||undefined);if(!rows.length)return;const plotSlots=Math.max(24,view.count);
  const left=12,axisWidth=priceAxisWidth(w),right=w-axisWidth,top=18,bottom=h-70,plotW=right-left,plotH=bottom-top;
  const type=$("qxChartType")?.value||"candles",src=type==="heikin"?heikin(rows):rows;
  const rawMin=Math.min(...src.map(x=>x.low)),rawMax=Math.max(...src.map(x=>x.high));
@@ -53,7 +53,7 @@ function draw(){
  const center=(rawLo+rawHi)/2+(Number(view.priceShift)||0)*rawRange;
  const range=Math.max(1e-8,rawRange/Math.max(.25,Math.min(8,view.priceZoom||1)));
  const lo=center-range/2,hi=center+range/2;
- const y=v=>top+(hi-scale(v))/(hi-lo)*plotH,x=i=>left+(i+.5)*plotW/src.length;
+ const y=v=>top+(hi-scale(v))/(hi-lo)*plotH,x=i=>left+(i+.5)*plotW/plotSlots;
  const up=$("qxUpColor")?.value||palette.bull,down=$("qxDownColor")?.value||palette.bear;
  const light=$("qxChartTheme")?.value==="light";
  ctx.fillStyle=light?"#eef2f7":"#0c131d";ctx.fillRect(right,top,w-right,bottom-top);ctx.fillRect(left,bottom,plotW,h-bottom);
@@ -74,7 +74,7 @@ function draw(){
  ctx.font="9px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";
  const timeTicks=w<520?4:6;
  for(let i=0;i<=timeTicks;i++){
-  const index=Math.max(0,Math.min(rows.length-1,Math.round(i*(rows.length-1)/timeTicks))),xx=left+(i/timeTicks)*plotW;
+  const index=Math.max(0,Math.min(rows.length-1,Math.round(i*(rows.length-1)/timeTicks))),xx=x(index);
   const label=timeLabel(rows[index].time),labelX=Math.max(left+26,Math.min(right-26,xx));
   ctx.strokeStyle=light?"rgba(50,65,85,.28)":"rgba(160,180,205,.24)";
   ctx.beginPath();ctx.moveTo(xx,bottom);ctx.lineTo(xx,bottom+5);ctx.stroke();
@@ -82,7 +82,7 @@ function draw(){
  }
  const ind=calcIndicators(),sliceLine=a=>a.slice(start,end-view.start||undefined);
  const drawLine=(vals,color,width=1.4)=>{ctx.beginPath();let begun=false;vals.forEach((v,i)=>{if(!Number.isFinite(v))return;const xx=x(i),yy=y(v);if(!begun){ctx.moveTo(xx,yy);begun=true;}else ctx.lineTo(xx,yy);});ctx.strokeStyle=color;ctx.lineWidth=width;ctx.stroke();};
- const candleW=Math.max(1,Math.min(18,plotW/src.length*.68));
+ const candleW=Math.max(1,Math.min(18,plotW/plotSlots*.68));
  if(type==="line"||type==="area"){
   const vals=src.map(c=>c.close);ctx.beginPath();vals.forEach((v,i)=>i?ctx.lineTo(x(i),y(v)):ctx.moveTo(x(i),y(v)));
   if(type==="area"){ctx.lineTo(x(vals.length-1),bottom);ctx.lineTo(x(0),bottom);ctx.closePath();ctx.fillStyle="rgba(99,169,255,.13)";ctx.fill();}
@@ -164,7 +164,7 @@ function renderIndicatorPanels(ind=calcIndicators()){
 function drawingsStorageKey(){const pick=selected();return "quantnex.chart.drawings.v1."+pick.symbol+"."+pick.interval;}
 function loadDrawings(){try{const saved=JSON.parse(localStorage.getItem(drawingsStorageKey())||"[]");drawings=Array.isArray(saved)?saved.filter(d=>d&&["horizontal","vertical","trend","rectangle","fib"].includes(d.type)&&[d.x1,d.y1,d.x2,d.y2].every(v=>Number.isFinite(Number(v)))):[];}catch{drawings=[];}}
 function saveDrawings(){try{localStorage.setItem(drawingsStorageKey(),JSON.stringify(drawings.slice(-100)));}catch{}}
-function fit(){view.count=Math.min(500,Math.max(120,candles.length));view.start=0;view.priceZoom=1;view.priceShift=0;draw();}
+function fit(){view.count=Math.min(500,Math.max(120,candles.length));view.start=-12;view.priceZoom=1;view.priceShift=0;draw();}
 function pointerDown(e){
  const r=canvas.getBoundingClientRect(),cx=e.clientX-r.left,cy=e.clientY-r.top,left=12,right=r.width-priceAxisWidth(r.width),top=18,bottom=r.height-70;
  canvas.setPointerCapture(e.pointerId);
@@ -172,16 +172,16 @@ function pointerDown(e){
  if(cy>=bottom){view.drag={mode:"time-scale",x:e.clientX,count:view.count};return;}
  if(cx<left||cy<top||cx>right||cy>bottom)return;
  const px=(cx-left)/(right-left),py=(cy-top)/(bottom-top);
- view.drag={x:e.clientX,y:e.clientY,start:view.start,mode:drawMode,px,py};
+ view.drag={x:e.clientX,y:e.clientY,start:view.start,priceShift:view.priceShift||0,mode:drawMode,px,py};
  if(drawMode!=="cursor")pendingDrawing={type:drawMode,x1:px,y1:py,x2:px,y2:py};
 }
 function pointerMove(e){
- const r=canvas.getBoundingClientRect(),cx=e.clientX-r.left,cy=e.clientY-r.top,left=12,right=r.width-92,top=18,bottom=r.height-70;
+ const r=canvas.getBoundingClientRect(),cx=e.clientX-r.left,cy=e.clientY-r.top,left=12,right=r.width-priceAxisWidth(r.width),top=18,bottom=r.height-70;
  if(view.drag){
   const dx=e.clientX-view.drag.x;
   if(view.drag.mode==="price-scale"){view.priceZoom=Math.max(.25,Math.min(8,view.drag.priceZoom*Math.exp((view.drag.y-e.clientY)*.008)));}
   else if(view.drag.mode==="time-scale"){view.count=Math.max(24,Math.min(500,Math.round(view.drag.count*Math.exp((view.drag.x-e.clientX)*.008))));}
-  else if(view.drag.mode==="cursor"&&Math.abs(dx)>2){view.start=Math.max(0,Math.min(Math.max(0,candles.length-view.count),view.drag.start+Math.round(dx/((right-left)/view.count))));}
+  else if(view.drag.mode==="cursor"&&Math.abs(dx)>2){view.start=Math.max(-48,Math.min(Math.max(0,candles.length-view.count),view.drag.start+Math.round(dx/((right-left)/view.count))));view.priceShift=view.drag.priceShift+(e.clientY-view.drag.y)/Math.max(1,bottom-top);}
   else if(pendingDrawing){pendingDrawing.x2=Math.max(0,Math.min(1,(cx-left)/(right-left)));pendingDrawing.y2=Math.max(0,Math.min(1,(cy-top)/(bottom-top)));if(pendingDrawing.type==="horizontal")pendingDrawing.y2=pendingDrawing.y1;if(pendingDrawing.type==="vertical")pendingDrawing.x2=pendingDrawing.x1;}
   draw();
  }else{view.crosshair={cx,cy};draw();}
@@ -190,11 +190,11 @@ function pointerUp(){if(pendingDrawing){drawings.push({...pendingDrawing});pendi
 function wheel(e){
  e.preventDefault();const r=canvas.getBoundingClientRect(),cx=e.clientX-r.left,cy=e.clientY-r.top;
  if(cx>=r.width-priceAxisWidth(r.width)){view.priceZoom=Math.max(.25,Math.min(8,(view.priceZoom||1)*(e.deltaY<0?.88:1.14)));}
- else{const factor=e.deltaY<0?.85:1.18;view.count=Math.max(24,Math.min(500,Math.round(view.count*factor)));view.start=Math.max(0,Math.min(Math.max(0,candles.length-view.count),view.start));}
+ else{const factor=e.deltaY<0?.85:1.18;view.count=Math.max(24,Math.min(500,Math.round(view.count*factor)));view.start=Math.max(-48,Math.min(Math.max(0,candles.length-view.count),view.start));}
  draw();
 }
-function mergeCandle(row){if(!row||!Number.isFinite(Number(row.close)))return;const t=typeof row.time==="number"?Math.floor(row.time):stamp(row.time);if(!Number.isFinite(t))return;const next={...row,time:t,open:+row.open,high:+row.high,low:+row.low,close:+row.close,volume:+(row.volume||0)};const last=candles.at(-1);if(last&&last.time===t)candles[candles.length-1]=next;else if(!last||t>last.time)candles.push(next);else{const i=candles.findIndex(c=>c.time===t);if(i>=0)candles[i]=next;else return;}if(candles.length>1200)candles=candles.slice(-1200);candleRevision++;scheduleDraw();}
-function onTradingRoomTick(event){if(!isChartViewActive())return;const d=event.detail||{},symbol=String(d.symbol||"").toUpperCase();if(symbol!==selected().symbol)return;if(symbol==="XAUUSD"&&!String(d.source||"").startsWith("QUANTNEX VIEW · "))return;const price=Number(d.price),ms=Number(d.eventTime)||Date.now();if(!Number.isFinite(price)||price<=0||!candles.length)return;const seconds=INTERVALS[selected().interval]||900,time=Math.floor(ms/1000/seconds)*seconds;let last=candles.at(-1);if(time<last.time)return;if(time>last.time){last={time,open:price,high:price,low:price,close:price,volume:0};candles.push(last);}else{last.high=Math.max(last.high,price);last.low=Math.min(last.low,price);last.close=price;}if(d.kind==="trade"&&Number.isFinite(Number(d.volume)))last.volume+=Number(d.volume);if(candles.length>1200)candles=candles.slice(-1200);candleRevision++;feedName="Trading Room · "+(d.source||"shared live market feed");const p=$("qxChartProvider");if(p)p.textContent="Feed: "+feedName+" · "+candles.length+" candles";scheduleDraw();}
+function mergeCandle(row){if(!row||!Number.isFinite(Number(row.close)))return;const t=typeof row.time==="number"?Math.floor(row.time):stamp(row.time);if(!Number.isFinite(t))return;const next={...row,time:t,open:+row.open,high:+row.high,low:+row.low,close:+row.close,volume:+(row.volume||0)};const last=candles.at(-1);if(last&&last.time===t)candles[candles.length-1]=next;else if(!last||t>last.time){candles.push(next);if(view.start<0)view.start-=1;}else{const i=candles.findIndex(c=>c.time===t);if(i>=0)candles[i]=next;else return;}if(candles.length>1200)candles=candles.slice(-1200);candleRevision++;scheduleDraw();}
+function onTradingRoomTick(event){if(!isChartViewActive())return;const d=event.detail||{},symbol=String(d.symbol||"").toUpperCase();if(symbol!==selected().symbol)return;if(symbol==="XAUUSD"&&!String(d.source||"").startsWith("QUANTNEX VIEW · "))return;const price=Number(d.price),ms=Number(d.eventTime)||Date.now();if(!Number.isFinite(price)||price<=0||!candles.length)return;const seconds=INTERVALS[selected().interval]||900,time=Math.floor(ms/1000/seconds)*seconds;let last=candles.at(-1);if(time<last.time)return;if(time>last.time){last={time,open:price,high:price,low:price,close:price,volume:0};candles.push(last);if(view.start<0)view.start-=1;}else{last.high=Math.max(last.high,price);last.low=Math.min(last.low,price);last.close=price;}if(d.kind==="trade"&&Number.isFinite(Number(d.volume)))last.volume+=Number(d.volume);if(candles.length>1200)candles=candles.slice(-1200);candleRevision++;feedName="Trading Room · "+(d.source||"shared live market feed");const p=$("qxChartProvider");if(p)p.textContent="Feed: "+feedName+" · "+candles.length+" candles";scheduleDraw();}
 async function loadGoldQuote(){
  if(document.hidden||!isChartViewActive()||selected().symbol!=="XAUUSD")return;
  const pick=selected();

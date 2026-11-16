@@ -538,11 +538,17 @@ async def _refresh_signal_live_prices(db, user_id: int, quote_cache: dict, now_m
         db.commit()
 
 
+def _normalise_outcome_status(value: str | None) -> str:
+    status = str(value or "OPEN").strip().upper()
+    # Legacy rows used STOPPED for the original stop-loss terminal state.
+    return "SL_HIT" if status == "STOPPED" else status
+
+
 def _signal_live_message(trade) -> str:
     price = float(trade.last_price or trade.entry_price)
     risk = max(float(trade.risk_distance or abs(trade.entry_price-trade.stop_loss)), 1e-12)
     move = (price-float(trade.entry_price))/risk if trade.side == "BUY" else (float(trade.entry_price)-price)/risk
-    status = str(trade.status or "OPEN").upper()
+    status = _normalise_outcome_status(trade.status)
     terminal = status in {"SL_HIT","STOPPED","PROTECTED_EXIT","LOCKED_PROFIT_EXIT","TARGETS_COMPLETE","EXPIRED"}
     if status in {"SL_HIT","STOPPED"}: outcome = "STOP LOSS HIT"
     elif status == "PROTECTED_EXIT": outcome = "BREAKEVEN PROTECTION · PARTIAL PROFIT SECURED"
@@ -553,15 +559,16 @@ def _signal_live_message(trade) -> str:
     else: outcome = "LIVE · HOLDING UNTIL SL OR TP"
     result = float(trade.realized_r or 0)
     lines = [
-        "QUANTNEX · "+trade.symbol+" · "+trade.side,
+        "💎 QUANTNEX BOT SIGNAL · "+trade.symbol,
         "🟢 BUY" if trade.side == "BUY" else "🔴 SELL",
-        "State: "+outcome,
-        "Entry: "+format(float(trade.entry_price), ".10g"),
-        "Live price: "+format(price, ".10g"),
-        "SL: "+format(float(trade.active_stop_loss or trade.stop_loss), ".10g"),
-        "TP1: "+format(float(trade.tp1), ".10g")+(" ✓" if trade.tp1_hit else ""),
-        "TP2: "+format(float(trade.tp2), ".10g")+(" ✓" if trade.tp2_hit else ""),
-        "TP3: "+format(float(trade.tp3), ".10g")+(" ✓" if trade.tp3_hit else ""),
+        "Status: "+outcome,
+        "━━━━━━━━━━━━━━━━━━━━",
+        "Entry : "+format(float(trade.entry_price), ".10g"),
+        "TP 1 : "+format(float(trade.tp1), ".10g") + (" ✓" if trade.tp1_hit else ""),
+        "TP 2 : "+format(float(trade.tp2), ".10g") + (" ✓" if trade.tp2_hit else ""),
+        "All TP : "+format(float(trade.tp3), ".10g") + (" ✓" if trade.tp3_hit else ""),
+        "Stop Loss : "+format(float(trade.active_stop_loss or trade.stop_loss), ".10g"),
+        "━━━━━━━━━━━━━━━━━━━━",
     ]
     if terminal:
         lines.append("Final realized result: "+("%+.2fR" % result))
@@ -569,6 +576,7 @@ def _signal_live_message(trade) -> str:
         lines.append("Demo floating P&L: "+("%+.2fR" % move))
         lines.append("Protection: "+("BE stop active" if trade.tp1_hit else "Original SL active")+
                      (" · TP1 profit secured" if trade.tp1_hit else ""))
+    lines.append("Risk management is the key 🔑")
     lines.append("Simulated signal tracking only · no broker order was placed.")
     return "\n".join(lines)
 

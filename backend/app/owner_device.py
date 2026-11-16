@@ -45,7 +45,7 @@ def _machine_fingerprint() -> str:
         raise RuntimeError("Owner Device provisioning currently requires Windows.")
     import winreg
 
-    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\\Microsoft\\Cryptography") as key:
+    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography") as key:
         machine_guid, _ = winreg.QueryValueEx(key, "MachineGuid")
     normalized = str(machine_guid).strip().lower()
     if not normalized:

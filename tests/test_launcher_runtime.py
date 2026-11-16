@@ -100,6 +100,19 @@ class LauncherRuntimeTests(unittest.TestCase):
         self.assertNotIn("shell", kwargs)
         self.assertEqual(kwargs["env"]["QUANTNEX_SUPPRESS_BROWSER_OPEN"], "1")
 
+    def test_pre_update_launcher_passes_browser_suppression_to_new_source(self):
+        from types import SimpleNamespace
+        fake_updater = SimpleNamespace(check_and_apply=lambda _root: {
+            "status": "updated", "message": "updated", "version": "main@abc1234",
+            "changed_files": ["run_quantnex_services.py"], "restart_required": True,
+        })
+        with patch.dict(launcher.os.environ, {}, clear=False):
+            launcher.os.environ.pop("QUANTNEX_SUPPRESS_BROWSER_OPEN", None)
+            with patch.dict("sys.modules", {"quantnex_updater": fake_updater}):
+                self.assertTrue(launcher.check_for_automatic_update())
+            self.assertEqual(launcher.os.environ.get("QUANTNEX_SUPPRESS_BROWSER_OPEN"), "1")
+            launcher.os.environ.pop("QUANTNEX_SUPPRESS_BROWSER_OPEN", None)
+
     def test_update_restart_flag_is_consumed_and_does_not_leak_to_normal_launch(self):
         with patch.dict(launcher.os.environ, {"QUANTNEX_SUPPRESS_BROWSER_OPEN": "1"}):
             suppress = launcher.consume_browser_open_suppression()

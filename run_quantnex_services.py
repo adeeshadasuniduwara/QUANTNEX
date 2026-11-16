@@ -172,7 +172,12 @@ def check_for_automatic_update() -> bool:
             print("[AUTO UPDATE] Installed " + result["version"], flush=True)
             for path in result["changed_files"][:30]:
                 print("[AUTO UPDATE] " + path, flush=True)
-            return bool(result.get("restart_required"))
+            restart_required = bool(result.get("restart_required"))
+            if restart_required:
+                # The currently running (pre-update) launcher must pass this through
+                # its default inherited environment to the newly installed launcher.
+                os.environ["QUANTNEX_SUPPRESS_BROWSER_OPEN"] = "1"
+            return restart_required
         if result["status"] == "baseline":
             print("[AUTO UPDATE] Installed source baseline recorded: " + result["version"], flush=True)
         elif result["status"] == "current":

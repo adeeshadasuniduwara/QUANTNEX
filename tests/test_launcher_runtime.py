@@ -113,6 +113,19 @@ class LauncherRuntimeTests(unittest.TestCase):
             self.assertEqual(launcher.os.environ.get("QUANTNEX_SUPPRESS_BROWSER_OPEN"), "1")
             launcher.os.environ.pop("QUANTNEX_SUPPRESS_BROWSER_OPEN", None)
 
+    def test_first_updated_process_detects_pending_rollback_marker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / "last_update.json"
+            with patch.object(launcher, "UPDATE_ROLLBACK_MARKER", marker):
+                self.assertFalse(launcher.pending_source_update_restart())
+                marker.write_text('{"installed_sha":"test"}', encoding="utf-8")
+                self.assertTrue(launcher.pending_source_update_restart())
+
+    def test_startup_suppresses_browser_for_first_updated_process_without_env_flag(self):
+        source = Path(launcher.__file__).read_text(encoding="utf-8")
+        self.assertIn("consume_browser_open_suppression() or pending_source_update_restart()", source)
+        self.assertIn("UPDATE_ROLLBACK_MARKER.is_file()", source)
+
     def test_update_restart_flag_is_consumed_and_does_not_leak_to_normal_launch(self):
         with patch.dict(launcher.os.environ, {"QUANTNEX_SUPPRESS_BROWSER_OPEN": "1"}):
             suppress = launcher.consume_browser_open_suppression()

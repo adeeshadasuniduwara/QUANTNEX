@@ -21,18 +21,13 @@ if errorlevel 1 goto web
 
 :web
 echo.
+echo Checking Python installation...
+call "%~dp0scripts\ensure_python.cmd"
+if errorlevel 1 goto python_missing
 echo Starting QUANTNEX Web + Backend supervisor...
-where py >nul 2>nul
-if not errorlevel 1 (
-  py -3 -u run_quantnex_services.py
-  set "APP_EXIT=!ERRORLEVEL!"
-) else (
-  where python >nul 2>nul
-  if errorlevel 1 goto python_missing
-  python -u run_quantnex_services.py
-  set "APP_EXIT=!ERRORLEVEL!"
-)
-if not "%APP_EXIT%"=="0" goto failed
+%QUANTNEX_PYTHON% -u run_quantnex_services.py
+set "APP_EXIT=!ERRORLEVEL!"
+if not "!APP_EXIT!"=="0" goto failed
 goto end
 
 :backend
@@ -42,7 +37,7 @@ set "QUANTNEX_NO_PAUSE=1"
 call run_backend.bat
 set "APP_EXIT=!ERRORLEVEL!"
 set "QUANTNEX_NO_PAUSE="
-if not "%APP_EXIT%"=="0" goto failed
+if not "!APP_EXIT!"=="0" goto failed
 goto end
 
 :folder
@@ -53,8 +48,7 @@ goto end
 
 :python_missing
 echo.
-echo ERROR: Python 3.11 or newer was not found.
-echo Install Python from https://www.python.org/downloads/ and enable Add Python to PATH.
+echo ERROR: A working Python 3.11+ interpreter is required.
 goto failed
 
 :failed

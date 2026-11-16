@@ -74,6 +74,21 @@ def test_original_stop_before_tp1_is_a_loss():
     db.close()
 
 
+def test_signal_generation_candle_cannot_stop_trade_before_entry():
+    db, user = _session()
+    now = datetime(2026, 11, 16, 4, 0, tzinfo=timezone.utc)
+    trade, _ = record_signal(db, user.id, _signal(now))
+    # The signal candle includes pre-entry movement through the stop; ignore it.
+    process_trade_candles(db, trade, [_bar(now, 100, 102, 94, 96)])
+    assert trade.status == "OPEN"
+    assert trade.realized_r == 0.0
+    # The next fully closed candle is post-entry and may confirm the SL.
+    process_trade_candles(db, trade, [_bar(now + timedelta(minutes=1), 100, 102, 94, 96)])
+    assert trade.status == "STOPPED"
+    assert trade.realized_r == -1.0
+    db.close()
+
+
 def test_history_gap_pauses_replay_instead_of_guessing_a_later_target():
     db, user = _session()
     now = datetime(2026, 11, 16, 4, 0, tzinfo=timezone.utc)

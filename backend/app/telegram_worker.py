@@ -218,7 +218,7 @@ def _format_telegram_message(message: str) -> str:
             rendered.append("")
         elif index == 0:
             rendered.append("<b>✨ " + safe + "</b>" if "QUANTNEX" in line.upper() else "<b>" + safe + "</b>")
-        elif (line.strip().isupper() and len(line.strip()) > 3) or line.strip().startswith(("📈", "🧠", "🛡", "🎯", "📊", "⚙", "🚀", "🏅", "🔒")):
+        elif (line.strip().isupper() and len(line.strip()) > 3) or line.strip().startswith(("📈", "🧠", "🛡", "🎯", "📊", "⚙", "🚀", "🏅", "🔒", "💎", "🟢", "🔴", "📡")):
             rendered.append("<b>" + safe + "</b>")
         elif ":" in line and len(line.split(":", 1)[0]) <= 24:
             label, value = safe.split(":", 1)
@@ -394,18 +394,18 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
         return "\n".join(lines)
     if command in {"/start","/help"}:
         return (
-            "💎 QUANTNEX SIGNALS\\n"
-            "━━━━━━━━━━━━━━━━━━━━\\n"
-            "Welcome aboard. Your market intelligence feed is ready.\\n\\n"
-            "📡 WHAT YOU WILL RECEIVE\\n"
-            "• Fresh confirmed BUY / SELL setups\\n"
-            "• Entry, Stop Loss, TP 1, TP 2 and All TP levels\\n"
-            "• One clean signal card per trade, updated as it develops\\n"
-            "• No historical trade dump when you connect\\n\\n"
-            "🛡 RISK MANAGEMENT IS THE KEY 🔑\\n"
-            "Signals are analysis only. Check the market, position size and risk before taking a trade.\\n\\n"
-            "🇱🇰 QUANTNEX වෙත සාදරයෙන් පිළිගනිමු! අලුත් confirmed signals පමණක් මෙතැනට ලැබේවි.\\n"
-            "━━━━━━━━━━━━━━━━━━━━\\n"
+            "💎 QUANTNEX SIGNALS\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "Welcome aboard. Your market intelligence feed is ready.\n\n"
+            "📡 WHAT YOU WILL RECEIVE\n"
+            "• Fresh confirmed BUY / SELL setups\n"
+            "• Entry, Stop Loss, TP 1, TP 2 and All TP levels\n"
+            "• One clean signal card per trade, updated as it develops\n"
+            "• No historical trade dump when you connect\n\n"
+            "🛡 RISK MANAGEMENT IS THE KEY 🔑\n"
+            "Signals are analysis only. Check the market, position size and risk before taking a trade.\n\n"
+            "🇱🇰 QUANTNEX වෙත සාදරයෙන් පිළිගනිමු! අලුත් confirmed signals පමණක් මෙතැනට ලැබේවි.\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
             "Trade smart. Stay disciplined."
         )
     if command=="/timeframes":

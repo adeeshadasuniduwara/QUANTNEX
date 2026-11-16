@@ -102,6 +102,21 @@ def test_restart_replay_is_idempotent_and_duplicate_signal_is_deduplicated():
     db.close()
 
 
+def test_staged_r_result_uses_actual_target_distance_not_fixed_one_two_three_r():
+    db, user = _session()
+    now = datetime(2026, 11, 16, 4, 0, tzinfo=timezone.utc)
+    signal = _signal(now)
+    signal.update({"tp1": 106.0, "tp2": 113.0, "tp3": 125.0})
+    trade, _ = record_signal(db, user.id, signal)
+    process_trade_candles(db, trade, [
+        _bar(now + timedelta(minutes=1), 100, 106, 99, 105),
+        _bar(now + timedelta(minutes=2), 106, 113, 105, 110),
+        _bar(now + timedelta(minutes=3), 113, 126, 110, 125)])
+    assert trade.status == "TARGETS_COMPLETE"
+    assert trade.realized_r == 2.76
+    db.close()
+
+
 def test_live_signal_refresh_deduplicates_same_active_direction_until_exit():
     db, user = _session()
     now = datetime(2026, 11, 16, 4, 0, tzinfo=timezone.utc)

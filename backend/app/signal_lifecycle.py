@@ -175,7 +175,8 @@ def process_trade_candles(db, trade: SignalTrade, candles: list[dict[str, Any]])
             break
         if stop_hit:
             if trade.tp2_hit:
-                trade.realized_r = round(float(trade.realized_r or 0) + 0.3, 6)
+                locked_r = 0.3 * abs(float(trade.tp1) - float(trade.entry_price)) / max(float(trade.risk_distance or 0), 1e-12)
+                trade.realized_r = round(float(trade.realized_r or 0) + locked_r, 6)
                 trade.status = "LOCKED_PROFIT_EXIT"
                 event_type = "LOCKED_STOP_HIT"
             elif trade.tp1_hit:
@@ -195,14 +196,15 @@ def process_trade_candles(db, trade: SignalTrade, candles: list[dict[str, Any]])
 
         # If a bar reaches TP2/TP3, it necessarily crossed the earlier targets.
         # This is only accepted when the active stop was not also touched.
-        targets = [(1, trade.tp1, 0.4), (2, trade.tp2, 0.6), (3, trade.tp3, 0.9)]
-        for number, target, reward in targets:
+        targets = [(1, trade.tp1, 0.4), (2, trade.tp2, 0.3), (3, trade.tp3, 0.3)]
+        for number, target, allocation in targets:
             flag = getattr(trade, f"tp{number}_hit")
             if flag or not _touches(trade.side, high, low, float(target), True):
                 continue
             setattr(trade, f"tp{number}_hit", True)
             setattr(trade, f"tp{number}_at", candle_time)
-            trade.realized_r = round(float(trade.realized_r or 0) + reward, 6)
+            target_r = abs(float(target) - float(trade.entry_price)) / max(float(trade.risk_distance or 0), 1e-12)
+            trade.realized_r = round(float(trade.realized_r or 0) + allocation * target_r, 6)
             observed = op if ((trade.side == "BUY" and op >= target) or (trade.side == "SELL" and op <= target)) else target
             if number == 1:
                 trade.active_stop_loss = trade.entry_price

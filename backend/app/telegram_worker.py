@@ -10,7 +10,7 @@ from .database import SessionLocal
 from .models import GoalContribution, PaperTrade, PersonalGoal, Preference, SignalTrade, SignalTradeEvent
 from .security import decrypt_secret
 from .config import TWELVE_DATA_API_KEY, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
-from .signal_engine import build_signal, MarketDataError, gold_feed_configured, gold_feed_provider
+from .signal_engine import build_signal, fetch_candles_with_provider, MarketDataError, gold_feed_configured, gold_feed_provider
 from .events import event_hub
 
 logger = logging.getLogger("quantnex.telegram")
@@ -495,6 +495,40 @@ async def _deliver_pending_signal_events(client, db, user_id: int, token: str, c
                            user_id, type(exc).__name__)
 
 
+async def _refresh_signal_live_prices(db, user_id: int, quote_cache: dict, now_monotonic: float) -> None:
+    """Refresh open signal marks from the configured market-data provider, shared per symbol."""
+    active = list(db.scalars(select(SignalTrade).where(
+        SignalTrade.user_id == user_id, SignalTrade.status.in_(("OPEN", "PENDING")))))
+    for symbol in sorted({trade.symbol for trade in active}):
+        cached = quote_cache.get(symbol)
+        if cached and now_monotonic - cached[0] < 12:
+            price = cached[1]
+        else:
+            try:
+                candles, _provider = await fetch_candles_with_provider("1min", 2, symbol)
+                if not candles:
+                    continue
+                row = candles[-1]
+                price = float(row["close"])
+                if not math.isfinite(price) or price <= 0:
+                    continue
+                raw_time = str(row.get("time") or "").replace("Z", "+00:00")
+                stamp = datetime.fromisoformat(raw_time)
+                if stamp.tzinfo is None:
+                    stamp = stamp.replace(tzinfo=timezone.utc)
+                age = (datetime.now(timezone.utc)-stamp.astimezone(timezone.utc)).total_seconds()
+                if age > 120 or age < -30:
+                    continue
+                quote_cache[symbol] = (now_monotonic, price)
+            except (MarketDataError, httpx.HTTPError, KeyError, TypeError, ValueError, OverflowError):
+                continue
+        for trade in active:
+            if trade.symbol == symbol:
+                trade.last_price = price
+    if active:
+        db.commit()
+
+
 def _signal_live_message(trade) -> str:
     price = float(trade.last_price or trade.entry_price)
     risk = max(float(trade.risk_distance or abs(trade.entry_price-trade.stop_loss)), 1e-12)
@@ -606,6 +640,7 @@ async def telegram_worker() -> None:
     """Poll connected bots, keep signal cards live, and deliver scheduled reports."""
     last_monitor={}
     last_daily_attempt={}
+    live_quote_cache={}
     async with httpx.AsyncClient(timeout=12) as client:
         while True:
             try:
@@ -743,6 +778,7 @@ async def telegram_worker() -> None:
                         except (httpx.HTTPError,ValueError) as exc:
                             logger.warning("Telegram polling failed for local user %s: %s",user_id,type(exc).__name__)
                         await _deliver_pending_signal_events(client, db, user_id, token, chat_id)
+                        await _refresh_signal_live_prices(db, user_id, live_quote_cache, asyncio.get_running_loop().time())
                         await _sync_signal_trade_messages(client, db, user_id, token, chat_id)
                         now=asyncio.get_running_loop().time()
                         # Automatic signals scan each selected market independently.

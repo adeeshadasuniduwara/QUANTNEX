@@ -13,7 +13,7 @@ restoreChartSelection();
 const isChartViewActive=()=>!document.hidden&&document.querySelector(".workspace-view:not([hidden])")?.dataset.workspaceView==="tradingview";
 let candles=[],analysis=null,ws=null,retry=null,historyRequests=new Map(),resize=null,reconnectAttempts=0,lastFeedMessageAt=0,staleWatchdog=null;
 let candleRevision=0,indicatorCache=null,indicatorCacheRevision=-1,drawFrame=null;
-let canvas,ctx,view={start:0,count:120,priceZoom:1,priceShift:0,drag:null,crosshair:null},drawMode="cursor",drawings=[],pendingDrawing=null,tradePlan=null,lastPrice=null,feedName="",feedState="connecting";
+let canvas,ctx,view={start:0,count:120,priceZoom:1,priceShift:0,drag:null,crosshair:null},drawMode="cursor",drawings=[],pendingDrawing=null,tradePlan=null,signalHistory=[],lastPrice=null,feedName="",feedState="connecting";
 const chartBg=()=> $("qxChartTheme")?.value==="light"?"#f7f9fc":"#080d13";
 const textColor=()=> $("qxChartTheme")?.value==="light"?"#263244":"#b8c4d4";
 function setStatus(message,state=""){const e=$("qxChartStatus");if(e){e.textContent=message;e.dataset.state=state;}const t=$("qxChartIntelState");if(t)t.textContent=state==="error"?(message.startsWith("ANALYSIS ERROR")?"ANALYSIS ERROR":"FEED ERROR"):message.includes("CONFIRMED")?"CONFIRMED":message.includes("WAITING")?"SCANNING":feedState.toUpperCase();}
@@ -112,7 +112,26 @@ function draw(){
  if($("qxOverlaySR")?.checked){priceLine("SWING HIGH",st.swing_high,palette.sr);priceLine("SWING LOW",st.swing_low,palette.sr);priceLine("EQUILIBRIUM",st.equilibrium,"#aab4c4");}
  if($("qxOverlayZones")?.checked){for(const[name,z,color]of[["BULL FVG",st.bullish_fvg,palette.fvg],["BEAR FVG",st.bearish_fvg,palette.fvg],["BULL OB",st.bullish_order_block,palette.ob],["BEAR OB",st.bearish_order_block,palette.ob],["BULL BREAKER",st.bullish_breaker_block,palette.breaker],["BEAR BREAKER",st.bearish_breaker_block,palette.breaker],["BULL IFVG",st.bullish_ifvg,palette.bear],["BEAR IFVG",st.bearish_ifvg,palette.bear]])if(z&&Number.isFinite(+z.low)&&Number.isFinite(+z.high)){const yy=y(z.high),hh=y(z.low)-yy;ctx.fillStyle=color+"20";ctx.strokeStyle=color;ctx.fillRect(left,yy,plotW,hh);ctx.strokeRect(left,yy,plotW,hh);ctx.fillStyle=color;ctx.fillText(name,left+5,yy+10);}}
  if($("qxOverlayStructure")?.checked&&st.structure_event&&st.structure_event!=="NONE"){ctx.fillStyle="#e9edf5";ctx.font="600 10px system-ui";ctx.fillText(st.structure_event.replace("_"," ")+" · "+(st.liquidity_sweep!=="NONE"?"LIQUIDITY SWEEP "+st.liquidity_sweep:""),left+6,top+10);}
- if(tradePlan){for(const[name,value,color]of[["ENTRY",tradePlan.entry,palette.sr],["SL",tradePlan.stop_loss,down],["TP1",tradePlan.tp1,up],["TP2",tradePlan.tp2,up],["TP3",tradePlan.tp3,up]])priceLine(name,value,color);}
+ // Persisted BUY/SELL markers are reconstructed from the signal ledger on every chart load.
+ signalHistory.forEach(item=>{
+  const stamp=Date.parse(item.signal_time||"")/1000;
+  if(!Number.isFinite(stamp))return;
+  let index=-1,best=Infinity;
+  rows.forEach((bar,i)=>{const delta=Math.abs(bar.time-stamp);if(delta<best){best=delta;index=i;}});
+  if(index<0||best>Math.max(1800,Number(item.timeframe||15)*60*2))return;
+  const bar=rows[index],buy=item.side==="BUY",xx=x(index),yy=y(buy?bar.low:bar.high)+(buy?12:-12);
+  if(yy<top+7||yy>bottom-7)return;
+  const color=buy?up:down,label=buy?"BUY":"SELL";
+  ctx.save();ctx.fillStyle=color;ctx.beginPath();
+  ctx.moveTo(xx,yy+(buy?0:0));ctx.lineTo(xx-5,yy+(buy?8:-8));ctx.lineTo(xx+5,yy+(buy?8:-8));ctx.closePath();ctx.fill();
+  ctx.font="700 9px system-ui";const width=ctx.measureText(label).width+12;
+  const boxY=buy?yy+8:yy-23;ctx.fillStyle=color;ctx.beginPath();ctx.roundRect(xx-width/2,boxY,width,16,4);ctx.fill();
+  ctx.fillStyle="#071018";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(label,xx,boxY+8);ctx.restore();
+ });
+ if(tradePlan){for(const[name,value,color]of[["ENTRY",tradePlan.entry,palette.sr],["SL",tradePlan.stop_loss,down],["TP1",tradePlan.tp1,up],["TP2",tradePlan.tp2,up],["TP3",tradePlan.tp3,up]])priceLine(name,value,color);
+  const bar=rows.at(-1),buy=tradePlan.side==="BUY",xx=x(rows.length-1),yy=y(buy?bar.low:bar.high)+(buy?12:-12),color=buy?up:down,label=buy?"BUY":"SELL";
+  if(yy>=top+8&&yy<=bottom-8){ctx.save();ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(xx,yy);ctx.lineTo(xx-5,yy+(buy?8:-8));ctx.lineTo(xx+5,yy+(buy?8:-8));ctx.closePath();ctx.fill();ctx.font="700 9px system-ui";const width=ctx.measureText(label).width+12,boxY=buy?yy+8:yy-23;ctx.fillStyle=color;ctx.beginPath();ctx.roundRect(xx-width/2,boxY,width,16,4);ctx.fill();ctx.fillStyle="#071018";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(label,xx,boxY+8);ctx.restore();}
+ }
  const allDrawings=[...drawings,...(pendingDrawing?[pendingDrawing]:[])];
  allDrawings.forEach(d=>{
   const x1=left+d.x1*plotW,y1=top+d.y1*plotH,x2=left+d.x2*plotW,y2=top+d.y2*plotH;
@@ -275,6 +294,7 @@ async function loadHistory(){
    const merged=new Map(unique.map(c=>[c.time,c]));
    liveTail.forEach(c=>merged.set(c.time,c));
    candles=[...merged.values()].sort((a,b)=>a.time-b.time).slice(-1200);candleRevision++;
+   try{const history=await apiRequest("/api/v1/signals/trades?symbol="+encodeURIComponent(pick.symbol)+"&limit=500");signalHistory=Array.isArray(history)?history:[];}catch{signalHistory=[];}
    feedName=bars.provider||"Market feed";
    const p=$("qxChartProvider");
    if(p)p.textContent="Feed: "+feedName+" · "+candles.length+" candles · "+(feedState==="live"?"WebSocket live":"polling")+(bars.stale?" · STALE DATA":" · FRESH")+(candles.length<210?" · INDICATORS WARMING UP":"");

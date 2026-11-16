@@ -469,30 +469,16 @@ def _signal_lifecycle_message(trade, event) -> str:
 
 
 async def _deliver_pending_signal_events(client, db, user_id: int, token: str, chat_id: str) -> None:
-    cutoff = datetime.now(timezone.utc) - timedelta(seconds=30)
+    """Acknowledge lifecycle events; the single signal card is edited by the live-card worker."""
     pending = list(db.scalars(select(SignalTradeEvent).where(
-        SignalTradeEvent.user_id == user_id, SignalTradeEvent.telegram_sent_at.is_(None),
-        or_(SignalTradeEvent.telegram_last_attempt_at.is_(None),
-            SignalTradeEvent.telegram_last_attempt_at <= cutoff),
-    ).order_by(SignalTradeEvent.created_at).limit(10)))
+        SignalTradeEvent.user_id == user_id, SignalTradeEvent.telegram_sent_at.is_(None)
+    ).order_by(SignalTradeEvent.created_at).limit(100)))
+    if not pending:
+        return
+    now = datetime.now(timezone.utc)
     for event in pending:
-        trade = db.get(SignalTrade, event.trade_id)
-        message = _signal_lifecycle_message(trade, event) if trade is not None else ""
-        if not message:
-            event.telegram_sent_at = datetime.now(timezone.utc)
-            db.commit()
-            continue
-        event.telegram_attempts = int(event.telegram_attempts or 0) + 1
-        event.telegram_last_attempt_at = datetime.now(timezone.utc)
-        db.commit()
-        try:
-            await _send(client, token, chat_id, message)
-            event.telegram_sent_at = datetime.now(timezone.utc)
-            db.commit()
-        except Exception as exc:
-            db.rollback()
-            logger.warning("Signal outcome Telegram delivery deferred for local user %s: %s",
-                           user_id, type(exc).__name__)
+        event.telegram_sent_at = now
+    db.commit()
 
 
 async def _refresh_signal_live_prices(db, user_id: int, quote_cache: dict, now_monotonic: float) -> None:

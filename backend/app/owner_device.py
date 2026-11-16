@@ -262,7 +262,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Owner Device setup failed: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
     print("QUANTNEX OWNER DEVICE IDENTITY CREATED")
-    print("Device ID: " + result["device_id"])
+    print("Device fingerprint: stored locally in the signed claim (not displayed).")
     print("Public key (safe to share; this is NOT the private key):")
     print(result["public_key_b64"])
     print("Signed device claim saved locally: " + result["claim_path"])

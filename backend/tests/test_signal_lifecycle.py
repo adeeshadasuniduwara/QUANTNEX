@@ -36,9 +36,9 @@ def test_staged_targets_update_virtual_stop_and_complete_in_order():
     now = datetime(2026, 11, 16, 4, 0, tzinfo=timezone.utc)
     trade, created = record_signal(db, user.id, _signal(now))
     assert created is True
-    bars = [_bar(now, 100, 106, 99, 105),
-            _bar(now + timedelta(minutes=1), 106, 111, 105, 110),
-            _bar(now + timedelta(minutes=2), 111, 116, 110, 115)]
+    bars = [_bar(now + timedelta(minutes=1), 100, 106, 99, 105),
+            _bar(now + timedelta(minutes=2), 106, 111, 105, 110),
+            _bar(now + timedelta(minutes=3), 111, 116, 110, 115)]
     assert process_trade_candles(db, trade, bars) == 3
     assert trade.tp1_hit and trade.tp2_hit and trade.tp3_hit
     assert trade.active_stop_loss == trade.tp1
@@ -55,8 +55,8 @@ def test_tp1_then_breakeven_exit_preserves_partial_reward():
     now = datetime(2026, 11, 16, 4, 0, tzinfo=timezone.utc)
     trade, _ = record_signal(db, user.id, _signal(now))
     process_trade_candles(db, trade, [
-        _bar(now, 100, 106, 99, 105),
-        _bar(now + timedelta(minutes=1), 102, 104, 99, 100)])
+        _bar(now + timedelta(minutes=1), 100, 106, 99, 105),
+        _bar(now + timedelta(minutes=2), 102, 104, 99, 100)])
     assert trade.tp1_hit is True
     assert trade.status == "PROTECTED_EXIT"
     assert trade.active_stop_loss == trade.entry_price
@@ -68,7 +68,7 @@ def test_original_stop_before_tp1_is_a_loss():
     db, user = _session()
     now = datetime(2026, 11, 16, 4, 0, tzinfo=timezone.utc)
     trade, _ = record_signal(db, user.id, _signal(now))
-    process_trade_candles(db, trade, [_bar(now, 100, 102, 94, 96)])
+    process_trade_candles(db, trade, [_bar(now + timedelta(minutes=1), 100, 102, 94, 96)])
     assert trade.status == "STOPPED"
     assert trade.realized_r == -1.0
     db.close()
@@ -91,10 +91,14 @@ def test_same_bar_stop_and_target_is_ambiguous_not_a_guessed_win():
     db, user = _session()
     now = datetime(2026, 11, 16, 4, 0, tzinfo=timezone.utc)
     trade, _ = record_signal(db, user.id, _signal(now))
-    process_trade_candles(db, trade, [_bar(now, 100, 106, 94, 101)])
-    assert trade.status == "AMBIGUOUS"
+    process_trade_candles(db, trade, [_bar(now + timedelta(minutes=1), 100, 106, 94, 101)])
+    assert trade.status == "OPEN"
     assert trade.tp1_hit is False
     assert trade.realized_r == 0.0
+    # A later unambiguous TP candle resolves the still-active position.
+    process_trade_candles(db, trade, [_bar(now + timedelta(minutes=2), 101, 106, 100, 105)])
+    assert trade.status == "OPEN"
+    assert trade.tp1_hit is True
     db.close()
 
 
@@ -105,8 +109,8 @@ def test_restart_replay_is_idempotent_and_duplicate_signal_is_deduplicated():
     duplicate, duplicate_created = record_signal(db, user.id, _signal(now))
     assert created is True and duplicate_created is False
     assert duplicate.id == trade.id
-    first = _bar(now, 100, 106, 99, 105)
-    second = _bar(now + timedelta(minutes=1), 106, 111, 105, 110)
+    first = _bar(now + timedelta(minutes=1), 100, 106, 99, 105)
+    second = _bar(now + timedelta(minutes=2), 106, 111, 105, 110)
     process_trade_candles(db, trade, [first])
     process_trade_candles(db, trade, [first, second])
     events = list(db.scalars(select(SignalTradeEvent).where(
@@ -122,9 +126,9 @@ def test_staged_r_result_uses_actual_target_distance_not_fixed_one_two_three_r()
     signal.update({"tp1": 106.0, "tp2": 113.0, "tp3": 125.0})
     trade, _ = record_signal(db, user.id, signal)
     process_trade_candles(db, trade, [
-        _bar(now, 100, 106, 99, 105),
-        _bar(now + timedelta(minutes=1), 106, 113, 105, 110),
-        _bar(now + timedelta(minutes=2), 113, 126, 110, 125)])
+        _bar(now + timedelta(minutes=1), 100, 106, 99, 105),
+        _bar(now + timedelta(minutes=2), 106, 113, 105, 110),
+        _bar(now + timedelta(minutes=3), 113, 126, 110, 125)])
     assert trade.status == "TARGETS_COMPLETE"
     assert trade.realized_r == 2.76
     db.close()
@@ -146,9 +150,9 @@ def test_sell_direction_targets_are_evaluated_correctly():
     now = datetime(2026, 11, 16, 4, 0, tzinfo=timezone.utc)
     trade, _ = record_signal(db, user.id, _signal(now, "SELL"))
     process_trade_candles(db, trade, [
-        _bar(now, 100, 101, 94, 95),
-        _bar(now + timedelta(minutes=1), 94.8, 94.9, 89, 90),
-        _bar(now + timedelta(minutes=2), 89.8, 89.9, 84, 85)])
+        _bar(now + timedelta(minutes=1), 100, 101, 94, 95),
+        _bar(now + timedelta(minutes=2), 94.8, 94.9, 89, 90),
+        _bar(now + timedelta(minutes=3), 89.8, 89.9, 84, 85)])
     assert trade.status == "TARGETS_COMPLETE"
     assert trade.tp1_hit and trade.tp2_hit and trade.tp3_hit
     assert trade.realized_r == 1.9

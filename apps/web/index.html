@@ -35,6 +35,7 @@
         <a class="nav-link" href="#market-intelligence">Market Intelligence</a>
         <a class="nav-link" href="#data-reliability">Data Reliability</a>
         <a class="nav-link" href="#ai-signal-center">AI Signal Center</a>
+        <a class="nav-link" href="#telegram-bot">Telegram Bot</a>
         <a class="nav-link" href="#orderflow-liquidity">Order Flow &amp; Liquidity</a>
         <a class="nav-link" href="#news-intelligence">News Intelligence</a>
         <a class="nav-link" href="#paper-trading">Paper Trading</a>
@@ -280,7 +281,9 @@
           <label>Risk per signal (%)<input id="signalRiskPct" type="number" min="0.1" max="5" step="0.1" value="1"></label>
         </div>
         <div class="signal-actions"><button class="primary-btn" id="saveTimeframes">Save signal settings</button><button class="secondary-btn" id="syncTimeframes">Load settings from Telegram</button><button class="secondary-btn" id="applyChartTf">Apply to QUANTNEX VIEW</button><button class="secondary-btn" id="runSignalScan">Run market signal scan</button><button class="secondary-btn" id="runSignalBacktest">Run historical walk-forward test</button></div>
-        <p class="telegram-status" id="timeframeStatus" aria-live="polite">Connect your Telegram bot to receive generated signals. Crypto analysis uses Binance public data; Gold needs a configured local provider. M50 is aggregated from 1-minute candles.</p>
+        <p class="telegram-status" id="timeframeStatus" aria-live="polite">Signal settings and market analysis are managed here. Crypto analysis uses Binance public data; Gold needs a configured local provider. M50 is aggregated from 1-minute candles.</p>
+        <div class="signal-actions"><button class="secondary-btn" id="openTelegramBotTool" type="button">Manage Telegram bot</button></div>
+        <p class="telegram-status" id="signalTelegramStatus" aria-live="polite">Checking Telegram bot connection…</p>
         <div class="signal-warning">Gold and Forex analysis require a supported market-data provider configured on this computer. Keep provider credentials private; QUANTNEX never displays secret values in the website. Provider plan limits and market-data entitlements apply.</div>
         <div id="signalBacktestResult" class="signal-result-empty">Historical validation: run a chronological training / out-of-sample test for the selected Binance Spot pair. Spread, depth, fees and slippage are modeled assumptions, not historical order-book data.</div>
       </section>
@@ -313,6 +316,11 @@
           <div class="signal-actions"><button class="primary-btn" id="sendPlanTelegram">Send trade plan to Telegram</button><button class="secondary-btn" id="tp1Breakeven">TP1 hit · Send breakeven warning</button></div>
           <div class="signal-warning">TP1 automation is not active: when you confirm TP1 manually, this button sends the warning to move SL to Entry. QUANTNEX does not monitor price touches or modify broker orders yet. Always move the stop manually in your broker platform.</div>
         </article>
+
+      </section>
+
+      <section class="section-heading" id="telegram-bot"><div><div class="overline">WORKSPACE TOOL · TELEGRAM INTEGRATION</div><h2>Telegram Bot</h2><p>Connect your personal bot, manage signal delivery and configure scheduled reports. Signal generation remains in Signal Lab.</p></div><span class="pill">LOCAL · ENCRYPTED</span></section>
+      <section class="signal-workspace telegram-tool-layout">
         <article class="panel signal-panel" id="telegram-bot-connect">
           <div class="signal-intro"><div><strong>Telegram bot connection</strong><p>Use your own private bot and chat.</p></div><span class="signal-pill">LOCAL SETUP</span></div>
           <div class="telegram-bot-identity"><label>Your bot display name<input id="tgBotDisplayName" maxlength="40" placeholder="e.g. QUANTNEX Gold Scout"></label><small>Choose this label for your workspace. Set the actual Telegram bot name and username in @BotFather.</small></div>
@@ -355,6 +363,7 @@
           <p class="signal-feed-note">QUANTNEX VIEW uses first-party local chart rendering. Crypto candles and signals use Binance Spot market data; XAUUSD requires the configured local market-data provider. A confluence score counts matching rules, not a win probability.</p>
         </article>
       </section>
+
 
       <section class="panel qx-intelligence-panel" id="qxSignalIntelligence">
         <div class="qx-intel-heading"><div><div class="overline">QUANTNEX VIEW · SIGNAL INTELLIGENCE</div><h2>Live Strategy Engine</h2><p>100 catalogue variants across ICT, SMC, trend and volume setup families.</p></div><span class="pill" id="qxIntelStatus">INITIALISING</span></div>
@@ -696,7 +705,7 @@
 
       <section class="section-heading" id="integrations-center"><div><div class="overline">WORKSPACE SETTINGS · CONNECTION HEALTH</div><h2>Connections &amp; Integrations</h2><p>Check which optional local providers and integrations are configured without exposing any API keys or bot tokens.</p></div><span class="pill">SECRET SAFE</span></section>
       <section class="panel workspace-page-panel">
-        <div class="workspace-page-toolbar"><div><strong>Integration status</strong><p id="integrationStatus" role="status">Checking local integrations…</p></div><div class="system-security-actions"><button class="secondary-btn" id="integrationConnectBot">Connect Telegram bot</button><button class="secondary-btn" id="integrationRefresh">Refresh status</button></div></div>
+        <div class="workspace-page-toolbar"><div><strong>Integration status</strong><p id="integrationStatus" role="status">Checking local integrations…</p></div><div class="system-security-actions"><button class="secondary-btn" id="integrationConnectBot">Open Telegram Bot</button><button class="secondary-btn" id="integrationRefresh">Refresh status</button></div></div>
         <div class="workspace-page-cards" id="integrationCards"><article class="workspace-page-card">Checking provider configuration…</article></div>
         <p class="p7-note">Credentials remain in the local backend configuration or encrypted local preferences. This page never requests or displays secret values. QUANTNEX remains login-free and loopback-only.</p>
       </section>

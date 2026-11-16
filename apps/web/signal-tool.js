@@ -12,6 +12,18 @@
   };
   const num = id => Number($(id).value);
   let currentPlan = null;
+  const telegramStatusNode = $("telegramStatus");
+  const signalTelegramStatusNode = $("signalTelegramStatus");
+  if (telegramStatusNode && signalTelegramStatusNode) {
+    const syncTelegramStatus = () => { signalTelegramStatusNode.textContent = telegramStatusNode.textContent; };
+    syncTelegramStatus();
+    new MutationObserver(syncTelegramStatus).observe(telegramStatusNode, {childList:true, characterData:true, subtree:true});
+  }
+  $("openTelegramBotTool")?.addEventListener("click", () => {
+    if (typeof window.quantnexNavigate === "function") window.quantnexNavigate("telegram-bot");
+    else window.location.hash = "#telegram-bot";
+    window.setTimeout(() => $("tgBotToken")?.focus({preventScroll:true}), 180);
+  });
 
   function readPlan() {
     const p={side:$("side").value,entry:num("entry"),sl:num("stopLoss"),t1:num("tp1"),t2:num("tp2"),t3:num("tp3"),
@@ -348,7 +360,7 @@
   $("clearTelegram").addEventListener("click",async()=>{
     try{await apiRequest("/api/v1/telegram/connect",{method:"DELETE"});}
     catch(e){$("telegramStatus").textContent=e.message;return;}
-    $("tgBotToken").value="";$("tgChatId").value="";$("autoSignalsEnabled").checked=false;$("autoSignalStatus").textContent="Auto Signals OFF. Reconnect a bot before enabling it again.";$("telegramMonitorTitle").textContent="Telegram bot not connected";$("telegramMonitorDescription").textContent="Connect a bot in Signal Lab to enable delivery.";$("telegramMonitorPill").textContent="OFFLINE";$("telegramStatus").textContent="Telegram bot disconnected and stored token removed.";
+    $("tgBotToken").value="";$("tgChatId").value="";$("autoSignalsEnabled").checked=false;$("autoSignalStatus").textContent="Auto Signals OFF. Reconnect a bot before enabling it again.";$("telegramMonitorTitle").textContent="Telegram bot not connected";$("telegramMonitorDescription").textContent="Connect a bot in the Telegram Bot tool to enable delivery.";$("telegramMonitorPill").textContent="OFFLINE";$("telegramStatus").textContent="Telegram bot disconnected and stored token removed.";
   });
   $("openBotGuide").addEventListener("click",()=>{$("telegramGuide").hidden=!$("telegramGuide").hidden;});
   $("clearTelegram").title="Disconnect the saved Telegram bot";
@@ -359,7 +371,7 @@
     try{
       const [settings,bot,reports]=await Promise.all([apiRequest("/api/v1/telegram/auto-signals"),apiRequest("/api/v1/telegram/status"),apiRequest("/api/v1/telegram/reports")]);
       if(bot.connected){$("tgBotDisplayName").value=bot.display_name||"";$("telegramStatus").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username))+" · "+bot.chat_id;$("telegramMonitorTitle").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username));$("telegramMonitorDescription").textContent="Your personal Telegram bot is connected. Turn on Auto Signals in Signal Lab to receive fresh setups from selected Binance Spot pairs and optional Gold.";$("telegramMonitorPill").textContent=settings.enabled?"AUTO ON":"CONNECTED";}
-      else {$("telegramStatus").textContent="No Telegram bot connected yet. Create one with @BotFather and connect it here.";$("telegramMonitorTitle").textContent="Telegram bot not connected";$("telegramMonitorDescription").textContent="Open Signal Lab to connect your BotFather bot. Manual crypto signals and enabled Auto Signals are delivered while the local QUANTNEX API is active.";$("telegramMonitorPill").textContent="OFFLINE";}
+      else {$("telegramStatus").textContent="No Telegram bot connected yet. Create one with @BotFather and connect it here.";$("telegramMonitorTitle").textContent="Telegram bot not connected";$("telegramMonitorDescription").textContent="Open the Telegram Bot tool to connect your BotFather bot. Manual crypto signals and enabled Auto Signals are delivered while the local QUANTNEX API is active.";$("telegramMonitorPill").textContent="OFFLINE";}
       $("autoSignalsEnabled").checked=!!settings.enabled;
       $("autoSignalInterval").value=String(settings.interval_seconds||180);
       $("autoSignalSymbolsInput").value=(settings.symbols||["BTCUSDT","ETHUSDT","SOLUSDT"]).join(", ");

@@ -6,7 +6,7 @@
 
 ## Product inventory
 
-- **Web workspace:** Overview, QUANTNEX VIEW, Position Calculator, Trade Journal, Account & Wallet, Signal Lab, Updates, Market Intelligence, Data Reliability, AI Signal Center, Order Flow & Liquidity, News Intelligence, Paper Trading, Paper Autopilot, Performance Lab, Risk Management, Watchlist, Forex/Crypto/Gold desks, Price Alerts, Economic Calendar, Trade History, Strategy Library, Portfolio Monitor, Integrations, Goals & Certificates, AI Strategy Laboratory, Prop Firm Challenge, System Security and Support.
+- **Web workspace:** Overview, QUANTNEX VIEW, Position Calculator, Trade Journal, Account & Wallet, Signal Lab, Telegram Bot, Updates, Market Intelligence, Data Reliability, AI Signal Center, Order Flow & Liquidity, News Intelligence, Paper Trading, Paper Autopilot, Performance Lab, Risk Management, Watchlist, Forex/Crypto/Gold desks, Price Alerts, Economic Calendar, Trade History, Strategy Library, Portfolio Monitor, Integrations, Goals & Certificates, AI Strategy Laboratory, Prop Firm Challenge, System Security and Support.
 - **Android:** native shell for the hosted Web workspace, Overview, Chart, Trading Room, Journal and Updates; release updater verifies APK SHA256 before opening Android's package installer.
 - **Backend:** loopback-only FastAPI service for local Web persistence, wallet ledger, preferences, signal tools, paper trading, market data, Telegram integration, backup and maintenance.
 - **Windows is a supported host environment for the Web + Backend launcher only. The current source and workflows contain no Windows desktop application, executable build or installer pipeline.**
@@ -31,7 +31,7 @@
 | Launcher / startup | Batch launcher, virtual environment creation, dependency install, Backend preflight, API/Web health checks | Maintenance fix in this branch: persistent log + keep-open error handling | Confirm first-run dependency install and launch on the user's device |
 | Android APK updater | Latest GitHub Release check, APK download, SHA256 manifest validation and Android package installer | Implemented in Android shell | Verify a signed production update on a physical Android device |
 | Android release pipeline | Signed APK + SHA256-only release workflow; stable PKCS#12 signing key required | Pipeline updated in this branch | Confirm required signing secrets and perform a tagged release build |
-| Telegram bot / alerts | Connect/test/send, Auto Signal and report APIs; encrypted local credentials | Implemented; destination/provider-dependent | Requires a valid bot token, correct destination ID, permissions and live provider access |
+| Telegram Bot / signal delivery | Dedicated sidebar tool owns connect/test/disconnect, Auto Signals, PDF reports and setup guide; Signal Lab retains signal generation and manual plan alerts, with mirrored connection/delivery status | **PARTIAL** — shared API wiring and navigation contracts covered by Web CI; actual Telegram account delivery remains unverified | Requires a valid bot token, private chat/channel destination, bot membership/posting permissions and live local API; verify in a real browser and Telegram account |
 | Telegram release notifications | GitHub Actions announcement workflow | Optional; external secret-dependent | Verify the repository destination secret and actual Telegram delivery |
 
 ## Backend and API verification
@@ -92,6 +92,15 @@ These CI results establish that the tested code passed in GitHub's runner. They 
 - Web CI contract tests cover the Exit / Realized P&L columns, per-trade result rendering and close-error reconciliation. These are not a real browser test.
 - Latest verified code-commit checks (b7d1faa7): Backend CI run 43761633039 — 211 passed; Backend/Web run 43761633096 — 211 passed on Python 3.12 and 3.14 plus Web job passed; Web CI run 43761632978 passed. An earlier worker test exposed delayed first scan on a fresh low-uptime clock; the worker now runs its first scan immediately and the rerun passed.
 - Evidence level: controlled API/provider mocks and SQLite engine restart are verified in CI. The test does not run an enabled live provider-driven autopilot loop or restart the user's Windows process. Paper Trading remains simulated; no broker orders are sent. Status remains **PARTIAL** pending browser/device and provider verification.
+
+
+## Update 023 — Dedicated Telegram Bot workspace tool
+
+- Removed the Telegram credential/configuration panel from the Signal Lab page and placed it under a dedicated **Telegram Bot** sidebar page. The existing bot token, chat ID, display name, connect/test/disconnect actions, Auto Signals market/interval settings, daily PDF report settings and setup guide are retained in the new page.
+- Signal Lab remains the place to configure timeframes, scan markets, review signal results, run historical validation and send manual XAUUSD plans / TP1 warnings. It now has a **Manage Telegram bot** shortcut and a mirrored Telegram connection/delivery status so separating the UI does not break the signal-to-bot workflow.
+- Connections & Integrations now opens the dedicated Telegram Bot page rather than scrolling to a panel inside Signal Lab. Existing local API routes and encrypted backend credential storage are unchanged; no bot token is copied into browser storage or exposed to the UI.
+- Web regression coverage asserts unique section IDs, a valid dedicated sidebar target, relocated credential panel, Signal Lab shortcut/status, status synchronization observer and Connections & Integrations navigation.
+- Evidence level: source-contract tests and Web CI can verify DOM/navigation wiring only. No real browser, local backend, Telegram account, bot token, destination ID or posting permission was available in this run. Actual bot connection and message delivery remain **PARTIAL / EXTERNAL BLOCKER** until a valid user-owned bot and destination are configured and exercised. Signal delivery still depends on the local API running; broker execution remains disabled.
 
 ## Audit status vocabulary
 

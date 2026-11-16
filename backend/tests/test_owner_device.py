@@ -20,8 +20,7 @@ def test_provision_creates_device_claim_and_only_exposes_public_key(tmp_path, mo
     assert private_file.read_bytes().startswith(owner_device.PRIVATE_KEY_MAGIC + b"test-protected:")
     assert claim_file.is_file()
     assert result["device_id"] == "machine-a"
-    assert len(result["public_key_b64"]) > 20
-    assert "private" not in result["public_key_b64"].lower()
+    assert len(result["public_key_b64"]) == 44  # Ed25519 raw public key is 32 bytes.
     assert owner_device.verify_owner_claim(
         claim_file, result["public_key_b64"], expected_device_id="machine-a"
     )

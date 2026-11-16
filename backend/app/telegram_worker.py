@@ -495,8 +495,115 @@ async def _deliver_pending_signal_events(client, db, user_id: int, token: str, c
                            user_id, type(exc).__name__)
 
 
+def _signal_live_message(trade) -> str:
+    price = float(trade.last_price or trade.entry_price)
+    risk = max(float(trade.risk_distance or abs(trade.entry_price-trade.stop_loss)), 1e-12)
+    move = (price-float(trade.entry_price))/risk if trade.side == "BUY" else (float(trade.entry_price)-price)/risk
+    status = str(trade.status or "OPEN").upper()
+    terminal = status in {"SL_HIT","STOPPED","PROTECTED_EXIT","LOCKED_PROFIT_EXIT","TARGETS_COMPLETE","EXPIRED"}
+    if status in {"SL_HIT","STOPPED"}: outcome = "STOP LOSS HIT"
+    elif status == "PROTECTED_EXIT": outcome = "BREAKEVEN PROTECTION · PARTIAL PROFIT SECURED"
+    elif status == "LOCKED_PROFIT_EXIT": outcome = "PROFIT LOCKED"
+    elif status == "TARGETS_COMPLETE": outcome = "ALL TARGETS COMPLETED"
+    elif status == "EXPIRED": outcome = "LIMIT ENTRY EXPIRED · NOT FILLED"
+    elif status == "PENDING": outcome = "WAITING FOR LIMIT ENTRY"
+    else: outcome = "LIVE · HOLDING UNTIL SL OR TP"
+    result = float(trade.realized_r or 0)
+    lines = [
+        "QUANTNEX · "+trade.symbol+" · "+trade.side,
+        "🟢 BUY" if trade.side == "BUY" else "🔴 SELL",
+        "State: "+outcome,
+        "Entry: "+format(float(trade.entry_price), ".10g"),
+        "Live price: "+format(price, ".10g"),
+        "SL: "+format(float(trade.active_stop_loss or trade.stop_loss), ".10g"),
+        "TP1: "+format(float(trade.tp1), ".10g")+(" ✓" if trade.tp1_hit else ""),
+        "TP2: "+format(float(trade.tp2), ".10g")+(" ✓" if trade.tp2_hit else ""),
+        "TP3: "+format(float(trade.tp3), ".10g")+(" ✓" if trade.tp3_hit else ""),
+    ]
+    if terminal:
+        lines.append("Final realized result: "+("%+.2fR" % result))
+    elif status == "OPEN":
+        lines.append("Demo floating P&L: "+("%+.2fR" % move))
+        lines.append("Protection: "+("BE stop active" if trade.tp1_hit else "Original SL active")+
+                     (" · TP1 profit secured" if trade.tp1_hit else ""))
+    lines.append("Simulated signal tracking only · no broker order was placed.")
+    return "\n".join(lines)
+
+
+async def _sync_signal_trade_messages(client, db, user_id: int, token: str, chat_id: str,
+                                      edit_interval: int = 20) -> None:
+    """Create one Telegram card per signal, then edit that same message as price/outcome changes."""
+    import json
+    rows = list(db.scalars(select(SignalTrade).where(
+        SignalTrade.user_id == user_id
+    ).order_by(SignalTrade.signal_time.desc()).limit(200)))
+    raw = _get(db, user_id, "telegram_signal_message_map", "{}")
+    try:
+        mapping = json.loads(raw) if raw else {}
+    except (TypeError, ValueError):
+        mapping = {}
+    if not isinstance(mapping, dict):
+        mapping = {}
+    now = datetime.now(timezone.utc)
+    changed = False
+    terminal = {"SL_HIT","STOPPED","PROTECTED_EXIT","LOCKED_PROFIT_EXIT","TARGETS_COMPLETE","EXPIRED"}
+    for trade in rows:
+        key = str(trade.id)
+        record = mapping.get(key) if isinstance(mapping.get(key), dict) else {}
+        message_id = record.get("message_id")
+        if not message_id:
+            # Do not replay a large backlog of old, already-closed history to a newly
+            # connected bot. Open positions and recent outcomes are still delivered.
+            created = trade.created_at
+            if created and created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            if trade.status not in {"OPEN","PENDING"} and created and (now-created).total_seconds() > 86400:
+                continue
+            try:
+                sent = await _send(client, token, chat_id, _signal_live_message(trade))
+                message_id = sent.get("message_id")
+                if not message_id:
+                    continue
+                mapping[key] = {"message_id": int(message_id),
+                                "last_price": float(trade.last_price or trade.entry_price),
+                                "last_status": trade.status, "last_edit_at": now.isoformat()}
+                changed = True
+            except Exception as exc:
+                logger.warning("Signal Telegram card send deferred for user %s trade %s: %s",
+                               user_id, trade.id, type(exc).__name__)
+            continue
+        price = float(trade.last_price or trade.entry_price)
+        old_price = float(record.get("last_price") or 0)
+        old_status = str(record.get("last_status") or "")
+        last_edit = record.get("last_edit_at")
+        try:
+            last_edit_at = datetime.fromisoformat(last_edit) if last_edit else now - timedelta(days=1)
+            if last_edit_at.tzinfo is None:
+                last_edit_at = last_edit_at.replace(tzinfo=timezone.utc)
+        except (TypeError, ValueError):
+            last_edit_at = now - timedelta(days=1)
+        materially_changed = abs(price-old_price) > max(abs(old_price)*0.00005, 1e-12)
+        status_changed = trade.status != old_status
+        if not status_changed and (not materially_changed or (now-last_edit_at).total_seconds() < edit_interval):
+            continue
+        try:
+            await _edit_message(client, token, chat_id, int(message_id), _signal_live_message(trade))
+            record.update({"message_id": int(message_id), "last_price": price,
+                           "last_status": trade.status, "last_edit_at": now.isoformat()})
+            mapping[key] = record
+            changed = True
+        except Exception as exc:
+            # Telegram's "message is not modified" response is harmless; retry only
+            # after a future price/status change or the next worker cycle.
+            logger.debug("Signal Telegram card edit deferred for user %s trade %s: %s",
+                         user_id, trade.id, type(exc).__name__)
+    if changed:
+        _set(db, user_id, "telegram_signal_message_map", json.dumps(mapping, separators=(",", ":")))
+        db.commit()
+
+
 async def telegram_worker() -> None:
-    """Poll connected user bots, respond to commands and monitor active TP1 levels."""
+    """Poll connected bots, keep signal cards live, and deliver scheduled reports."""
     last_monitor={}
     last_daily_attempt={}
     async with httpx.AsyncClient(timeout=12) as client:
@@ -636,6 +743,7 @@ async def telegram_worker() -> None:
                         except (httpx.HTTPError,ValueError) as exc:
                             logger.warning("Telegram polling failed for local user %s: %s",user_id,type(exc).__name__)
                         await _deliver_pending_signal_events(client, db, user_id, token, chat_id)
+                        await _sync_signal_trade_messages(client, db, user_id, token, chat_id)
                         now=asyncio.get_running_loop().time()
                         # Automatic signals scan each selected market independently.
                         auto_raw=_get(db,user_id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}')

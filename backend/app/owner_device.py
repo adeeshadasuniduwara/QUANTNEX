@@ -70,6 +70,8 @@ def _dpapi_transform(value: bytes, *, protect: bool) -> bytes:
         raise RuntimeError("Windows DPAPI is required to protect the Owner Device private key.")
     crypt32 = ctypes.WinDLL("crypt32", use_last_error=True)
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+    kernel32.LocalFree.restype = ctypes.c_void_p
     input_blob, input_buffer = _as_blob(value)
     entropy_blob, entropy_buffer = _as_blob(DPAPI_ENTROPY)
     output_blob = _DataBlob()

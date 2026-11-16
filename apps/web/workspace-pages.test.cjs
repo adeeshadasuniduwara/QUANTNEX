@@ -39,16 +39,27 @@ assert.ok(fs.existsSync("apps/web/phase12-20.js"), "Paper platform client asset 
 console.log("Workspace page checks passed: 10 new pages, unique section IDs, valid navigation and local event client.");
 const telegramArticleStart = html.indexOf('id="telegram-bot-connect"');
 const telegramPageStart = html.indexOf('id="telegram-bot"');
-const signalPageStart = html.indexOf('id="signal-lab"');
-assert.ok(telegramPageStart > signalPageStart, "Telegram Bot must be a dedicated page after the signal workspace content.");
+const tradingViewStart = html.indexOf('id="tradingview"');
+assert.ok(tradingViewStart >= 0 && telegramPageStart > tradingViewStart, "QUANTNEX VIEW must precede the dedicated Telegram Bot page.");
+assert.ok(!sectionIds.includes("signal-lab") && !navTargets.includes("signal-lab"), "The retired Signal Lab page and sidebar link must be removed.");
+assert.ok(!sectionIds.includes("ai-signal-center") && !navTargets.includes("ai-signal-center"), "The duplicate AI Signal Center page and sidebar link must be removed.");
+assert.doesNotMatch(html, /Signal Lab|AI Signal Center/, "Retired signal workspace names must not remain in the active Web UI.");
+const tradingViewMarkup = html.slice(tradingViewStart, telegramPageStart);
+for (const id of ["signalMarketSymbol", "runSignalScan", "runSignalBacktest", "signalResult", "p7SignalSymbol", "p7SignalThreshold", "p7RunScan", "p7SignalResult", "p7SignalFrames", "p7UseSignal", "qxSignalIntelligence", "qxMainSignal", "qxPositionPreview"]) {
+  assert.ok(tradingViewMarkup.includes(`id="${id}"`), "QUANTNEX VIEW must retain signal functionality: " + id);
+}
 assert.ok(navTargets.includes("telegram-bot"), "Telegram Bot must have its own sidebar entry.");
 assert.ok(telegramArticleStart > telegramPageStart, "Bot credentials and delivery controls must live inside the Telegram Bot page.");
-assert.ok(html.includes('id="openTelegramBotTool"'), "Signal Lab must link to the separate Telegram Bot tool.");
-assert.ok(html.includes('id="signalTelegramStatus"'), "Signal Lab must display the shared Telegram connection/delivery status.");
-assert.match(fs.readFileSync("apps/web/signal-tool.js", "utf8"), /new MutationObserver\(syncTelegramStatus/, "Signal Lab status must stay synchronized with Telegram Bot actions.");
-assert.match(fs.readFileSync("apps/web/workspace-pages.js", "utf8"), /quantnexNavigate\("telegram-bot"\)/, "Connections & Integrations must open the dedicated Telegram Bot tool.");
-console.log("Telegram Bot separation checks passed: dedicated sidebar page, retained signal actions and shared connection status.");
-
+assert.ok(html.includes('id="openTelegramBotTool"'), "QUANTNEX VIEW must link to the separate Telegram Bot tool.");
+assert.ok(html.includes('id="signalTelegramStatus"'), "QUANTNEX VIEW must display the shared Telegram connection/delivery status.");
+const signalTool = fs.readFileSync("apps/web/signal-tool.js", "utf8");
+assert.ok(signalTool.includes("new MutationObserver(syncTelegramStatus"), "QUANTNEX VIEW signal status must stay synchronized with Telegram Bot actions.");
+assert.doesNotMatch(signalTool, /Signal Lab/, "Signal client must not reference the retired page.");
+assert.ok(signalTool.includes("/api/v1/signals/scan"), "QUANTNEX VIEW must retain the multi-timeframe signal API.");
+assert.ok(fs.readFileSync("apps/web/quantnex-view-intelligence.js", "utf8").includes("/api/v1/quantnex-view/analyze"), "QUANTNEX VIEW must retain its chart intelligence API.");
+assert.ok(fs.readFileSync("apps/web/workspace-pages.js", "utf8").includes('quantnexNavigate("telegram-bot")'), "Connections & Integrations must open the dedicated Telegram Bot tool.");
+console.log("Signal consolidation checks passed: no duplicate pages; all signal analysis, cross-market scanning, research and trade planning live inside QUANTNEX VIEW.");
+assert.ok(fs.readFileSync("apps/web/app.js", "utf8").includes('window.quantnexNavigate("paper-trading")'), "Cross-market scan handoff must open the Paper Trading workspace.");
 
 assert.match(realtime, /connectedOnce&&current!==lastEventId/, "A restarted event gateway must trigger a workspace snapshot resync");
 assert.match(realtime, /event_stream_restarted/, "A lower sequence after reconnect must be identified as an event-service restart");
@@ -72,7 +83,7 @@ console.log("QUANTNEX VIEW checks passed: local candles, signal plan levels, str
 
 const polish = fs.readFileSync("apps/web/workspace-polish.js", "utf8");
 const polishCss = fs.readFileSync("apps/web/workspace-polish.css", "utf8");
-assert.ok(html.includes('href="workspace-polish.css?v=20261114-single-icon2"'), "Professional workspace stylesheet must load");
+assert.ok(html.includes('href="workspace-polish.css?v=20261116-sidebar-compact1"'), "Professional workspace stylesheet must load");
 assert.ok(html.includes('src="workspace-polish.js?v=20261114-single-icon2"'), "Professional navigation script must load");
 assert.match(polish, /qxNavSearch/, "Sidebar tool search must be available");
 assert.match(polish, /aria-expanded/, "Sidebar groups must be keyboard-accessible toggles");

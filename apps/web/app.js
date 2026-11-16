@@ -1052,8 +1052,8 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     if(!lastSignal)return;
     $("p7PaperSymbol").value=lastSignal.symbol;$("p7PaperSide").value=lastSignal.side;
     $("p7PaperSL").value=lastSignal.stop_loss;$("p7PaperTP").value=lastSignal.tp1;
-    location.hash="#paper-trading";
-    $("p7PaperQty").focus();
+    if(typeof window.quantnexNavigate==="function")window.quantnexNavigate("paper-trading");
+    else location.hash="#paper-trading";
   });
   $("p7BookSymbol").addEventListener("change",loadBook);
   function stopBookFeed(){

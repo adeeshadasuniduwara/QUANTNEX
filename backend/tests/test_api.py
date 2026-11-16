@@ -1210,3 +1210,11 @@ def test_signal_backtest_api_returns_training_and_out_of_sample_metrics(monkeypa
     assert response.status_code == 200
     assert response.json()["training"]["trade_count"] == 4
     assert response.json()["out_of_sample"]["trade_count"] == 2
+
+
+def test_cross_market_signal_scan_route_remains_available_for_quantnex_view():
+    client = TestClient(app)
+    paths = client.get("/openapi.json").json()["paths"]
+    assert "/api/v1/intelligence/signals/scan" in paths
+    assert "/api/v1/signals/scan" in paths
+    assert "/api/v1/quantnex-view/analyze" in paths

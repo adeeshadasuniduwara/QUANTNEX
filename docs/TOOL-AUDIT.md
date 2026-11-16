@@ -164,3 +164,13 @@ Do not convert static code inspection or CI success into a claim that a real ext
 - Updated pointer and wheel hit-testing to use the same responsive axis boundary, preserving independent price-scale zoom.
 - Added regression assertions for axis sizing, label collision handling, live-price text fitting and marker clipping; cache-busted both chart assets.
 - Evidence level: source-contract regression checks and CI can verify layout logic, but actual pixel rendering at the user's desktop/mobile sizes remains **PARTIAL / DEVICE VERIFICATION REQUIRED**.
+
+
+## Update 028 — Windows Python bootstrap and launcher portability
+
+- Added one shared Windows runtime resolver for both the full Web + Backend launcher and Backend-only launcher.
+- Detects a working Python 3.11+ interpreter through the Python Launcher or PATH, validates the interpreter instead of trusting a Windows Store execution-alias stub, and checks common per-user installation paths.
+- If no supported runtime is found, offers an explicit opt-in Python 3.12 installation through Windows Package Manager; provides the official python.org manual installation route when winget is unavailable.
+- The full launcher now starts the supervisor with the resolved interpreter. The Backend-only launcher uses the same resolver before creating its virtual environment.
+- Added regression checks for runtime detection, explicit installation consent and both launcher integrations.
+- Evidence level: source-level regression tests and CI; a clean Windows PC first-run installation still requires physical-device verification.

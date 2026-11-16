@@ -666,6 +666,13 @@ async def telegram_worker() -> None:
                         user_id=token_row.user_id
                         chat_id=_get(db,user_id,"telegram_chat_id")
                         if not chat_id:continue
+                        # First-time connection baseline: never dump pre-existing signal history.
+                        if _get(db, user_id, "telegram_signal_start_after_id") is None:
+                            latest_trade = db.scalar(select(SignalTrade.id).where(
+                                SignalTrade.user_id == user_id
+                            ).order_by(SignalTrade.id.desc()).limit(1))
+                            _set(db, user_id, "telegram_signal_start_after_id", str(latest_trade or 0))
+                            db.commit()
                         try:token=decrypt_secret(token_row.value)
                         except ValueError:continue
                         offset=int(_get(db,user_id,"telegram_update_offset","0") or "0")

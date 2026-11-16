@@ -1,6 +1,6 @@
 """Background Telegram command and TP1 notification worker."""
 from __future__ import annotations
-import asyncio, json, logging, math
+import asyncio, json, logging, math, time
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from typing import Any
@@ -14,6 +14,34 @@ from .signal_engine import build_signal, fetch_candles_with_provider, MarketData
 from .events import event_hub
 
 logger = logging.getLogger("quantnex.telegram")
+
+# Process-wide Telegram outbound protection.
+_TELEGRAM_CHAT_INTERVAL_SECONDS = 1.2
+_TELEGRAM_GLOBAL_INTERVAL_SECONDS = 0.05  # cap this worker at 20 outbound calls/sec
+_TELEGRAM_CHAT_LOCKS: dict[str, asyncio.Lock] = {}
+_TELEGRAM_CHAT_LAST_SENT: dict[str, float] = {}
+_TELEGRAM_GLOBAL_LOCK = asyncio.Lock()
+_TELEGRAM_GLOBAL_LAST_SENT = 0.0
+
+
+async def _wait_telegram_rate_limit(chat_id: str | int) -> None:
+    """Serialize outbound chat traffic and apply per-chat plus global pacing."""
+    global _TELEGRAM_GLOBAL_LAST_SENT
+    key = str(chat_id)
+    lock = _TELEGRAM_CHAT_LOCKS.setdefault(key, asyncio.Lock())
+    async with lock:
+        now = time.monotonic()
+        wait = _TELEGRAM_CHAT_INTERVAL_SECONDS - (now - _TELEGRAM_CHAT_LAST_SENT.get(key, 0.0))
+        if wait > 0:
+            await asyncio.sleep(wait)
+        async with _TELEGRAM_GLOBAL_LOCK:
+            now = time.monotonic()
+            global_wait = _TELEGRAM_GLOBAL_INTERVAL_SECONDS - (now - _TELEGRAM_GLOBAL_LAST_SENT)
+            if global_wait > 0:
+                await asyncio.sleep(global_wait)
+            _TELEGRAM_GLOBAL_LAST_SENT = time.monotonic()
+        _TELEGRAM_CHAT_LAST_SENT[key] = time.monotonic()
+
 
 def _get(db, user_id: int, key: str, default: str="") -> str:
     row=db.scalar(select(Preference).where(Preference.user_id==user_id,Preference.key==key))
@@ -158,6 +186,8 @@ MENU_TITLES = {
 
 async def _telegram_post(client, token: str, method: str, payload: dict):
     url=f"https://api.telegram.org/bot{token}/{method}"
+    if method in {"sendMessage", "editMessageText"} and payload.get("chat_id") is not None:
+        await _wait_telegram_rate_limit(payload["chat_id"])
     for attempt in range(3):
         response=await client.post(url,json=payload)
         try: data=response.json()
@@ -207,22 +237,15 @@ async def _deliver_auto_signal(client, token: str, chat_id: str, message: str,
 
 
 async def _send(client, token: str, chat_id: str, text: str, reply_markup: dict | None = None):
-    # Telegram shows its animated typing indicator while a reply is being prepared.
-    try:
-        await _telegram_post(client, token, "sendChatAction", {"chat_id": chat_id, "action": "typing"})
-    except Exception:
-        pass
+    # Avoid extra typing-action API calls; visible messages pass through the shared limiter.
     payload={"chat_id":chat_id,"text":_format_telegram_message(text),"parse_mode":"HTML","disable_web_page_preview":True}
     if reply_markup: payload["reply_markup"]=reply_markup
     return await _telegram_post(client,token,"sendMessage",payload)
 
 async def _send_pdf(client, token: str, chat_id: str, pdf: bytes, filename: str, caption: str):
-    try:
-        await _telegram_post(client, token, "sendChatAction", {"chat_id": chat_id, "action": "upload_document"})
-    except Exception:
-        pass
     url=f"https://api.telegram.org/bot{token}/sendDocument"
     for attempt in range(3):
+        await _wait_telegram_rate_limit(chat_id)
         response=await client.post(url,data={"chat_id":chat_id,"caption":_format_telegram_message(caption)[:1000],"parse_mode":"HTML"},
             files={"document":(filename,pdf,"application/pdf")})
         try: data=response.json()

@@ -75,7 +75,9 @@
       const cells=[stamp(item.signal_time),item.symbol,item.side,entry,price(item.stop_loss)+" / "+price(item.active_stop_loss)];
       cells.forEach(value=>{const td=document.createElement("td");td.textContent=String(value);tr.append(td);});
       tr.append(target(item.tp1,item.tp1_hit),target(item.tp2,item.tp2_hit),target(item.tp3,item.tp3_hit));
-      const outcome=document.createElement("td");outcome.textContent=item.status.replaceAll("_"," ");outcome.className="qx-ledger-outcome";outcome.dataset.status=item.status;tr.append(outcome);
+      const outcome=document.createElement("td");
+      const recovery=item.recovery_status&&item.recovery_status!=="COMPLETE"?" · "+item.recovery_status.replaceAll("_"," ")+" HISTORY":"";
+      outcome.textContent=item.status.replaceAll("_"," ")+recovery;outcome.className="qx-ledger-outcome";outcome.dataset.status=item.status;tr.append(outcome);
       const result=document.createElement("td");result.textContent=(Number(item.realized_r)>=0?"+":"")+Number(item.realized_r||0).toFixed(2)+"R";tr.append(result);
       rows.append(tr);
     });

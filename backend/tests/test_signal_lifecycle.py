@@ -74,6 +74,19 @@ def test_original_stop_before_tp1_is_a_loss():
     db.close()
 
 
+def test_history_gap_pauses_replay_instead_of_guessing_a_later_target():
+    db, user = _session()
+    now = datetime(2026, 11, 16, 4, 0, tzinfo=timezone.utc)
+    trade, _ = record_signal(db, user.id, _signal(now))
+    processed = process_trade_candles(db, trade, [
+        _bar(now + timedelta(minutes=2), 100, 106, 99, 105)])
+    assert processed == 0
+    assert trade.recovery_status == "PARTIAL"
+    assert trade.status == "OPEN"
+    assert trade.tp1_hit is False
+    db.close()
+
+
 def test_same_bar_stop_and_target_is_ambiguous_not_a_guessed_win():
     db, user = _session()
     now = datetime(2026, 11, 16, 4, 0, tzinfo=timezone.utc)

@@ -191,7 +191,7 @@ def build_daily_signal_pdf(db, user_id: int, report_day: date | None = None) -> 
             opened_today.append(trade)
         if trade.status in terminal and closed and closed.date() == day:
             closed_today.append(trade)
-        if opened and opened <= cutoff and (trade.status not in terminal):
+        if opened and opened <= cutoff and (trade.status not in terminal) and trade.status != "EXPIRED":
             open_at_cutoff.append(trade)
 
     def outcome_value(trade):

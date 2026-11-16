@@ -121,7 +121,7 @@ def process_trade_candles(db, trade: SignalTrade, candles: list[dict[str, Any]])
         return 0
     ordered = sorted(candles, key=lambda row: as_utc(row["time"]))
     first_time = as_utc(ordered[0]["time"])
-    if first_time > as_utc(trade.signal_time) + timedelta(seconds=TIMEFRAME_SECONDS.get(trade.timeframe, 900)):
+    if last_processed is None and first_time > as_utc(trade.signal_time) + timedelta(seconds=TIMEFRAME_SECONDS.get(trade.timeframe, 900)):
         trade.recovery_status = "PARTIAL"
         trade.recovery_note = "Provider history begins after this signal; outcome replay is paused to avoid missing an earlier stop or target."
         return 0

@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -140,3 +141,56 @@ def test_send_does_not_issue_extra_typing_action(monkeypatch):
     result = asyncio.run(telegram_worker._send(None, "token", "chat-a", "hello"))
     assert result["message_id"] == 321
     assert [method for method, _payload in methods] == ["sendMessage"]
+
+
+def test_legacy_stopped_status_is_presented_as_stop_loss_hit():
+    assert telegram_worker._normalise_outcome_status("STOPPED") == "SL_HIT"
+    assert telegram_worker._normalise_outcome_status("SL_HIT") == "SL_HIT"
+    assert telegram_worker._normalise_outcome_status("OPEN") == "OPEN"
+
+
+def test_signal_card_uses_branded_readable_levels_and_risk_footer():
+    trade = SimpleNamespace(
+        last_price=101.0, entry_price=100.0, risk_distance=5.0, stop_loss=95.0,
+        active_stop_loss=100.0, side="BUY", status="OPEN", realized_r=0.0,
+        symbol="BTCUSDT", tp1=105.0, tp2=110.0, tp3=115.0,
+        tp1_hit=True, tp2_hit=False, tp3_hit=False,
+    )
+    message = telegram_worker._signal_live_message(trade)
+    assert "QUANTNEX BOT SIGNAL" in message
+    assert "Entry :" in message
+    assert "TP 1 :" in message
+    assert "TP 2 :" in message
+    assert "All TP :" in message
+    assert "Stop Loss :" in message
+    assert "Risk management is the key" in message
+    formatted = telegram_worker._format_telegram_message(message)
+    assert "<b>Entry :</b>" in formatted
+    assert "<b>Stop Loss :</b>" in formatted
+
+
+def test_first_connection_signal_watermark_excludes_existing_trade_backlog(monkeypatch):
+    from datetime import datetime, timezone
+    from app.signal_lifecycle import record_signal
+
+    engine, _factory, db, user_id = _memory_session()
+    now = datetime(2026, 11, 16, 12, 0, tzinfo=timezone.utc)
+    trade, _ = record_signal(db, user_id, {
+        "symbol": "BTCUSDT", "side": "BUY", "timeframe": "1m",
+        "entry": 100, "stop_loss": 95, "tp1": 105, "tp2": 110, "tp3": 115,
+        "signal_time": now.isoformat(),
+    })
+    telegram_worker._set(db, user_id, "telegram_signal_start_after_id", str(trade.id))
+    db.commit()
+    sent = []
+
+    async def fake_send(_client, _token, _chat_id, message):
+        sent.append(message)
+        return {"message_id": 1}
+
+    monkeypatch.setattr(telegram_worker, "_send", fake_send)
+    asyncio.run(telegram_worker._sync_signal_trade_messages(None, db, user_id, "token", "chat"))
+    assert sent == []
+    db.close()
+    Base.metadata.drop_all(engine)
+    engine.dispose()

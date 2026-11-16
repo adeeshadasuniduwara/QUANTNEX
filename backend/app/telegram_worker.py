@@ -16,8 +16,8 @@ from .events import event_hub
 logger = logging.getLogger("quantnex.telegram")
 
 # Process-wide Telegram outbound protection.
-_TELEGRAM_CHAT_INTERVAL_SECONDS = 1.2
-_TELEGRAM_GLOBAL_INTERVAL_SECONDS = 0.05  # cap this worker at 20 outbound calls/sec
+_TELEGRAM_CHAT_INTERVAL_SECONDS = 2.0
+_TELEGRAM_GLOBAL_INTERVAL_SECONDS = 0.2  # cap this worker at 5 outbound calls/sec
 _TELEGRAM_CHAT_LOCKS: dict[str, asyncio.Lock] = {}
 _TELEGRAM_CHAT_LAST_SENT: dict[str, float] = {}
 _TELEGRAM_GLOBAL_LOCK = asyncio.Lock()
@@ -186,14 +186,14 @@ MENU_TITLES = {
 
 async def _telegram_post(client, token: str, method: str, payload: dict):
     url=f"https://api.telegram.org/bot{token}/{method}"
-    if method in {"sendMessage", "editMessageText"} and payload.get("chat_id") is not None:
+    if method in {"sendMessage", "editMessageText", "sendDocument"} and payload.get("chat_id") is not None:
         await _wait_telegram_rate_limit(payload["chat_id"])
     for attempt in range(3):
         response=await client.post(url,json=payload)
         try: data=response.json()
         except ValueError: data={}
         if response.status_code == 429 and attempt < 2:
-            await asyncio.sleep(max(1,min(10,int((data.get("parameters") or {}).get("retry_after",2)))))
+            await asyncio.sleep(max(1,int((data.get("parameters") or {}).get("retry_after",2))))
             continue
         if response.status_code >= 500 and attempt < 2:
             await asyncio.sleep(2 ** attempt)
@@ -577,9 +577,14 @@ async def _sync_signal_trade_messages(client, db, user_id: int, token: str, chat
                                       edit_interval: int = 20) -> None:
     """Create one Telegram card per signal, then edit that same message as price/outcome changes."""
     import json
+    try:
+        start_after_id = int(_get(db, user_id, "telegram_signal_start_after_id", "0") or 0)
+    except (TypeError, ValueError):
+        start_after_id = 0
     rows = list(db.scalars(select(SignalTrade).where(
-        SignalTrade.user_id == user_id
-    ).order_by(SignalTrade.signal_time.desc()).limit(200)))
+        SignalTrade.user_id == user_id,
+        SignalTrade.id > start_after_id,
+    ).order_by(SignalTrade.id.asc()).limit(200)))
     raw = _get(db, user_id, "telegram_signal_message_map", "{}")
     try:
         mapping = json.loads(raw) if raw else {}
@@ -595,13 +600,6 @@ async def _sync_signal_trade_messages(client, db, user_id: int, token: str, chat
         record = mapping.get(key) if isinstance(mapping.get(key), dict) else {}
         message_id = record.get("message_id")
         if not message_id:
-            # Do not replay a large backlog of old, already-closed history to a newly
-            # connected bot. Open positions and recent outcomes are still delivered.
-            created = trade.created_at
-            if created and created.tzinfo is None:
-                created = created.replace(tzinfo=timezone.utc)
-            if trade.status not in {"OPEN","PENDING"} and created and (now-created).total_seconds() > 86400:
-                continue
             try:
                 sent = await _send(client, token, chat_id, _signal_live_message(trade))
                 message_id = sent.get("message_id")
@@ -781,11 +779,20 @@ async def telegram_worker() -> None:
                                         chat=message.get("chat") or {}
                                         if str(chat.get("id"))!=str(chat_id) and not (str(chat_id).startswith("@") and ("@"+str(chat.get("username","")).lower())==str(chat_id).lower()):continue
                                         command=message.get("text","")
+                                        command_name=command.strip().split(" ")[0].split("@")[0].lower()
+                                        is_start=command_name == "/start"
+                                        if is_start:
+                                            latest_trade = db.scalar(select(SignalTrade.id).where(
+                                                SignalTrade.user_id == user_id
+                                            ).order_by(SignalTrade.id.desc()).limit(1))
+                                            _set(db, user_id, "telegram_signal_start_after_id", str(latest_trade or 0))
+                                            _set(db, user_id, "telegram_signal_message_map", "{}")
+                                            db.commit()
                                         answer=await _handle_command(client,db,user_id,token,chat_id,command)
                                         if answer:
-                                            is_start=command.strip().split(" ")[0].split("@")[0].lower() in {"/start","/help"}
+                                            is_welcome=command_name in {"/start","/help"}
                                             is_plain_text=bool(command.strip()) and not command.strip().startswith("/")
-                                            await _send(client,token,chat_id,answer,MENU if (is_start or is_plain_text) else None)
+                                            await _send(client,token,chat_id,answer,MENU if (is_welcome or is_plain_text) else None)
                                     except Exception as update_error:
                                         logger.warning("Telegram update %s failed for local user %s: %s",
                                                        update.get("update_id"), user_id, type(update_error).__name__)

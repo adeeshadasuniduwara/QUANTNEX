@@ -8,7 +8,7 @@ import math
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from .database import SessionLocal
 from .models import SignalTrade, SignalTradeEvent
@@ -264,6 +264,9 @@ async def signal_lifecycle_worker() -> None:
     while True:
         try:
             with SessionLocal() as db:
+                # Permanently migrate legacy terminal labels so no client can surface STOPPED.
+                db.execute(update(SignalTrade).where(SignalTrade.status == "STOPPED").values(status="SL_HIT"))
+                db.commit()
                 active = list(db.scalars(select(SignalTrade).where(SignalTrade.status.in_(tuple(ACTIVE_STATES)))))
                 symbols = sorted({trade.symbol for trade in active})
                 now = asyncio.get_running_loop().time()

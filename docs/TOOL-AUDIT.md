@@ -154,3 +154,13 @@ Do not convert static code inspection or CI success into a claim that a real ext
 - Upgraded the native chart with visible PRICE and TIME axes, crosshair axis readouts, independent price-scale zoom, and horizontal/trend/vertical/rectangle/Fibonacci drawing tools. Drawings persist per symbol/timeframe in local browser storage.
 - The shared crypto ticker now starts with the workspace and remains active across visible views; it pauses only while the browser tab is hidden and reconnects on return. The chart keeps its existing provider-specific WebSocket failover and Gold quote polling.
 - Automated evidence includes deterministic BUY/SELL target progression, staged stop changes, breakeven exit, original SL loss, ambiguous intrabar ordering, restart replay idempotency, chart axis/tool/ledger contract checks and global feed lifecycle checks. Physical device rendering and live provider/Telegram delivery remain external/device verification requirements.
+
+
+## Update 027 — Live chart price visibility and label collision fix
+
+- Reserved a responsive, dedicated right-side price axis so the current market price marker has predictable space and is clipped to the axis rather than the canvas edge.
+- The live price label now measures its text and reduces its font size only when needed to fit the available axis width; crosshair price labels use the same protected axis region.
+- Entry, stop-loss, take-profit and structure-level labels now use collision-aware vertical placement with opaque backing, so nearby levels do not overwrite one another.
+- Updated pointer and wheel hit-testing to use the same responsive axis boundary, preserving independent price-scale zoom.
+- Added regression assertions for axis sizing, label collision handling, live-price text fitting and marker clipping; cache-busted both chart assets.
+- Evidence level: source-contract regression checks and CI can verify layout logic, but actual pixel rendering at the user's desktop/mobile sizes remains **PARTIAL / DEVICE VERIFICATION REQUIRED**.

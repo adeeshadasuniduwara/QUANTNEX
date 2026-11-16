@@ -45,6 +45,7 @@ assert.ok(navTargets.includes("telegram-bot"), "Telegram Bot must have its own s
 assert.ok(telegramArticleStart > telegramPageStart, "Bot credentials and delivery controls must live inside the Telegram Bot page.");
 assert.ok(html.includes('id="openTelegramBotTool"'), "Signal Lab must link to the separate Telegram Bot tool.");
 assert.ok(html.includes('id="signalTelegramStatus"'), "Signal Lab must display the shared Telegram connection/delivery status.");
+assert.match(fs.readFileSync("apps/web/signal-tool.css", "utf8"), /\.signal-planning-workspace,\.telegram-tool-layout\{grid-template-columns:minmax\(0,1fr\)\}/, "The remaining Signal Lab panel and dedicated Telegram Bot panel must use the full available width.");
 assert.match(fs.readFileSync("apps/web/signal-tool.js", "utf8"), /new MutationObserver\(syncTelegramStatus/, "Signal Lab status must stay synchronized with Telegram Bot actions.");
 assert.match(fs.readFileSync("apps/web/workspace-pages.js", "utf8"), /quantnexNavigate\("telegram-bot"\)/, "Connections & Integrations must open the dedicated Telegram Bot tool.");
 console.log("Telegram Bot separation checks passed: dedicated sidebar page, retained signal actions and shared connection status.");

@@ -815,8 +815,10 @@ async def telegram_worker() -> None:
                                                 +"Confluence: "+str(candidate["score"])+"/10 (rule count, not win probability)\n"
                                                 +"Confirmations: "+", ".join(candidate["confirmations"])+"\n"
                                                 +"Signal only; verify spread, fees and execution. No order is placed.")
-                                            delivered=await _deliver_auto_signal(client,token,chat_id,msg,fingerprint,previous,db,user_id,fingerprint_key)
-                                            if delivered:
+                                            # The persistent signal-card worker sends one Telegram message
+                                            # and edits it for live P&L/outcomes; do not send a duplicate alert.
+                                            if _should_send_auto_signal(fingerprint, previous):
+                                                _set(db, user_id, fingerprint_key, fingerprint)
                                                 db.commit()
                                     # Keep the last delivered fingerprint when no setup is present.
                                     # This prevents duplicate alerts if the same candle briefly loses and regains confluence.

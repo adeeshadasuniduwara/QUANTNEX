@@ -151,7 +151,7 @@ SUBMENUS = {
         [{"text":"M30","callback_data":"qx:settf:30"},{"text":"M50","callback_data":"qx:settf:50"},{"text":"H1","callback_data":"qx:settf:60"}],
         [{"text":"Trend M15","callback_data":"qx:settrend:15"},{"text":"Trend M30","callback_data":"qx:settrend:30"}],
         [{"text":"Trend H1","callback_data":"qx:settrend:60"},{"text":"Trend H4","callback_data":"qx:settrend:240"}],
-        [{"text":"▶ Enable alerts","callback_data":"qx:resume"},{"text":"⏸ Pause alerts","callback_data":"qx:pause"}],
+        [{"text":"▶ Resume Telegram","callback_data":"qx:resume"},{"text":"⏸ Pause Telegram","callback_data":"qx:pause"}],
         [{"text":"🔎 Feed status","callback_data":"qx:status"},{"text":"🛡 Risk settings","callback_data":"qx:risk"}],
         [{"text":"🏠 Main menu","callback_data":"qx:menu:home"}]
     ]},
@@ -392,6 +392,20 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
                       "Use /hidden_tools <category> to inspect a category.",
                       "Note: this is the roadmap catalogue; tools are enabled only after implementation and testing."])
         return "\n".join(lines)
+    if command == "/pause":
+        _set(db, user_id, "telegram_notifications_paused", "true")
+        db.commit()
+        return "⏸ QUANTNEX Telegram notifications are PAUSED. Use /resume whenever you want to receive new signal alerts again. Bot commands and status replies will still work."
+    if command == "/resume":
+        _set(db, user_id, "telegram_notifications_paused", "false")
+        # Skip everything accumulated while paused; resume only from the current live edge.
+        latest_trade = db.scalar(select(SignalTrade.id).where(
+            SignalTrade.user_id == user_id
+        ).order_by(SignalTrade.id.desc()).limit(1))
+        _set(db, user_id, "telegram_signal_start_after_id", str(latest_trade or 0))
+        _set(db, user_id, "telegram_signal_message_map", "{}")
+        db.commit()
+        return "▶ QUANTNEX Telegram notifications are RESUMED. Only fresh signals from now on will be sent; paused-period backlog is skipped."
     if command in {"/start","/help"}:
         return (
             "💎 QUANTNEX SIGNALS\n"
@@ -585,7 +599,8 @@ async def _sync_signal_trade_messages(client, db, user_id: int, token: str, chat
     rows = list(db.scalars(select(SignalTrade).where(
         SignalTrade.user_id == user_id,
         SignalTrade.id > start_after_id,
-    ).order_by(SignalTrade.id.asc()).limit(200)))
+        SignalTrade.source.in_(("QUANTNEX_VIEW", "AUTO_TELEGRAM_SCAN")),
+    ).order_by(SignalTrade.id.asc()).limit(20)))
     raw = _get(db, user_id, "telegram_signal_message_map", "{}")
     try:
         mapping = json.loads(raw) if raw else {}
@@ -771,11 +786,17 @@ async def telegram_worker() -> None:
                                             elif action=="qx:risk": answer=_risk_dashboard(db,user_id)
                                             elif action=="qx:market": answer=await _handle_command(client,db,user_id,token,chat_id,"/scan BTCUSDT")
                                             elif action=="qx:pause" or action=="qx:resume":
-                                                try: auto_settings=json.loads(_get(db,user_id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}'))
-                                                except ValueError: auto_settings={"enabled":False,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}
-                                                auto_settings["enabled"]=(action=="qx:resume")
-                                                _set(db,user_id,"auto_signal_settings",json.dumps(auto_settings));db.commit()
-                                                answer="Telegram Auto Signals "+("RESUMED" if auto_settings["enabled"] else "PAUSED")+". This controls alerts only, not trading execution."
+                                                paused = action == "qx:pause"
+                                                _set(db, user_id, "telegram_notifications_paused", "true" if paused else "false")
+                                                if not paused:
+                                                    latest_trade = db.scalar(select(SignalTrade.id).where(
+                                                        SignalTrade.user_id == user_id
+                                                    ).order_by(SignalTrade.id.desc()).limit(1))
+                                                    _set(db, user_id, "telegram_signal_start_after_id", str(latest_trade or 0))
+                                                    _set(db, user_id, "telegram_signal_message_map", "{}")
+                                                db.commit()
+                                                answer = ("⏸ All QUANTNEX signal notifications are PAUSED. Use Resume whenever you want." if paused
+                                                    else "▶ QUANTNEX notifications RESUMED. Only fresh signals from now on; paused-period backlog skipped.")
                                             elif action=="qx:help":
                                                 answer="QUANTNEX HELP & QUICK GUIDE\\nUse the buttons to navigate Markets, Signals, Paper Desk, Reports and Settings.\\nChoose a market to scan, select signal timeframes, pause or resume alerts, review paper results and download a daily PDF.\\nNo slash commands are needed.\\n\\nSignals are analysis only. No live broker orders are placed."
                                                 keyboard=MENU
@@ -809,9 +830,11 @@ async def telegram_worker() -> None:
                                         _persist_update_offset(db,user_id,offset)
                         except (httpx.HTTPError,ValueError) as exc:
                             logger.warning("Telegram polling failed for local user %s: %s",user_id,type(exc).__name__)
-                        await _deliver_pending_signal_events(client, db, user_id, token, chat_id)
-                        await _refresh_signal_live_prices(db, user_id, live_quote_cache, asyncio.get_running_loop().time())
-                        await _sync_signal_trade_messages(client, db, user_id, token, chat_id)
+                        notifications_paused = _get(db, user_id, "telegram_notifications_paused", "false").strip().lower() == "true"
+                        if not notifications_paused:
+                            await _deliver_pending_signal_events(client, db, user_id, token, chat_id)
+                            await _refresh_signal_live_prices(db, user_id, live_quote_cache, asyncio.get_running_loop().time())
+                            await _sync_signal_trade_messages(client, db, user_id, token, chat_id)
                         now=asyncio.get_running_loop().time()
                         # Automatic signals scan each selected market independently.
                         auto_raw=_get(db,user_id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}')
@@ -820,7 +843,7 @@ async def telegram_worker() -> None:
                         interval=auto_settings["interval_seconds"]
                         auto_key=(user_id,"auto")
                         selected=auto_settings["symbols"]
-                        if auto_settings["enabled"] and selected and now-last_monitor.get(auto_key,0)>=interval:
+                        if not notifications_paused and auto_settings["enabled"] and selected and now-last_monitor.get(auto_key,0)>=interval:
                             signal_raw=_get(db,user_id,"signal_settings",'{"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":8}')
                             signal_settings=_normalise_signal_settings(signal_raw)
                             db.commit()

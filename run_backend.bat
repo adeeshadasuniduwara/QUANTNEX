@@ -1,22 +1,21 @@
 @echo off
 setlocal
 title QUANTNEX Backend API
-cd /d "%~dp0backend"
+cd /d "%~dp0"
 
-if not exist ".venv\Scripts\python.exe" (
+if not exist "backend\.venv\Scripts\python.exe" (
+  echo Checking Python installation...
+  call "%~dp0scripts\ensure_python.cmd"
+  if errorlevel 1 goto failed
   echo Creating QUANTNEX Python environment...
-  where py >nul 2>nul
-  if not errorlevel 1 (
-    py -m venv .venv
-  ) else (
-    python -m venv .venv
-  )
+  %QUANTNEX_PYTHON% -m venv "backend\.venv"
   if errorlevel 1 (
     echo ERROR: Could not create the Python virtual environment.
     goto failed
   )
 )
 
+cd /d "%~dp0backend"
 echo.
 echo Updating pip and checking backend dependencies...
 .venv\Scripts\python.exe -m pip install --upgrade pip

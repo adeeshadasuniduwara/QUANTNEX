@@ -1,13 +1,13 @@
 """Background Telegram command and TP1 notification worker."""
 from __future__ import annotations
 import asyncio, json, logging, math
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from typing import Any
 import httpx
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from .database import SessionLocal
-from .models import GoalContribution, PaperTrade, PersonalGoal, Preference
+from .models import GoalContribution, PaperTrade, PersonalGoal, Preference, SignalTrade, SignalTradeEvent
 from .security import decrypt_secret
 from .config import TWELVE_DATA_API_KEY, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
 from .signal_engine import build_signal, MarketDataError, gold_feed_configured, gold_feed_provider
@@ -438,6 +438,63 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
         except Exception:return "Signal scan failed. Check the local API logs and market-data provider configuration."
     return "Please use the buttons below to explore QUANTNEX. Tap Help & guide if you need an overview."
 
+
+def _signal_lifecycle_message(trade, event) -> str:
+    symbol, side, entry, observed = trade.symbol, trade.side, trade.entry_price, event.price
+    if event.event_type == "TP1_HIT":
+        return (f"🎯 QUANTNEX · {symbol} {side} · TP1 REACHED\\nObserved price: {observed}\\nEntry: {entry} · TP1: {trade.tp1}\\n"
+                "If your partial close is confirmed, consider securing 40% and moving the remaining SL to Entry (breakeven). "
+                f"Keep the remaining 60% planned for TP2 {trade.tp2} and TP3 {trade.tp3}.\\n"
+                "Level-touch alert only, not proof of broker execution. QUANTNEX does not place or modify broker orders.")
+    if event.event_type == "TP2_HIT":
+        return (f"🎯 QUANTNEX · {symbol} {side} · TP2 REACHED\\nObserved price: {observed}\\nTP1: {trade.tp1} · TP2: {trade.tp2} · TP3: {trade.tp3}\\n"
+                "If earlier partials are confirmed, consider securing the planned 30% at TP2 and trailing remaining SL to TP1. "
+                "The final planned 30% is for TP3.\\nLevel-touch alert only; verify broker fills manually.")
+    if event.event_type == "TP3_HIT":
+        return (f"🏁 QUANTNEX · {symbol} {side} · TP3 REACHED\\nObserved price: {observed}\\n"
+                "All three planned targets were touched in the candle history. Review and confirm the final close with your broker; no order was executed.")
+    if event.event_type == "SL_HIT":
+        return (f"⚠️ QUANTNEX · {symbol} {side} · STOP LOSS LEVEL REACHED\\nObserved price: {observed} · SL: {trade.stop_loss}\\n"
+                "The setup reached its original invalidation level before TP1. Verify the actual broker fill. No order was modified.")
+    if event.event_type == "PROTECTED_STOP_HIT":
+        return (f"🛡️ QUANTNEX · {symbol} {side} · BREAKEVEN PROTECTION REACHED\\nObserved price: {observed} · virtual SL: {trade.active_stop_loss}\\n"
+                "TP1 was reached earlier. The remaining simulated portion returned to Entry; the TP1 partial remains in the outcome ledger. Not a real broker fill confirmation.")
+    if event.event_type == "LOCKED_STOP_HIT":
+        return (f"🛡️ QUANTNEX · {symbol} {side} · PROFIT-LOCK STOP REACHED\\nObserved price: {observed} · virtual SL: {trade.active_stop_loss}\\n"
+                "TP1 and TP2 were reached earlier. The remaining simulated portion exited at the TP1 trailing level. Verify any real broker position manually.")
+    if event.event_type == "AMBIGUOUS_BAR":
+        return (f"ℹ️ QUANTNEX · {symbol} {side} · OUTCOME NEEDS REVIEW\\n"
+                "One historical candle touched the active stop and the next target. OHLC data cannot prove which was first. QUANTNEX marked this AMBIGUOUS instead of guessing.")
+    return ""
+
+
+async def _deliver_pending_signal_events(client, db, user_id: int, token: str, chat_id: str) -> None:
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=30)
+    pending = list(db.scalars(select(SignalTradeEvent).where(
+        SignalTradeEvent.user_id == user_id, SignalTradeEvent.telegram_sent_at.is_(None),
+        or_(SignalTradeEvent.telegram_last_attempt_at.is_(None),
+            SignalTradeEvent.telegram_last_attempt_at <= cutoff),
+    ).order_by(SignalTradeEvent.created_at).limit(10)))
+    for event in pending:
+        trade = db.get(SignalTrade, event.trade_id)
+        message = _signal_lifecycle_message(trade, event) if trade is not None else ""
+        if not message:
+            event.telegram_sent_at = datetime.now(timezone.utc)
+            db.commit()
+            continue
+        event.telegram_attempts = int(event.telegram_attempts or 0) + 1
+        event.telegram_last_attempt_at = datetime.now(timezone.utc)
+        db.commit()
+        try:
+            await _send(client, token, chat_id, message)
+            event.telegram_sent_at = datetime.now(timezone.utc)
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            logger.warning("Signal outcome Telegram delivery deferred for local user %s: %s",
+                           user_id, type(exc).__name__)
+
+
 async def telegram_worker() -> None:
     """Poll connected user bots, respond to commands and monitor active TP1 levels."""
     last_monitor={}
@@ -578,36 +635,8 @@ async def telegram_worker() -> None:
                                         _persist_update_offset(db,user_id,offset)
                         except (httpx.HTTPError,ValueError) as exc:
                             logger.warning("Telegram polling failed for local user %s: %s",user_id,type(exc).__name__)
+                        await _deliver_pending_signal_events(client, db, user_id, token, chat_id)
                         now=asyncio.get_running_loop().time()
-                        if now-last_monitor.get(user_id,0)>=60:
-                            active_raw=_get(db,user_id,"active_signal")
-                            db.commit()
-                            if active_raw and gold_feed_configured():
-                                try:
-                                    active=json.loads(active_raw);price=await _price(client)
-                                    if price is not None:
-                                        side=active.get("side")
-                                        hit_sl=price<=active["stop_loss"] if side=="BUY" else price>=active["stop_loss"]
-                                        hit_tp1=price>=active["tp1"] if side=="BUY" else price<=active["tp1"]
-                                        hit_tp2=price>=active["tp2"] if side=="BUY" else price<=active["tp2"]
-                                        hit_tp3=price>=active["tp3"] if side=="BUY" else price<=active["tp3"]
-                                        if hit_sl and not active.get("sl_notified") and not active.get("tp1_notified"):
-                                            await _send(client,token,chat_id,f"⚠️ QUANTNEX · XAUUSD SL level touched\nObserved price: {price}\nCheck your broker execution. No order was modified.")
-                                            active["sl_notified"]=True;active_raw=""
-                                        elif hit_tp1 and not active.get("tp1_notified"):
-                                            await _send(client,token,chat_id,f"⚠️ QUANTNEX · XAUUSD TP1 level touched\nObserved price: {price}\nReview moving Stop Loss to breakeven (Entry {active['entry']}). Verify the actual position and move SL manually in your broker. QUANTNEX does not modify broker orders.")
-                                            active["tp1_notified"]=True
-                                        if hit_tp2 and not active.get("tp2_notified"):
-                                            await _send(client,token,chat_id,f"QUANTNEX · XAUUSD TP2 level touched at {price}. Check broker execution.")
-                                            active["tp2_notified"]=True
-                                        if hit_tp3 and not active.get("tp3_notified"):
-                                            await _send(client,token,chat_id,f"QUANTNEX · XAUUSD TP3 level touched at {price}. Review and manage your position manually.")
-                                            active["tp3_notified"]=True;active_raw=""
-                                        if active_raw:_set(db,user_id,"active_signal",json.dumps(active))
-                                        else:_set(db,user_id,"active_signal","")
-                                        db.commit()
-                                except (ValueError,KeyError,httpx.HTTPError) as exc:
-                                    logger.warning("Gold level monitor failed for local user %s: %s",user_id,type(exc).__name__)
                         # Automatic signals scan each selected market independently.
                         auto_raw=_get(db,user_id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}')
                         db.commit()
@@ -627,6 +656,9 @@ async def telegram_worker() -> None:
                                     scan=await build_signal(signal_settings,market_symbol)
                                     candidate=scan.get("signal")
                                     if candidate:
+                                        from .signal_lifecycle import record_signal
+                                        tracked, _created = record_signal(db, user_id, candidate, "AUTO_TELEGRAM_SCAN")
+                                        db.commit()
                                         fingerprint=_auto_signal_fingerprint(market_symbol,candidate)
                                         previous=_get(db,user_id,fingerprint_key)
                                         db.commit()
@@ -635,7 +667,7 @@ async def telegram_worker() -> None:
                                                 +"Market data: "+str(scan.get("provider","Unknown"))+"\n"
                                                 +"Signal TF: "+str(candidate["timeframe"])+"m · Trend TF: "+str(candidate["trend_timeframe"])+"m\n"
                                                 +"Entry type: "+str(candidate.get("entry_type","REFERENCE"))+"\n"
-                                                +"Entry: "+str(candidate["entry"])+
+                                                +"Entry: "+("MARKET ("+str(candidate["entry"])+")" if candidate.get("entry_type")=="MARKET" else "LIMIT ("+str(candidate.get("limit_price") or candidate["entry"])+")")+
                                                 ("\nLimit price: "+str(candidate["limit_price"]) if candidate.get("entry_type")=="LIMIT" else "")+"\n"
                                                 +("Entry expires: "+str(candidate["entry_expires_at"])+"\n" if candidate.get("entry_expires_at") else "")
                                                 +"Entry logic: "+str(candidate.get("entry_selection_reason",""))+"\n"
@@ -647,8 +679,6 @@ async def telegram_worker() -> None:
                                                 +"Signal only; verify spread, fees and execution. No order is placed.")
                                             delivered=await _deliver_auto_signal(client,token,chat_id,msg,fingerprint,previous,db,user_id,fingerprint_key)
                                             if delivered:
-                                                if market_symbol=="XAUUSD":
-                                                    _set(db,user_id,"active_signal",json.dumps({**candidate,"tp1_notified":False,"tp2_notified":False,"tp3_notified":False,"sl_notified":False}))
                                                 db.commit()
                                     # Keep the last delivered fingerprint when no setup is present.
                                     # This prevents duplicate alerts if the same candle briefly loses and regains confluence.

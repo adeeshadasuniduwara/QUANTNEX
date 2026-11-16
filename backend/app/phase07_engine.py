@@ -159,9 +159,14 @@ async def scan_market_signal(symbol: str, threshold: int=6) -> dict:
     if side:
         risk=max(float(atr)*1.5,0.00000001)
         sign=1 if side=="BUY" else -1
+        signal_time = datetime.fromisoformat(str(latest["time"]).replace("Z", "+00:00"))
+        if signal_time.tzinfo is None:
+            signal_time = signal_time.replace(tzinfo=timezone.utc)
+        signal_time = signal_time.astimezone(timezone.utc) + timedelta(minutes=15)
         signal={"symbol":info["symbol"],"side":side,"timeframe":"15m","trend_timeframe":"1h",
-                "entry":round(close,8),"stop_loss":round(close-sign*risk,8),
-                "tp1":round(close+sign*risk,8),"tp2":round(close+sign*risk*2,8),
+                "entry_type":"MARKET","entry":round(close,8),"signal_candle_time":latest["time"],
+                "signal_time":signal_time.isoformat(),"entry_reference_note":"Last fully closed 15m candle reference; not a broker fill.",
+                "stop_loss":round(close-sign*risk,8),"tp1":round(close+sign*risk,8),"tp2":round(close+sign*risk*2,8),
                 "tp3":round(close+sign*risk*3,8),"risk_distance":round(risk,8),
                 "score":score,"out_of":10,"confirmations":buy_checks if side=="BUY" else sell_checks,
                 "generated_at":datetime.now(timezone.utc).isoformat()}

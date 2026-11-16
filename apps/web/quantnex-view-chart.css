@@ -25,3 +25,31 @@
 @media(max-width:900px){.qx-indicator-grid{grid-template-columns:1fr}.qx-indicator-chart{height:128px}}
 
 .qx-native-chart-canvas{display:block;width:100%;height:100%;min-height:420px;touch-action:pan-y;cursor:crosshair}.qx-indicator-native-canvas{display:block;width:100%;height:100%}.qx-confidence{margin-top:12px;max-width:520px}.qx-confidence-track{height:7px;border-radius:99px;background:rgba(130,150,175,.18);overflow:hidden}.qx-confidence-track span{display:block;height:100%;width:0;background:linear-gradient(90deg,#d8a84e,#22c997);transition:width .25s ease}.qx-confidence small{display:block;margin-top:5px;color:var(--muted,#9299a5);font-size:10px}.qx-chart-host{min-height:420px}.qx-chart-host canvas{user-select:none}
+
+
+/* Signal outcome ledger — compact, readable on desktop and mobile. */
+.qx-signal-ledger{margin:12px 0;padding:14px;border:1px solid var(--border,#30343c);border-radius:12px;background:var(--panel,#101318);min-width:0}
+.qx-ledger-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.qx-ledger-head h3{margin:5px 0;font-size:15px;color:var(--text,#e8edf5)}
+.qx-ledger-head p,.qx-ledger-note{margin:5px 0;color:var(--muted,#9299a5);font-size:10px;line-height:1.5}
+.qx-ledger-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+#qxSignalLedgerStatus{font-size:10px;color:var(--muted,#9299a5)}
+#qxSignalLedgerStatus[data-state="error"]{color:#f08a91}
+#qxSignalLedgerStatus[data-state="ok"]{color:#40c99a}
+.qx-ledger-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:10px 0}
+.qx-ledger-summary>div{padding:9px;border:1px solid var(--border,#30343c);border-radius:8px;background:rgba(0,0,0,.12)}
+.qx-ledger-summary span{display:block;color:var(--muted,#9299a5);font-size:9px}
+.qx-ledger-summary strong{display:block;margin-top:4px;font-size:15px;color:var(--text,#e8edf5);font-variant-numeric:tabular-nums}
+.qx-ledger-table-wrap{overflow:auto;max-width:100%;border:1px solid var(--border,#30343c);border-radius:8px}
+.qx-ledger-table{width:100%;min-width:850px;border-collapse:collapse;font-size:10px}
+.qx-ledger-table th,.qx-ledger-table td{padding:8px 9px;border-bottom:1px solid var(--border,#30343c);white-space:nowrap;text-align:left;font-variant-numeric:tabular-nums}
+.qx-ledger-table th{color:var(--muted,#9299a5);font-weight:600;background:rgba(0,0,0,.16)}
+.qx-ledger-table td{color:var(--text,#e8edf5)}
+.qx-ledger-table tr:last-child td{border-bottom:0}
+.qx-ledger-hit{color:#36c995!important;font-weight:700}
+.qx-ledger-outcome{font-weight:700}
+.qx-ledger-outcome[data-status="STOPPED"]{color:#f07880}
+.qx-ledger-outcome[data-status="AMBIGUOUS"]{color:#e7ba65}
+.qx-ledger-outcome[data-status="TARGETS_COMPLETE"]{color:#36c995}
+.qx-ledger-outcome[data-status="PROTECTED_EXIT"],.qx-ledger-outcome[data-status="LOCKED_PROFIT_EXIT"]{color:#78b8ff}
+@media(max-width:620px){.qx-ledger-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.qx-ledger-head h3{font-size:13px}}

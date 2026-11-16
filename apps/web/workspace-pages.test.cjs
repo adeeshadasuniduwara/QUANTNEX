@@ -68,7 +68,7 @@ console.log("Realtime event restart-resync checks passed.");
 
 const chartClient = fs.readFileSync("apps/web/quantnex-view-chart.js", "utf8");
 const chartIntelligence = fs.readFileSync("apps/web/quantnex-view-intelligence.js", "utf8");
-assert.ok(/src="quantnex-view-chart\.js\?v=20261114-coinbase-goldfeed1"/.test(html), "Live chart controller must load with the current cache version");
+assert.ok(/src="quantnex-view-chart\.js\?v=20261116-tradingview-axes-tools1"/.test(html), "Live chart controller must load with the current cache version");
 assert.ok(html.includes('id="qxChartIntelMetrics"'), "Chart must expose indicator readouts");
 assert.ok(html.includes('id="qxOverlayZones"'), "Chart must expose zone visibility control");
 for (const feature of ["bullish_fvg", "bearish_fvg", "bullish_order_block", "bearish_order_block",
@@ -155,3 +155,7 @@ assert.ok(html.includes("<th>Exit</th>") && html.includes("<th>Realized P&amp;L<
 assert.ok(html.includes('colspan="11"'), "The empty paper ledger row must span the expanded table.");
 assert.ok(app.includes("td.colSpan=11"), "The dynamically rendered empty row must span the expanded table.");
 console.log("Paper Trading UI checks passed: closed results and close-error reconciliation.");
+
+
+assert.ok(/function syncWorkspaceView\(\)[\s\S]*?connectCryptoTicker\(\);/.test(fs.readFileSync("apps/web/app.js","utf8")), "Shared crypto live feed must stay connected across visible workspace views.");
+assert.ok(fs.readFileSync("apps/web/app.js","utf8").includes("syncWorkspaceView();"), "Shared market feed must start on workspace launch, not only after opening Market Intelligence.");

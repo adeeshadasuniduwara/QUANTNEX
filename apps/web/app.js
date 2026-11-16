@@ -903,7 +903,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     root.append(node("p",data.message+" "+data.score_note,"p7-note"));
     if(signal){
       const levels=node("div",undefined,"p7-signal-levels");
-      [["Entry",signal.entry],["Stop Loss",signal.stop_loss],["TP1",signal.tp1],["TP2 / TP3",signal.tp2+" / "+signal.tp3]].forEach(([label,value])=>{
+      [[signal.entry_type==="MARKET"?"Entry · MARKET":"Entry · LIMIT",signal.entry_type==="MARKET"?"MARKET ("+fmt(signal.entry,priceDigits(data.symbol))+")":"LIMIT ("+fmt(signal.limit_price||signal.entry,priceDigits(data.symbol))+")"],["Stop Loss",signal.stop_loss],["TP1",signal.tp1],["TP2 / TP3",signal.tp2+" / "+signal.tp3]].forEach(([label,value])=>{
         const box=node("div");box.append(node("span",label),node("b",String(value)));levels.append(box);
       });
       root.append(levels);
@@ -1064,8 +1064,10 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     if(bookSocket){bookSocket.onclose=null;bookSocket.close();bookSocket=null;}
   }
   function syncWorkspaceView(){
-    if(isWorkspaceViewActive("market-intelligence")){loadMarkets();connectCryptoTicker();}
-    else stopCryptoTicker();
+    if(isWorkspaceViewActive("market-intelligence"))loadMarkets();
+    // Keep one shared crypto ticker alive across workspace views. Only a hidden browser tab
+    // pauses the socket; returning to any view reconnects it and resumes the common market feed.
+    connectCryptoTicker();
     if(isWorkspaceViewActive("orderflow-liquidity"))loadBook();
     else stopBookFeed();
     if(isWorkspaceViewActive("paper-trading"))refreshAnalytics();
@@ -1082,6 +1084,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   setInterval(()=>{if(isWorkspaceViewActive("paper-trading"))loadPaper();},20000);
   setInterval(()=>{if(isWorkspaceViewActive("performance-lab"))loadPerformance();},30000);
   setInterval(()=>{if(isWorkspaceViewActive("news-intelligence"))loadNews();},900000);
+  syncWorkspaceView();
 })();
 
 

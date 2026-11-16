@@ -43,7 +43,7 @@ console.log("QUANTNEX chart redraw performance regression checks passed.");
 
 
 
-assert.ok(html.includes("quantnex-view-chart.js?v=20261114-coinbase-goldfeed1"), "Shared chart analysis must invalidate the chart bundle cache.");
+assert.ok(html.includes("quantnex-view-chart.js?v=20261116-tradingview-axes-tools1"), "Shared chart analysis must invalidate the chart bundle cache.");
 
 assert.match(js, /quantnex:market-tick/, "Gold chart must consume the shared market tick feed.");
 assert.doesNotMatch(js, /goldTimer|scan\(\)/, "The chart must not call the removed scan function or poll full Gold history every five seconds.");
@@ -71,3 +71,23 @@ assert.ok(js.includes("GOLD LIVE QUOTE · HISTORICAL CANDLES REQUIRE MT5 OR TWEL
 assert.match(js, /else\{setStatus\(candles\.length\?"GOLD FEED · MATCHING HISTORY PROVIDER":"GOLD HISTORY UNAVAILABLE · CHECK FEED SETTINGS"/, "Gold quote polling must run even when historical candles are unavailable.");
 
 console.log('QUANTNEX BTC Coinbase failover and Gold quote-only visibility checks passed.');
+
+
+for (const id of ["qxSignalLedger", "qxSignalLedgerRows", "qxSignalLedgerSummary", "qxSignalLedgerStatus", "qxSignalReplayNote", "qxSignalLedgerRefresh"]) assert.ok(html.includes(`id="${id}"`), `Missing signal lifecycle ledger element: ${id}`);
+for (const tool of ["horizontal", "trend", "vertical", "rectangle", "fib"]) assert.ok(html.includes(`data-qx-draw="${tool}"`), `Missing chart drawing tool: ${tool}`);
+assert.match(js, /fillText\("PRICE"/, "Chart must show a dedicated price scale.");
+assert.match(js, /fillText\("TIME"/, "Chart must show a dedicated time scale.");
+assert.match(js, /view\.priceZoom/, "Price scale must be interactively zoomable.");
+assert.match(js, /timeLabel\(bar\.time\)/, "Crosshair must display the selected candle time on the time axis.");
+assert.match(js, /function wheel\(e\)[\s\S]*?cx>=r\.width-92/, "Mouse wheel over the price axis must zoom price independently.");
+assert.match(intel, /\/api\/v1\/quantnex-view\/replay/, "QUANTNEX VIEW must request a historical signal replay on chart entry.");
+assert.match(intel, /\/api\/v1\/signals\/trades/, "QUANTNEX VIEW must display persisted signal outcomes.");
+assert.match(intel, /MARKET \(/, "Market scalp entries must be labelled MARKET with the reference price.");
+console.log("QUANTNEX VIEW signal lifecycle, TradingView-style axes and advanced drawing tools checks passed.");
+
+
+assert.ok(js.includes("function drawingsStorageKey"), "Chart drawings must persist per symbol and timeframe.");
+assert.ok(js.includes("restoreChartSelection") && js.includes("quantnex.chart.selection.v1"), "Chart symbol/timeframe selection must be restored on next application start.");
+assert.ok(intel.includes("replayHistory(selected())"), "Selected-market historical replay must begin on application startup, not only after manually opening QUANTNEX VIEW.");
+assert.ok(js.includes("saveDrawings()"), "Drawing edits and clear actions must save to local chart storage.");
+assert.ok(intel.includes("ENTRY · MARKET") && intel.includes("MARKET ("), "Scalp entry must display MARKET with its reference price.");

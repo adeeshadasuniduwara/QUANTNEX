@@ -98,7 +98,7 @@ assert.ok(intel.includes("ENTRY · MARKET") && intel.includes("MARKET ("), "Scal
 
 assert.match(js, /view=\{start:-12,count:120/, "The live chart must keep a right-side future-bar gutter so the latest candle is not pressed against the edge.");
 assert.match(js, /plotSlots=Math\.max\(24,view\.count\)/, "Candle spacing must reserve room for future bars instead of stretching the last candle to the edge.");
-assert.match(js, /view\.start=Math\.max\(-48/, "Horizontal chart panning must allow a small future-space offset.");
+assert.match(js, /Math\.min\(48,view\.count-1\)/, "Horizontal chart panning must allow a small future-space offset.");
 assert.match(js, /view\.priceShift=view\.drag\.priceShift\+\(e\.clientY-view\.drag\.y\)/, "Dragging inside the plot must pan the visible price range vertically.");
 assert.match(js, /right=r\.width-priceAxisWidth\(r\.width\)/, "Pointer gestures must use the same responsive price-axis boundary as drawing.");
 assert.match(css, /touch-action:none/, "Touch gestures must be routed to chart pan/zoom instead of browser page scrolling.");

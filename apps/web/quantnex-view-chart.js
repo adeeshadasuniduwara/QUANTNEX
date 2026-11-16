@@ -181,7 +181,7 @@ function pointerMove(e){
   const dx=e.clientX-view.drag.x;
   if(view.drag.mode==="price-scale"){view.priceZoom=Math.max(.25,Math.min(8,view.drag.priceZoom*Math.exp((view.drag.y-e.clientY)*.008)));}
   else if(view.drag.mode==="time-scale"){view.count=Math.max(24,Math.min(500,Math.round(view.drag.count*Math.exp((view.drag.x-e.clientX)*.008))));}
-  else if(view.drag.mode==="cursor"&&(Math.abs(dx)>2||Math.abs(e.clientY-view.drag.y)>2)){view.start=Math.max(-48,Math.min(Math.max(0,candles.length-view.count),view.drag.start+Math.round(dx/((right-left)/view.count))));view.priceShift=view.drag.priceShift+(e.clientY-view.drag.y)/Math.max(1,bottom-top);}
+  else if(view.drag.mode==="cursor"&&(Math.abs(dx)>2||Math.abs(e.clientY-view.drag.y)>2)){view.start=Math.max(-Math.min(48,view.count-1),Math.min(Math.max(0,candles.length-view.count),view.drag.start+Math.round(dx/((right-left)/view.count))));view.priceShift=view.drag.priceShift+(e.clientY-view.drag.y)/Math.max(1,bottom-top);}
   else if(pendingDrawing){pendingDrawing.x2=Math.max(0,Math.min(1,(cx-left)/(right-left)));pendingDrawing.y2=Math.max(0,Math.min(1,(cy-top)/(bottom-top)));if(pendingDrawing.type==="horizontal")pendingDrawing.y2=pendingDrawing.y1;if(pendingDrawing.type==="vertical")pendingDrawing.x2=pendingDrawing.x1;}
   draw();
  }else{view.crosshair={cx,cy};draw();}
@@ -190,7 +190,7 @@ function pointerUp(){if(pendingDrawing){drawings.push({...pendingDrawing});pendi
 function wheel(e){
  e.preventDefault();const r=canvas.getBoundingClientRect(),cx=e.clientX-r.left,cy=e.clientY-r.top;
  if(cx>=r.width-priceAxisWidth(r.width)){view.priceZoom=Math.max(.25,Math.min(8,(view.priceZoom||1)*(e.deltaY<0?.88:1.14)));}
- else{const factor=e.deltaY<0?.85:1.18;view.count=Math.max(24,Math.min(500,Math.round(view.count*factor)));view.start=Math.max(-48,Math.min(Math.max(0,candles.length-view.count),view.start));}
+ else{const factor=e.deltaY<0?.85:1.18;view.count=Math.max(24,Math.min(500,Math.round(view.count*factor)));view.start=Math.max(-Math.min(48,view.count-1),Math.min(Math.max(0,candles.length-view.count),view.start));}
  draw();
 }
 function mergeCandle(row){if(!row||!Number.isFinite(Number(row.close)))return;const t=typeof row.time==="number"?Math.floor(row.time):stamp(row.time);if(!Number.isFinite(t))return;const next={...row,time:t,open:+row.open,high:+row.high,low:+row.low,close:+row.close,volume:+(row.volume||0)};const last=candles.at(-1);if(last&&last.time===t)candles[candles.length-1]=next;else if(!last||t>last.time){candles.push(next);}else{const i=candles.findIndex(c=>c.time===t);if(i>=0)candles[i]=next;else return;}if(candles.length>1200)candles=candles.slice(-1200);candleRevision++;scheduleDraw();}

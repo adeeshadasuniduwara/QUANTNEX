@@ -586,7 +586,9 @@ async def _sync_signal_trade_messages(client, db, user_id: int, token: str, chat
                     continue
                 mapping[key] = {"message_id": int(message_id),
                                 "last_price": float(trade.last_price or trade.entry_price),
-                                "last_status": trade.status, "last_edit_at": now.isoformat()}
+                                "last_status": trade.status, "last_tp1": bool(trade.tp1_hit), "last_tp2": bool(trade.tp2_hit),
+                                "last_tp3": bool(trade.tp3_hit), "last_active_stop": float(trade.active_stop_loss or trade.stop_loss),
+                                "last_edit_at": now.isoformat()}
                 changed = True
             except Exception as exc:
                 logger.warning("Signal Telegram card send deferred for user %s trade %s: %s",
@@ -604,12 +606,18 @@ async def _sync_signal_trade_messages(client, db, user_id: int, token: str, chat
             last_edit_at = now - timedelta(days=1)
         materially_changed = abs(price-old_price) > max(abs(old_price)*0.00005, 1e-12)
         status_changed = trade.status != old_status
-        if not status_changed and (not materially_changed or (now-last_edit_at).total_seconds() < edit_interval):
+        progress_changed = (bool(record.get("last_tp1")) != bool(trade.tp1_hit)
+                            or bool(record.get("last_tp2")) != bool(trade.tp2_hit)
+                            or bool(record.get("last_tp3")) != bool(trade.tp3_hit)
+                            or float(record.get("last_active_stop") or 0) != float(trade.active_stop_loss or trade.stop_loss))
+        if not status_changed and not progress_changed and (not materially_changed or (now-last_edit_at).total_seconds() < edit_interval):
             continue
         try:
             await _edit_message(client, token, chat_id, int(message_id), _signal_live_message(trade))
             record.update({"message_id": int(message_id), "last_price": price,
-                           "last_status": trade.status, "last_edit_at": now.isoformat()})
+                           "last_status": trade.status, "last_tp1": bool(trade.tp1_hit), "last_tp2": bool(trade.tp2_hit),
+                           "last_tp3": bool(trade.tp3_hit), "last_active_stop": float(trade.active_stop_loss or trade.stop_loss),
+                           "last_edit_at": now.isoformat()})
             mapping[key] = record
             changed = True
         except Exception as exc:

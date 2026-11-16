@@ -121,13 +121,13 @@ def process_trade_candles(db, trade: SignalTrade, candles: list[dict[str, Any]])
         return 0
     ordered = sorted(candles, key=lambda row: as_utc(row["time"]))
     first_time = as_utc(ordered[0]["time"])
+    last_processed = as_utc(trade.last_processed_candle_time) if trade.last_processed_candle_time else None
     if last_processed is None and first_time > as_utc(trade.signal_time) + timedelta(seconds=TIMEFRAME_SECONDS.get(trade.timeframe, 900)):
         trade.recovery_status = "PARTIAL"
         trade.recovery_note = "Provider history begins after this signal; outcome replay is paused to avoid missing an earlier stop or target."
         return 0
     trade.recovery_status = "COMPLETE"
     trade.recovery_note = "Available closed-candle history covers the signal timestamp."
-    last_processed = as_utc(trade.last_processed_candle_time) if trade.last_processed_candle_time else None
     signal_time = as_utc(trade.signal_time)
     processed = 0
     for row in ordered:

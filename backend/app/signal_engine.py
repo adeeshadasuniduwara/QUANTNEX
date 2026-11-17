@@ -127,8 +127,9 @@ async def is_binance_spot_symbol(symbol: str) -> bool:
     normalized = str(symbol or "").strip().upper()
     if not normalized or not normalized.isalnum() or len(normalized) > 30 or normalized == "XAUUSD":
         return False
-    if normalized in CRYPTO_SYMBOLS:
-        return True
+    # The old CRYPTO_SYMBOLS constant is retained for compatibility with
+    # legacy UI defaults only. It must never bypass authoritative exchangeInfo:
+    # a previously-known pair may be delisted or lose Spot trading permission.
     return normalized in set(await get_binance_spot_symbols())
 
 

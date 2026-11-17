@@ -15,6 +15,8 @@ from typing import Any
 import httpx
 from .config import TWELVE_DATA_API_KEY, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
 from .binance_public import BinancePublicDataError, get_binance_public_json
+from .binance_order_flow_feed import BinanceOrderFlowFeedError, fetch_spot_order_flow
+from .order_flow import OrderFlowDataError, evaluate_order_flow_confirmation, summarize_order_flow_snapshot
 
 BASE = "https://api.twelvedata.com/time_series"
 INTERVALS = {"1": "1min", "5": "5min", "15": "15min", "30": "30min", "60": "1h", "240": "4h"}
@@ -809,6 +811,7 @@ async def build_signal(
     settings: dict[str, Any], symbol: str = "XAUUSD", *,
     candles_override: dict[str, list[dict[str, Any]]] | None = None,
     execution_context_override: dict[str, Any] | None = None,
+    order_flow_override: dict[str, Any] | None = None,
     replay_as_of: datetime | None = None,
 ) -> dict[str, Any]:
     symbol = str(symbol).upper()
@@ -972,6 +975,80 @@ async def build_signal(
                 float(entry_choice["entry_price"]), tick_size, round_up=round_entry_up
             )
 
+    order_flow_payload: dict[str, Any] = {"status": "NOT_EVALUATED"}
+    if symbol == "XAUUSD":
+        order_flow_payload = {
+            "status": "NOT_APPLICABLE",
+            "note": "XAUUSD uses its configured Gold feed; Binance Spot order-flow is not applied.",
+        }
+    elif side and entry_choice:
+        try:
+            if order_flow_override is not None:
+                order_flow_snapshot = order_flow_override
+                order_flow_mode = "DETERMINISTIC_FIXTURE"
+            elif candles_override is None:
+                max_order_flow_age = float(settings.get("max_order_flow_trade_age_seconds", 15.0))
+                if not math.isfinite(max_order_flow_age) or max_order_flow_age <= 0:
+                    raise MarketDataError("Order-flow freshness setting must be finite and positive.")
+                async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=3.0)) as client:
+                    order_flow_snapshot = await fetch_spot_order_flow(
+                        client,
+                        symbol,
+                        tick_size=tick_size,
+                        max_trade_age_seconds=max_order_flow_age,
+                    )
+                order_flow_mode = "PUBLIC_REST_SNAPSHOT"
+            else:
+                order_flow_snapshot = None
+                order_flow_mode = "CANDLE_ONLY_REPLAY_BASELINE"
+
+            if order_flow_snapshot is None:
+                order_flow_payload = {
+                    "status": "NOT_AVAILABLE_CANDLE_ONLY_REPLAY",
+                    "accepted": None,
+                    "note": "Historical candle replay has no historical aggressor trades or synchronized L2 data; this result is a candle-only baseline.",
+                }
+            else:
+                decision = evaluate_order_flow_confirmation(
+                    side,
+                    order_flow_snapshot,
+                    max_trade_age_seconds=float(settings.get("max_order_flow_trade_age_seconds", 15.0)),
+                )
+                order_flow_payload = summarize_order_flow_snapshot(order_flow_snapshot, decision)
+                order_flow_payload["data_mode"] = order_flow_mode
+                quality_filters["order_flow_confirmation"] = bool(decision["accepted"])
+                if not decision["accepted"]:
+                    status = str(decision["status"]).lower()
+                    entry_rejection_reason = (
+                        f"Order Flow did not confirm {side}: {status}. "
+                        "Recent aggressor delta and L2 depth must provide net directional support."
+                    )
+                    side = None
+        except (BinanceOrderFlowFeedError, OrderFlowDataError, httpx.HTTPError,
+                MarketDataError, ValueError, TypeError, KeyError, OverflowError) as exc:
+            order_flow_payload = {
+                "status": "ERROR",
+                "accepted": False,
+                "data_mode": "PUBLIC_REST_SNAPSHOT" if order_flow_override is None else "DETERMINISTIC_FIXTURE",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+            quality_filters["order_flow_confirmation"] = False
+            entry_rejection_reason = (
+                "Order Flow data was unavailable, malformed or stale; the live Spot signal was rejected."
+            )
+            side = None
+    elif symbol != "XAUUSD" and candles_override is not None:
+        order_flow_payload = {
+            "status": "NOT_AVAILABLE_CANDLE_ONLY_REPLAY",
+            "accepted": None,
+            "note": "Historical candle replay has no historical aggressor trades or synchronized L2 data; this result is a candle-only baseline.",
+        }
+    elif symbol != "XAUUSD":
+        order_flow_payload = {
+            "status": "NOT_EVALUATED_NO_DIRECTIONAL_SETUP",
+            "accepted": None,
+        }
+
     if side and entry_choice:
         entry = round(float(entry_choice["entry_price"]), price_precision)
         swing = st["swing_low"] if side == "BUY" else st["swing_high"]
@@ -1063,6 +1140,7 @@ async def build_signal(
                 "confirmations": checks,
                 "risk_distance": round(risk, price_precision),
                 "execution_quality": execution_quality,
+                "order_flow": order_flow_payload,
             }
     if symbol != "XAUUSD" and side is None and score >= threshold and not entry_rejection_reason:
         entry_rejection_reason = "Directional setup passed, but execution quality did not produce a valid entry."
@@ -1083,4 +1161,5 @@ async def build_signal(
                 "ema50":round(v["ema50"],price_precision),"ema200":round(v["ema200"],price_precision) if v["ema200"] is not None else None,"macd_histogram":round(v["macd_histogram"],price_precision),
                 "rsi":round(v["rsi"],1),"adx":round(v["adx"],1),"atr":round(v["atr"],price_precision),
                 "structure":v["structure"]} for tf,v in analysis.items()},
-            "quality_filters":quality_filters,"status":"SIGNAL" if signal else "WAIT","message":message}
+            "quality_filters":quality_filters,"order_flow":order_flow_payload,
+            "status":"SIGNAL" if signal else "WAIT","message":message}

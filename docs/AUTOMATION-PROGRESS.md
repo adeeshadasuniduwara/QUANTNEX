@@ -481,7 +481,7 @@ The last scheduled smoke run failed before scanning because `get_binance_spot_sy
 - Added `backend/app/binance_public.py` with an HTTPS-only, `/api/v3`-only public REST client.
 - Prefer `data-api.binance.vision`, then try the official general/GCP/alternate Binance hosts for transport failures, invalid JSON, host access failures and server errors.
 - Stop immediately on HTTP 418/429 and preserve `Retry-After`; stop on ordinary client-validation errors such as invalid symbol instead of retrying them across hosts.
-- Limit concurrent public requests to four per event loop.
+- Cap each host attempt at 3.5 seconds (1.5-second connect timeout), limit concurrency to four per event loop, and reuse the last successful host within that loop.
 - Route Spot `exchangeInfo`, `bookTicker`, depth, klines, historical klines and order-flow aggTrades/session probes through the shared helper.
 - Preserve source-host provenance in execution context and order-flow snapshots.
 - Add deterministic mocked tests for host failover, invalid-symbol no-retry, rate-limit stop, all-host failure, route restriction, loop isolation and symbol-discovery integration.

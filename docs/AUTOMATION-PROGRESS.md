@@ -456,7 +456,9 @@ Automatic, high-quality Binance signals remain the primary objective. Order-flow
 
 ### Verification status and blockers
 
-- This branch has not yet passed CI. Do not merge until the full backend 3.12/3.14, schema and web checks pass.
+- Initial CI on commit `6b6f81586ae09aa0dc5c9a891d48546ba7320a6a` failed: 13 tests failed and 290 passed on Python 3.12/3.14; Web syntax checks passed. Failures were caused by legacy test transports not modeling the newly required `/api/v3/exchangeInfo` validation request, plus historical replay unnecessarily consulting live exchange metadata.
+- Corrective commits now mock Spot eligibility explicitly in candle/signal tests while retaining dedicated real-metadata tests, and make `build_signal(candles_override=...)` an offline replay path that validates symbol syntax without making live exchangeInfo calls. A regression test asserts that replay never performs the live symbol lookup.
+- These fixes are committed on the same PR branch; the updated CI must pass on the final head before merge. Do not merge while checks are pending or failing.
 - The live smoke workflow is present, but no recent run named `QUANTNEX Live Crypto Signal Smoke` appeared in the latest workflow-run listing checked during this run. Confirm the first run after the rotating-sample workflow merges.
 - Binance Spot is the only verified crypto market type. USDⓈ-M/COIN-M Futures are not yet wired into the signal engine.
 - REST depth is still a snapshot, not a sequence-validated book. Persistent CVD, reconnect/backfill and historical order-flow replay remain incomplete.

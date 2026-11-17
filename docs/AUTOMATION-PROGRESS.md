@@ -523,7 +523,7 @@ Automatic, high-quality Binance signals remain the primary objective. Order-flow
 5. Only then add further strategy-registry methods (VWAP, volume profile, regime/pullback/continuation variants) with causal fixtures and ablation evidence.
 
 
-## 2026-11-17 — Phase 18: deterministic Binance Spot stream state (PR pending)
+## 2026-11-17 — Phase 18: deterministic Binance Spot stream state (merged PR #191; post-merge checks passed)
 
 ### Purpose
 
@@ -551,14 +551,14 @@ The merged PR #189 adds a conservative live REST order-flow gate. The next criti
 
 ### Verification status
 
-- Feature branch contains the state module and deterministic tests; CI and PR review are pending.
+- PR [#191](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/191) merged from `feat/binance-orderflow-stream-state` to `main` as `1f953140f18af5555abf4ed7d008789824a96bd2`; main was verified to point at the merge commit. PR and post-merge Backend CI passed 332 tests on Python 3.12 and 332 tests on Python 3.14; schema/test and web-check passed.
+- The optional Telegram announce workflow failed because the configured Telegram chat target is invalid/self-directed; this does not affect code or tests.
 - This state layer is not yet connected to Binance WebSocket feeds or the live signal engine. It does not yet establish live persistent CVD, live sequence-validated L2, or order-flow out-of-sample performance.
 
 ### Exact next steps
 
-1. Run Backend CI (Python 3.12/3.14), schema/test and web-check; fix any failures.
-2. Review the full diff and merge PR only if all relevant checks pass and latest-main mergeability is confirmed.
-3. Add an explicit WebSocket dependency and build a bounded Binance Spot public-stream adapter.
-4. Implement reconnect/backoff and REST aggTrade backfill from the last contiguous aggregate-trade ID.
-5. Connect REST depth snapshot + buffered diff events to the sequence state; resync on every gap.
-6. Integrate state completeness into signal eligibility and capture synchronized historical trade/depth replay.
+1. Add an explicit WebSocket dependency and build a bounded Binance Spot public-stream adapter.
+2. Implement reconnect/backoff and REST aggTrade backfill from the last contiguous aggregate-trade ID.
+3. Connect REST depth snapshot + buffered diff events to the sequence state; resync on every gap.
+4. Integrate state completeness into signal eligibility and capture synchronized historical trade/depth replay.
+5. Measure combined order-flow value against the candle-only baseline using chronological replay and ablation.

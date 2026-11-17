@@ -6,6 +6,8 @@ account endpoint, signed request, or order endpoint is used.
 from __future__ import annotations
 
 import asyncio
+import re
+from urllib.parse import urlsplit
 from typing import Any, Sequence
 
 import httpx
@@ -62,11 +64,12 @@ def _response_detail(base: str, response: httpx.Response) -> str:
 
 
 def _validated_bases(base_urls: Sequence[str] | None) -> tuple[str, ...]:
-    bases = tuple(base_urls or BINANCE_SPOT_PUBLIC_BASES)
+    bases = tuple(BINANCE_SPOT_PUBLIC_BASES if base_urls is None else base_urls)
     normalized: list[str] = []
     for base in bases:
         value = str(base).rstrip("/")
-        if not value.startswith("https://") or "/" in value.removeprefix("https://"):
+        parsed = urlsplit(value)
+        if parsed.scheme != "https" or not parsed.netloc or parsed.path or parsed.query or parsed.fragment:
             raise ValueError("Binance public base URLs must be HTTPS origins.")
         if value not in normalized:
             normalized.append(value)
@@ -89,7 +92,11 @@ async def get_binance_public_json(
     worsening an IP ban/rate limit; ordinary 4xx validation errors also stop.
     Returns (decoded_json, successful_base_url).
     """
-    if not isinstance(path, str) or not path.startswith("/api/v3/") or "://" in path:
+    if (
+        not isinstance(path, str)
+        or not re.fullmatch(r"/api/v3/[A-Za-z0-9/]+", path)
+        or ".." in path.split("/")
+    ):
         raise ValueError("Only Binance public Spot /api/v3 routes are allowed.")
     bases = _validated_bases(base_urls)
     attempts: list[str] = []

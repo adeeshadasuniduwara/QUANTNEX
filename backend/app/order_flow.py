@@ -128,8 +128,14 @@ def calculate_order_flow(agg_trades: list[dict[str, Any]], bids: list[list[Any]]
                          max_trade_age_seconds: float = 15.0,
                          tick_size: str | Decimal = "0.00000001",
                          depth_levels: int = 10,
-                         footprint_imbalance_ratio: float = 3.0) -> dict[str, Any]:
-    """Return observed aggressor delta, UTC-session delta, footprint and L2 metrics."""
+                         footprint_imbalance_ratio: float = 3.0,
+                         session_start_trade_id: int | None = None) -> dict[str, Any]:
+    """Return recent-window aggressor delta and L2 metrics with honest session coverage.
+
+    A complete UTC session delta is emitted only when the caller supplies the
+    exchange-reported first aggTrade ID for the current UTC day and every
+    aggregate trade from that ID through the latest trade is present.
+    """
     clock = _aware_utc(now or datetime.now(timezone.utc), "now")
     tick = _positive_decimal(tick_size, "tick_size")
     if not math.isfinite(footprint_imbalance_ratio) or footprint_imbalance_ratio <= 1:
@@ -142,8 +148,21 @@ def calculate_order_flow(agg_trades: list[dict[str, Any]], bids: list[list[Any]]
     total_volume = buy_volume + sell_volume
     quote_delta = sum((x["signed_quantity"] * x["price"] for x in trades), Decimal(0))
     session_date = trades[-1]["timestamp"].date()
-    session_delta = sum((x["signed_quantity"] for x in trades
-                         if x["timestamp"].date() == session_date), Decimal(0))
+    session_trades = [x for x in trades if x["timestamp"].date() == session_date]
+    session_delta_sample = sum((x["signed_quantity"] for x in session_trades), Decimal(0))
+    if session_start_trade_id is not None and (
+        isinstance(session_start_trade_id, bool) or not isinstance(session_start_trade_id, int)
+        or session_start_trade_id < 0
+    ):
+        raise OrderFlowDataError("session_start_trade_id must be a non-negative integer.")
+    session_ids = [x["aggregate_trade_id"] for x in session_trades]
+    session_coverage_complete = bool(
+        session_start_trade_id is not None
+        and session_ids
+        and session_ids[0] == session_start_trade_id
+        and session_ids == list(range(session_start_trade_id, session_ids[-1] + 1))
+    )
+    session_delta = session_delta_sample if session_coverage_complete else None
     footprint: dict[Decimal, dict[str, Decimal]] = defaultdict(
         lambda: {"buy_volume": Decimal(0), "sell_volume": Decimal(0)}
     )
@@ -177,8 +196,15 @@ def calculate_order_flow(agg_trades: list[dict[str, Any]], bids: list[list[Any]]
         "last_trade_at": trades[-1]["timestamp"].isoformat(), "trade_data_age_seconds": round(age, 3),
         "buy_volume": float(buy_volume), "sell_volume": float(sell_volume), "delta": float(delta),
         "delta_ratio": float(delta / total_volume) if total_volume else 0.0,
-        "cumulative_delta": float(delta), "quote_delta": float(quote_delta),
+        "window_cumulative_delta": float(delta), "window_delta_scope": "LATEST_AGGTRADE_RESPONSE_WINDOW",
+        "cvd_value": None, "cvd_status": "NOT_AVAILABLE_WITHOUT_CONTINUOUS_TRADE_STATE",
+        "quote_delta": float(quote_delta),
         "session_timezone": "UTC", "session_date_utc": session_date.isoformat(),
-        "session_delta": float(session_delta), "footprint": footprint_rows,
+        "session_delta": float(session_delta) if session_coverage_complete else None,
+        "session_delta_sample": float(session_delta_sample),
+        "session_delta_coverage_complete": session_coverage_complete,
+        "session_delta_scope": "FULL_UTC_SESSION" if session_coverage_complete else "RECENT_WINDOW_SAMPLE_ONLY",
+        "session_start_trade_id": session_start_trade_id,
+        "footprint": footprint_rows,
         "order_book": book, "quality": "OBSERVED_AGGRESSOR_DELTA_AND_L2_SNAPSHOT",
     }

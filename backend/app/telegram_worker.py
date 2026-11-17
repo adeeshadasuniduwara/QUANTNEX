@@ -175,21 +175,28 @@ async def _telegram_post(client, token: str, method: str, payload: dict):
     raise RuntimeError("Telegram retry limit reached.")
 
 def _format_telegram_message(message: str) -> str:
-    """Apply a consistent branded Telegram HTML design system to every outgoing text."""
+    """Render consistent branded Telegram HTML and normalize escaped line breaks."""
     import html
-    content = str(message or "").replace("\r\n", "\n").strip() or "No message content."
+    content = (str(message or "").replace("\r\n", "\n").replace("\r", "\n")
+               .replace("\\\\n", "\n").replace("\\n", "\n").strip() or "No message content.")
     lines = content.splitlines()
     rendered = []
-    if "QUANTNEX" not in lines[0].upper():
-        rendered.extend(["<b>✨ QUANTNEX</b>", ""])
+    if not lines or "QUANTNEX" not in lines[0].upper():
+        rendered.extend(["<b>✦ QUANTNEX</b>", ""])
     for index, line in enumerate(lines):
         safe = html.escape(line, quote=False)
-        if not safe.strip():
+        stripped = line.strip()
+        if not stripped:
             rendered.append("")
         elif index == 0:
-            rendered.append("<b>✨ " + safe + "</b>" if "QUANTNEX" in line.upper() else "<b>" + safe + "</b>")
-        elif (line.strip().isupper() and len(line.strip()) > 3) or line.strip().startswith(("📈", "🧠", "🛡", "🎯", "📊", "⚙", "🚀", "🏅", "🔒")):
+            rendered.append("<b>✦ " + safe + "</b>" if "QUANTNEX" in stripped.upper() else "<b>" + safe + "</b>")
+        elif stripped.isupper() and len(stripped) > 3:
             rendered.append("<b>" + safe + "</b>")
+        elif ":" in line:
+            label, value = line.split(":", 1)
+            rendered.append("<b>" + html.escape(label, quote=False) + ":</b>" + html.escape(value, quote=False))
+        elif stripped.startswith(("Level-touch alert", "Not a real broker", "Signal only", "Verify any real")):
+            rendered.append("<i>" + safe + "</i>")
         else:
             rendered.append(safe)
     return "\n".join(rendered)[:3900]
@@ -475,7 +482,17 @@ async def _deliver_pending_signal_events(client, db, user_id: int, token: str, c
         or_(SignalTradeEvent.telegram_last_attempt_at.is_(None),
             SignalTradeEvent.telegram_last_attempt_at <= cutoff),
     ).order_by(SignalTradeEvent.created_at).limit(10)))
+    protected_trade_ids = {
+        event.trade_id for event in pending
+        if event.event_type in {"PROTECTED_STOP_HIT", "LOCKED_STOP_HIT"}
+    }
     for event in pending:
+        # If TP1 and its later protective exit are both waiting in this batch,
+        # send one final-state alert instead of two near-simultaneous messages.
+        if event.event_type == "TP1_HIT" and event.trade_id in protected_trade_ids:
+            event.telegram_sent_at = datetime.now(timezone.utc)
+            db.commit()
+            continue
         trade = db.get(SignalTrade, event.trade_id)
         message = _signal_lifecycle_message(trade, event) if trade is not None else ""
         if not message:

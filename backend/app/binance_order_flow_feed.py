@@ -59,9 +59,15 @@ async def fetch_spot_order_flow(
     if clock.tzinfo is None:
         raise BinanceOrderFlowFeedError("now must be timezone-aware.")
 
+    session_start = clock.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     trades_task = _get_json(client, "/api/v3/aggTrades", {"symbol": symbol, "limit": trade_limit})
     depth_task = _get_json(client, "/api/v3/depth", {"symbol": symbol, "limit": depth_limit})
-    trades, depth = await asyncio.gather(trades_task, depth_task)
+    session_probe_task = _get_json(client, "/api/v3/aggTrades", {
+        "symbol": symbol, "startTime": int(session_start.timestamp() * 1000), "limit": 1,
+    })
+    trades, depth, session_probe = await asyncio.gather(
+        trades_task, depth_task, session_probe_task
+    )
     observed_at = datetime.now(timezone.utc)
     if not isinstance(trades, list) or not trades:
         raise BinanceOrderFlowFeedError("Binance returned no aggregate trades.")
@@ -73,6 +79,16 @@ async def fetch_spot_order_flow(
         raise BinanceOrderFlowFeedError("Depth snapshot is missing lastUpdateId.") from exc
     if last_update_id < 0:
         raise BinanceOrderFlowFeedError("Depth snapshot has an invalid update ID.")
+    session_start_trade_id = None
+    if isinstance(session_probe, list) and session_probe:
+        try:
+            session_start_trade_id = int(session_probe[0]["a"])
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            raise BinanceOrderFlowFeedError("UTC session-start trade probe is malformed.") from exc
+        if session_start_trade_id < 0:
+            raise BinanceOrderFlowFeedError("UTC session-start trade ID is invalid.")
+    elif not isinstance(session_probe, list):
+        raise BinanceOrderFlowFeedError("UTC session-start trade probe is invalid.")
 
     try:
         metrics = calculate_order_flow(
@@ -82,6 +98,7 @@ async def fetch_spot_order_flow(
             now=clock,
             max_trade_age_seconds=max_trade_age_seconds,
             tick_size=tick_size,
+            session_start_trade_id=session_start_trade_id,
         )
     except (ValueError, TypeError, OverflowError) as exc:
         raise BinanceOrderFlowFeedError(f"Order-flow data rejected: {exc}") from exc

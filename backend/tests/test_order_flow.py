@@ -117,3 +117,68 @@ def test_negative_future_tolerance_is_rejected():
             now=NOW,
             future_tolerance_seconds=-1,
         )
+
+
+def _order_flow_snapshot(delta_ratio=0.25, depth_imbalance=0.15, age=1.0):
+    return {
+        "market_type": "BINANCE_SPOT",
+        "trade_count": 10,
+        "trade_data_age_seconds": age,
+        "delta_ratio": delta_ratio,
+        "data_provenance": {
+            "trade_source": "Binance Spot aggregate trades; buyer-is-maker flag infers aggressor side",
+            "book_source": "BINANCE_SPOT_L2_SNAPSHOT",
+            "bid_ask_semantics": "Aggressor-side inferred trade delta; not consolidated quoted bid/ask volume.",
+            "candle_volume_used": False,
+        },
+        "data_sources": {"trades": "fixture", "depth": "fixture"},
+        "depth_is_continuous": False,
+        "depth_snapshot_update_id": 123,
+        "depth_observed_at": NOW.isoformat(),
+        "feed_mode": "DETERMINISTIC_FIXTURE",
+        "order_book": {"depth_imbalance": depth_imbalance},
+    }
+
+
+def test_order_flow_confirmation_accepts_directionally_aligned_long_and_short():
+    from app.order_flow import evaluate_order_flow_confirmation
+
+    long_result = evaluate_order_flow_confirmation("BUY", _order_flow_snapshot(0.25, 0.15), now=NOW)
+    short_result = evaluate_order_flow_confirmation("SELL", _order_flow_snapshot(-0.25, -0.15), now=NOW)
+
+    assert long_result["status"] == "CONFIRMED"
+    assert long_result["accepted"] is True
+    assert long_result["support_count"] == 2
+    assert short_result["status"] == "CONFIRMED"
+    assert short_result["accepted"] is True
+    assert short_result["support_count"] == 2
+
+
+def test_order_flow_confirmation_rejects_contradicted_mixed_and_neutral_evidence():
+    from app.order_flow import evaluate_order_flow_confirmation
+
+    contradicted = evaluate_order_flow_confirmation("BUY", _order_flow_snapshot(-0.25, -0.15), now=NOW)
+    mixed = evaluate_order_flow_confirmation("BUY", _order_flow_snapshot(0.25, -0.15), now=NOW)
+    neutral = evaluate_order_flow_confirmation("BUY", _order_flow_snapshot(0.0, 0.0), now=NOW)
+
+    assert contradicted["status"] == "CONTRADICTED"
+    assert contradicted["accepted"] is False
+    assert mixed["status"] == "MIXED"
+    assert mixed["accepted"] is False
+    assert neutral["status"] == "NEUTRAL"
+    assert neutral["accepted"] is False
+
+
+def test_order_flow_confirmation_rejects_stale_or_unproven_trade_side_data():
+    from app.order_flow import evaluate_order_flow_confirmation
+
+    with pytest.raises(OrderFlowDataError, match="stale"):
+        evaluate_order_flow_confirmation("BUY", _order_flow_snapshot(age=16.0), now=NOW)
+    stale_depth = _order_flow_snapshot()
+    stale_depth["depth_observed_at"] = (NOW - timedelta(seconds=10)).isoformat()
+    with pytest.raises(OrderFlowDataError, match="depth snapshot is stale"):
+        evaluate_order_flow_confirmation("BUY", stale_depth, now=NOW)
+    unproven = _order_flow_snapshot()
+    unproven["data_provenance"]["candle_volume_used"] = True
+    with pytest.raises(OrderFlowDataError, match="provenance"):
+        evaluate_order_flow_confirmation("BUY", unproven, now=NOW)

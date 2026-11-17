@@ -12,6 +12,63 @@ from app.database import Base
 from app.models import User
 
 
+
+def _order_flow_fixture(side: str, now: datetime, *, contradictory: bool = False, stale: bool = False):
+    sign = -1.0 if side == "SELL" else 1.0
+    if contradictory:
+        sign *= -1.0
+    return {
+        "market_type": "BINANCE_SPOT",
+        "trade_count": 12,
+        "trade_data_age_seconds": 20.0 if stale else 1.0,
+        "buy_volume": 8.0 if sign > 0 else 2.0,
+        "sell_volume": 2.0 if sign > 0 else 8.0,
+        "delta": 6.0 * sign,
+        "delta_ratio": 0.6 * sign,
+        "window_cumulative_delta": 6.0 * sign,
+        "window_delta_scope": "LATEST_AGGTRADE_RESPONSE_WINDOW",
+        "cvd_value": None,
+        "cvd_status": "NOT_AVAILABLE_WITHOUT_CONTINUOUS_TRADE_STATE",
+        "session_timezone": "UTC",
+        "session_delta": None,
+        "session_delta_scope": "RECENT_WINDOW_SAMPLE_ONLY",
+        "session_delta_coverage_complete": False,
+        "order_book": {
+            "best_bid": 99.99, "best_ask": 100.01, "spread_bps": 2.0,
+            "bid_depth_quote": 10000.0, "ask_depth_quote": 9000.0,
+            "depth_imbalance": 0.25 * sign,
+            "microprice": 100.001, "microprice_displacement_bps": 0.1 * sign,
+            "source": "BINANCE_SPOT_L2_SNAPSHOT",
+        },
+        "footprint": [
+            {"price": 100.0, "dominant_side": "BUY" if sign > 0 else "SELL", "is_imbalanced": True},
+        ],
+        "data_provenance": {
+            "trade_source": "Binance Spot aggregate trades; buyer-is-maker flag infers aggressor side",
+            "book_source": "BINANCE_SPOT_L2_SNAPSHOT",
+            "bid_ask_semantics": "Aggressor-side inferred trade delta; not consolidated quoted bid/ask volume.",
+            "candle_volume_used": False,
+        },
+        "data_sources": {
+            "trades": "https://data-api.binance.vision",
+            "depth": "https://data-api.binance.vision",
+            "session_probe": "https://data-api.binance.vision",
+        },
+        "feed_mode": "DETERMINISTIC_FIXTURE",
+        "depth_is_continuous": False,
+        "depth_snapshot_update_id": 123456,
+        "depth_observed_at": now.isoformat(),
+        "session_start_probe_at": None,
+        "quality": "OBSERVED_AGGRESSOR_DELTA_AND_L2_SNAPSHOT",
+    }
+
+
+def _install_order_flow_fixture(monkeypatch, side: str, *, contradictory: bool = False, stale: bool = False):
+    async def fake_order_flow(_client, _symbol, **_kwargs):
+        return _order_flow_fixture(side, datetime.now(timezone.utc), contradictory=contradictory, stale=stale)
+    monkeypatch.setattr(signal_engine, "fetch_spot_order_flow", fake_order_flow)
+
+
 def _synthetic_setup(direction: str, interval: str, now: datetime):
     rows = []
     for index in range(320):
@@ -92,6 +149,8 @@ def test_real_signal_pipeline_generates_and_delivers_synthetic_setup(monkeypatch
     monkeypatch.setattr(signal_engine, "is_binance_spot_symbol", fake_valid_symbol)
     monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
     monkeypatch.setattr(signal_engine, "get_binance_spot_execution_context", fake_execution)
+    if symbol != "XAUUSD":
+        _install_order_flow_fixture(monkeypatch, direction)
     settings = {
         "primary": "5",
         "trend": "60",
@@ -107,6 +166,9 @@ def test_real_signal_pipeline_generates_and_delivers_synthetic_setup(monkeypatch
     assert candidate["side"] == expected_side
     assert candidate["score"] >= 8
     assert candidate["signal_candle_time"]
+    if symbol != "XAUUSD":
+        assert candidate["order_flow"]["status"] == "CONFIRMED"
+        assert candidate["order_flow"]["data_mode"] == "DETERMINISTIC_FIXTURE"
     assert all(result["quality_filters"].values())
     if symbol != "XAUUSD":
         assert candidate["entry_type"] == "MARKET"
@@ -184,6 +246,7 @@ def test_signal_reports_all_sources_when_timeframes_use_mixed_providers(monkeypa
     monkeypatch.setattr(signal_engine, "is_binance_spot_symbol", valid_spot_symbol)
     monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
     monkeypatch.setattr(signal_engine, "get_binance_spot_execution_context", fake_execution)
+    _install_order_flow_fixture(monkeypatch, "BUY")
     settings = {
         "primary": "5",
         "trend": "60",
@@ -216,6 +279,7 @@ def test_signal_reports_combined_provider_sources_for_mixed_timeframes(monkeypat
     monkeypatch.setattr(signal_engine, "is_binance_spot_symbol", valid_spot_symbol)
     monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
     monkeypatch.setattr(signal_engine, "get_binance_spot_execution_context", fake_execution)
+    _install_order_flow_fixture(monkeypatch, "BUY")
     settings = {
         "primary": "5",
         "trend": "60",
@@ -264,6 +328,7 @@ def test_real_signal_pipeline_generates_a_resting_limit_at_ob_zone(monkeypatch):
     monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
     monkeypatch.setattr(signal_engine, "inspect_tf", bullish_analysis)
     monkeypatch.setattr(signal_engine, "get_binance_spot_execution_context", fake_execution)
+    _install_order_flow_fixture(monkeypatch, "BUY")
     settings = {"primary": "5", "trend": "60", "enabled": ["60", "30", "15", "5", "1"], "min_score": 8}
     result = asyncio.run(signal_engine.build_signal(settings, "BTCUSDT"))
     signal = result["signal"]
@@ -377,3 +442,70 @@ def test_build_signal_supports_historical_replay_without_live_provider_calls(mon
     assert result["signal"]["entry_type"] == "MARKET"
     assert result["signal"]["entry_expires_at"] == (replay_as_of + timedelta(seconds=60)).isoformat()
     assert result["signal"]["execution_quality"]["data_mode"] == "HISTORICAL_REPLAY_ASSUMED"
+    assert result["order_flow"]["status"] == "NOT_AVAILABLE_CANDLE_ONLY_REPLAY"
+
+
+def test_live_signal_waits_when_order_flow_contradicts_direction(monkeypatch):
+    now = datetime.now(timezone.utc)
+
+    async def fake_fetch(interval, _outputsize, _symbol):
+        return _synthetic_setup("BUY", interval, now), "Binance Spot"
+
+    async def fake_execution(_symbol):
+        close = _synthetic_setup("BUY", "5min", now)[-1]["close"]
+        return {
+            "best_bid": close - 0.005, "best_ask": close + 0.005, "mid_price": close,
+            "spread_bps": 0.9, "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
+            "tick_size": "0.01", "step_size": "0.001", "min_quantity": "0.001",
+            "min_notional": "5", "observed_at": now.isoformat(), "provider": "Binance Spot",
+        }
+
+    async def valid_symbol(candidate):
+        return candidate == "BTCUSDT"
+
+    monkeypatch.setattr(signal_engine, "is_binance_spot_symbol", valid_symbol)
+    monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
+    monkeypatch.setattr(signal_engine, "get_binance_spot_execution_context", fake_execution)
+    _install_order_flow_fixture(monkeypatch, "BUY", contradictory=True)
+    settings = {"primary": "5", "trend": "60", "enabled": ["60", "30", "15", "5", "1"], "min_score": 8}
+
+    result = asyncio.run(signal_engine.build_signal(settings, "BTCUSDT"))
+
+    assert result["status"] == "WAIT"
+    assert result["signal"] is None
+    assert result["quality_filters"]["order_flow_confirmation"] is False
+    assert result["order_flow"]["status"] == "CONTRADICTED"
+    assert "Order Flow did not confirm BUY" in result["message"]
+
+
+def test_live_signal_waits_when_order_flow_data_is_stale(monkeypatch):
+    now = datetime.now(timezone.utc)
+
+    async def fake_fetch(interval, _outputsize, _symbol):
+        return _synthetic_setup("BUY", interval, now), "Binance Spot"
+
+    async def fake_execution(_symbol):
+        close = _synthetic_setup("BUY", "5min", now)[-1]["close"]
+        return {
+            "best_bid": close - 0.005, "best_ask": close + 0.005, "mid_price": close,
+            "spread_bps": 0.9, "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
+            "tick_size": "0.01", "step_size": "0.001", "min_quantity": "0.001",
+            "min_notional": "5", "observed_at": now.isoformat(), "provider": "Binance Spot",
+        }
+
+    async def valid_symbol(candidate):
+        return candidate == "BTCUSDT"
+
+    monkeypatch.setattr(signal_engine, "is_binance_spot_symbol", valid_symbol)
+    monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
+    monkeypatch.setattr(signal_engine, "get_binance_spot_execution_context", fake_execution)
+    _install_order_flow_fixture(monkeypatch, "BUY", stale=True)
+    settings = {"primary": "5", "trend": "60", "enabled": ["60", "30", "15", "5", "1"], "min_score": 8}
+
+    result = asyncio.run(signal_engine.build_signal(settings, "BTCUSDT"))
+
+    assert result["status"] == "WAIT"
+    assert result["signal"] is None
+    assert result["quality_filters"]["order_flow_confirmation"] is False
+    assert result["order_flow"]["status"] == "ERROR"
+    assert "stale" in result["order_flow"]["error"].lower()

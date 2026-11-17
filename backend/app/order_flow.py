@@ -219,3 +219,181 @@ def calculate_order_flow(agg_trades: list[dict[str, Any]], bids: list[list[Any]]
         "footprint": footprint_rows,
         "order_book": book, "quality": "OBSERVED_AGGRESSOR_DELTA_AND_L2_SNAPSHOT",
     }
+
+
+
+def evaluate_order_flow_confirmation(
+    side: str,
+    snapshot: dict[str, Any],
+    *,
+    max_trade_age_seconds: float = 15.0,
+    max_depth_age_seconds: float = 5.0,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Evaluate directional confirmation from observed aggressor delta and an L2 snapshot.
+
+    This is a transparent sign-confluence gate, not a calibrated probability.
+    It deliberately uses only two non-duplicated observations: recent
+    aggressor-side delta and quote-notional depth imbalance. Microprice is
+    reported separately because it is derived from the same top-of-book data.
+    """
+    if side not in {"BUY", "SELL"}:
+        raise OrderFlowDataError("side must be BUY or SELL.")
+    try:
+        trade_age_limit = float(max_trade_age_seconds)
+        depth_age_limit = float(max_depth_age_seconds)
+    except (TypeError, ValueError, OverflowError):
+        raise OrderFlowDataError("Order-flow freshness limits must be numeric.") from None
+    if (
+        isinstance(max_trade_age_seconds, bool) or isinstance(max_depth_age_seconds, bool)
+        or not math.isfinite(trade_age_limit) or trade_age_limit <= 0
+        or not math.isfinite(depth_age_limit) or depth_age_limit <= 0
+    ):
+        raise OrderFlowDataError("Order-flow freshness limits must be finite and positive.")
+    if not isinstance(snapshot, dict) or snapshot.get("market_type") != "BINANCE_SPOT":
+        raise OrderFlowDataError("Order-flow snapshot must identify Binance Spot market data.")
+    provenance = snapshot.get("data_provenance")
+    if (
+        not isinstance(provenance, dict)
+        or provenance.get("candle_volume_used") is not False
+        or "aggressor" not in str(provenance.get("bid_ask_semantics") or "").lower()
+    ):
+        raise OrderFlowDataError("Order-flow snapshot lacks verified aggressor-side provenance.")
+    if not isinstance(snapshot.get("depth_is_continuous"), bool):
+        raise OrderFlowDataError("Order-flow snapshot must declare its depth continuity state.")
+    update_id = snapshot.get("depth_snapshot_update_id")
+    if isinstance(update_id, bool) or not isinstance(update_id, int) or update_id < 0:
+        raise OrderFlowDataError("Order-flow snapshot has an invalid depth update ID.")
+    if not isinstance(snapshot.get("data_sources"), dict):
+        raise OrderFlowDataError("Order-flow snapshot is missing source-host provenance.")
+    depth_stamp = snapshot.get("depth_observed_at")
+    try:
+        observed = datetime.fromisoformat(str(depth_stamp).replace("Z", "+00:00"))
+        observed = _aware_utc(observed, "depth_observed_at")
+        clock = _aware_utc(now or datetime.now(timezone.utc), "now")
+        depth_age = (clock - observed).total_seconds()
+    except (TypeError, ValueError, OverflowError):
+        raise OrderFlowDataError("Order-flow depth snapshot has an invalid receive timestamp.") from None
+    if depth_age < -2.0 or depth_age > depth_age_limit:
+        raise OrderFlowDataError(
+            f"Order-flow depth snapshot is stale or future-dated ({depth_age:.2f}s; maximum {depth_age_limit:.2f}s)."
+        )
+    trade_count = snapshot.get("trade_count")
+    age = snapshot.get("trade_data_age_seconds")
+    delta_ratio = snapshot.get("delta_ratio")
+    book = snapshot.get("order_book")
+    if isinstance(trade_count, bool) or not isinstance(trade_count, int) or trade_count < 1:
+        raise OrderFlowDataError("Order-flow snapshot has no valid aggregate-trade count.")
+    try:
+        age_value = float(age)
+        delta_value = float(delta_ratio)
+        depth_value = float(book["depth_imbalance"])
+    except (TypeError, ValueError, KeyError, OverflowError):
+        raise OrderFlowDataError("Order-flow snapshot is missing numeric delta or depth evidence.") from None
+    if not all(math.isfinite(value) for value in (age_value, delta_value, depth_value)):
+        raise OrderFlowDataError("Order-flow evidence contains non-finite values.")
+    if age_value < 0 or age_value > trade_age_limit:
+        raise OrderFlowDataError(
+            f"Order-flow trades are stale ({age_value:.2f}s; maximum {trade_age_limit:.2f}s)."
+        )
+    if not -1.0 <= delta_value <= 1.0 or not -1.0 <= depth_value <= 1.0:
+        raise OrderFlowDataError("Order-flow delta/depth imbalance is outside its normalized range.")
+
+    direction = 1.0 if side == "BUY" else -1.0
+    observations = (
+        ("Aggressor trade delta", delta_value),
+        ("L2 quote-notional depth imbalance", depth_value),
+    )
+    supporting: list[str] = []
+    conflicting: list[str] = []
+    neutral: list[str] = []
+    for label, value in observations:
+        if value == 0:
+            neutral.append(f"{label} is neutral")
+        elif value * direction > 0:
+            supporting.append(f"{label} supports {side} ({value:+.4f})")
+        else:
+            conflicting.append(f"{label} conflicts with {side} ({value:+.4f})")
+
+    if len(supporting) > len(conflicting) and supporting:
+        status = "CONFIRMED"
+    elif len(conflicting) > len(supporting):
+        status = "CONTRADICTED"
+    elif supporting and conflicting:
+        status = "MIXED"
+    else:
+        status = "NEUTRAL"
+    return {
+        "status": status,
+        "accepted": status == "CONFIRMED",
+        "side": side,
+        "support_count": len(supporting),
+        "conflict_count": len(conflicting),
+        "confirmation_score": len(supporting) - len(conflicting),
+        "trade_data_age_seconds": round(age_value, 3),
+        "depth_data_age_seconds": round(depth_age, 3),
+        "supporting_evidence": supporting,
+        "conflicting_evidence": conflicting,
+        "neutral_evidence": neutral,
+        "method": "directional sign confluence v1; not calibrated as win probability",
+        "limitations": [
+            "Aggressor side is inferred from Binance aggregate-trade buyer-is-maker semantics.",
+            "Depth imbalance is one REST L2 snapshot, not a sequence-validated continuous book.",
+            "Depth freshness uses local receive time; Binance REST depth does not provide an exchange event timestamp here.",
+            "Recent-window delta is not persistent CVD; UTC session delta is valid only when coverage is complete.",
+        ],
+    }
+
+
+def summarize_order_flow_snapshot(
+    snapshot: dict[str, Any],
+    decision: dict[str, Any],
+) -> dict[str, Any]:
+    """Return a compact signal-safe summary without embedding the full footprint array."""
+    book = snapshot.get("order_book") if isinstance(snapshot.get("order_book"), dict) else {}
+    footprint = snapshot.get("footprint") if isinstance(snapshot.get("footprint"), list) else []
+    return {
+        "status": decision.get("status"),
+        "accepted": decision.get("accepted"),
+        "decision": decision,
+        "market_type": snapshot.get("market_type"),
+        "trade_count": snapshot.get("trade_count"),
+        "trade_data_age_seconds": snapshot.get("trade_data_age_seconds"),
+        "buy_volume": snapshot.get("buy_volume"),
+        "sell_volume": snapshot.get("sell_volume"),
+        "delta": snapshot.get("delta"),
+        "delta_ratio": snapshot.get("delta_ratio"),
+        "window_cumulative_delta": snapshot.get("window_cumulative_delta"),
+        "window_delta_scope": snapshot.get("window_delta_scope"),
+        "cvd_value": snapshot.get("cvd_value"),
+        "cvd_status": snapshot.get("cvd_status"),
+        "session_timezone": snapshot.get("session_timezone"),
+        "session_delta": snapshot.get("session_delta"),
+        "session_delta_scope": snapshot.get("session_delta_scope"),
+        "session_delta_coverage_complete": snapshot.get("session_delta_coverage_complete"),
+        "order_book": {
+            "best_bid": book.get("best_bid"),
+            "best_ask": book.get("best_ask"),
+            "spread_bps": book.get("spread_bps"),
+            "bid_depth_quote": book.get("bid_depth_quote"),
+            "ask_depth_quote": book.get("ask_depth_quote"),
+            "depth_imbalance": book.get("depth_imbalance"),
+            "microprice": book.get("microprice"),
+            "microprice_displacement_bps": book.get("microprice_displacement_bps"),
+            "source": book.get("source"),
+        },
+        "footprint_summary": {
+            "price_bucket_count": len(footprint),
+            "imbalanced_bucket_count": sum(bool(row.get("is_imbalanced")) for row in footprint if isinstance(row, dict)),
+            "buy_dominant_bucket_count": sum(row.get("dominant_side") == "BUY" for row in footprint if isinstance(row, dict)),
+            "sell_dominant_bucket_count": sum(row.get("dominant_side") == "SELL" for row in footprint if isinstance(row, dict)),
+        },
+        "data_provenance": snapshot.get("data_provenance"),
+        "data_sources": snapshot.get("data_sources"),
+        "feed_mode": snapshot.get("feed_mode"),
+        "depth_is_continuous": snapshot.get("depth_is_continuous"),
+        "depth_snapshot_update_id": snapshot.get("depth_snapshot_update_id"),
+        "depth_observed_at": snapshot.get("depth_observed_at"),
+        "session_start_probe_at": snapshot.get("session_start_probe_at"),
+        "quality": snapshot.get("quality"),
+    }

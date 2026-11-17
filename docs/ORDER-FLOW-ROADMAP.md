@@ -101,3 +101,39 @@ Only after Spot order-flow is stable:
 - Compare baseline, each method and combinations using sample size, trade count, win rate, expectancy, profit factor, max drawdown and cost sensitivity. Higher win rate alone is not success.
 - Never invent data, force live signals, place real orders or enable live-money execution. Public feeds remain read-only; paper mode only.
 - Binance Spot is the only currently verified crypto signal market. Futures and true historical footprint/order-book replay remain unsupported/unverified.
+
+
+## Capability matrix (verified current state)
+
+| Capability | Binance Spot | USDⓈ-M Futures | COIN-M Futures | XAUUSD feed |
+|---|---|---|---|---|
+| Dynamic symbol/instrument metadata | Yes: `/api/v3/exchangeInfo`, active Spot permission/status and symbol filters | Not wired | Not wired | MT5/Twelve Data configuration, not Binance metadata |
+| OHLCV signal candles | Yes; public klines with closed-candle freshness checks | Not wired | Not wired | MT5 or Twelve Data |
+| Adaptive MARKET/LIMIT decision | Yes; analytical choice only, with spread/depth/ATR and zone-distance gates | Not wired | Not wired | Reference price only; Binance execution not applicable |
+| Aggressor-side trade delta | Yes; recent `aggTrades`, buyer-is-maker semantics | Not wired | Not wired | Not available from current Gold candle/quote adapters |
+| UTC session delta | Only when the current response begins at the UTC session's first aggregate-trade ID and every subsequent ID is contiguous; otherwise unavailable/sample only | Not wired | Not wired | Not available |
+| Persistent CVD | Not yet; recent-window delta is not persistent CVD | Not wired | Not wired | Not available |
+| Footprint buckets / imbalance | Recent-window price buckets from observed aggTrades | Not wired | Not wired | Not available |
+| Order-book depth | Independent REST L2 snapshot; no sequence continuity guarantee | Not wired | Not wired | Not available |
+| Funding / open interest / liquidations | Not applicable to Spot | Not wired | Not wired | Not available |
+| Historical trade/depth replay | Not yet; current walk-forward uses candles and assumed execution costs | Not wired | Not wired | Not available |
+
+The current supported crypto signal market is Binance Spot only. A Spot SELL is not a Futures short. The current order-flow feed does not claim true consolidated quoted bid/ask volume: it infers aggressor side from Binance aggregate trades. The REST depth response's local receive timestamp is not an exchange event timestamp and does not replace a WebSocket sequence bridge. The live gate rejects snapshots whose local receive age exceeds five seconds, but this is not a substitute for exchange-event sequencing.
+
+## Phase C0 — order-flow-aware live signal gate (PR #189; implementation CI passed, final doc recheck pending)
+
+Branch: `feat/orderflow-aware-signal-gate`. Implementation code commit `6f6702424b5a866d23e1b8afd5f1516b7f1caa52` passed Python 3.12, Python 3.14, backend schema/test job and web-check. Subsequent documentation-only commits are being rechecked on the latest PR head before merge. Latest main base at review: `a8fc002b214a037fd4e1ba63e9c68223444684b1`.
+
+- Add a deterministic order-flow evaluator that uses two non-duplicated observations: recent aggressor `delta_ratio` and L2 quote-notional depth imbalance. Microprice is included in the report but is not counted as a third independent vote because it is derived from top-of-book quantities.
+- A live Binance Spot candidate is eligible only when order-flow data is present, provenance confirms no candle-volume substitution, trade data is fresh, the L2 snapshot's local receive age is at most five seconds, and directional support count exceeds conflict count with at least one supporting observation.
+- CONTRADICTED, MIXED, NEUTRAL, malformed, stale or unavailable order-flow data produces WAIT; no threshold is relaxed to manufacture signals.
+- Include compact per-signal evidence: trade count/age, buy/sell volumes, delta and delta ratio, window-delta scope, UTC session-delta value/coverage, explicit persistent-CVD unavailable status, L2 spread/depth imbalance/microprice, footprint bucket summary, source hosts and depth snapshot continuity state.
+- Historical candle-only walk-forward remains a baseline and explicitly reports order flow unavailable. Deterministic fixtures can inject order-flow snapshots to prove long/short pipeline behavior, but they are not historical-market performance evidence.
+- This gate is a transparent sign-confluence rule, not a calibrated probability or proven win-rate improvement. Its incremental value must be measured later against candle-only baseline and ablation variants.
+
+## Phase C1 — continuous Spot order-flow state (next)
+
+- Implement WebSocket AggTrade rolling state, duplicate and aggregate-trade ID gap detection, reconnect/backfill and UTC session anchoring.
+- Implement REST snapshot + diff-depth WebSocket sequence bridging; invalidate/resync on any update-ID gap.
+- Persist/reconstruct CVD with explicit completeness and reset states.
+- Add synchronized replay fixtures and historical trade/depth capture before claiming the combined model has out-of-sample performance.

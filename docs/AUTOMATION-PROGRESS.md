@@ -509,7 +509,7 @@ Automatic, high-quality Binance signals remain the primary objective. Order-flow
 
 ### Verification status
 
-- PR [#189](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/189) is open from `feat/orderflow-aware-signal-gate`, head `6f6702424b5a866d23e1b8afd5f1516b7f1caa52`, based on current main `a8fc002b214a037fd4e1ba63e9c68223444684b1`. All four checks passed: Backend CI test/schema job, Python 3.12 tests, Python 3.14 tests and web-check. The full diff was reviewed; no secrets or unrelated changes were found. Merge and post-merge verification remain pending.
+- PR [#189](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/189) is open from `feat/orderflow-aware-signal-gate`, based on main `a8fc002b214a037fd4e1ba63e9c68223444684b1`. Implementation code commit `6f6702424b5a866d23e1b8afd5f1516b7f1caa52` passed all four checks: Backend CI test/schema job, Python 3.12 tests, Python 3.14 tests and web-check. Subsequent documentation-only commits are being rechecked on the latest PR head before merge. The full diff was reviewed; no secrets or unrelated changes were found. Merge and post-merge verification remain pending.
 - This sign-confluence evaluator is not calibrated as a win probability. It has not yet demonstrated incremental expectancy or win-rate improvement.
 - The current REST depth is one snapshot, not a continuous sequence-validated book. Persistent CVD, reconnect-safe backfill and historical trade/depth replay remain incomplete.
 - The scheduled live smoke runner has not yet been observed succeeding after PR #188's endpoint failover.

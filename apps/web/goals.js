@@ -15,6 +15,53 @@
   };
   const money=(value,currency)=>new Intl.NumberFormat(undefined,{style:"currency",currency,maximumFractionDigits:2}).format(Number(value||0));
   const safeImageUrl=value=>{try{const url=new URL(String(value||"").trim());return url.protocol==="https:"?url.href:"";}catch{return "";}};
+  let certificateDesigns=[];
+  let selectedCertificateDesign="P-01";
+  const certificateOrientation=()=>$("goalCertificateOrientation")?.value||"portrait";
+  function selectCertificateDesign(id){
+    const design=certificateDesigns.find(item=>item.id===id);if(!design)return;
+    selectedCertificateDesign=id;
+    $("goalCertificateDesigns")?.querySelectorAll(".certificate-design-card").forEach(card=>{
+      const active=card.dataset.designId===id;card.classList.toggle("selected",active);
+      card.setAttribute("aria-pressed",active?"true":"false");
+    });
+    const node=$("goalCertificateDesignStatus");if(node)node.textContent="Selected design: "+design.name+" ("+design.id+").";
+  }
+  function renderCertificateDesigns(){
+    const host=$("goalCertificateDesigns");if(!host)return;
+    host.replaceChildren();
+    const orientation=certificateOrientation();
+    const visible=certificateDesigns.filter(item=>item.orientation===orientation);
+    visible.forEach(design=>{
+      const card=document.createElement("button");card.type="button";card.className="certificate-design-card";
+      card.dataset.designId=design.id;card.setAttribute("aria-pressed",design.id===selectedCertificateDesign?"true":"false");
+      card.classList.toggle("selected",design.id===selectedCertificateDesign);
+      const preview=document.createElement("span");preview.className="certificate-design-preview orientation-"+design.orientation;
+      const safeColor=value=>/^#[0-9a-f]{6}$/i.test(value||"")?value:"#777777";
+      preview.style.setProperty("--cert-accent",safeColor(design.accent));
+      preview.style.setProperty("--cert-light",safeColor(design.light));
+      preview.style.setProperty("--cert-paper",safeColor(design.paper));
+      const mark=document.createElement("i");mark.textContent="Q";preview.append(mark);
+      const name=document.createElement("strong");name.textContent=design.name;
+      const meta=document.createElement("small");meta.textContent=design.id+" · "+design.orientation_label;
+      card.append(preview,name,meta);card.addEventListener("click",()=>selectCertificateDesign(design.id));host.append(card);
+    });
+    if(!visible.some(item=>item.id===selectedCertificateDesign)&&visible.length)selectCertificateDesign(visible[0].id);
+    const node=$("goalCertificateDesignStatus");if(node)node.textContent=visible.length+" unique "+orientation+" designs available.";
+  }
+  async function loadCertificateDesigns(){
+    const host=$("goalCertificateDesigns");
+    try{
+      const data=await api("/api/v1/goals/certificate-designs");
+      certificateDesigns=Array.isArray(data.designs)?data.designs:[];
+      if(certificateDesigns.length!==100||new Set(certificateDesigns.map(item=>item.id)).size!==100)throw new Error("The catalog did not pass its 100-unique-design check.");
+      renderCertificateDesigns();
+      $("goalCertificateOrientation")?.addEventListener("change",renderCertificateDesigns);
+      selectCertificateDesign(selectedCertificateDesign);
+    }catch(error){
+      if(host){host.replaceChildren();const note=document.createElement("p");note.className="p7-note goal-error";note.textContent="Certificate designs could not load: "+error.message;host.append(note);}
+    }
+  }
   function updateImagePreview(){
     const host=$("goalImagePreview");if(!host)return;
     host.replaceChildren();
@@ -146,7 +193,9 @@
       const target_amount=1000;
       const currency="USD";
       const image_url="";
-      const blob=await api("/api/v1/goals/demo-certificate",{method:"POST",body:JSON.stringify({display_name,goal_title,achievement_text,target_amount,currency,image_url})});
+      const design_id=selectedCertificateDesign;
+      const orientation=certificateOrientation();
+      const blob=await api("/api/v1/goals/demo-certificate",{method:"POST",body:JSON.stringify({display_name,goal_title,achievement_text,target_amount,currency,image_url,design_id,orientation})});
       showCertificatePreview(blob,"QUANTNEX demo certificate — NOT VALID");
       status("goalCertificateStatus","Demo preview ready for "+display_name+". This sample is permanently marked DEMO ONLY — NOT VALID and cannot be used as a real achievement certificate.");
     }catch(error){status("goalCertificateStatus","Demo certificate preview failed: "+error.message,true);}
@@ -158,10 +207,12 @@
     if(!id||!display_name){status("goalCertificateStatus","Choose an achieved goal and enter the display name for the certificate.",true);return;}
     const button=$("goalGenerateCertificate");button.disabled=true;button.textContent="Generating…";
     try{
-      const blob=await api("/api/v1/goals/"+id+"/certificate",{method:"POST",body:JSON.stringify({display_name})});
+      const design_id=selectedCertificateDesign;
+      const orientation=certificateOrientation();
+      const blob=await api("/api/v1/goals/"+id+"/certificate",{method:"POST",body:JSON.stringify({display_name,design_id,orientation})});
       showCertificatePreview(blob,"QUANTNEX achievement certificate");
       const url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="QUANTNEX-Achievement.pdf";document.body.append(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(url),30000);
-      status("goalCertificateStatus","A4 gold achievement certificate generated and previewed. Verification is local-workspace integrity only.");
+      status("goalCertificateStatus","Selected "+selectedCertificateDesign+" certificate generated and previewed. Verification is local-workspace integrity only.");
     }catch(error){status("goalCertificateStatus",error.message,true);}
     finally{button.disabled=false;button.textContent="Generate A4 certificate";}
   });
@@ -208,5 +259,6 @@
   $("goalImage")?.addEventListener("input",updateImagePreview);
   $("goalsRefresh")?.addEventListener("click",load);
   updateImagePreview();
+  loadCertificateDesigns();
   load();
 })();

@@ -145,7 +145,7 @@ assert.match(nativeChart, /quantnex:view-changed/, "Chart feed must start on cha
 assert.match(nativeChart, /if\(!isChartViewActive\(\)\|\|selected\(\)\.symbol!==pick\.symbol/, "Late chart history responses must not update a hidden or stale chart.");
 assert.match(chartIntel, /isTradingViewActive/, "Chart intelligence analysis and backtests must pause outside QUANTNEX VIEW.");
 assert.match(chartIntel, /backtestBusy/, "Chart intelligence must prevent overlapping backtest requests.");
-assert.match(html, /quantnex-view-chart\.js\?v=20261116-tradingview-axes-tools1/, "Chart lifecycle fix must invalidate the cached chart bundle.");
+assert.match(html, /quantnex-view-chart\.js\?v=20261116-price-axis-fix1/, "Chart lifecycle fix must invalidate the cached chart bundle.");
 assert.match(html, /quantnex-view-intelligence\.js\?v=20261116-signal-lifecycle1/, "Chart intelligence fix must invalidate the cached intelligence bundle.");
 console.log("QUANTNEX VIEW active-page lifecycle checks passed.");
 

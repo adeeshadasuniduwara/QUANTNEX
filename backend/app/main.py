@@ -1694,6 +1694,14 @@ async def smart_open_paper_trade(payload: dict, user: User = Depends(local_works
         raise HTTPException(status_code=502,detail="Market provider request failed. Check provider configuration and quota.")
 
 
+@app.get("/api/v1/goals/certificate-designs")
+def list_goal_certificate_designs(user: User = Depends(local_workspace)):
+    """Return the curated 50 portrait + 50 landscape certificate design catalog."""
+    from .certificate_designs import certificate_design_catalog
+    return {"designs": certificate_design_catalog(), "count": 100,
+            "portrait_count": 50, "landscape_count": 50}
+
+
 @app.get("/api/v1/goals/demo-certificate")
 @app.post("/api/v1/goals/demo-certificate")
 def download_demo_goal_certificate(payload: dict | None = None, user: User = Depends(local_workspace)):
@@ -1716,6 +1724,13 @@ def download_demo_goal_certificate(payload: dict | None = None, user: User = Dep
         raise HTTPException(status_code=422, detail="Enter a goal name and achievement message within the allowed length.")
     if currency not in {"USD","LKR","EUR","GBP","AUD","CAD"} or not (0 < target_amount <= 1000000000000):
         raise HTTPException(status_code=422, detail="Enter a valid demo goal amount and currency.")
+    from .certificate_designs import get_certificate_design
+    design_id = str(payload.get("design_id") or "P-01")
+    orientation = str(payload.get("orientation") or "").lower() or None
+    try:
+        get_certificate_design(design_id, orientation)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     achieved = datetime.now(timezone.utc)
     created = datetime.fromtimestamp(achieved.timestamp() - 21 * 86400 - 5 * 3600, tz=timezone.utc)
     pdf = build_goal_certificate_pdf(
@@ -1724,6 +1739,7 @@ def download_demo_goal_certificate(payload: dict | None = None, user: User = Dep
         certificate_id="DEMO-NOT-VALID", integrity_fingerprint="0" * 64,
         target_amount=target_amount, saved_amount=target_amount, currency=currency,
         goal_image_url=str(payload.get("image_url") or ""), demo_only=True,
+        design_id=design_id, orientation=orientation,
     )
     return Response(content=pdf, media_type="application/pdf",
         headers={"Content-Disposition": 'inline; filename="QUANTNEX-DEMO-CERTIFICATE-NOT-VALID.pdf"',
@@ -1879,6 +1895,13 @@ def generate_goal_certificate(goal_id: int, payload: dict, user: User = Depends(
     display_name=str(payload.get("display_name","")).strip()
     if not display_name or len(display_name)>80:
         raise HTTPException(status_code=422,detail="Enter the display name to print on the certificate (max 80 characters).")
+    from .certificate_designs import get_certificate_design
+    design_id = str(payload.get("design_id") or "P-01")
+    orientation = str(payload.get("orientation") or "").lower() or None
+    try:
+        get_certificate_design(design_id, orientation)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     certificate_id,digest=_goal_certificate_signature(db,user.id,goal,saved)
     if goal.certificate_hash and not __import__("hmac").compare_digest(goal.certificate_hash,digest):
         raise HTTPException(status_code=409,detail="Certificate integrity check failed. The stored goal record has changed.")
@@ -1896,7 +1919,7 @@ def generate_goal_certificate(goal_id: int, payload: dict, user: User = Depends(
         certificate_id=certificate_id,integrity_fingerprint=digest,
         target_amount=goal.target_amount,saved_amount=saved,currency=goal.currency,
         achievement_text=goal.description or "A meaningful result built through patience, consistency and self-discipline.",
-        goal_image_url=goal.image_url or "")
+        goal_image_url=goal.image_url or "",design_id=design_id,orientation=orientation)
     safe_name="".join(ch for ch in display_name if ch.isalnum() or ch in "-_")[:32] or "Trader"
     return Response(content=pdf,media_type="application/pdf",
         headers={"Content-Disposition":f'attachment; filename="QUANTNEX-Achievement-{safe_name}.pdf"'})

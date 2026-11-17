@@ -114,7 +114,10 @@ async def get_binance_public_json(
     for base in bases:
         try:
             async with _request_semaphore():
-                response = await client.get(f"{base}{path}", params=params)
+                response = await client.get(
+                    f"{base}{path}", params=params,
+                    timeout=httpx.Timeout(3.5, connect=1.5),
+                )
             if response.status_code in {418, 429}:
                 detail = _response_detail(base, response)
                 retry_after = response.headers.get("Retry-After")

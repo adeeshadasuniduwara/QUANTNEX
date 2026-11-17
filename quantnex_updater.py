@@ -20,7 +20,7 @@ MAX_FILES = 300
 MAX_FILE_BYTES = 20 * 1024 * 1024
 MAX_TOTAL_BYTES = 100 * 1024 * 1024
 SKIP_PARTS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache",
-              "dist", "build", "logs", "backups", "updates", "user_data", "secrets"}
+              "dist", "build", "logs", "backups", "updates", "user_data", "user-data", "secrets", "data", "storage", "uploads", "instance", "runtime", "profiles"}
 SKIP_NAMES = {".env", ".env.local", ".env.production"}
 SAFE_ROOTS = {".github", "apps", "backend", "docs", "scripts", "shared", "services", "tests"}
 SAFE_ROOT_FILES = {"README.md", "README_SI.md", "TODO.md", "FEATURE_STATUS_SI.md",
@@ -61,7 +61,9 @@ def _safe_relative(raw: str) -> Path | None:
         return None
     if parts[0] not in SAFE_ROOTS and raw not in SAFE_ROOT_FILES:
         return None
-    if any(part in SKIP_PARTS for part in parts) or any(part.lower() in SKIP_NAMES for part in parts):
+    if any(part.lower() in SKIP_PARTS for part in parts) or any(part.lower() in SKIP_NAMES for part in parts):
+        return None
+    if any(part.lower() == ".env" or part.lower().startswith(".env.") for part in parts):
         return None
     lower = raw.lower()
     if lower.endswith((".sqlite", ".sqlite3", ".db", ".pyc", ".pyo")):

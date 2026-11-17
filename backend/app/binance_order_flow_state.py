@@ -84,6 +84,7 @@ class AggTradeCvdState:
     last_trade_time_ms: int | None = None
     _coverage_before_gap: bool = field(default=False, repr=False)
     _session_coverage_before_gap: bool = field(default=False, repr=False)
+    _session_date_before_gap: date | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         self.symbol = str(self.symbol).upper()
@@ -112,6 +113,7 @@ class AggTradeCvdState:
         self.last_trade_time_ms = None
         self._coverage_before_gap = False
         self._session_coverage_before_gap = False
+        self._session_date_before_gap = None
 
     def _apply_contiguous(
         self,
@@ -153,6 +155,7 @@ class AggTradeCvdState:
         if trade_id != expected:
             self._coverage_before_gap = self.coverage_complete
             self._session_coverage_before_gap = self.session_coverage_complete
+            self._session_date_before_gap = self.session_date_utc
             self.coverage_complete = False
             self.session_coverage_complete = False
             self.gap_detected = True
@@ -182,9 +185,13 @@ class AggTradeCvdState:
             self.gap_expected_id = None
             self.gap_observed_id = None
             self.coverage_complete = self._coverage_before_gap
-            self.session_coverage_complete = self._session_coverage_before_gap
+            self.session_coverage_complete = (
+                self._session_coverage_before_gap
+                and self.session_date_utc == self._session_date_before_gap
+            )
             self._coverage_before_gap = False
             self._session_coverage_before_gap = False
+            self._session_date_before_gap = None
             return "RECOVERED"
         return "BACKFILL_INCOMPLETE"
 
@@ -255,6 +262,8 @@ class BinanceSpotDepthBook:
     def _invalidate(self, expected: int | None = None, observed: int | None = None) -> None:
         self.valid = False
         self.sequence_validated = False
+        self.bids.clear()
+        self.asks.clear()
         self.gap_expected_id = expected
         self.gap_observed_id = observed
 

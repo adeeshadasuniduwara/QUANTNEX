@@ -105,6 +105,21 @@ def _persist_update_offset(db, user_id: int, offset: int) -> None:
     _set(db, user_id, "telegram_update_offset", str(offset))
     db.commit()
 
+BOT_COMMANDS = [
+    {"command":"start","description":"Open your QUANTNEX workspace"},
+    {"command":"help","description":"Show help and available features"},
+    {"command":"status","description":"Check bot and market feed status"},
+    {"command":"scan","description":"Scan a market, e.g. /scan BTCUSDT"},
+    {"command":"timeframes","description":"View signal timeframes"},
+    {"command":"settf","description":"Set primary timeframe"},
+    {"command":"settrend","description":"Set trend timeframe"},
+    {"command":"setanalysis","description":"Set analysis timeframes"},
+    {"command":"gold","description":"Get a live Sri Lankan gold price image"},
+    {"command":"gold_setup","description":"Enable daily Gold reports at 00:00 and 12:00"},
+    {"command":"gold_status","description":"Check daily Gold report settings"},
+    {"command":"gold_off","description":"Disable scheduled Gold reports"},
+]
+
 MENU = {"inline_keyboard": [
     [{"text":"📈 Markets & scans","callback_data":"qx:menu:markets"},{"text":"🧠 Signal controls","callback_data":"qx:menu:signals"}],
     [{"text":"🤖 Paper trading","callback_data":"qx:menu:paper"},{"text":"📊 Reports & goals","callback_data":"qx:menu:reports"}],
@@ -135,6 +150,8 @@ SUBMENUS = {
     ]},
     "qx:menu:reports": {"inline_keyboard": [
         [{"text":"📄 Today's PDF report","callback_data":"qx:daily"}],
+        [{"text":"🥇 Gold price image now","callback_data":"qx:gold"}],
+        [{"text":"🌙 Enable daily Gold reports","callback_data":"qx:gold_setup"}],
         [{"text":"🕗 Daily PDF 20:00 ON/OFF","callback_data":"qx:daily_toggle"}],
         [{"text":"🎯 Personal goals","callback_data":"qx:goals"}],
         [{"text":"🏠 Main menu","callback_data":"qx:menu:home"}]
@@ -246,6 +263,57 @@ async def _send_pdf(client, token: str, chat_id: str, pdf: bytes, filename: str,
         return data.get("result",{})
     raise RuntimeError("Telegram PDF retry limit reached.")
 
+async def _send_photo(client, token: str, chat_id: str, photo: bytes, filename: str, caption: str):
+    """Upload a generated branded gold report image to the user's connected Telegram chat."""
+    url=f"https://api.telegram.org/bot{token}/sendPhoto"
+    for attempt in range(3):
+        response=await client.post(url,data={
+            "chat_id":chat_id,
+            "caption":_format_telegram_message(caption)[:1000],
+            "parse_mode":"HTML",
+        },files={"photo":(filename,photo,"image/jpeg")})
+        try: data=response.json()
+        except ValueError: data={}
+        if response.status_code == 429 and attempt < 2:
+            await asyncio.sleep(max(1,min(10,int((data.get("parameters") or {}).get("retry_after",2)))))
+            continue
+        if response.status_code >= 500 and attempt < 2:
+            await asyncio.sleep(2 ** attempt)
+            continue
+        response.raise_for_status()
+        if not data.get("ok"):
+            raise httpx.HTTPStatusError("Telegram rejected the gold report image.",request=response.request,response=response)
+        return data.get("result",{})
+    raise RuntimeError("Telegram image retry limit reached.")
+
+
+async def _deliver_gold_report(client, db, user_id: int, token: str, chat_id: str,
+                               generated_at: datetime | None = None) -> dict:
+    from .market_data import get_market_overview
+    from .gold_reporting import (
+        append_gold_snapshot, build_gold_report_image, find_24h_reference,
+        gold_snapshot_from_overview,
+    )
+    now = generated_at or datetime.now(timezone.utc)
+    overview = await get_market_overview()
+    snapshot = gold_snapshot_from_overview(overview, now)
+    history_raw = _get(db,user_id,"telegram_gold_price_history","[]")
+    previous = find_24h_reference(history_raw,now)
+    history = append_gold_snapshot(history_raw,snapshot)
+    image = build_gold_report_image(snapshot,previous,now)
+    local = now.astimezone(ZoneInfo("Asia/Colombo"))
+    caption = ("🥇 QUANTNEX GOLD MARKET · "+local.strftime("%d %b %Y %I:%M %p")+" Sri Lanka Time"
+        +"\n24K: LKR "+format(snapshot["24k_per_gram"],",.2f")+"/g"
+        +" · 22K: LKR "+format(snapshot["22k_per_gram"],",.2f")+"/g"
+        +"\n"+("24-hour comparison available." if previous else "24-hour comparison is building from saved price snapshots.")
+        +"\nIndicative XAU/USD spot conversion, not a jeweller retail quote.")
+    await _send_photo(client,token,chat_id,image,
+                      "QUANTNEX-Gold-"+local.strftime("%Y%m%d-%H%M")+".jpg",caption)
+    _set(db,user_id,"telegram_gold_price_history",history)
+    db.commit()
+    return {"snapshot":snapshot,"has_24h":previous is not None}
+
+
 async def _edit_message(client, token: str, chat_id: str, message_id: int, text: str, reply_markup: dict | None = None):
     payload={"chat_id":chat_id,"message_id":message_id,"text":_format_telegram_message(text),"parse_mode":"HTML"}
     if reply_markup is not None: payload["reply_markup"]=reply_markup
@@ -261,6 +329,16 @@ async def _deliver_daily_pdf(client, db, user_id: int, token: str, chat_id: str,
         +"Profit factor: "+(stats["profit_factor"] is not None and str(stats["profit_factor"]) or "—")+" · simulated ledger only; costs may be excluded.")
     await _send_pdf(client,token,chat_id,pdf,"QUANTNEX-Paper-Report-"+stats["date"]+".pdf",caption)
     return stats
+
+def _gold_report_slot(local_now: datetime) -> str | None:
+    """Return a Colombo schedule slot only during its first ten minutes."""
+    if local_now.tzinfo is None:
+        local_now = local_now.replace(tzinfo=ZoneInfo("Asia/Colombo"))
+    local_now = local_now.astimezone(ZoneInfo("Asia/Colombo"))
+    if local_now.hour in {0, 12} and local_now.minute < 10:
+        return local_now.strftime("%Y-%m-%d-%H")
+    return None
+
 
 def _paper_dashboard(db, user_id: int) -> str:
     rows=list(db.scalars(select(PaperTrade).where(PaperTrade.user_id==user_id)))
@@ -384,6 +462,7 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
             "🧠 Review multi-timeframe signals, confirmations and Entry / SL / TP plans.\n"
             "🛡 Manage alert settings and monitor your paper-trading workspace.\n"
             "📊 View your paper ledger, daily PDF reports and personal goals.\n"
+            "🥇 Get 22K/24K Sri Lankan Gold price images and schedule daily reports.\n"
             "🔐 Your workspace settings and personal records remain in your local QUANTNEX environment.\n\n"
             "🇱🇰 සිංහල\n"
             "QUANTNEX වෙත සාදරයෙන් පිළිගනිමු! මෙය වෙළඳපොළ අධ්‍යයනය, trade setups විශ්ලේෂණය සහ ඔබගේ trading routine එක කළමනාකරණය සඳහා නිර්මාණය කළ intelligent workspace එකකි.\n\n"
@@ -392,6 +471,7 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
             "🧠 Multi-timeframe signals, confirmations, Entry / SL / TP සැලසුම් බැලීම.\n"
             "🛡 Alerts සහ Paper Trading පාලනය කිරීම.\n"
             "📊 Paper ledger, Daily PDF reports සහ Personal Goals පරීක්ෂා කිරීම.\n"
+            "🥇 22K/24K රන් මිලේ රූප ලබාගැනීම සහ දිනපතා වාර්තා සකස් කිරීම.\n"
             "🔐 ඔබගේ පුද්ගලික දත්ත සහ settings ඔබගේ local QUANTNEX workspace එකේම පවතී.\n\n"
             "⚠️ IMPORTANT · ආරක්ෂාව\n"
             "Signals are analysis only. Paper mode is simulated. No live broker orders are placed by this Telegram assistant. Always verify market data, spread and risk yourself.\n"
@@ -413,6 +493,34 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
         if not selected:return "Use /setanalysis 1,5,15,30,60"
         settings["enabled"]=selected;_set(db,user_id,"signal_settings",json.dumps(settings));db.commit();_publish_signal_settings_changed()
         return "Analysis timeframes saved: "+", ".join(names[x] for x in selected)
+    if command in {"/gold","/goldprice","/goldmarket"}:
+        try:
+            result=await _deliver_gold_report(client,db,user_id,token,chat_id)
+            return ("🥇 QUANTNEX Gold report image sent."
+                + (" 24-hour comparison included." if result["has_24h"] else " 24-hour comparison will appear after 24 hours of saved snapshots.")
+                + "\\nUse /gold_setup to enable automatic reports at 00:00 and 12:00 Sri Lanka time.")
+        except Exception as exc:
+            logger.warning("Manual gold report failed for local user %s: %s",user_id,type(exc).__name__)
+            return "Gold report unavailable. Check the XAU/USD and USD/LKR provider status, then try /gold again."
+    if command in {"/gold_setup","/gold_on"}:
+        _set(db,user_id,"telegram_gold_report_enabled","true")
+        db.commit()
+        try:
+            result=await _deliver_gold_report(client,db,user_id,token,chat_id)
+            return ("✅ QUANTNEX Daily Gold reports enabled for 00:00 and 12:00 Asia/Colombo."
+                + ("\\n24-hour comparison included." if result["has_24h"] else "\\n24-hour comparison starts building now; it will appear once a 24-hour-old snapshot is available.")
+                + "\\nUse /gold to request an image any time, or /gold_off to stop scheduled reports.")
+        except Exception as exc:
+            logger.warning("Gold setup first report failed for local user %s: %s",user_id,type(exc).__name__)
+            return "Daily Gold reports are enabled, but the first image could not be sent. Use /gold to retry."
+    if command=="/gold_off":
+        _set(db,user_id,"telegram_gold_report_enabled","false");db.commit()
+        return "QUANTNEX Daily Gold reports are now OFF. Use /gold_setup to enable them again."
+    if command=="/gold_status":
+        enabled=_get(db,user_id,"telegram_gold_report_enabled","false")=="true"
+        return ("QUANTNEX Daily Gold reports: "+("ON" if enabled else "OFF")
+            +"\\nSchedule: 00:00 and 12:00 Asia/Colombo."
+            +"\\nCommands: /gold · /gold_setup · /gold_off")
     if command=="/status":
         return "QUANTNEX bot connected. Crypto feed: Binance Spot public candles with Coinbase fallback for BTC/ETH/SOL. Gold feed: "+(gold_feed_provider() or "not configured")+". Broker execution: disabled."
     if command=="/scan":
@@ -527,6 +635,14 @@ async def telegram_worker() -> None:
                         if not chat_id:continue
                         try:token=decrypt_secret(token_row.value)
                         except ValueError:continue
+                        if _get(db,user_id,"telegram_commands_registered","")!="gold-report-v1":
+                            try:
+                                await _telegram_post(client,token,"setMyCommands",{"commands":BOT_COMMANDS})
+                                _set(db,user_id,"telegram_commands_registered","gold-report-v1")
+                                db.commit()
+                            except Exception as command_error:
+                                logger.warning("Telegram command registration failed for local user %s: %s",
+                                               user_id,type(command_error).__name__)
                         offset=int(_get(db,user_id,"telegram_update_offset","0") or "0")
                         # Do not hold a SQLite read snapshot while waiting on Telegram.
                         db.commit()
@@ -586,6 +702,21 @@ async def telegram_worker() -> None:
                                                 _set(db,user_id,"telegram_daily_report_enabled","false" if enabled else "true")
                                                 db.commit()
                                                 answer="🕗 Daily PDF at 20:00 Asia/Colombo is now "+("OFF" if enabled else "ON")+"."
+                                            elif action=="qx:gold":
+                                                try:
+                                                    result=await _deliver_gold_report(client,db,user_id,token,chat_id)
+                                                    answer="🥇 Gold market image sent."+(" 24-hour change included." if result["has_24h"] else " 24-hour history is building.")
+                                                except Exception as exc:
+                                                    logger.warning("Gold report button failed for local user %s: %s",user_id,type(exc).__name__)
+                                                    answer="Gold report unavailable. Try again after checking market feeds."
+                                            elif action=="qx:gold_setup":
+                                                _set(db,user_id,"telegram_gold_report_enabled","true");db.commit()
+                                                try:
+                                                    result=await _deliver_gold_report(client,db,user_id,token,chat_id)
+                                                    answer="✅ Daily Gold reports ON · 00:00 and 12:00 Sri Lanka time."+(" 24-hour change included." if result["has_24h"] else " 24-hour comparison is building.")
+                                                except Exception as exc:
+                                                    logger.warning("Gold report setup button failed for local user %s: %s",user_id,type(exc).__name__)
+                                                    answer="Daily Gold reports enabled, but first image failed. Use /gold to retry."
                                             elif action=="qx:daily":
                                                 try:
                                                     stats=await _deliver_daily_pdf(client,db,user_id,token,chat_id)
@@ -704,6 +835,20 @@ async def telegram_worker() -> None:
                                     logger.warning("Auto-signal scan failed for local user %s market %s: %s",
                                                    user_id,market_symbol,type(exc).__name__)
                             last_monitor[auto_key]=now
+                        # Scheduled Gold images: two user-local snapshots per Colombo day.
+                        if _get(db,user_id,"telegram_gold_report_enabled","false")=="true":
+                            local_now=datetime.now(ZoneInfo("Asia/Colombo"))
+                            slot=_gold_report_slot(local_now)
+                            if slot:
+                                sent_slot=_get(db,user_id,"telegram_gold_report_last_slot","")
+                                if sent_slot!=slot and now-last_daily_attempt.get((user_id,"gold"),0)>=300:
+                                    last_daily_attempt[(user_id,"gold")]=now
+                                    try:
+                                        await _deliver_gold_report(client,db,user_id,token,chat_id,local_now)
+                                        _set(db,user_id,"telegram_gold_report_last_slot",slot)
+                                        db.commit()
+                                    except Exception as exc:
+                                        logger.warning("Scheduled Gold image failed for local user %s: %s",user_id,type(exc).__name__)
                         # Optional daily PDF delivery, once per Colombo calendar day at/after 20:00.
                         if _get(db,user_id,"telegram_daily_report_enabled","false")=="true":
                             local_now=datetime.now(ZoneInfo("Asia/Colombo"))

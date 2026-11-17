@@ -15,3 +15,6 @@ reportlab>=4.2,<5
 # Render the repository's SVG brand mark as vector artwork in certificates.
 # Optional local Windows MT5 bridge; enabled only on supported Python versions.
 MetaTrader5>=5.0.45; platform_system == "Windows" and python_version < "3.14"
+
+# High-resolution branded Telegram gold-price image reports.
+Pillow>=11.3.0,<13

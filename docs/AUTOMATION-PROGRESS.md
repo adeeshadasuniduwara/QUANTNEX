@@ -429,3 +429,45 @@ A signal is not considered good merely because the engine emits it. Validate the
 3. Merge only after checks pass and verify post-merge CI.
 4. Run the walk-forward tool on several liquid and lower-liquidity Binance Spot pairs; record real outputs and limitations without inventing performance claims.
 5. Perform cost sensitivity tests before treating any strategy settings as reliable.
+
+
+## 2026-11-17 — Phase 15: order-flow data integrity and rotating Binance Spot coverage (implementation and CI pending)
+
+### User priority
+
+Automatic, high-quality Binance signals remain the primary objective. Order-flow is now a core signal-quality requirement, not a secondary dashboard feature. Continue through end-to-end data ingestion, strategy evaluation, entry choice and evidence-backed replay; do not treat WAIT or a single green test as proof of completion.
+
+### Latest verified main state
+
+- PR #168 merged deterministic Binance Spot order-flow analytics as `7fff80e39ed4aa7694c49cf9984a11dc643989ae`.
+- PR #169 merged a read-only public REST collector as `6a380e4c257d48e1188aeb3557e12581cb0a4b49`. Its four PR checks passed.
+- Post-merge CI for PR #169 exposed eight signal-lifecycle failures in the then-current main: the recovery guard rejected the first normal post-signal candle because it opened one timeframe after `signal_time`.
+- PR #186 fixed the first-candle boundary and the subsequent-worker-cycle continuity check. It merged as `91585d4584bfe01d730e1d4569b3bb46e4ff4017`.
+- Post-merge Backend CI (Python 3.12/3.14), Backend/Web CI and Web checks passed for PR #186. The separate Telegram `announce` job failed because the configured `TELEGRAM_CHAT_ID` resolves to the bot itself; this is an external notification configuration issue, not a code-test failure.
+
+### Implementation in branch `feat/binance-dynamic-orderflow-coverage`
+
+- Corrected order-flow semantics so a bounded recent aggTrade response is not mislabeled as full UTC-session delta or persistent CVD.
+- Added a Binance UTC-session-start aggregate-trade probe. Full `session_delta` is exposed only when the response starts at the session's first trade ID and IDs are contiguous; otherwise the engine returns a sample and marks coverage incomplete.
+- Exposed `window_cumulative_delta` and an explicit unavailable CVD state until continuous trade state exists.
+- Removed the legacy static `CRYPTO_SYMBOLS` bypass from Spot eligibility. All symbols, including legacy known symbols, must now pass current exchangeInfo validation.
+- Replaced the fixed BTCUSDT/ETHUSDT/SOLUSDT scheduled smoke list with a rotating, deterministic 20-pair sample from the full eligible Binance Spot universe. The smoke run remains a subset, not a claim that every pair was scanned.
+- Added tests for complete/incomplete session coverage, ID gaps, static-shortlist rejection and rotating-universe coverage.
+
+### Verification status and blockers
+
+- This branch has not yet passed CI. Do not merge until the full backend 3.12/3.14, schema and web checks pass.
+- The live smoke workflow is present, but no recent run named `QUANTNEX Live Crypto Signal Smoke` appeared in the latest workflow-run listing checked during this run. Confirm the first run after the rotating-sample workflow merges.
+- Binance Spot is the only verified crypto market type. USDⓈ-M/COIN-M Futures are not yet wired into the signal engine.
+- REST depth is still a snapshot, not a sequence-validated book. Persistent CVD, reconnect/backfill and historical order-flow replay remain incomplete.
+- No claim of improved win rate or profitability is made.
+
+### Exact next steps
+
+1. Complete the branch tests and merge only after all relevant CI checks pass; verify post-merge main.
+2. Manually dispatch the updated read-only smoke workflow after merge and inspect its dynamic universe count, sample and provider errors.
+3. Implement a bounded WebSocket AggTrade state with reconnect/backfill and sequence-gap handling.
+4. Implement the Binance depth snapshot + diff-stream sequence bridge; invalidate/resync on any gap.
+5. Integrate source-aware order-flow evidence into `build_signal` with explicit support/conflict/veto states and deterministic long/short fixtures.
+6. Extend replay with historical trades/depth only where data can be retained/reconstructed; otherwise keep the combined order-flow model out of historical performance claims.
+7. Add transparent method registry and ablation tests for existing structure/SMC plus VWAP, volume profile, liquidity and regime methods before adding more indicators.

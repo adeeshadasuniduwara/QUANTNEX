@@ -51,7 +51,7 @@ async def fetch_spot_order_flow(
     """
     if not isinstance(symbol, str) or not _SYMBOL_RE.fullmatch(symbol):
         raise BinanceOrderFlowFeedError("Invalid Binance Spot symbol.")
-    if not isinstance(trade_limit, int) or not 1 <= trade_limit <= 1000:
+    if isinstance(trade_limit, bool) or not isinstance(trade_limit, int) or not 1 <= trade_limit <= 1000:
         raise BinanceOrderFlowFeedError("trade_limit must be between 1 and 1000.")
     if depth_limit not in (5, 10, 20, 50, 100, 500, 1000):
         raise BinanceOrderFlowFeedError("Unsupported Binance depth limit.")
@@ -80,13 +80,20 @@ async def fetch_spot_order_flow(
     if last_update_id < 0:
         raise BinanceOrderFlowFeedError("Depth snapshot has an invalid update ID.")
     session_start_trade_id = None
+    session_start_probe_at = None
     if isinstance(session_probe, list) and session_probe:
         try:
             session_start_trade_id = int(session_probe[0]["a"])
+            session_start_probe_ms = int(session_probe[0]["T"])
+            session_start_probe_at = datetime.fromtimestamp(
+                session_start_probe_ms / 1000, timezone.utc
+            ).isoformat()
         except (KeyError, TypeError, ValueError, OverflowError) as exc:
             raise BinanceOrderFlowFeedError("UTC session-start trade probe is malformed.") from exc
-        if session_start_trade_id < 0:
-            raise BinanceOrderFlowFeedError("UTC session-start trade ID is invalid.")
+        if session_start_trade_id < 0 or session_start_probe_ms < int(session_start.timestamp() * 1000):
+            raise BinanceOrderFlowFeedError("UTC session-start trade probe is invalid.")
+        if session_start_probe_ms > int(clock.timestamp() * 1000) + 2000:
+            raise BinanceOrderFlowFeedError("UTC session-start trade probe is future-dated.")
     elif not isinstance(session_probe, list):
         raise BinanceOrderFlowFeedError("UTC session-start trade probe is invalid.")
 
@@ -109,6 +116,7 @@ async def fetch_spot_order_flow(
         "depth_snapshot_update_id": last_update_id,
         "depth_is_continuous": False,
         "depth_observed_at": observed_at.isoformat(),
+        "session_start_probe_at": session_start_probe_at,
         "feed_mode": "PUBLIC_REST_SNAPSHOT",
     })
     return metrics

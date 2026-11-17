@@ -696,7 +696,13 @@
           <h3>Achievement certificate</h3>
           <label>Achieved goal<select id="goalCertificateSelect"><option value="">Choose an achieved goal</option></select></label>
           <label>Display name<input id="goalCertificateName" maxlength="80" placeholder="Enter the name to print on the certificate" value=""></label>
-          <button class="primary-btn" id="goalGenerateCertificate">Generate A4 certificate</button>
+          <div class="certificate-gallery-toolbar">
+            <div><strong>Choose your certificate design</strong><p>100 unique professional designs · 50 portrait + 50 landscape</p></div>
+            <label>Page orientation<select id="goalCertificateOrientation"><option value="portrait">Portrait · 50 designs</option><option value="landscape">Landscape · 50 designs</option></select></label>
+          </div>
+          <div class="certificate-design-grid" id="goalCertificateDesigns" aria-label="Certificate design gallery"><p class="p7-note">Loading 100 certificate designs…</p></div>
+          <p class="p7-note" id="goalCertificateDesignStatus" role="status">Selected design: Royal Gold · Classic Double Frame (P-01).</p>
+          <button class="primary-btn" id="goalGenerateCertificate">Generate selected certificate</button>
           <div class="goal-demo-certificate-fields">
             <p class="p7-note">Demo preview is independent of achieved goals. Enter a display name, then preview a sample design. It is permanently marked NOT VALID.</p>
             <label>Demo goal title<input id="goalDemoTitle" maxlength="120" value="My Trading Journey"></label>

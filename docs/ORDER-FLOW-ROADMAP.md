@@ -112,9 +112,9 @@ Only after Spot order-flow is stable:
 | Adaptive MARKET/LIMIT decision | Yes; analytical choice only, with spread/depth/ATR and zone-distance gates | Not wired | Not wired | Reference price only; Binance execution not applicable |
 | Aggressor-side trade delta | Yes; recent `aggTrades`, buyer-is-maker semantics | Not wired | Not wired | Not available from current Gold candle/quote adapters |
 | UTC session delta | Only when the current response begins at the UTC session's first aggregate-trade ID and every subsequent ID is contiguous; otherwise unavailable/sample only | Not wired | Not wired | Not available |
-| Persistent CVD | Not yet; recent-window delta is not persistent CVD | Not wired | Not wired | Not available |
+| Persistent CVD | Deterministic state machine exists; not wired to live WebSocket or persistence | Not wired | Not wired | Not available |
 | Footprint buckets / imbalance | Recent-window price buckets from observed aggTrades | Not wired | Not wired | Not available |
-| Order-book depth | Independent REST L2 snapshot; no sequence continuity guarantee | Not wired | Not wired | Not available |
+| Order-book depth | Live REST L2 snapshot; sequence-validated diff state machine exists but is not connected to live stream | Not wired | Not wired | Not available |
 | Funding / open interest / liquidations | Not applicable to Spot | Not wired | Not wired | Not available |
 | Historical trade/depth replay | Not yet; current walk-forward uses candles and assumed execution costs | Not wired | Not wired | Not available |
 
@@ -131,7 +131,7 @@ Branch: `feat/orderflow-aware-signal-gate`. PR [#189](https://github.com/adeesha
 - Historical candle-only walk-forward remains a baseline and explicitly reports order flow unavailable. Deterministic fixtures can inject order-flow snapshots to prove long/short pipeline behavior, but they are not historical-market performance evidence.
 - This gate is a transparent sign-confluence rule, not a calibrated probability or proven win-rate improvement. Its incremental value must be measured later against candle-only baseline and ablation variants.
 
-## Phase C1 — continuous Spot order-flow state (next)
+## Phase C1 — deterministic Spot order-flow stream state (merged PR #191)
 
 - Implement WebSocket AggTrade rolling state, duplicate and aggregate-trade ID gap detection, reconnect/backfill and UTC session anchoring.
 - Implement REST snapshot + diff-depth WebSocket sequence bridging; invalidate/resync on any update-ID gap.
@@ -139,7 +139,7 @@ Branch: `feat/orderflow-aware-signal-gate`. PR [#189](https://github.com/adeesha
 - Add synchronized replay fixtures and historical trade/depth capture before claiming the combined model has out-of-sample performance.
 
 
-### Phase C1 implementation note — PR #191
+### Phase C1 implementation note — merged PR #191
 
 The current branch implements the deterministic state layer in `backend/app/binance_order_flow_state.py`:
 
@@ -148,4 +148,4 @@ The current branch implements the deterministic state layer in `backend/app/bina
 - `BinanceSpotDepthBook`: REST snapshot loading, buffered diff bridge, zero-quantity deletion, update-ID gap detection, crossed/locked-book rejection, and level clearing on invalidation.
 - Thirteen deterministic tests cover hand-computed long/short delta, duplicates, ID gaps, partial/full backfill, UTC rollover, snapshot bridge, deletes, sequence gaps, resync and malformed/crossed books.
 
-This is a pure state machine only. No WebSocket client, reconnect/backoff, REST backfill network loop, persistent storage or live signal integration is included yet. Those belong to Phase C2; until then, the live signal gate remains REST-snapshot based.
+PR [#191](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/191) merged to `main` as `1f953140f18af5555abf4ed7d008789824a96bd2`. PR and post-merge CI passed 332 tests on Python 3.12 and 332 tests on Python 3.14; schema/test and web-check jobs passed. The optional Telegram announce workflow failed due the invalid/self-directed chat target, unrelated to application code. This is still a pure state machine only: no WebSocket client, reconnect/backoff, REST backfill network loop, persistent storage or live signal integration is included. Until Phase C2 is merged, the live signal gate remains REST-snapshot based.

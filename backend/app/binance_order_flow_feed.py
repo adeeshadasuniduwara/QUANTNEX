@@ -14,9 +14,8 @@ from typing import Any
 import httpx
 
 from .order_flow import calculate_order_flow
+from .binance_public import BinancePublicDataError, get_binance_public_json
 
-BINANCE_SPOT_BASE = "https://api.binance.com"
-_REQUEST_SLOTS = asyncio.Semaphore(4)
 _SYMBOL_RE = re.compile(r"^[A-Z0-9]{5,25}$")
 
 
@@ -24,14 +23,13 @@ class BinanceOrderFlowFeedError(RuntimeError):
     """Raised when public market data cannot safely produce an order-flow snapshot."""
 
 
-async def _get_json(client: httpx.AsyncClient, path: str, params: dict[str, Any]) -> Any:
+async def _get_json(
+    client: httpx.AsyncClient, path: str, params: dict[str, Any]
+) -> tuple[Any, str]:
     try:
-        async with _REQUEST_SLOTS:
-            response = await client.get(f"{BINANCE_SPOT_BASE}{path}", params=params)
-        response.raise_for_status()
-        return response.json()
-    except (httpx.HTTPError, ValueError) as exc:
-        raise BinanceOrderFlowFeedError(f"Binance public endpoint failed: {path}") from exc
+        return await get_binance_public_json(client, path, params)
+    except (BinancePublicDataError, httpx.HTTPError, ValueError) as exc:
+        raise BinanceOrderFlowFeedError(f"Binance public endpoint failed: {path}: {exc}") from exc
 
 
 async def fetch_spot_order_flow(
@@ -65,7 +63,7 @@ async def fetch_spot_order_flow(
     session_probe_task = _get_json(client, "/api/v3/aggTrades", {
         "symbol": symbol, "startTime": int(session_start.timestamp() * 1000), "limit": 1,
     })
-    trades, depth, session_probe = await asyncio.gather(
+    (trades, trades_source), (depth, depth_source), (session_probe, session_source) = await asyncio.gather(
         trades_task, depth_task, session_probe_task
     )
     observed_at = datetime.now(timezone.utc)
@@ -132,5 +130,10 @@ async def fetch_spot_order_flow(
         "depth_observed_at": observed_at.isoformat(),
         "session_start_probe_at": session_start_probe_at,
         "feed_mode": "PUBLIC_REST_SNAPSHOT",
+        "data_sources": {
+            "trades": trades_source,
+            "depth": depth_source,
+            "session_probe": session_source,
+        },
     })
     return metrics

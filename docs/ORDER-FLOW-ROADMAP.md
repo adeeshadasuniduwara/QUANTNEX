@@ -34,9 +34,9 @@ Implemented in `backend/app/binance_order_flow_feed.py`:
 
 PR [#169](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/169) merged as `6a380e4c257d48e1188aeb3557e12581cb0a4b49`. All four PR checks passed. Post-merge Backend/Web checks were subsequently blocked by eight pre-existing signal-lifecycle tests, not by this collector; those lifecycle failures were traced and fixed in PR #186.
 
-## Phase B2 — session coverage and dynamic universe smoke rotation (PR checks passed; merge pending)
+## Phase B2 — session coverage and dynamic universe smoke rotation (merged PR #187)
 
-Branch: `feat/binance-dynamic-orderflow-coverage`. PR #187 head `d1a7e7c9a5caac91a36b2598543de96efc818984` passed Backend CI (303 tests), Backend/Web CI on Python 3.12 and 3.14 (303 tests each) and Web checks. Merge is pending final diff/base review.
+Merged to `main` as `3666519818fb20ded9c1be9259c7e004e8f06dda`. PR CI passed (303 tests on Python 3.12 and 3.14 plus Web checks); post-merge CI also passed (303 tests on Python 3.12 and 3.14 plus Web checks).
 
 ### Order-flow correctness changes
 
@@ -60,7 +60,16 @@ Branch: `feat/binance-dynamic-orderflow-coverage`. PR #187 head `d1a7e7c9a5caac9
 - The latest 1000 aggregate trades are a bounded response window; window delta is not session delta or persistent CVD unless full session ID coverage is proven.
 - No persistent cache, WebSocket reconnect/backoff, historical order-flow replay, or all-symbol continuous scanner yet.
 
+
+## Phase B2.1 — public REST endpoint failover (in progress)
+
+Branch: `fix/binance-public-data-endpoint-failover`.
+
+A scheduled live smoke run failed at Binance Spot `exchangeInfo` discovery before any pair was scanned. The implementation adds a shared public-only REST helper that prefers `data-api.binance.vision`, then falls back to official Binance REST hosts. It retries transport/invalid-JSON/server/408/425 failures, but stops on 403/451 WAF or geo restrictions, 418/429 rate limits and ordinary client validation errors. The helper is restricted to HTTPS origins and public `/api/v3` routes, caps each host attempt at 3.5 seconds (1.5-second connect timeout), limits concurrency per event loop, and records the successful source host and remembers the last successful host per event loop. It is wired into symbol discovery, execution context, candle/history requests and order-flow REST reads. Mocked host-failover tests passed on PR #188 head `e2114a0076875646707188f8d6c5882030e7f4df`: 314 backend tests on Python 3.12 and 3.14 plus Web checks. PR #188 is mergeable; the next scheduled smoke run must still verify actual GitHub-runner reachability.
+
 ## Phase B3 — continuous ingestion (next)
+
+Use Binance's public market-data WebSocket host `data-stream.binance.vision` for Spot AggTrade and diff-depth streams; User Data Streams are not available on that host. Bridge each depth stream to a REST snapshot and invalidate/resync on any update-ID gap. Plan for 24-hour connection expiry/serverShutdown, 20-second ping frames (reply with pong within 60 seconds), a 1,024-stream connection cap, five incoming messages per second, and 300 connection attempts per five minutes. Use combined streams and bounded/on-demand subscriptions rather than blindly subscribing every eligible pair.
 
 - Add bounded per-symbol rolling trade state with aggregate-trade ID tracking, deduplication, REST backfill and reconnect recovery.
 - Add WebSocket depth snapshot bridging using Binance's documented update-ID sequence procedure; invalidate and resync immediately on any gap.

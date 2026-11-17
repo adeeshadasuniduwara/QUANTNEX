@@ -1,0 +1,44 @@
+# Binance Public Market-Data Failover
+
+## Purpose
+
+Keep Binance Spot signal generation from depending on a single REST hostname while preserving strict data provenance and fail-closed behavior.
+
+## Official public hosts
+
+The client prefers the dedicated unauthenticated public-market-data host, then uses the official Spot REST alternatives:
+
+1. `https://data-api.binance.vision`
+2. `https://api.binance.com`
+3. `https://api-gcp.binance.com`
+4. `https://api1.binance.com`
+5. `https://api2.binance.com`
+6. `https://api3.binance.com`
+7. `https://api4.binance.com`
+
+Binance documents the alternative REST base URLs and recommends the market-data-only host for public market data. It also notes that api1–api4 can be less stable. See the [Spot REST API documentation](https://developers.binance.com/en/docs/products/spot/rest-api) and [Market Data Only URLs](https://developers.binance.com/en/docs/products/spot/faqs/market_data_only).
+
+## Retry policy
+
+- Try the next official host for connection/timeout failures, invalid JSON, HTTP 408/425 and server errors.
+- Stop on HTTP 403/451 (WAF/security or geo/legal restriction) and on 418/429 (rate limit/IP ban). Preserve `Retry-After` for 418/429; do not fan out after a restriction or rate limit.
+- Stop on ordinary client errors such as HTTP 400 invalid symbol; another hostname cannot repair invalid request parameters.
+- Cap each host attempt at 3.5 seconds (1.5-second connect timeout) and limit concurrent requests to four per event loop, bounding worst-case failover latency.
+- Restrict the helper to HTTPS origins and public `/api/v3` paths. No signed/private endpoints, API keys or trading routes are allowed.
+- Return the successful base URL so execution and order-flow payloads can record data provenance.
+- Remember the last successful host per event loop and try it first on the next request, avoiding repeated timeouts when one documented host is unavailable.
+
+## Integrated routes
+
+- `/api/v3/exchangeInfo` — dynamic Spot universe and exchange filters.
+- `/api/v3/ticker/bookTicker` and `/api/v3/depth` — execution context.
+- `/api/v3/klines` — live candles and historical candle replay.
+- `/api/v3/aggTrades` — recent trade delta and UTC session-start probe.
+
+## WebSocket follow-on
+
+Binance also documents the public market-data WebSocket host `data-stream.binance.vision`. It is not used by this REST helper; the next stream phase should use it for public AggTrade and depth streams, with REST snapshot bridging and update-ID gap invalidation. User Data Streams are not available on the market-data-only host. The stream design must handle 24-hour connection expiry/serverShutdown, 20-second ping frames with pong within 60 seconds, at most 1,024 streams per connection, five incoming messages per second and 300 connection attempts per five minutes.
+
+## Limitations
+
+Failover improves host availability but cannot bypass an account/IP restriction, an exchange-wide outage or an IP-wide rate limit. The client stops on 418/429 and does not retry with stale cached metadata. The next scheduled live smoke run must verify that the GitHub Actions runner can reach the public market-data host. Binance USDⓈ-M/COIN-M Futures remain outside this Spot client.

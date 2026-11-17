@@ -431,7 +431,7 @@ A signal is not considered good merely because the engine emits it. Validate the
 5. Perform cost sensitivity tests before treating any strategy settings as reliable.
 
 
-## 2026-11-17 — Phase 15: order-flow data integrity and rotating Binance Spot coverage (implementation complete; PR checks passed, merge pending)
+## 2026-11-17 — Phase 15: order-flow data integrity and rotating Binance Spot coverage (merged PR #187; post-merge checks passed)
 
 ### User priority
 
@@ -458,19 +458,47 @@ Automatic, high-quality Binance signals remain the primary objective. Order-flow
 
 - Initial CI on commit `6b6f81586ae09aa0dc5c9a891d48546ba7320a6a` failed: 13 tests failed and 290 passed on Python 3.12/3.14; Web syntax checks passed. Failures were caused by legacy test transports not modeling the newly required `/api/v3/exchangeInfo` validation request, plus historical replay unnecessarily consulting live exchange metadata.
 - Corrective commits now mock Spot eligibility explicitly in candle/signal tests while retaining dedicated real-metadata tests, and make `build_signal(candles_override=...)` an offline replay path that validates symbol syntax without making live exchangeInfo calls. A regression test asserts that replay never performs the live symbol lookup.
-- Final PR head `d1a7e7c9a5caac91a36b2598543de96efc818984` passed Backend CI run #600 (303 tests passed) and Backend/Web CI run #722 (303 tests passed on Python 3.12 and 3.14; `web-check` passed). No failures remain on this head.
-- PR #187 is mergeable and still open. Merge only after one final full-diff/security review and confirming `main` has not moved from the PR base.
-- The live smoke workflow is present, but no recent run named `QUANTNEX Live Crypto Signal Smoke` appeared in the latest workflow-run listing checked during this run. Confirm the first run after the rotating-sample workflow merges.
+- PR #187 merged to `main` as `3666519818fb20ded9c1be9259c7e004e8f06dda`; `main` was verified to point to that commit.
+- Post-merge Backend CI passed: 303 tests. Backend/Web CI passed: 303 tests on Python 3.12 and 3.14; `web-check` passed.
+- The optional Telegram `announce` job failed because the repository's `TELEGRAM_CHAT_ID` resolves to the bot itself. This is a repository secret/configuration issue and does not affect build, test or web checks.
+- Scheduled live smoke run `43827596155` on 2026-11-16 failed before scanning: the GitHub runner could not retrieve Binance Spot `exchangeInfo` metadata. The error was a provider reachability failure, not a WAIT or a fabricated signal.
+- A separate read-only Binance connector check on 2026-11-17 returned 3,703 exchangeInfo symbol records and 1,373 pairs matching the current Spot eligibility filter; BTCUSDT aggregate trades and depth were also returned. This does not prove GitHub Actions runner reachability.
 - Binance Spot is the only verified crypto market type. USDⓈ-M/COIN-M Futures are not yet wired into the signal engine.
 - REST depth is still a snapshot, not a sequence-validated book. Persistent CVD, reconnect/backfill and historical order-flow replay remain incomplete.
 - No claim of improved win rate or profitability is made.
 
+
+## 2026-11-17 — Phase 16: Binance public REST host failover (in progress)
+
+Branch: `fix/binance-public-data-endpoint-failover` (created from post-merge `main` commit `3666519818fb20ded9c1be9259c7e004e8f06dda`).
+
+### Finding
+
+The last scheduled smoke run failed before scanning because `get_binance_spot_symbols()` contacted only `api.binance.com` and could not retrieve `exchangeInfo`. Binance's official Spot documentation lists multiple REST hosts and a dedicated unauthenticated public-market-data host. A single-host dependency is an avoidable availability weakness.
+
+### Changes in progress
+
+- Added `backend/app/binance_public.py` with an HTTPS-only, `/api/v3`-only public REST client.
+- Prefer `data-api.binance.vision`, then try the official general/GCP/alternate Binance hosts for transport failures, invalid JSON, 408/425 and server errors; stop on WAF/geo restrictions and rate limits.
+- Stop immediately on HTTP 418/429 and preserve `Retry-After`; stop on ordinary client-validation errors such as invalid symbol instead of retrying them across hosts.
+- Cap each host attempt at 3.5 seconds (1.5-second connect timeout), limit concurrency to four per event loop, and reuse the last successful host within that loop.
+- Route Spot `exchangeInfo`, `bookTicker`, depth, klines, historical klines and order-flow aggTrades/session probes through the shared helper.
+- Preserve source-host provenance in execution context and order-flow snapshots.
+- Add deterministic mocked tests for host failover, invalid-symbol no-retry, rate-limit stop, all-host failure, route restriction, loop isolation and symbol-discovery integration.
+
+### Verification status
+
+- PR #188 is open. Head `e2114a0076875646707188f8d6c5882030e7f4df` passed Backend CI run #615 (314 tests) and Backend/Web CI run #737 (314 tests on Python 3.12 and 3.14; `web-check` passed).
+- PR #188 is mergeable against `main` at `3666519818fb20ded9c1be9259c7e004e8f06dda`; merge is pending final diff/security review and a current-base check.
+- The live smoke workflow has not yet been verified against this failover implementation. The latest scheduled run found is still the 2026-11-16 provider failure; no 2026-11-17 scheduled run was visible at the time of this check.
+- No real orders, API keys or private endpoints are used.
+
 ### Exact next steps
 
-1. Complete the final diff/base review, merge PR #187 only if the latest main is still its base, then verify post-merge main and CI.
-2. Manually dispatch the updated read-only smoke workflow after merge and inspect its dynamic universe count, sample and provider errors.
-3. Implement a bounded WebSocket AggTrade state with reconnect/backfill and sequence-gap handling.
-4. Implement the Binance depth snapshot + diff-stream sequence bridge; invalidate/resync on any gap.
-5. Integrate source-aware order-flow evidence into `build_signal` with explicit support/conflict/veto states and deterministic long/short fixtures.
-6. Extend replay with historical trades/depth only where data can be retained/reconstructed; otherwise keep the combined order-flow model out of historical performance claims.
+1. Finish Phase 16 tests, create PR, review the full diff/security and merge only after all relevant CI checks pass; verify post-merge main.
+2. Inspect the next scheduled rotating 20-pair live smoke run for dynamic universe count, sample and per-host provider diagnostics.
+3. Implement bounded WebSocket AggTrade state with reconnect/backfill, ID-gap detection and persistent/reconstructable UTC-session delta.
+4. Implement the Binance Spot depth snapshot + diff-stream sequence bridge; invalidate/resync immediately on any update-ID gap.
+5. Integrate source-aware order-flow evidence into `build_signal` with explicit support/conflict/unavailable/veto states and deterministic long/short fixtures.
+6. Extend replay with historical trades/depth only where data can be retained/reconstructed; keep candle-only performance clearly separated from combined order-flow claims.
 7. Add transparent method registry and ablation tests for existing structure/SMC plus VWAP, volume profile, liquidity and regime methods before adding more indicators.

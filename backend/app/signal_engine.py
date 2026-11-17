@@ -14,6 +14,7 @@ from weakref import WeakKeyDictionary
 from typing import Any
 import httpx
 from .config import TWELVE_DATA_API_KEY, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
+from .binance_public import BinancePublicDataError, get_binance_public_json
 
 BASE = "https://api.twelvedata.com/time_series"
 INTERVALS = {"1": "1min", "5": "5min", "15": "15min", "30": "30min", "60": "1h", "240": "4h"}
@@ -68,11 +69,9 @@ async def get_binance_spot_symbols(force_refresh: bool = False) -> list[str]:
             return sorted(cached[1].keys())
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(15, connect=5)) as client:
-                response = await client.get("https://api.binance.com/api/v3/exchangeInfo")
-                response.raise_for_status()
-                payload = response.json()
-        except (httpx.HTTPError, ValueError, TypeError) as exc:
-            raise MarketDataError("Could not retrieve Binance Spot exchange symbol metadata.") from exc
+                payload, _source_base = await get_binance_public_json(client, "/api/v3/exchangeInfo")
+        except (BinancePublicDataError, httpx.HTTPError, ValueError, TypeError) as exc:
+            raise MarketDataError(f"Could not retrieve Binance Spot exchange symbol metadata: {exc}") from exc
 
         if not isinstance(payload, dict) or not isinstance(payload.get("symbols"), list):
             raise MarketDataError("Binance returned invalid Spot exchange metadata.")
@@ -139,16 +138,12 @@ async def get_binance_spot_execution_context(symbol: str) -> dict[str, Any]:
     info = await get_binance_spot_symbol_info(normalized)
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(12, connect=5)) as client:
-            quote_response = await client.get(
-                "https://api.binance.com/api/v3/ticker/bookTicker", params={"symbol": normalized}
+            quote, quote_source_base = await get_binance_public_json(
+                client, "/api/v3/ticker/bookTicker", {"symbol": normalized}
             )
-            quote_response.raise_for_status()
-            quote = quote_response.json()
-            depth_response = await client.get(
-                "https://api.binance.com/api/v3/depth", params={"symbol": normalized, "limit": 20}
+            depth, depth_source_base = await get_binance_public_json(
+                client, "/api/v3/depth", {"symbol": normalized, "limit": 20}
             )
-            depth_response.raise_for_status()
-            depth = depth_response.json()
             quote_asset = str(info.get("quote_asset") or "").upper()
             stable_quotes = {"USDT", "USDC", "FDUSD", "BUSD", "TUSD", "USDP", "DAI", "USDE"}
             quote_asset_usd_rate = 1.0 if quote_asset in stable_quotes else None
@@ -162,12 +157,9 @@ async def get_binance_spot_execution_context(symbol: str) -> dict[str, Any]:
                 )
                 if conversion_symbol:
                     try:
-                        conversion_response = await client.get(
-                            "https://api.binance.com/api/v3/ticker/bookTicker",
-                            params={"symbol": conversion_symbol},
+                        conversion, _conversion_source_base = await get_binance_public_json(
+                            client, "/api/v3/ticker/bookTicker", {"symbol": conversion_symbol}
                         )
-                        conversion_response.raise_for_status()
-                        conversion = conversion_response.json()
                         conversion_bid = float(conversion["bidPrice"])
                         conversion_ask = float(conversion["askPrice"])
                         if (
@@ -176,10 +168,10 @@ async def get_binance_spot_execution_context(symbol: str) -> dict[str, Any]:
                         ):
                             quote_asset_usd_rate = (conversion_bid + conversion_ask) / 2
                             quote_asset_usd_rate_source = conversion_symbol
-                    except (httpx.HTTPError, ValueError, TypeError, KeyError):
+                    except (BinancePublicDataError, httpx.HTTPError, ValueError, TypeError, KeyError):
                         quote_asset_usd_rate = None
-    except (httpx.HTTPError, ValueError, TypeError) as exc:
-        raise MarketDataError(f"Could not retrieve fresh Binance Spot execution data for {normalized}.") from exc
+    except (BinancePublicDataError, httpx.HTTPError, ValueError, TypeError) as exc:
+        raise MarketDataError(f"Could not retrieve fresh Binance Spot execution data for {normalized}: {exc}") from exc
 
     try:
         bid = float(quote["bidPrice"])
@@ -227,6 +219,7 @@ async def get_binance_spot_execution_context(symbol: str) -> dict[str, Any]:
         "min_quantity": str(lot_filter.get("minQty") or ""),
         "min_notional": str(notional_filter.get("minNotional") or notional_filter.get("minNotionalValue") or ""),
         "observed_at": datetime.now(timezone.utc).isoformat(),
+        "data_sources": {"quote": quote_source_base, "depth": depth_source_base},
     }
 
 
@@ -489,9 +482,9 @@ async def fetch_candles_with_provider(interval: str, outputsize: int = 320,
                     params = {"symbol":symbol,"interval":binance_interval,"limit":limit}
                     if end_time is not None:
                         params["endTime"] = end_time
-                    response = await client.get("https://api.binance.com/api/v3/klines", params=params)
-                    response.raise_for_status()
-                    payload = response.json()
+                    payload, _source_base = await get_binance_public_json(
+                        client, "/api/v3/klines", params
+                    )
                     if not isinstance(payload, list) or not payload:
                         raise MarketDataError("Binance returned no candle rows.")
                     rows = payload + rows
@@ -514,7 +507,7 @@ async def fetch_candles_with_provider(interval: str, outputsize: int = 320,
             if len(candles) < 210:
                 raise MarketDataError(f"Not enough CLOSED {symbol} {interval} Binance candles ({len(candles)} received).")
             return candles, "Binance Spot"
-        except (httpx.HTTPError, MarketDataError, ValueError, TypeError, IndexError) as binance_error:
+        except (BinancePublicDataError, httpx.HTTPError, MarketDataError, ValueError, TypeError, IndexError) as binance_error:
             try:
                 candles = await _fetch_coinbase_candles(symbol, interval, requested)
                 return candles, "Coinbase Exchange fallback"
@@ -593,13 +586,11 @@ async def fetch_binance_historical_candles(
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(18, connect=5)) as client:
             while start_ms < end_ms and len(candles) < max_candles:
-                response = await client.get(
-                    "https://api.binance.com/api/v3/klines",
-                    params={"symbol": normalized, "interval": interval,
-                            "startTime": start_ms, "endTime": end_ms, "limit": 1000},
+                rows, _source_base = await get_binance_public_json(
+                    client, "/api/v3/klines",
+                    {"symbol": normalized, "interval": interval,
+                     "startTime": start_ms, "endTime": end_ms, "limit": 1000},
                 )
-                response.raise_for_status()
-                rows = response.json()
                 if not isinstance(rows, list):
                     raise MarketDataError("Binance returned an invalid historical candle page.")
                 if not rows:
@@ -634,7 +625,7 @@ async def fetch_binance_historical_candles(
                 if len(rows) < 1000:
                     break
                 await asyncio.sleep(0.05)
-    except (httpx.HTTPError, ValueError) as exc:
+    except (BinancePublicDataError, httpx.HTTPError, ValueError) as exc:
         raise MarketDataError(f"Binance historical data request failed: {exc}") from exc
     candles.sort(key=lambda row: row["time"])
     if len(candles) < 210:

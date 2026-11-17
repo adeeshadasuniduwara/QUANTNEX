@@ -52,3 +52,24 @@ def test_smoke_run_scans_dynamic_sample_without_hardcoded_symbols(monkeypatch):
 
     assert result == 0
     assert calls == rotating_symbol_sample(universe, 4, day_index=0)
+
+
+def test_smoke_run_skips_new_pairs_without_enough_closed_history(monkeypatch, capsys):
+    import smoke_signal_engine as smoke
+
+    async def fake_universe():
+        return ["NEWUSDT", "BTCUSDT"]
+
+    async def fake_build(settings, symbol):
+        if symbol == "NEWUSDT":
+            raise smoke.MarketDataError("Not enough CLOSED NEWUSDT 5min Binance candles (80 received).")
+        return {"provider": "Binance Spot", "signal": None, "confluence_score": 0}
+
+    monkeypatch.setattr(smoke, "get_binance_spot_symbols", fake_universe)
+    monkeypatch.setattr(smoke, "build_signal", fake_build)
+    result = asyncio.run(_run(None, 8, universe_sample_size=2, sample_day=0))
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert "[SKIP] NEWUSDT" in output
+    assert "1 insufficient-history skip(s)" in output

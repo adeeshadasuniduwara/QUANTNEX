@@ -106,9 +106,9 @@ async def get_binance_public_json(
 ) -> tuple[Any, str]:
     """GET a public Spot market-data route with safe host failover.
 
-    Transport failures, invalid JSON, server errors and host-level access
-    failures try the next documented host. 418/429 stop immediately to avoid
-    worsening an IP ban/rate limit; ordinary 4xx validation errors also stop.
+    Transport failures, invalid JSON, HTTP 408/425 and server errors try
+    the next documented host. 403/451 WAF or geo restrictions and 418/429
+    rate limits stop immediately; ordinary 4xx validation errors also stop.
     Returns (decoded_json, successful_base_url).
     """
     if (

@@ -16,7 +16,7 @@
   <link rel="stylesheet" href="welcome-whats-new.css?v=20261113-1">
   <link rel="stylesheet" href="navigation.css?v=20261112-fade1">
   <link rel="stylesheet" href="prop-challenge.css?v=20261112-challenge1">
-  <link rel="stylesheet" href="donation.css?v=20261113-bep20">
+  <link rel="stylesheet" href="donation.css?v=20261113-bep20">\n  <link rel="stylesheet" href="binance-center.css">
 </head>
 <body>
   <div class="layout">
@@ -52,6 +52,7 @@
         <a class="nav-link" href="#strategy-library">Strategy Library</a>
         <a class="nav-link" href="#portfolio-monitor">Portfolio Monitor</a>
         <a class="nav-link" href="#integrations-center">Connections &amp; Integrations</a>
+        <a class="nav-link" href="#binance-center">Binance Exchange</a>
         <div class="side-caption">STRATEGY RESEARCH</div>
         <div class="side-caption">PERSONAL MILESTONES</div>
         <a class="nav-link" href="#personal-goals">My Goals &amp; Certificates</a>
@@ -739,6 +740,36 @@
         <div class="p7-table-wrap"><table><thead><tr><th>Trade ID</th><th>Market</th><th>Side</th><th>Quantity</th><th>Notional</th><th>Planned stop risk</th></tr></thead><tbody id="portfolioMonitorRows"><tr><td colspan="6" class="empty-row">Loading portfolio…</td></tr></tbody></table></div>
       </section>
 
+
+      <section class="section-heading" id="binance-center"><div><div class="overline">EXCHANGE CONNECTIONS · TESTNET ONLY</div><h2>Binance Exchange Center</h2><p>Connect Spot and USD-M Futures demo accounts, configure risk limits and monitor the execution readiness state.</p></div><span class="pill">DEMO · TESTNET</span></section>
+      <section class="panel workspace-page-panel binance-center-panel">
+        <div class="workspace-page-toolbar"><div><strong>Connection status</strong><p id="bnStatus" role="status">Checking Binance testnet…</p></div><button class="secondary-btn" id="bnRefresh" type="button">Refresh status</button></div>
+        <div class="workspace-page-cards" id="bnCards">
+          <article class="workspace-page-card"><span>Spot Testnet</span><strong id="bnSpotState">—</strong></article>
+          <article class="workspace-page-card"><span>USD-M Futures Testnet</span><strong id="bnFuturesState">—</strong></article>
+          <article class="workspace-page-card"><span>Auto Trading</span><strong id="bnAutoState">OFF</strong></article>
+          <article class="workspace-page-card"><span>Execution</span><strong>Not enabled</strong><small>Signal-to-order execution is intentionally disabled in this release.</small></article>
+        </div>
+        <div class="bn-security-note"><strong>Security first</strong><p>Use Binance Spot Testnet and Futures Testnet keys only. Never paste live API keys here. Disable withdrawals; restrict keys to the QUANTNEX host where possible. Secrets are encrypted in the local backend and never displayed again. API keys must not be sent through Telegram chat.</p></div>
+        <form id="bnConnectForm" class="workspace-page-form bn-connect-form">
+          <label>Spot Testnet API Key<input id="bnSpotKey" type="password" minlength="20" maxlength="160" autocomplete="off" required></label>
+          <label>Spot Testnet Secret<input id="bnSpotSecret" type="password" minlength="20" maxlength="160" autocomplete="new-password" required></label>
+          <label>USD-M Futures Testnet API Key<input id="bnFuturesKey" type="password" minlength="20" maxlength="160" autocomplete="off" required></label>
+          <label>USD-M Futures Testnet Secret<input id="bnFuturesSecret" type="password" minlength="20" maxlength="160" autocomplete="new-password" required></label>
+          <div class="bn-actions"><button class="primary-btn" type="submit" id="bnConnect">Verify &amp; connect both testnets</button><button class="secondary-btn" type="button" id="bnTest">Test saved connection</button><button class="secondary-btn" type="button" id="bnDisconnect">Disconnect</button></div>
+        </form>
+        <div class="bn-risk-block">
+          <div class="workspace-page-toolbar"><div><strong>Risk &amp; daily limits</strong><p>Saved locally and defaulted conservatively.</p></div></div>
+          <form id="bnRiskForm" class="workspace-page-form">
+            <label>Maximum trades per day<input id="bnDailyTrades" type="number" min="1" max="50" value="1" required></label>
+            <label>Maximum open trades<input id="bnOpenTrades" type="number" min="1" max="20" value="1" required></label>
+            <label>Risk per trade (%)<input id="bnRiskPercent" type="number" min="0.01" max="2" step="0.01" value="0.5" required></label>
+            <label>Maximum daily loss (%)<input id="bnDailyLoss" type="number" min="0.01" max="5" step="0.01" value="2" required></label>
+            <div class="bn-actions"><button class="primary-btn" type="submit">Save risk limits</button><button class="secondary-btn" type="button" id="bnAutoOff">Emergency stop · Auto OFF</button></div>
+          </form>
+        </div>
+        <div class="bn-security-note bn-warning"><strong>Automation status: safely disabled</strong><p>The API connection and risk controls are implemented, but this release does not yet execute signals as exchange orders. The Auto Trading control remains OFF until signal validation, order sizing, exchange filters, idempotency, stop protection and recovery tests are completed. No orders are placed by connecting or testing credentials.</p></div>
+      </section>
       <section class="section-heading" id="integrations-center"><div><div class="overline">WORKSPACE SETTINGS · CONNECTION HEALTH</div><h2>Connections &amp; Integrations</h2><p>Check which optional local providers and integrations are configured without exposing any API keys or bot tokens.</p></div><span class="pill">SECRET SAFE</span></section>
       <section class="panel workspace-page-panel">
         <div class="workspace-page-toolbar"><div><strong>Integration status</strong><p id="integrationStatus" role="status">Checking local integrations…</p></div><div class="system-security-actions"><button class="secondary-btn" id="integrationConnectBot">Open Telegram Bot</button><button class="secondary-btn" id="integrationRefresh">Refresh status</button></div></div>
@@ -822,7 +853,7 @@
   <script src="workspace-polish.js?v=20261114-single-icon2"></script>
   <script src="welcome-whats-new.js?v=20261113-1"></script>
   <script src="prop-challenge.js"></script>
-  <script src="donation.js?v=20261113-bep20"></script>
+  <script src="donation.js?v=20261113-bep20"></script>\n  <script src="binance-center.js"></script>
   <script src="navigation.js"></script>
 </body>
 </html>

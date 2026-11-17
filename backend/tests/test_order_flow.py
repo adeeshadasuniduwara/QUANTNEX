@@ -99,3 +99,21 @@ def test_session_delta_is_unavailable_when_latest_trade_window_started_mid_sessi
     assert result["session_delta"] is None
     assert result["session_delta_sample"] == 1
     assert result["session_delta_coverage_complete"] is False
+
+
+def test_conflicting_duplicate_aggregate_trade_ids_are_rejected():
+    rows = [
+        trade(1, 100, 2, 2, False),
+        trade(1, 100, 3, 2, False),
+    ]
+    with pytest.raises(OrderFlowDataError, match="conflicting duplicate"):
+        normalize_agg_trades(rows, now=NOW)
+
+
+def test_negative_future_tolerance_is_rejected():
+    with pytest.raises(OrderFlowDataError, match="future_tolerance_seconds"):
+        normalize_agg_trades(
+            [trade(1, 100, 1, 1, False)],
+            now=NOW,
+            future_tolerance_seconds=-1,
+        )

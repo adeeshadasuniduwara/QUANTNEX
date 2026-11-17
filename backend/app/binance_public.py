@@ -9,6 +9,7 @@ import asyncio
 import re
 from urllib.parse import urlsplit
 from typing import Any, Sequence
+from weakref import WeakKeyDictionary
 
 import httpx
 
@@ -24,8 +25,17 @@ BINANCE_SPOT_PUBLIC_BASES: tuple[str, ...] = (
     "https://api4.binance.com",
 )
 
-_REQUEST_SEMAPHORE = asyncio.Semaphore(4)
+_REQUEST_SEMAPHORES: WeakKeyDictionary = WeakKeyDictionary()
 _RETRYABLE_HTTP_STATUSES = {403, 408, 425, 451}
+
+
+def _request_semaphore() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    semaphore = _REQUEST_SEMAPHORES.get(loop)
+    if semaphore is None:
+        semaphore = asyncio.Semaphore(4)
+        _REQUEST_SEMAPHORES[loop] = semaphore
+    return semaphore
 
 
 class BinancePublicDataError(RuntimeError):
@@ -103,7 +113,7 @@ async def get_binance_public_json(
 
     for base in bases:
         try:
-            async with _REQUEST_SEMAPHORE:
+            async with _request_semaphore():
                 response = await client.get(f"{base}{path}", params=params)
             if response.status_code in {418, 429}:
                 detail = _response_detail(base, response)

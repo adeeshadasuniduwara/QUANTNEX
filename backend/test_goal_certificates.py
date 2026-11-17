@@ -156,3 +156,15 @@ def test_demo_certificate_api_accepts_selected_landscape_design_without_creating
         "orientation": "landscape",
     })
     assert invalid.status_code == 422
+
+
+def test_portrait_and_landscape_designs_use_disjoint_visual_compositions():
+    from app.certificate_designs import certificate_design_catalog
+
+    designs = certificate_design_catalog()
+    portrait = [item for item in designs if item["orientation"] == "portrait"]
+    landscape = [item for item in designs if item["orientation"] == "landscape"]
+    assert len(portrait) == len(landscape) == 50
+    assert {item["motif"] for item in portrait}.isdisjoint({item["motif"] for item in landscape})
+    assert {item["palette"] for item in portrait}.isdisjoint({item["palette"] for item in landscape})
+    assert len({(item["palette"], item["motif"]) for item in designs}) == 100

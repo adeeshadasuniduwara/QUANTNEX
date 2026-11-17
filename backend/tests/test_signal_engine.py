@@ -1,5 +1,12 @@
 from datetime import datetime, timezone, timedelta
 from app.signal_engine import aggregate_minutes, ema, rsi, atr, adx, macd, inspect_tf
+from app import signal_engine
+
+
+def _allow_spot_symbol(monkeypatch, allowed_symbol):
+    async def valid_symbol(symbol):
+        return symbol == allowed_symbol
+    monkeypatch.setattr(signal_engine, "is_binance_spot_symbol", valid_symbol)
 
 def candles(count=320):
     start=datetime(2026,1,1,tzinfo=timezone.utc)
@@ -42,6 +49,7 @@ def test_binance_crypto_candles_use_public_klines(monkeypatch):
     import asyncio
     import httpx
     from app import signal_engine
+    _allow_spot_symbol(monkeypatch, "BTCUSDT")
 
     start = int(datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
     payload = []
@@ -76,6 +84,7 @@ def test_bitcoin_uses_coinbase_candles_when_binance_is_unavailable(monkeypatch):
     import asyncio
     import httpx
     from app import signal_engine
+    _allow_spot_symbol(monkeypatch, "BTCUSDT")
 
     start = int(datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp())
     rows = []
@@ -302,6 +311,7 @@ def test_binance_signal_fetch_drops_current_unclosed_candle(monkeypatch):
     import asyncio
     import httpx
     from app import signal_engine
+    _allow_spot_symbol(monkeypatch, "BTCUSDT")
 
     now = datetime.now(timezone.utc)
     last_open = int((now - timedelta(minutes=5)).timestamp() * 1000)
@@ -388,6 +398,7 @@ def test_build_signal_rejects_stale_provider_candles(monkeypatch):
     import asyncio
     import pytest
     from app import signal_engine
+    _allow_spot_symbol(monkeypatch, "BTCUSDT")
 
     stale_rows = candles(320)
     async def stale_provider(_interval, _outputsize, _symbol):
@@ -402,6 +413,7 @@ def test_build_signal_rejects_stale_provider_candles(monkeypatch):
 def test_low_price_crypto_signal_levels_keep_required_precision(monkeypatch):
     import asyncio
     from app import signal_engine
+    _allow_spot_symbol(monkeypatch, "PEPEUSDT")
 
     now = datetime.now(timezone.utc)
     def fresh_rows(interval):
@@ -457,6 +469,7 @@ def test_crypto_candle_provider_reports_coinbase_fallback(monkeypatch):
     import asyncio
     import httpx
     from app import signal_engine
+    _allow_spot_symbol(monkeypatch, "BTCUSDT")
 
     now = datetime.now(timezone.utc)
     last_open = int(now.timestamp() // 900) * 900 - 900

@@ -25,6 +25,7 @@ from .maintenance import daily_backup_worker, record_audit_event
 from .system_security import router as system_security_router
 from .events import event_hub, router as events_router
 from .prop_challenge import router as prop_challenge_router, mt5_guardian_worker
+from .binance_demo import router as binance_demo_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -82,6 +83,7 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost
 app.include_router(system_security_router)
 app.include_router(events_router)
 app.include_router(prop_challenge_router)
+app.include_router(binance_demo_router)
 
 
 @app.middleware("http")

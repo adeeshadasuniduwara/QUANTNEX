@@ -59,6 +59,10 @@ async def _run(
         print(f"[ERROR] Binance Spot symbol discovery failed: {exc}", file=sys.stderr)
         return 1
 
+    if not universe:
+        print("No eligible Binance Spot pairs were returned by exchangeInfo.", file=sys.stderr)
+        return 1
+
     if symbols is None:
         try:
             symbols = rotating_symbol_sample(

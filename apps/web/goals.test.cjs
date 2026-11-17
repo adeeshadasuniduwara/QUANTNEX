@@ -26,3 +26,13 @@ assert.match(js, /download\.href=certificatePreviewUrl/, "The download link must
 assert.match(js, /QUANTNEX-Demo-Certificate-NOT-VALID\.pdf/, "Demo PDF downloads must be clearly named as invalid samples.");
 assert.match(js, /download\.hidden=false/, "The PDF download link must become visible only after a preview is ready.");
 console.log("QUANTNEX certificate PDF download UI contract checks passed.");
+
+assert.match(html, /id="goalCertificateOrientation"/, "Certificate gallery must let users choose portrait or landscape.");
+assert.match(html, /id="goalCertificateDesigns"/, "Certificate gallery must render the available designs.");
+assert.match(html, /100 unique professional designs/, "Certificate gallery must disclose its 100 unique templates.");
+assert.match(js, /\/api\/v1\/goals\/certificate-designs/, "The UI must load the backend's authoritative certificate catalog.");
+assert.match(js, /certificateDesigns\.length!==100/, "The UI must reject incomplete or duplicated certificate catalogs.");
+assert.match(js, /new Set\(certificateDesigns\.map\(item=>item\.id\)\)\.size!==100/, "The UI must verify every certificate design ID is unique.");
+assert.match(js, /design_id,orientation/, "The selected design and orientation must be sent when generating a PDF.");
+assert.match(js, /certificate-design-card/, "Users must be able to select a visible design card.");
+console.log("QUANTNEX 100-design certificate gallery contract checks passed.");

@@ -176,6 +176,11 @@ def _bootstrap_snapshot(root: Path, latest_sha: str) -> dict:
             temporary = destination.with_name(destination.name + ".quantnex-update-tmp")
             shutil.copy2(source, temporary)
             os.replace(temporary, destination)
+        _save_managed_paths(
+            root, latest_sha,
+            [path.relative_to(staged_root).as_posix()
+             for path in staged_root.rglob("*") if path.is_file()],
+        )
         _save_state(root, latest_sha)
     except Exception:
         for relative in reversed(touched):
@@ -261,6 +266,13 @@ def rollback_last_update(root: Path) -> bool:
                 os.replace(temporary, destination)
             elif destination.exists():
                 destination.unlink()
+        previous_manifest = manifest.get("previous_managed_manifest")
+        managed_manifest_path = root / MANAGED_RELATIVE
+        if isinstance(previous_manifest, str):
+            managed_manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            managed_manifest_path.write_text(previous_manifest, encoding="utf-8")
+        elif previous_manifest is None:
+            managed_manifest_path.unlink(missing_ok=True)
         _save_state(root, previous_sha)
         manifest_path.unlink(missing_ok=True)
         return True

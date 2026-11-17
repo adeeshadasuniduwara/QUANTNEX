@@ -105,6 +105,21 @@ def _persist_update_offset(db, user_id: int, offset: int) -> None:
     _set(db, user_id, "telegram_update_offset", str(offset))
     db.commit()
 
+BOT_COMMANDS = [
+    {"command":"start","description":"Open your QUANTNEX workspace"},
+    {"command":"help","description":"Show help and available features"},
+    {"command":"status","description":"Check bot and market feed status"},
+    {"command":"scan","description":"Scan a market, e.g. /scan BTCUSDT"},
+    {"command":"timeframes","description":"View signal timeframes"},
+    {"command":"settf","description":"Set primary timeframe"},
+    {"command":"settrend","description":"Set trend timeframe"},
+    {"command":"setanalysis","description":"Set analysis timeframes"},
+    {"command":"gold","description":"Get a live Sri Lankan gold price image"},
+    {"command":"gold_setup","description":"Enable daily Gold reports at 00:00 and 12:00"},
+    {"command":"gold_status","description":"Check daily Gold report settings"},
+    {"command":"gold_off","description":"Disable scheduled Gold reports"},
+]
+
 MENU = {"inline_keyboard": [
     [{"text":"📈 Markets & scans","callback_data":"qx:menu:markets"},{"text":"🧠 Signal controls","callback_data":"qx:menu:signals"}],
     [{"text":"🤖 Paper trading","callback_data":"qx:menu:paper"},{"text":"📊 Reports & goals","callback_data":"qx:menu:reports"}],
@@ -447,6 +462,7 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
             "🧠 Review multi-timeframe signals, confirmations and Entry / SL / TP plans.\n"
             "🛡 Manage alert settings and monitor your paper-trading workspace.\n"
             "📊 View your paper ledger, daily PDF reports and personal goals.\n"
+            "🥇 Get 22K/24K Sri Lankan Gold price images and schedule daily reports.\n"
             "🔐 Your workspace settings and personal records remain in your local QUANTNEX environment.\n\n"
             "🇱🇰 සිංහල\n"
             "QUANTNEX වෙත සාදරයෙන් පිළිගනිමු! මෙය වෙළඳපොළ අධ්‍යයනය, trade setups විශ්ලේෂණය සහ ඔබගේ trading routine එක කළමනාකරණය සඳහා නිර්මාණය කළ intelligent workspace එකකි.\n\n"
@@ -455,6 +471,7 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
             "🧠 Multi-timeframe signals, confirmations, Entry / SL / TP සැලසුම් බැලීම.\n"
             "🛡 Alerts සහ Paper Trading පාලනය කිරීම.\n"
             "📊 Paper ledger, Daily PDF reports සහ Personal Goals පරීක්ෂා කිරීම.\n"
+            "🥇 22K/24K රන් මිලේ රූප ලබාගැනීම සහ දිනපතා වාර්තා සකස් කිරීම.\n"
             "🔐 ඔබගේ පුද්ගලික දත්ත සහ settings ඔබගේ local QUANTNEX workspace එකේම පවතී.\n\n"
             "⚠️ IMPORTANT · ආරක්ෂාව\n"
             "Signals are analysis only. Paper mode is simulated. No live broker orders are placed by this Telegram assistant. Always verify market data, spread and risk yourself.\n"
@@ -618,6 +635,14 @@ async def telegram_worker() -> None:
                         if not chat_id:continue
                         try:token=decrypt_secret(token_row.value)
                         except ValueError:continue
+                        if _get(db,user_id,"telegram_commands_registered","")!="gold-report-v1":
+                            try:
+                                await _telegram_post(client,token,"setMyCommands",{"commands":BOT_COMMANDS})
+                                _set(db,user_id,"telegram_commands_registered","gold-report-v1")
+                                db.commit()
+                            except Exception as command_error:
+                                logger.warning("Telegram command registration failed for local user %s: %s",
+                                               user_id,type(command_error).__name__)
                         offset=int(_get(db,user_id,"telegram_update_offset","0") or "0")
                         # Do not hold a SQLite read snapshot while waiting on Telegram.
                         db.commit()

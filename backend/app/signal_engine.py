@@ -323,6 +323,14 @@ def execution_constraints_summary(execution: dict[str, Any] | None) -> dict[str,
     """Expose the authoritative per-symbol constraints used by entry selection."""
     if not isinstance(execution, dict):
         return None
+    market_step_enforced = False
+    try:
+        market_step_enforced = bool(
+            execution.get("market_step_size")
+            and Decimal(str(execution.get("market_step_size"))) > 0
+        )
+    except (InvalidOperation, TypeError, ValueError):
+        market_step_enforced = False
     return {
         "market_type": "BINANCE_SPOT",
         "market_status": execution.get("market_status"),
@@ -341,13 +349,13 @@ def execution_constraints_summary(execution: dict[str, Any] | None) -> dict[str,
             "step": execution.get("limit_step_size", execution.get("step_size")),
         },
         "market_quantity": {
-            "min": execution.get("market_min_quantity"),
-            "max": execution.get("market_max_quantity"),
-            "step": execution.get("market_step_size"),
-            "additional_step_enforced": bool(
-                execution.get("market_step_size")
-                and Decimal(str(execution.get("market_step_size"))) > 0
-            ),
+            "lot_size_min": execution.get("limit_min_quantity", execution.get("min_quantity")),
+            "lot_size_max": execution.get("limit_max_quantity"),
+            "lot_size_step": execution.get("limit_step_size", execution.get("step_size")),
+            "market_lot_min": execution.get("market_min_quantity"),
+            "market_lot_max": execution.get("market_max_quantity"),
+            "market_lot_step": execution.get("market_step_size"),
+            "additional_market_step_enforced": market_step_enforced,
         },
         "notional": {
             "minimum": execution.get("min_notional"),

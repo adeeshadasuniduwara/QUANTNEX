@@ -661,10 +661,10 @@ async def telegram_worker() -> None:
                         if not chat_id:continue
                         try:token=decrypt_secret(token_row.value)
                         except ValueError:continue
-                        if _get(db,user_id,"telegram_commands_registered","")!="gold-report-v1":
+                        if _get(db,user_id,"telegram_commands_registered","")!="binance-demo-v1":
                             try:
                                 await _telegram_post(client,token,"setMyCommands",{"commands":BOT_COMMANDS})
-                                _set(db,user_id,"telegram_commands_registered","gold-report-v1")
+                                _set(db,user_id,"telegram_commands_registered","binance-demo-v1")
                                 db.commit()
                             except Exception as command_error:
                                 logger.warning("Telegram command registration failed for local user %s: %s",

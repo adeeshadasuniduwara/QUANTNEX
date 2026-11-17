@@ -315,6 +315,16 @@ async def _deliver_daily_pdf(client, db, user_id: int, token: str, chat_id: str,
     await _send_pdf(client,token,chat_id,pdf,"QUANTNEX-Paper-Report-"+stats["date"]+".pdf",caption)
     return stats
 
+def _gold_report_slot(local_now: datetime) -> str | None:
+    """Return a Colombo schedule slot only during its first ten minutes."""
+    if local_now.tzinfo is None:
+        local_now = local_now.replace(tzinfo=ZoneInfo("Asia/Colombo"))
+    local_now = local_now.astimezone(ZoneInfo("Asia/Colombo"))
+    if local_now.hour in {0, 12} and local_now.minute < 10:
+        return local_now.strftime("%Y-%m-%d-%H")
+    return None
+
+
 def _paper_dashboard(db, user_id: int) -> str:
     rows=list(db.scalars(select(PaperTrade).where(PaperTrade.user_id==user_id)))
     opened=[row for row in rows if str(row.status).upper()=="OPEN"]
@@ -803,8 +813,8 @@ async def telegram_worker() -> None:
                         # Scheduled Gold images: two user-local snapshots per Colombo day.
                         if _get(db,user_id,"telegram_gold_report_enabled","false")=="true":
                             local_now=datetime.now(ZoneInfo("Asia/Colombo"))
-                            if local_now.hour in {0,12} and local_now.minute < 10:
-                                slot=local_now.strftime("%Y-%m-%d-%H")
+                            slot=_gold_report_slot(local_now)
+                            if slot:
                                 sent_slot=_get(db,user_id,"telegram_gold_report_last_slot","")
                                 if sent_slot!=slot and now-last_daily_attempt.get((user_id,"gold"),0)>=300:
                                     last_daily_attempt[(user_id,"gold")]=now

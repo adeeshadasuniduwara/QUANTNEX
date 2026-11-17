@@ -725,7 +725,8 @@ def test_binance_exchange_info_discovers_dynamic_spot_pairs_and_filters_ineligib
     monkeypatch.setattr(signal_engine, "_BINANCE_SPOT_SYMBOLS_CACHE", None)
     payload = {"symbols": [
         {"symbol": "BTCUSDT", "status": "TRADING", "baseAsset": "BTC",
-         "quoteAsset": "USDT", "isSpotTradingAllowed": True},
+         "quoteAsset": "USDT", "isSpotTradingAllowed": True, "orderTypes": ["LIMIT", "MARKET"],
+         "baseAssetPrecision": 8, "quotePrecision": 8, "quoteAssetPrecision": 8},
         {"symbol": "1000PEPEUSDT", "status": "TRADING", "baseAsset": "1000PEPE",
          "quoteAsset": "USDT", "isSpotTradingAllowed": True},
         {"symbol": "OLDUSDT", "status": "BREAK", "baseAsset": "OLD",
@@ -752,6 +753,10 @@ def test_binance_exchange_info_discovers_dynamic_spot_pairs_and_filters_ineligib
     assert "BTCUSDT" in symbols
     assert "OLDUSDT" not in symbols
     assert "MARGINONLYUSDT" not in symbols
+    cached_info = asyncio.run(signal_engine.get_binance_spot_symbol_info("BTCUSDT"))
+    assert cached_info["order_types"] == ["LIMIT", "MARKET"]
+    assert cached_info["base_asset_precision"] == 8
+    assert cached_info["quote_precision"] == 8
     assert asyncio.run(signal_engine.is_binance_spot_symbol("1000PEPEUSDT")) is True
     assert asyncio.run(signal_engine.is_binance_spot_symbol("NOT-A-PAIR")) is False
 
@@ -1104,3 +1109,50 @@ def test_binance_entry_selector_fails_closed_when_market_lot_filter_is_missing()
     selected = select_binance_entry("BUY", 100.0, 2.0, {"low": 99.8, "high": 100.0}, execution)
     assert selected is not None
     assert selected["entry_type"] == "LIMIT"
+
+
+def test_execution_context_rejects_market_when_order_type_or_market_lot_filter_is_missing(monkeypatch):
+    import asyncio
+    from app import signal_engine
+
+    monkeypatch.setattr(signal_engine, "_BINANCE_SPOT_SYMBOLS_CACHE", None)
+    exchange_info = {"symbols": [{
+        "symbol": "FOOUSDT", "status": "TRADING", "baseAsset": "FOO", "quoteAsset": "USDT",
+        "isSpotTradingAllowed": True, "orderTypes": ["LIMIT"],
+        "baseAssetPrecision": 8, "quotePrecision": 8, "quoteAssetPrecision": 8,
+        "filters": [
+            {"filterType": "PRICE_FILTER", "tickSize": "0.01"},
+            {"filterType": "LOT_SIZE", "stepSize": "0.001", "minQty": "0.001", "maxQty": "100000"},
+            {"filterType": "NOTIONAL", "minNotional": "5"},
+        ],
+    }]}
+
+    async def fake_public_json(_client, path, params):
+        if path == "/api/v3/exchangeInfo":
+            return exchange_info, "https://data-api.binance.vision"
+        if path == "/api/v3/ticker/bookTicker":
+            return {
+                "bidPrice": "100.00", "bidQty": "1000",
+                "askPrice": "100.02", "askQty": "1000",
+            }, "https://data-api.binance.vision"
+        if path == "/api/v3/depth":
+            return {
+                "bids": [["100.00", "1000"]], "asks": [["100.02", "1000"]],
+            }, "https://data-api.binance.vision"
+        raise AssertionError(path)
+
+    monkeypatch.setattr(signal_engine, "get_binance_public_json", fake_public_json)
+    context = asyncio.run(signal_engine.get_binance_spot_execution_context("FOOUSDT"))
+
+    assert context["order_types"] == ["LIMIT"]
+    assert context["market_order_supported"] is False
+    assert context["limit_order_supported"] is True
+    assert context["market_lot_size_available"] is False
+    selected = signal_engine.select_binance_entry(
+        "BUY", 100.0, 2.0, {"low": 99.8, "high": 100.0}, context
+    )
+    assert selected is not None
+    assert selected["entry_type"] == "LIMIT"
+    constraints = signal_engine.execution_constraints_summary(context)
+    assert constraints["market_quantity"]["lot_size_step"] == "0.001"
+    assert constraints["market_quantity"]["market_lot_step"] is None

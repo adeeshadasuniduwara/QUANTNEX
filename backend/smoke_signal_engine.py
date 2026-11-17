@@ -84,6 +84,7 @@ async def _run(
             return 2
 
     failures = 0
+    skipped = 0
     print("QUANTNEX read-only signal smoke test")
     print("No Telegram messages are sent and no broker orders are placed.")
     print("-" * 72)
@@ -111,7 +112,17 @@ async def _run(
                     f"TP3={_format_price(symbol, signal['tp3'])}"
                 )
                 print(f"  Candle={signal['signal_candle_time']}")
-        except (MarketDataError, ValueError, TypeError, KeyError) as exc:
+        except MarketDataError as exc:
+            detail = str(exc)
+            if any(marker in detail for marker in (
+                "Not enough CLOSED", "Not enough valid CLOSED", "Not enough fully closed"
+            )):
+                skipped += 1
+                print(f"[SKIP] {symbol} | insufficient closed history for current indicators: {detail}")
+            else:
+                failures += 1
+                print(f"[ERROR] {symbol} | {type(exc).__name__}: {exc}")
+        except (ValueError, TypeError, KeyError) as exc:
             failures += 1
             print(f"[ERROR] {symbol} | {type(exc).__name__}: {exc}")
         except Exception as exc:  # keep checking other symbols if one provider fails
@@ -121,7 +132,10 @@ async def _run(
             await asyncio.sleep(0.1)
 
     print("-" * 72)
-    print(f"Finished: {len(symbols) - failures} successful scan(s), {failures} provider/error failure(s).")
+    print(
+        f"Finished: {len(symbols) - failures - skipped} successful scan(s), "
+        f"{skipped} insufficient-history skip(s), {failures} provider/error failure(s)."
+    )
     print(
         "Coverage note: this is a rotating read-only smoke subset, not a claim that "
         "every Binance pair was scanned in this run."

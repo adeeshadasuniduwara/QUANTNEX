@@ -27,7 +27,7 @@ BINANCE_SPOT_PUBLIC_BASES: tuple[str, ...] = (
 
 _REQUEST_SEMAPHORES: WeakKeyDictionary = WeakKeyDictionary()
 _PREFERRED_BASES: WeakKeyDictionary = WeakKeyDictionary()
-_RETRYABLE_HTTP_STATUSES = {403, 408, 425, 451}
+_RETRYABLE_HTTP_STATUSES = {408, 425}
 
 
 def _request_semaphore() -> asyncio.Semaphore:

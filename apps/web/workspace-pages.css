@@ -117,3 +117,26 @@ html{transition:zoom 180ms cubic-bezier(.2,.75,.25,1)}
 .goal-demo-certificate-fields>p{margin:0;color:#b9aa84;font-size:12px;line-height:1.5}
 .goal-demo-certificate-fields label{display:grid;gap:6px;color:#aaa;font-size:12px}
 .goal-demo-certificate-fields input{width:100%;min-height:39px;padding:9px;border:1px solid #343434;border-radius:8px;background:#111;color:#eee}
+
+
+/* Certificate Studio: 100 selectable, individually identified layouts. */
+.certificate-gallery-toolbar{display:flex;align-items:end;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:13px 14px;border:1px solid #333;border-radius:10px;background:#141414}
+.certificate-gallery-toolbar strong{display:block;color:#eee;font-size:12px}
+.certificate-gallery-toolbar p{margin:4px 0 0;color:#999;font-size:10px}
+.certificate-gallery-toolbar label{display:grid;gap:5px;min-width:190px;color:#aaa;font-size:10px}
+.certificate-gallery-toolbar select{min-height:38px;padding:8px 10px;border:1px solid #444;border-radius:8px;background:#0b0b0b;color:#eee;font:inherit}
+.certificate-design-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:11px;max-height:590px;overflow:auto;padding:2px 3px 8px}
+.certificate-design-card{display:grid;gap:7px;min-width:0;padding:9px;border:1px solid #333;border-radius:10px;background:#151515;color:#eee;text-align:left;cursor:pointer;transition:border-color .18s,transform .18s,background .18s}
+.certificate-design-card:hover{border-color:#888;transform:translateY(-2px);background:#1b1b1b}
+.certificate-design-card.selected{border:2px solid #d7bd75;padding:8px;background:#211d13;box-shadow:0 0 0 2px #d7bd751c}
+.certificate-design-card>strong{font-size:10px;line-height:1.35;min-height:27px}
+.certificate-design-card>small{font-size:9px;color:#999;letter-spacing:.05em}
+.certificate-design-preview{position:relative;display:grid;place-items:center;aspect-ratio:210/297;overflow:hidden;border:5px double var(--cert-accent);background:var(--cert-paper);box-shadow:inset 0 0 0 3px var(--cert-light)}
+.certificate-design-preview.orientation-landscape{aspect-ratio:297/210}
+.certificate-design-preview:before{content:"";position:absolute;inset:8%;border:1px solid var(--cert-accent);opacity:.8}
+.certificate-design-preview:after{content:"CERTIFICATE  ·  OF ACHIEVEMENT";position:absolute;top:38%;left:4%;right:4%;text-align:center;font:700 6px Georgia,serif;letter-spacing:.07em;color:var(--cert-accent)}
+.certificate-design-preview i:first-child{position:absolute;top:13%;font:700 13px Georgia,serif;color:var(--cert-paper);background:var(--cert-accent);border-radius:50%;width:22px;height:22px;display:grid;place-items:center}
+.certificate-design-preview-line{position:absolute;bottom:23%;width:42%;height:1px;background:var(--cert-light)}
+.certificate-design-preview.orientation-landscape:before{inset:9%}
+#goalCertificateDesignStatus{margin:0;color:#c6b47f;font-size:10px}
+@media(max-width:620px){.certificate-design-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-height:520px}.certificate-gallery-toolbar{align-items:stretch;flex-direction:column}.certificate-gallery-toolbar label{min-width:0}.certificate-design-card{padding:7px}.certificate-design-card.selected{padding:6px}}

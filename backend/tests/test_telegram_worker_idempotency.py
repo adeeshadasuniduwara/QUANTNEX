@@ -107,7 +107,7 @@ def test_telegram_formatter_normalizes_literal_newlines_and_styles_message():
     )
     assert "\\\\n" not in rendered
     assert "Observed price:" in rendered
-    assert "<b>🎯 QUANTNEX" in rendered
+    assert "<b>✦ 🎯 QUANTNEX" in rendered
     assert "<b>Observed price:</b>" in rendered
     assert "<i>Level-touch alert only.</i>" in rendered
 

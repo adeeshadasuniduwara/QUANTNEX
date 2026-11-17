@@ -104,6 +104,20 @@ async def get_binance_spot_symbols(force_refresh: bool = False) -> list[str]:
                 "symbol": symbol,
                 "base_asset": base,
                 "quote_asset": quote,
+                "status": str(item.get("status") or ""),
+                "is_spot_trading_allowed": (
+                    spot_allowed is True or "SPOT" in permissions or any(
+                        isinstance(group, list) and "SPOT" in group for group in permission_sets
+                    )
+                ),
+                "order_types": [
+                    str(order_type).upper() for order_type in (item.get("orderTypes") or [])
+                    if isinstance(order_type, str)
+                ],
+                "base_asset_precision": item.get("baseAssetPrecision"),
+                "quote_precision": item.get("quotePrecision"),
+                "quote_asset_precision": item.get("quoteAssetPrecision"),
+                "quote_order_qty_market_allowed": bool(item.get("quoteOrderQtyMarketAllowed", False)),
                 "filters": filters,
             }
         if not symbols:
@@ -196,10 +210,55 @@ async def get_binance_spot_execution_context(symbol: str) -> dict[str, Any]:
     mid = (bid + ask) / 2
     spread_bps = ((ask - bid) / mid) * 10000 if mid > 0 else float("inf")
     filters = info.get("filters", {})
-    price_filter = filters.get("PRICE_FILTER", {})
-    lot_filter = filters.get("LOT_SIZE", {})
+    price_filter = filters.get("PRICE_FILTER") or {}
+    lot_filter = filters.get("LOT_SIZE") or {}
+    market_lot_filter = filters.get("MARKET_LOT_SIZE") or {}
     notional_filter = filters.get("NOTIONAL") or filters.get("MIN_NOTIONAL") or {}
-    tick_size = str(price_filter.get("tickSize") or "0.00000001")
+    tick_size = str(price_filter.get("tickSize") or "")
+    order_types = info.get("order_types") if isinstance(info.get("order_types"), list) else []
+    market_status = str(info.get("status") or "")
+    spot_allowed = info.get("is_spot_trading_allowed") is True
+
+    def _decimal_filter_value(filter_data: dict[str, Any], key: str) -> Decimal | None:
+        try:
+            value = Decimal(str(filter_data.get(key)))
+            return value if value.is_finite() else None
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+
+    tick_value = _decimal_filter_value(price_filter, "tickSize")
+    lot_step = _decimal_filter_value(lot_filter, "stepSize")
+    lot_min = _decimal_filter_value(lot_filter, "minQty")
+    lot_max = _decimal_filter_value(lot_filter, "maxQty")
+    market_step = _decimal_filter_value(market_lot_filter, "stepSize")
+    market_min = _decimal_filter_value(market_lot_filter, "minQty")
+    market_max = _decimal_filter_value(market_lot_filter, "maxQty")
+    min_notional_raw = notional_filter.get("minNotional") or notional_filter.get("minNotionalValue")
+    min_notional_value = _decimal_filter_value({"value": min_notional_raw}, "value")
+    limit_filter_valid = bool(
+        tick_value is not None and tick_value > 0
+        and lot_step is not None and lot_step > 0
+        and lot_min is not None and lot_min >= 0
+        and lot_max is not None and lot_max > 0
+        and min_notional_value is not None and min_notional_value > 0
+    )
+    market_filter_valid = bool(
+        market_lot_filter
+        and market_step is not None and market_step >= 0
+        and market_min is not None and market_min >= 0
+        and market_max is not None and market_max > 0
+    )
+    limit_order_supported = bool(
+        market_status == "TRADING" and spot_allowed and "LIMIT" in order_types and limit_filter_valid
+    )
+    market_order_supported = bool(
+        market_status == "TRADING" and spot_allowed and "MARKET" in order_types
+        and limit_filter_valid and market_filter_valid
+    )
+    min_notional_applies_to_market = bool(
+        notional_filter.get("applyMinToMarket", notional_filter.get("applyToMarket", False))
+    )
+    max_notional_applies_to_market = bool(notional_filter.get("applyMaxToMarket", False))
     return {
         "symbol": normalized,
         "provider": "Binance Spot",
@@ -219,7 +278,27 @@ async def get_binance_spot_execution_context(symbol: str) -> dict[str, Any]:
         "tick_size": tick_size,
         "step_size": str(lot_filter.get("stepSize") or ""),
         "min_quantity": str(lot_filter.get("minQty") or ""),
-        "min_notional": str(notional_filter.get("minNotional") or notional_filter.get("minNotionalValue") or ""),
+        "min_notional": str(min_notional_raw or ""),
+        "market_status": market_status,
+        "is_spot_trading_allowed": spot_allowed,
+        "order_types": order_types,
+        "market_order_supported": market_order_supported,
+        "limit_order_supported": limit_order_supported,
+        "limit_min_quantity": str(lot_filter.get("minQty") or ""),
+        "limit_max_quantity": str(lot_filter.get("maxQty") or ""),
+        "limit_step_size": str(lot_filter.get("stepSize") or ""),
+        "market_min_quantity": str(market_lot_filter.get("minQty") or ""),
+        "market_max_quantity": str(market_lot_filter.get("maxQty") or ""),
+        "market_step_size": str(market_lot_filter.get("stepSize") or ""),
+        "market_lot_size_available": bool(market_lot_filter),
+        "base_asset_precision": info.get("base_asset_precision"),
+        "quote_precision": info.get("quote_precision"),
+        "quote_asset_precision": info.get("quote_asset_precision"),
+        "quote_order_qty_market_allowed": info.get("quote_order_qty_market_allowed", False),
+        "min_notional_filter_type": str(notional_filter.get("filterType") or ""),
+        "min_notional_applies_to_market": min_notional_applies_to_market,
+        "max_notional": str(notional_filter.get("maxNotional") or ""),
+        "max_notional_applies_to_market": max_notional_applies_to_market,
         "observed_at": datetime.now(timezone.utc).isoformat(),
         "data_sources": {"quote": quote_source_base, "depth": depth_source_base},
     }
@@ -237,6 +316,47 @@ def round_price_to_tick(value: float, tick_size: str, *, round_up: bool) -> floa
     except (ArithmeticError, ValueError, TypeError):
         raise MarketDataError("Binance returned an invalid price tick size.") from None
 
+
+
+
+def execution_constraints_summary(execution: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Expose the authoritative per-symbol constraints used by entry selection."""
+    if not isinstance(execution, dict):
+        return None
+    return {
+        "market_type": "BINANCE_SPOT",
+        "market_status": execution.get("market_status"),
+        "is_spot_trading_allowed": execution.get("is_spot_trading_allowed"),
+        "order_types": execution.get("order_types"),
+        "market_order_supported": execution.get("market_order_supported"),
+        "limit_order_supported": execution.get("limit_order_supported"),
+        "base_asset_precision": execution.get("base_asset_precision"),
+        "quote_precision": execution.get("quote_precision"),
+        "quote_asset_precision": execution.get("quote_asset_precision"),
+        "quote_order_qty_market_allowed": execution.get("quote_order_qty_market_allowed"),
+        "price_tick_size": execution.get("tick_size"),
+        "limit_quantity": {
+            "min": execution.get("limit_min_quantity", execution.get("min_quantity")),
+            "max": execution.get("limit_max_quantity"),
+            "step": execution.get("limit_step_size", execution.get("step_size")),
+        },
+        "market_quantity": {
+            "min": execution.get("market_min_quantity"),
+            "max": execution.get("market_max_quantity"),
+            "step": execution.get("market_step_size"),
+            "additional_step_enforced": bool(
+                execution.get("market_step_size")
+                and Decimal(str(execution.get("market_step_size"))) > 0
+            ),
+        },
+        "notional": {
+            "minimum": execution.get("min_notional"),
+            "minimum_filter": execution.get("min_notional_filter_type"),
+            "minimum_applies_to_market": execution.get("min_notional_applies_to_market"),
+            "maximum": execution.get("max_notional"),
+            "maximum_applies_to_market": execution.get("max_notional_applies_to_market"),
+        },
+    }
 
 def select_binance_entry(
     side: str, close: float, atr_value: float, zone: dict[str, float] | None,
@@ -266,8 +386,15 @@ def select_binance_entry(
     limit_distance_cap = float(settings.get("max_limit_entry_distance_atr", 0.75))
     market_price = ask if side == "BUY" else bid
     market_drift = abs(market_price - close) / atr_value
+    market_order_supported = execution.get("market_order_supported")
+    limit_order_supported = execution.get("limit_order_supported")
+    order_types = execution.get("order_types")
+    if market_order_supported is None:
+        market_order_supported = "MARKET" in order_types if isinstance(order_types, list) and order_types else True
+    if limit_order_supported is None:
+        limit_order_supported = "LIMIT" in order_types if isinstance(order_types, list) and order_types else True
 
-    if spread <= market_spread_cap and depth >= market_depth_floor and market_drift <= market_drift_cap:
+    if market_order_supported and spread <= market_spread_cap and depth >= market_depth_floor and market_drift <= market_drift_cap:
         return {
             "entry_type": "MARKET",
             "entry_price": market_price,
@@ -278,7 +405,7 @@ def select_binance_entry(
             ),
         }
 
-    if zone and isinstance(zone, dict):
+    if limit_order_supported and zone and isinstance(zone, dict):
         try:
             candidate = (float(zone["low"]) + float(zone["high"])) / 2
         except (KeyError, TypeError, ValueError, OverflowError):
@@ -1146,6 +1273,7 @@ async def build_signal(
                 "confirmations": checks,
                 "risk_distance": round(risk, price_precision),
                 "execution_quality": execution_quality,
+                "exchange_constraints": execution_constraints_summary(execution),
                 "order_flow": order_flow_payload,
             }
     if symbol != "XAUUSD" and side is None and score >= threshold and not entry_rejection_reason:
@@ -1168,4 +1296,5 @@ async def build_signal(
                 "rsi":round(v["rsi"],1),"adx":round(v["adx"],1),"atr":round(v["atr"],price_precision),
                 "structure":v["structure"]} for tf,v in analysis.items()},
             "quality_filters":quality_filters,"order_flow":order_flow_payload,
+            "exchange_constraints":execution_constraints_summary(execution),
             "status":"SIGNAL" if signal else "WAIT","message":message}

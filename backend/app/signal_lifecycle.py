@@ -122,23 +122,25 @@ def process_trade_candles(db, trade: SignalTrade, candles: list[dict[str, Any]])
     ordered = sorted(candles, key=lambda row: as_utc(row["time"]))
     first_time = as_utc(ordered[0]["time"])
     signal_time = as_utc(trade.signal_time)
+    last_processed = as_utc(trade.last_processed_candle_time) if trade.last_processed_candle_time else None
     # A live signal can be emitted just after a candle closes. The first
     # available post-signal candle may therefore open up to one full signal
-    # timeframe later. Treat only a larger gap as missing history; otherwise
-    # normal 1m/5m/15m signals would remain OPEN forever without being replayed.
-    first_expected_candle = signal_time + timedelta(
-        seconds=TIMEFRAME_SECONDS.get(trade.timeframe, 900)
+    # timeframe later. On subsequent worker cycles, compare against the last
+    # processed candle so a normal next candle is not mistaken for a history gap.
+    timeframe_seconds = TIMEFRAME_SECONDS.get(trade.timeframe, 900)
+    expected_next = (
+        last_processed + timedelta(seconds=timeframe_seconds)
+        if last_processed else signal_time + timedelta(seconds=timeframe_seconds)
     )
-    if first_time > first_expected_candle:
+    if first_time > expected_next:
         trade.recovery_status = "PARTIAL"
         trade.recovery_note = (
-            "Provider history begins more than one signal timeframe after this signal; "
+            "Provider history begins more than one expected candle after the last covered point; "
             "outcome replay is paused to avoid missing an earlier stop or target."
         )
         return 0
     trade.recovery_status = "COMPLETE"
-    trade.recovery_note = "Available closed-candle history covers the first expected post-signal candle."
-    last_processed = as_utc(trade.last_processed_candle_time) if trade.last_processed_candle_time else None
+    trade.recovery_note = "Available closed-candle history covers the next expected post-signal candle."
     signal_time = as_utc(trade.signal_time)
     processed = 0
     for row in ordered:

@@ -88,3 +88,71 @@ def test_demo_certificate_api_rejects_invalid_inputs():
     for payload in invalid_payloads:
         response = client.post("/api/v1/goals/demo-certificate", json=payload)
         assert response.status_code == 422, payload
+
+
+def test_certificate_catalog_has_100_unique_designs_split_evenly_by_orientation():
+    from app.certificate_designs import certificate_design_catalog, get_certificate_design
+
+    designs = certificate_design_catalog()
+    ids = [item["id"] for item in designs]
+    assert len(designs) == 100
+    assert len(set(ids)) == 100
+    assert sum(item["orientation"] == "portrait" for item in designs) == 50
+    assert sum(item["orientation"] == "landscape" for item in designs) == 50
+    assert len({item["name"] for item in designs}) == 100
+    assert get_certificate_design("P-01")["orientation"] == "portrait"
+    assert get_certificate_design("L-50")["orientation"] == "landscape"
+    import pytest
+    with pytest.raises(ValueError):
+        get_certificate_design("P-01", "landscape")
+
+
+def test_portrait_and_landscape_certificate_designs_render_as_pdf():
+    common = dict(
+        display_name="Certificate Gallery User",
+        goal_title="Personal Milestone",
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        achieved_at=datetime(2026, 11, 18, tzinfo=timezone.utc),
+        elapsed_days=321,
+        certificate_id="QX-GALLERY-TEST",
+        integrity_fingerprint="b" * 64,
+        target_amount=5000,
+        saved_amount=5000,
+        currency="USD",
+    )
+    portrait = build_goal_certificate_pdf(**common, design_id="P-17", orientation="portrait")
+    landscape_pdf = build_goal_certificate_pdf(**common, design_id="L-42", orientation="landscape")
+    assert portrait.startswith(b"%PDF") and len(portrait) > 2000
+    assert landscape_pdf.startswith(b"%PDF") and len(landscape_pdf) > 2000
+    assert portrait != landscape_pdf
+
+
+def test_demo_certificate_api_accepts_selected_landscape_design_without_creating_goal():
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    before = client.get("/api/v1/goals").json()
+    response = client.post("/api/v1/goals/demo-certificate", json={
+        "display_name": "Gallery Demo User",
+        "goal_title": "Landscape Sample",
+        "achievement_text": "A selected landscape template preview.",
+        "target_amount": 1000,
+        "currency": "USD",
+        "design_id": "L-50",
+        "orientation": "landscape",
+    })
+    assert response.status_code == 200
+    assert response.content.startswith(b"%PDF")
+    assert client.get("/api/v1/goals").json() == before
+
+    invalid = client.post("/api/v1/goals/demo-certificate", json={
+        "display_name": "Gallery Demo User",
+        "goal_title": "Mismatch",
+        "achievement_text": "Invalid orientation must be rejected.",
+        "target_amount": 1000,
+        "currency": "USD",
+        "design_id": "P-01",
+        "orientation": "landscape",
+    })
+    assert invalid.status_code == 422

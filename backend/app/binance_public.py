@@ -142,7 +142,7 @@ async def get_binance_public_json(
             raise
         except httpx.HTTPStatusError as exc:
             attempts.append(_response_detail(base, exc.response))
-        except httpx.TransportError as exc:
+        except httpx.HTTPError as exc:
             attempts.append(f"{base}: {type(exc).__name__}")
         except ValueError as exc:
             attempts.append(f"{base}: invalid response ({type(exc).__name__})")

@@ -22,10 +22,10 @@ MAX_TOTAL_BYTES = 100 * 1024 * 1024
 SKIP_PARTS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache",
               "dist", "build", "logs", "backups", "updates", "user_data", "secrets"}
 SKIP_NAMES = {".env", ".env.local", ".env.production"}
-SAFE_ROOTS = {".github", "apps", "backend", "docs", "shared", "services", "tests"}
+SAFE_ROOTS = {".github", "apps", "backend", "docs", "scripts", "shared", "services", "tests"}
 SAFE_ROOT_FILES = {"README.md", "README_SI.md", "TODO.md", "FEATURE_STATUS_SI.md",
                    "requirements.txt", "pyproject.toml", "quantnex_updater.py",
-                   "run_quantnex.bat", "run_quantnex_services.py", "run_backend.bat"}
+                   "run_quantnex.bat", "run_quantnex_services.py", "run_backend.bat", ".gitignore"}
 
 
 class UpdateError(RuntimeError):
@@ -284,8 +284,117 @@ def confirm_update(root: Path) -> bool:
         return False
 
 
+MANAGED_RELATIVE = Path("data") / "updates" / "managed_source_files.json"
+MAX_SNAPSHOT_FILES = 1500
+MAX_SNAPSHOT_BYTES = 100 * 1024 * 1024
+
+
+def _managed_paths_from_tree(commit_sha: str) -> list[str]:
+    """Read the complete tracked source-file list for a commit, not a truncated compare diff."""
+    tree = _request_json(
+        f"https://api.github.com/repos/{REPOSITORY}/git/trees/{commit_sha}?recursive=1"
+    )
+    if tree.get("truncated"):
+        raise UpdateError("GitHub returned a truncated source tree; no files were changed.")
+    entries = tree.get("tree")
+    if not isinstance(entries, list):
+        raise UpdateError("GitHub did not return a valid source tree.")
+    paths = []
+    for item in entries:
+        if item.get("type") != "blob" or item.get("mode") not in ("100644", "100755"):
+            continue
+        relative = _safe_relative(item.get("path", ""))
+        if relative is not None:
+            paths.append(relative.as_posix())
+    if len(paths) > MAX_SNAPSHOT_FILES:
+        raise UpdateError("The source snapshot exceeds the 1,500-file safety limit.")
+    return sorted(set(paths))
+
+
+def _load_managed_paths(root: Path, fallback_sha: str) -> list[str]:
+    path = root / MANAGED_RELATIVE
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        paths = payload.get("paths")
+        if isinstance(paths, list) and all(
+            isinstance(item, str) and _safe_relative(item) is not None for item in paths
+        ):
+            return sorted(set(paths))
+    except (OSError, ValueError, AttributeError):
+        pass
+    # Older installations did not record a managed-file manifest. Reconstruct
+    # the previous exact source set from its Git tree before syncing the new one.
+    return _managed_paths_from_tree(fallback_sha)
+
+
+def _save_managed_paths(root: Path, commit_sha: str, paths: list[str]) -> None:
+    path = root / MANAGED_RELATIVE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps({
+        "commit_sha": commit_sha,
+        "paths": sorted(set(paths)),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }, indent=2), encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def _stage_full_snapshot(root: Path, commit_sha: str, expected_paths: list[str]) -> Path:
+    """Download and validate one complete pinned GitHub ZIP before touching installed files."""
+    url = f"https://codeload.github.com/{REPOSITORY}/zip/{commit_sha}"
+    request = urllib.request.Request(url, headers={"User-Agent": "QUANTNEX-Automatic-Updater"})
+    with urllib.request.urlopen(request, timeout=180) as response:
+        archive_bytes = response.read(300 * 1024 * 1024 + 1)
+    if len(archive_bytes) > 300 * 1024 * 1024:
+        raise UpdateError("The complete source archive exceeds the 300 MB download safety limit.")
+
+    staged_root = root / "data" / "updates" / "staging" / (commit_sha[:12] + "-full")
+    if staged_root.exists():
+        shutil.rmtree(staged_root)
+    staged_root.mkdir(parents=True, exist_ok=True)
+    expected = set(expected_paths)
+    extracted: set[str] = set()
+    total = 0
+    try:
+        with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
+            for info in archive.infolist():
+                if info.is_dir():
+                    continue
+                parts = PurePosixPath(info.filename).parts
+                if len(parts) < 2:
+                    continue
+                relative = _safe_relative("/".join(parts[1:]))
+                if relative is None:
+                    continue
+                key = relative.as_posix()
+                if key not in expected:
+                    continue
+                mode = (info.external_attr >> 16) & 0o170000
+                if mode == 0o120000:
+                    continue
+                if info.file_size > MAX_FILE_BYTES:
+                    raise UpdateError(f"Source file exceeds the 20 MB limit: {key}")
+                total += info.file_size
+                if total > MAX_SNAPSHOT_BYTES:
+                    raise UpdateError("The complete source snapshot exceeds the 100 MB extracted-size limit.")
+                target = staged_root / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(archive.read(info))
+                extracted.add(key)
+        missing = expected - extracted
+        if missing:
+            sample = ", ".join(sorted(missing)[:8])
+            raise UpdateError("The GitHub archive is incomplete; missing tracked files: " + sample)
+        if "run_quantnex_services.py" not in extracted:
+            raise UpdateError("The GitHub archive is not a valid QUANTNEX source workspace.")
+        return staged_root
+    except Exception:
+        shutil.rmtree(staged_root, ignore_errors=True)
+        raise
+
+
 def check_and_apply(root: Path) -> dict:
-    """Apply verified changed source files; caller restarts child services if required."""
+    """Reconcile the entire managed source snapshot while leaving all user/runtime data untouched."""
     root = root.resolve()
     latest = _request_json(f"https://api.github.com/repos/{REPOSITORY}/commits/{BRANCH}")
     latest_sha = latest.get("sha")
@@ -300,88 +409,76 @@ def check_and_apply(root: Path) -> dict:
         return {"status": "current", "version": "main@" + latest_sha[:7],
                 "changed_files": [], "restart_required": False}
 
-    comparison = _request_json(
-        f"https://api.github.com/repos/{REPOSITORY}/compare/{installed_sha}...{latest_sha}"
-    )
-    if comparison.get("status") not in ("ahead", "identical") or comparison.get("too_large"):
-        raise UpdateError("The update history is not a safe incremental patch; existing files were left unchanged.")
-    changes = comparison.get("files") or []
-    if len(changes) >= MAX_FILES:
-        raise UpdateError("The update exceeds the incremental file-count safety limit.")
-
-    planned = []
-    total_size = 0
-    for item in changes:
-        status, raw_path = item.get("status"), item.get("filename", "")
-        relative = _safe_relative(raw_path)
-        if relative is None:
-            continue
-        previous = item.get("previous_filename")
-        previous_relative = _safe_relative(previous) if previous else None
-        if status == "renamed" and previous_relative is None:
-            raise UpdateError("A renamed file failed path validation.")
-        payload = None
-        if status != "removed":
-            url = f"https://raw.githubusercontent.com/{REPOSITORY}/{latest_sha}/{raw_path}"
-            request = urllib.request.Request(url, headers={"User-Agent": "QUANTNEX-Automatic-Updater"})
-            with urllib.request.urlopen(request, timeout=45) as response:
-                payload = response.read(MAX_FILE_BYTES + 1)
-            if len(payload) > MAX_FILE_BYTES:
-                raise UpdateError("An update file exceeds the 20 MB safety limit.")
-            total_size += len(payload)
-            if total_size > MAX_TOTAL_BYTES:
-                raise UpdateError("The update exceeds the 100 MB safety limit.")
-        planned.append((status, relative, previous_relative, payload))
-
-    if not planned:
+    # Resolve the complete tracked source set for both revisions. This avoids
+    # GitHub Compare API's 300-file response ceiling and catches stale/deleted files.
+    previous_paths = _load_managed_paths(root, installed_sha)
+    latest_paths = _managed_paths_from_tree(latest_sha)
+    staged_root = _stage_full_snapshot(root, latest_sha, latest_paths)
+    latest_set = set(latest_paths)
+    removed_paths = sorted(set(previous_paths) - latest_set)
+    changed_paths = []
+    total_changed = 0
+    for key in latest_paths:
+        source = staged_root / Path(*PurePosixPath(key).parts)
+        destination = _safe_destination(root, Path(*PurePosixPath(key).parts))
+        if not destination.is_file() or destination.read_bytes() != source.read_bytes():
+            changed_paths.append(key)
+            total_changed += source.stat().st_size
+    planned_paths = sorted(set(changed_paths) | set(removed_paths))
+    if not planned_paths:
+        _save_managed_paths(root, latest_sha, latest_paths)
         _save_state(root, latest_sha)
+        shutil.rmtree(staged_root, ignore_errors=True)
         return {"status": "current", "version": "main@" + latest_sha[:7],
                 "changed_files": [], "restart_required": False}
 
     backup_root = root / "data" / "updates" / "backups" / (
         datetime.now().strftime("%Y%m%d-%H%M%S-%f") + "-" + installed_sha[:7])
-    staged_root = root / "data" / "updates" / "staging" / latest_sha[:12]
-    if staged_root.exists():
-        shutil.rmtree(staged_root)
-    staged_root.mkdir(parents=True, exist_ok=True)
-    for status, relative, _, payload in planned:
-        if payload is not None:
-            target = staged_root / relative
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(payload)
-
-    touched = []
+    touched: list[Path] = []
+    old_manifest_path = root / MANAGED_RELATIVE
+    old_manifest_bytes = old_manifest_path.read_bytes() if old_manifest_path.is_file() else None
     try:
-        for status, relative, previous_relative, payload in planned:
-            targets = [relative]
-            if status == "renamed" and previous_relative and previous_relative != relative:
-                targets.append(previous_relative)
-            for rel in targets:
-                destination = _safe_destination(root, rel)
-                backup = backup_root / rel
-                if destination.is_file():
-                    backup.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(destination, backup)
-                touched.append(rel)
-            if status == "removed":
-                destination = _safe_destination(root, relative)
-                if destination.exists():
-                    destination.unlink()
-            else:
-                source, destination = staged_root / relative, _safe_destination(root, relative)
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                temporary = destination.with_name(destination.name + ".quantnex-update-tmp")
-                shutil.copy2(source, temporary)
-                os.replace(temporary, destination)
-                if status == "renamed" and previous_relative and previous_relative != relative:
-                    old = _safe_destination(root, previous_relative)
-                    if old.exists():
-                        old.unlink()
+        # Stage/verify every remote file before this point. Now back up all
+        # affected local source files, then atomically replace or remove them.
+        for key in planned_paths:
+            relative = Path(*PurePosixPath(key).parts)
+            destination = _safe_destination(root, relative)
+            if destination.is_file():
+                backup = backup_root / relative
+                backup.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(destination, backup)
+            touched.append(relative)
+
+        for key in changed_paths:
+            relative = Path(*PurePosixPath(key).parts)
+            source = staged_root / relative
+            destination = _safe_destination(root, relative)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            temporary = destination.with_name(destination.name + ".quantnex-update-tmp")
+            shutil.copy2(source, temporary)
+            os.replace(temporary, destination)
+
+        for key in removed_paths:
+            destination = _safe_destination(root, Path(*PurePosixPath(key).parts))
+            if destination.exists():
+                destination.unlink()
+
         _write_rollback_manifest(root, installed_sha, latest_sha, backup_root, touched)
+        rollback_path = root / ROLLBACK_RELATIVE
+        rollback_data = json.loads(rollback_path.read_text(encoding="utf-8"))
+        rollback_data["previous_managed_paths"] = previous_paths
+        rollback_data["previous_managed_manifest"] = (
+            old_manifest_bytes.decode("utf-8") if old_manifest_bytes is not None else None
+        )
+        temporary_rollback = rollback_path.with_suffix(".tmp")
+        temporary_rollback.write_text(json.dumps(rollback_data, indent=2), encoding="utf-8")
+        os.replace(temporary_rollback, rollback_path)
+        _save_managed_paths(root, latest_sha, latest_paths)
         _save_state(root, latest_sha)
     except Exception:
-        for rel in reversed(touched):
-            destination, backup = _safe_destination(root, rel), backup_root / rel
+        for relative in reversed(touched):
+            destination = _safe_destination(root, relative)
+            backup = backup_root / relative
             try:
                 if backup.is_file():
                     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -390,14 +487,19 @@ def check_and_apply(root: Path) -> dict:
                     destination.unlink()
             except OSError:
                 pass
+        if old_manifest_bytes is not None:
+            old_manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            old_manifest_path.write_bytes(old_manifest_bytes)
+        else:
+            old_manifest_path.unlink(missing_ok=True)
         (root / ROLLBACK_RELATIVE).unlink(missing_ok=True)
         raise
     finally:
         shutil.rmtree(staged_root, ignore_errors=True)
 
-    changed = [str(item[1]).replace("\\", "/") for item in planned]
+    changed = [*changed_paths, *removed_paths]
     restart_required = any(path.endswith((".py", ".js", ".html", ".css", ".json", ".toml", ".txt", ".bat"))
                            for path in changed)
     return {"status": "updated", "version": "main@" + latest_sha[:7],
             "changed_files": changed, "restart_required": restart_required,
-            "message": f"Applied {len(changed)} changed source files."}
+            "message": f"Fully synchronized {len(changed_paths)} updated/added and {len(removed_paths)} removed source files."}

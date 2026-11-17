@@ -824,8 +824,13 @@ async def build_signal(
     as_of = replay_as_of or datetime.now(timezone.utc)
     if as_of.tzinfo is None:
         as_of = as_of.replace(tzinfo=timezone.utc)
-    if symbol != "XAUUSD" and not await is_binance_spot_symbol(symbol):
-        raise MarketDataError("Unsupported market. Choose a currently tradable Binance Spot pair or XAUUSD.")
+    if symbol != "XAUUSD":
+        if not symbol.isalnum() or len(symbol) > 30:
+            raise MarketDataError("Unsupported market symbol format.")
+        # Historical replay is an offline, caller-supplied dataset. Do not make
+        # a live exchangeInfo request while evaluating a deterministic replay.
+        if candles_override is None and not await is_binance_spot_symbol(symbol):
+            raise MarketDataError("Unsupported market. Choose a currently tradable Binance Spot pair or XAUUSD.")
     enabled=[str(x) for x in settings.get("enabled",["60","30","15","5","1"])]
     if not enabled: enabled=["60","30","15","5","1"]
     needed=set(enabled+[str(settings.get("primary","5")),str(settings.get("trend","60"))])

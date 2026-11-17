@@ -34,9 +34,9 @@ Implemented in `backend/app/binance_order_flow_feed.py`:
 
 PR [#169](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/169) merged as `6a380e4c257d48e1188aeb3557e12581cb0a4b49`. All four PR checks passed. Post-merge Backend/Web checks were subsequently blocked by eight pre-existing signal-lifecycle tests, not by this collector; those lifecycle failures were traced and fixed in PR #186.
 
-## Phase B2 — session coverage and dynamic universe smoke rotation (PR checks passed; merge pending)
+## Phase B2 — session coverage and dynamic universe smoke rotation (merged PR #187)
 
-Branch: `feat/binance-dynamic-orderflow-coverage`. PR #187 head `d1a7e7c9a5caac91a36b2598543de96efc818984` passed Backend CI (303 tests), Backend/Web CI on Python 3.12 and 3.14 (303 tests each) and Web checks. Merge is pending final diff/base review.
+Merged to `main` as `3666519818fb20ded9c1be9259c7e004e8f06dda`. PR CI passed (303 tests on Python 3.12 and 3.14 plus Web checks); post-merge CI also passed (303 tests on Python 3.12 and 3.14 plus Web checks).
 
 ### Order-flow correctness changes
 
@@ -59,6 +59,13 @@ Branch: `feat/binance-dynamic-orderflow-coverage`. PR #187 head `d1a7e7c9a5caac9
 - REST depth remains a one-time snapshot, not a sequence-validated local book.
 - The latest 1000 aggregate trades are a bounded response window; window delta is not session delta or persistent CVD unless full session ID coverage is proven.
 - No persistent cache, WebSocket reconnect/backoff, historical order-flow replay, or all-symbol continuous scanner yet.
+
+
+## Phase B2.1 — public REST endpoint failover (in progress)
+
+Branch: `fix/binance-public-data-endpoint-failover`.
+
+A scheduled live smoke run failed at Binance Spot `exchangeInfo` discovery before any pair was scanned. The implementation adds a shared public-only REST helper that prefers `data-api.binance.vision`, then falls back to official Binance REST hosts. It retries transport/invalid-JSON/server/host-access failures, but stops on 418/429 and ordinary client validation errors. The helper is restricted to HTTPS origins and public `/api/v3` routes, limits concurrency per event loop, and records the successful source host. It is wired into symbol discovery, execution context, candle/history requests and order-flow REST reads. Mocked host-failover tests are in progress; the next scheduled smoke run must verify runner reachability.
 
 ## Phase B3 — continuous ingestion (next)
 

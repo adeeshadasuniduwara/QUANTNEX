@@ -521,3 +521,43 @@ Automatic, high-quality Binance signals remain the primary objective. Order-flow
 3. Implement the depth snapshot + diff-stream sequence bridge; invalidate/resync on every update-ID gap.
 4. Add synchronized historical trade/depth capture and replay before evaluating order-flow's incremental value.
 5. Only then add further strategy-registry methods (VWAP, volume profile, regime/pullback/continuation variants) with causal fixtures and ablation evidence.
+
+
+## 2026-11-17 — Phase 18: deterministic Binance Spot stream state (PR pending)
+
+### Purpose
+
+The merged PR #189 adds a conservative live REST order-flow gate. The next critical gap is maintaining CVD and a valid order book across streaming updates, reconnects and missing sequence IDs. This phase builds the deterministic state layer before adding network sockets.
+
+### Changes on branch `feat/binance-orderflow-stream-state`
+
+- Added `backend/app/binance_order_flow_state.py`.
+- `AggTradeCvdState` supports known UTC-session first-trade anchoring, exact Decimal aggressor delta and quote delta, duplicate/out-of-order handling, ID-gap invalidation, paged REST-backfill recovery and explicit CVD/session coverage states.
+- UTC rollover keeps cumulative delta's since-seed scope but marks the new session delta incomplete until a new session anchor is established. Backfill across midnight cannot incorrectly restore new-session completeness.
+- `BinanceSpotDepthBook` loads REST snapshots, bridges buffered diff events, applies zero-quantity deletes, checks crossed/locked books and rejects sequence gaps. Invalid books clear all stored levels and require a new snapshot before further diffs can be applied.
+- No WebSocket connection or live state persistence is added in this phase.
+
+### Deterministic tests
+
+12 tests cover:
+- Session-start seed and hand-computed BUY/SELL delta/CVD.
+- Duplicate and out-of-order aggregate trades.
+- ID gaps, pending state, partial backfill and complete recovery.
+- UTC midnight rollover and backfill across a session boundary.
+- Incomplete stream-start state when no session anchor is available.
+- REST depth snapshot + buffered diff bridge, zero-quantity deletion, sequence gap/resync, crossed book and malformed snapshot.
+- Stale depth levels are cleared on invalidation.
+
+### Verification status
+
+- Feature branch contains the state module and deterministic tests; CI and PR review are pending.
+- This state layer is not yet connected to Binance WebSocket feeds or the live signal engine. It does not yet establish live persistent CVD, live sequence-validated L2, or order-flow out-of-sample performance.
+
+### Exact next steps
+
+1. Run Backend CI (Python 3.12/3.14), schema/test and web-check; fix any failures.
+2. Review the full diff and merge PR only if all relevant checks pass and latest-main mergeability is confirmed.
+3. Add an explicit WebSocket dependency and build a bounded Binance Spot public-stream adapter.
+4. Implement reconnect/backoff and REST aggTrade backfill from the last contiguous aggregate-trade ID.
+5. Connect REST depth snapshot + buffered diff events to the sequence state; resync on every gap.
+6. Integrate state completeness into signal eligibility and capture synchronized historical trade/depth replay.

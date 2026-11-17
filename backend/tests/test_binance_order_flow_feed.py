@@ -47,6 +47,7 @@ def test_public_rest_collector_returns_provenance_and_snapshot_only_depth():
         assert result["delta"] == 1
         assert result["session_delta"] == 1
         assert result["session_delta_coverage_complete"] is True
+        assert result["session_start_probe_at"] is not None
         assert result["depth_snapshot_update_id"] == 123456
         assert result["depth_is_continuous"] is False
         assert result["feed_mode"] == "PUBLIC_REST_SNAPSHOT"

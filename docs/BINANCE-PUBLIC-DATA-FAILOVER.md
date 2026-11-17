@@ -23,7 +23,7 @@ Binance documents the alternative REST base URLs and recommends the market-data-
 - Try the next official host for connection/timeout failures, invalid JSON, server errors and host-level access/geo responses (403/451).
 - Stop on HTTP 418 or 429. Preserve `Retry-After`; do not fan out across hosts after an IP ban or rate limit.
 - Stop on ordinary client errors such as HTTP 400 invalid symbol; another hostname cannot repair invalid request parameters.
-- Limit concurrent requests to four per event loop.
+- Cap each host attempt at 3.5 seconds (1.5-second connect timeout) and limit concurrent requests to four per event loop, bounding worst-case failover latency.
 - Restrict the helper to HTTPS origins and public `/api/v3` paths. No signed/private endpoints, API keys or trading routes are allowed.
 - Return the successful base URL so execution and order-flow payloads can record data provenance.
 

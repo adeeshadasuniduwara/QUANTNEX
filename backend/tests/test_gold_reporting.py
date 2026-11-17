@@ -68,3 +68,8 @@ def test_gold_report_schedule_is_midnight_and_noon_colombo_only():
     assert _gold_report_slot(datetime(2026, 11, 18, 12, 5, tzinfo=colombo)) == "2026-11-18-12"
     assert _gold_report_slot(datetime(2026, 11, 18, 6, 5, tzinfo=colombo)) is None
     assert _gold_report_slot(datetime(2026, 11, 18, 12, 10, tzinfo=colombo)) is None
+
+def test_telegram_bot_command_menu_exposes_gold_controls():
+    from app.telegram_worker import BOT_COMMANDS
+    commands = {item["command"] for item in BOT_COMMANDS}
+    assert {"gold", "gold_setup", "gold_status", "gold_off"} <= commands

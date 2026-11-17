@@ -137,3 +137,15 @@ Branch: `feat/orderflow-aware-signal-gate`. PR [#189](https://github.com/adeesha
 - Implement REST snapshot + diff-depth WebSocket sequence bridging; invalidate/resync on any update-ID gap.
 - Persist/reconstruct CVD with explicit completeness and reset states.
 - Add synchronized replay fixtures and historical trade/depth capture before claiming the combined model has out-of-sample performance.
+
+
+### Phase C1 implementation note — PR #191
+
+The current branch implements the deterministic state layer in `backend/app/binance_order_flow_state.py`:
+
+- `AggTradeCvdState`: session-start seed, Decimal aggressor delta and quote delta, duplicate/out-of-order handling, gap detection, paged backfill recovery, and separate CVD/session coverage flags.
+- UTC rollover preserves CVD's `SINCE_STATE_SEED` scope but marks the new session delta incomplete. Backfill spanning midnight cannot incorrectly restore the new session's completeness.
+- `BinanceSpotDepthBook`: REST snapshot loading, buffered diff bridge, zero-quantity deletion, update-ID gap detection, crossed/locked-book rejection, and level clearing on invalidation.
+- Twelve deterministic tests cover hand-computed long/short delta, duplicates, ID gaps, partial/full backfill, UTC rollover, snapshot bridge, deletes, sequence gaps, resync and malformed/crossed books.
+
+This is a pure state machine only. No WebSocket client, reconnect/backoff, REST backfill network loop, persistent storage or live signal integration is included yet. Those belong to Phase C2; until then, the live signal gate remains REST-snapshot based.

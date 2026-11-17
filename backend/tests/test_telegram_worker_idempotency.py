@@ -99,3 +99,20 @@ def test_failed_auto_signal_send_does_not_mark_fingerprint_as_delivered(monkeypa
     db.close()
     Base.metadata.drop_all(engine)
     engine.dispose()
+
+
+def test_telegram_formatter_normalizes_literal_newlines_and_styles_message():
+    rendered = telegram_worker._format_telegram_message(
+        "🎯 QUANTNEX · BTCUSDT BUY · TP1 REACHED\\nObserved price: 64639.9\\nEntry: 64431.46\\nLevel-touch alert only."
+    )
+    assert "\\\\n" not in rendered
+    assert "Observed price:" in rendered
+    assert "<b>✨ 🎯 QUANTNEX" in rendered
+    assert "<b>Observed price:</b>" in rendered
+    assert "<i>Level-touch alert only.</i>" in rendered
+
+
+def test_telegram_formatter_escapes_untrusted_html():
+    rendered = telegram_worker._format_telegram_message("QUANTNEX <alert>\\nPrice: < 100")
+    assert "&lt;alert&gt;" in rendered
+    assert "&lt; 100" in rendered

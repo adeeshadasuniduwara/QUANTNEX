@@ -539,7 +539,7 @@ The merged PR #189 adds a conservative live REST order-flow gate. The next criti
 
 ### Deterministic tests
 
-12 tests cover:
+13 tests cover:
 - Session-start seed and hand-computed BUY/SELL delta/CVD.
 - Duplicate and out-of-order aggregate trades.
 - ID gaps, pending state, partial backfill and complete recovery.
@@ -547,6 +547,7 @@ The merged PR #189 adds a conservative live REST order-flow gate. The next criti
 - Incomplete stream-start state when no session anchor is available.
 - REST depth snapshot + buffered diff bridge, zero-quantity deletion, sequence gap/resync, crossed book and malformed snapshot.
 - Stale depth levels are cleared on invalidation.
+- Malformed/non-monotonic trade events invalidate CVD until a valid contiguous backfill restores it.
 
 ### Verification status
 

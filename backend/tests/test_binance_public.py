@@ -142,3 +142,30 @@ def test_public_request_limit_is_safe_across_separate_event_loops():
 
     asyncio.run(run())
     asyncio.run(run())
+
+
+def test_public_rest_remembers_last_successful_host_within_event_loop():
+    requests = []
+
+    def handler(request):
+        requests.append(request.url.host)
+        if request.url.host == "primary.test":
+            return httpx.Response(503, json={"msg": "primary unavailable"})
+        return httpx.Response(200, json={"ok": True})
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            first = await get_binance_public_json(
+                client, "/api/v3/ping",
+                base_urls=("https://primary.test", "https://mirror.test"),
+            )
+            second = await get_binance_public_json(
+                client, "/api/v3/ping",
+                base_urls=("https://primary.test", "https://mirror.test"),
+            )
+        return first, second
+
+    first, second = asyncio.run(run())
+    assert first == ({"ok": True}, "https://mirror.test")
+    assert second == ({"ok": True}, "https://mirror.test")
+    assert requests == ["primary.test", "mirror.test", "mirror.test"]

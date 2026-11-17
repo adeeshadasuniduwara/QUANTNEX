@@ -120,9 +120,9 @@ Only after Spot order-flow is stable:
 
 The current supported crypto signal market is Binance Spot only. A Spot SELL is not a Futures short. The current order-flow feed does not claim true consolidated quoted bid/ask volume: it infers aggressor side from Binance aggregate trades. The REST depth response's local receive timestamp is not an exchange event timestamp and does not replace a WebSocket sequence bridge. The live gate rejects snapshots whose local receive age exceeds five seconds, but this is not a substitute for exchange-event sequencing.
 
-## Phase C0 — order-flow-aware live signal gate (PR #189; CI passed, merge pending)
+## Phase C0 — order-flow-aware live signal gate (PR #189; implementation CI passed, final doc recheck pending)
 
-Branch: `feat/orderflow-aware-signal-gate`. PR checks passed on Python 3.12, Python 3.14, backend schema/test job and web-check. Latest main base at review: `a8fc002b214a037fd4e1ba63e9c68223444684b1`.
+Branch: `feat/orderflow-aware-signal-gate`. Implementation code commit `6f6702424b5a866d23e1b8afd5f1516b7f1caa52` passed Python 3.12, Python 3.14, backend schema/test job and web-check. Subsequent documentation-only commits are being rechecked on the latest PR head before merge. Latest main base at review: `a8fc002b214a037fd4e1ba63e9c68223444684b1`.
 
 - Add a deterministic order-flow evaluator that uses two non-duplicated observations: recent aggressor `delta_ratio` and L2 quote-notional depth imbalance. Microprice is included in the report but is not counted as a third independent vote because it is derived from top-of-book quantities.
 - A live Binance Spot candidate is eligible only when order-flow data is present, provenance confirms no candle-volume substitution, trade data is fresh, the L2 snapshot's local receive age is at most five seconds, and directional support count exceeds conflict count with at least one supporting observation.

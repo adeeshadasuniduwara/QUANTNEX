@@ -54,7 +54,7 @@ def _order_flow_fixture(side: str, now: datetime, *, contradictory: bool = False
             "depth": "https://data-api.binance.vision",
             "session_probe": "https://data-api.binance.vision",
         },
-        "feed_mode": "PUBLIC_REST_SNAPSHOT",
+        "feed_mode": "DETERMINISTIC_FIXTURE",
         "depth_is_continuous": False,
         "depth_snapshot_update_id": 123456,
         "depth_observed_at": now.isoformat(),
@@ -166,6 +166,9 @@ def test_real_signal_pipeline_generates_and_delivers_synthetic_setup(monkeypatch
     assert candidate["side"] == expected_side
     assert candidate["score"] >= 8
     assert candidate["signal_candle_time"]
+    if symbol != "XAUUSD":
+        assert candidate["order_flow"]["status"] == "CONFIRMED"
+        assert candidate["order_flow"]["data_mode"] == "DETERMINISTIC_FIXTURE"
     assert all(result["quality_filters"].values())
     if symbol != "XAUUSD":
         assert candidate["entry_type"] == "MARKET"

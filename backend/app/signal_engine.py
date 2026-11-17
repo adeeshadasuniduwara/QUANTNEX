@@ -1087,10 +1087,19 @@ async def build_signal(
         if not entry_choice:
             side = None
             quality_filters["execution_quality"] = False
-            entry_rejection_reason = (
-                "No safe MARKET entry or technically justified LIMIT retracement met the spread, "
-                "liquidity and price-distance rules."
-            )
+            if (
+                execution.get("market_order_supported") is False
+                and execution.get("limit_order_supported") is False
+            ):
+                entry_rejection_reason = (
+                    "Binance exchange metadata does not confirm a supported MARKET or LIMIT order "
+                    "type with the required symbol-specific filters."
+                )
+            else:
+                entry_rejection_reason = (
+                    "No safe MARKET entry or technically justified LIMIT retracement met the spread, "
+                    "liquidity and price-distance rules."
+                )
             execution_quality = {
                 "spread_bps": round(float(execution["spread_bps"]), 3),
                 "bid_depth_usd": round(float(execution.get("bid_depth_usd", 0.0)), 2),

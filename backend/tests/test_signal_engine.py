@@ -898,10 +898,16 @@ def test_binance_execution_context_reads_exchange_filters_and_live_book(monkeypa
         "symbol": "1000PEPEUSDT", "status": "TRADING",
         "baseAsset": "1000PEPE", "quoteAsset": "USDT",
         "isSpotTradingAllowed": True,
+        "orderTypes": ["LIMIT", "MARKET", "LIMIT_MAKER"],
+        "baseAssetPrecision": 8,
+        "quotePrecision": 8,
+        "quoteAssetPrecision": 8,
+        "quoteOrderQtyMarketAllowed": True,
         "filters": [
             {"filterType": "PRICE_FILTER", "tickSize": "0.00000001"},
-            {"filterType": "LOT_SIZE", "stepSize": "1", "minQty": "1"},
-            {"filterType": "NOTIONAL", "minNotional": "5"},
+            {"filterType": "LOT_SIZE", "stepSize": "1", "minQty": "1", "maxQty": "1000000000"},
+            {"filterType": "MARKET_LOT_SIZE", "stepSize": "0", "minQty": "0", "maxQty": "500000000"},
+            {"filterType": "NOTIONAL", "minNotional": "5", "applyMinToMarket": True, "maxNotional": "9000000", "applyMaxToMarket": False},
         ],
     }]}
     depth = {
@@ -933,6 +939,16 @@ def test_binance_execution_context_reads_exchange_filters_and_live_book(monkeypa
     assert context["tick_size"] == "0.00000001"
     assert context["step_size"] == "1"
     assert context["min_notional"] == "5"
+    assert context["market_status"] == "TRADING"
+    assert context["is_spot_trading_allowed"] is True
+    assert context["order_types"] == ["LIMIT", "MARKET", "LIMIT_MAKER"]
+    assert context["market_order_supported"] is True
+    assert context["limit_order_supported"] is True
+    assert context["market_step_size"] == "0"
+    assert context["market_min_quantity"] == "0"
+    assert context["market_max_quantity"] == "500000000"
+    assert context["base_asset_precision"] == 8
+    assert context["quote_precision"] == 8
     assert context["best_bid"] == 0.00001234
     assert context["best_ask"] == 0.00001235
     assert context["bid_depth_quote"] > 0
@@ -955,9 +971,23 @@ def test_binance_execution_context_converts_non_stable_quote_asset_to_usd(monkey
     monkeypatch.setattr(signal_engine, "_BINANCE_SPOT_SYMBOLS_CACHE", None)
     exchange_info = {"symbols": [
         {"symbol": "ETHBTC", "status": "TRADING", "baseAsset": "ETH", "quoteAsset": "BTC",
-         "isSpotTradingAllowed": True, "filters": [{"filterType": "PRICE_FILTER", "tickSize": "0.000001"}]},
+         "isSpotTradingAllowed": True, "orderTypes": ["LIMIT", "MARKET"],
+         "baseAssetPrecision": 8, "quotePrecision": 8, "quoteAssetPrecision": 8,
+         "filters": [
+             {"filterType": "PRICE_FILTER", "tickSize": "0.000001"},
+             {"filterType": "LOT_SIZE", "stepSize": "0.001", "minQty": "0.001", "maxQty": "100000"},
+             {"filterType": "MARKET_LOT_SIZE", "stepSize": "0", "minQty": "0", "maxQty": "100000"},
+             {"filterType": "NOTIONAL", "minNotional": "0.001"},
+         ]},
         {"symbol": "BTCUSDT", "status": "TRADING", "baseAsset": "BTC", "quoteAsset": "USDT",
-         "isSpotTradingAllowed": True, "filters": [{"filterType": "PRICE_FILTER", "tickSize": "0.01"}]},
+         "isSpotTradingAllowed": True, "orderTypes": ["LIMIT", "MARKET"],
+         "baseAssetPrecision": 8, "quotePrecision": 8, "quoteAssetPrecision": 8,
+         "filters": [
+             {"filterType": "PRICE_FILTER", "tickSize": "0.01"},
+             {"filterType": "LOT_SIZE", "stepSize": "0.00001", "minQty": "0.00001", "maxQty": "9000"},
+             {"filterType": "MARKET_LOT_SIZE", "stepSize": "0", "minQty": "0", "maxQty": "100"},
+             {"filterType": "NOTIONAL", "minNotional": "5"},
+         ]},
     ]}
     depth = {"bids": [["0.05", "1000"]], "asks": [["0.0501", "1000"]]}
 
@@ -1039,3 +1069,38 @@ def test_binance_spot_symbol_discovery_fails_over_to_official_market_data_host(m
 
     assert symbols == ["BTCUSDT"]
     assert requests == ["primary.test", "mirror.test"]
+
+
+def test_binance_entry_selector_respects_market_and_limit_order_types():
+    from app.signal_engine import select_binance_entry
+
+    execution = {
+        "best_bid": 100.0, "best_ask": 100.02, "mid_price": 100.01,
+        "spread_bps": 2.0, "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
+        "market_order_supported": False, "limit_order_supported": True,
+    }
+    limit = select_binance_entry("BUY", 100.0, 2.0, {"low": 99.8, "high": 100.0}, execution)
+    assert limit is not None
+    assert limit["entry_type"] == "LIMIT"
+
+    execution["market_order_supported"] = True
+    execution["limit_order_supported"] = False
+    market = select_binance_entry("BUY", 100.0, 2.0, None, execution)
+    assert market is not None
+    assert market["entry_type"] == "MARKET"
+
+    execution["market_order_supported"] = False
+    assert select_binance_entry("BUY", 100.0, 2.0, {"low": 99.8, "high": 100.0}, execution) is None
+
+
+def test_binance_entry_selector_fails_closed_when_market_lot_filter_is_missing():
+    from app.signal_engine import select_binance_entry
+
+    execution = {
+        "best_bid": 100.0, "best_ask": 100.02, "mid_price": 100.01,
+        "spread_bps": 2.0, "bid_depth_quote": 2000.0, "ask_depth_quote": 2000.0,
+        "market_order_supported": False, "limit_order_supported": True,
+    }
+    selected = select_binance_entry("BUY", 100.0, 2.0, {"low": 99.8, "high": 100.0}, execution)
+    assert selected is not None
+    assert selected["entry_type"] == "LIMIT"

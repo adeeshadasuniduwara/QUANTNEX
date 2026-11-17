@@ -35,6 +35,10 @@ def test_aggregate_minutes_omits_incomplete_and_duplicate_buckets():
 def test_fetch_binance_historical_candles_paginates_and_returns_closed_rows(monkeypatch):
     from app import signal_engine
 
+    async def valid_spot_symbol(symbol):
+        return symbol == "BTCUSDT"
+    monkeypatch.setattr(signal_engine, "is_binance_spot_symbol", valid_spot_symbol)
+
     requests = []
 
     def handler(request):

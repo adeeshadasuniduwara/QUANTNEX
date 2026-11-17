@@ -26,17 +26,17 @@ def rotating_symbol_sample(
     symbols: list[str], sample_size: int, *, day_index: int | None = None
 ) -> list[str]:
     """Return a deterministic daily slice that rotates through the live Spot universe."""
-    if not isinstance(sample_size, int) or sample_size < 1:
+    if isinstance(sample_size, bool) or not isinstance(sample_size, int) or sample_size < 1:
         raise ValueError("universe sample size must be a positive integer.")
+    if day_index is None:
+        day_index = datetime.now(timezone.utc).date().toordinal()
+    if isinstance(day_index, bool) or not isinstance(day_index, int) or day_index < 0:
+        raise ValueError("sample day index must be a non-negative integer.")
     universe = sorted({str(symbol).strip().upper() for symbol in symbols if str(symbol).strip()})
     if not universe:
         return []
     if len(universe) <= sample_size:
         return universe
-    if day_index is None:
-        day_index = datetime.now(timezone.utc).date().toordinal()
-    if not isinstance(day_index, int) or day_index < 0:
-        raise ValueError("sample day index must be a non-negative integer.")
     start = (day_index * sample_size) % len(universe)
     return [universe[(start + offset) % len(universe)] for offset in range(sample_size)]
 
@@ -74,6 +74,9 @@ async def _run(
         )
     else:
         symbols = list(dict.fromkeys(str(symbol).strip().upper() for symbol in symbols if str(symbol).strip()))
+        if not symbols:
+            print("Invalid or empty symbol list.", file=sys.stderr)
+            return 2
         allowed = set(universe) | {"XAUUSD"}
         invalid = [symbol for symbol in symbols if symbol not in allowed]
         if invalid:

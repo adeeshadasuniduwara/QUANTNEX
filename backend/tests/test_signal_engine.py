@@ -60,7 +60,7 @@ def test_binance_crypto_candles_use_public_klines(monkeypatch):
                         "500000", 100, "6.0", "250000", "0"])
 
     def handler(request):
-        assert request.url.host == "api.binance.com"
+        assert request.url.host == "data-api.binance.vision"
         assert request.url.path == "/api/v3/klines"
         assert request.url.params["symbol"] == "BTCUSDT"
         assert request.url.params["interval"] == "15m"
@@ -94,7 +94,7 @@ def test_bitcoin_uses_coinbase_candles_when_binance_is_unavailable(monkeypatch):
                      str(price), str(price + 1), "0.25"])
 
     def handler(request):
-        if request.url.host == "api.binance.com":
+        if request.url.host.endswith("binance.com") or request.url.host == "data-api.binance.vision":
             return httpx.Response(503, json={"msg": "temporarily unavailable"})
         assert request.url.host == "api.exchange.coinbase.com"
         assert request.url.path == "/products/BTC-USD/candles"
@@ -480,7 +480,7 @@ def test_crypto_candle_provider_reports_coinbase_fallback(monkeypatch):
         payload.append([stamp, price - 5, price + 5, price, price + 1, 12.5])
 
     def handler(request):
-        if request.url.host == "api.binance.com":
+        if request.url.host.endswith("binance.com") or request.url.host == "data-api.binance.vision":
             return httpx.Response(503, json={"msg": "temporary unavailable"})
         if request.url.host == "api.exchange.coinbase.com":
             return httpx.Response(200, json=payload)
@@ -717,7 +717,7 @@ def test_binance_exchange_info_discovers_dynamic_spot_pairs_and_filters_ineligib
     ]}
 
     def handler(request):
-        assert request.url.host == "api.binance.com"
+        assert request.url.host == "data-api.binance.vision"
         assert request.url.path == "/api/v3/exchangeInfo"
         return httpx.Response(200, json=payload)
 

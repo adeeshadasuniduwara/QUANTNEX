@@ -26,6 +26,7 @@ BINANCE_SPOT_PUBLIC_BASES: tuple[str, ...] = (
 )
 
 _REQUEST_SEMAPHORES: WeakKeyDictionary = WeakKeyDictionary()
+_PREFERRED_BASES: WeakKeyDictionary = WeakKeyDictionary()
 _RETRYABLE_HTTP_STATUSES = {403, 408, 425, 451}
 
 
@@ -36,6 +37,14 @@ def _request_semaphore() -> asyncio.Semaphore:
         semaphore = asyncio.Semaphore(4)
         _REQUEST_SEMAPHORES[loop] = semaphore
     return semaphore
+
+
+def _ordered_bases(bases: tuple[str, ...]) -> tuple[str, ...]:
+    loop = asyncio.get_running_loop()
+    preferred = _PREFERRED_BASES.get(loop)
+    if preferred in bases:
+        return (preferred, *(base for base in bases if base != preferred))
+    return bases
 
 
 class BinancePublicDataError(RuntimeError):
@@ -108,7 +117,8 @@ async def get_binance_public_json(
         or ".." in path.split("/")
     ):
         raise ValueError("Only Binance public Spot /api/v3 routes are allowed.")
-    bases = _validated_bases(base_urls)
+    bases = _ordered_bases(_validated_bases(base_urls))
+    loop = asyncio.get_running_loop()
     attempts: list[str] = []
 
     for base in bases:
@@ -135,7 +145,9 @@ async def get_binance_public_json(
                 )
             response.raise_for_status()
             try:
-                return response.json(), base
+                payload = response.json()
+                _PREFERRED_BASES[loop] = base
+                return payload, base
             except ValueError as exc:
                 attempts.append(f"{base}: invalid JSON ({type(exc).__name__})")
         except BinancePublicDataError:

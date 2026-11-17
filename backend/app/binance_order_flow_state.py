@@ -120,6 +120,17 @@ class AggTradeCvdState:
         self._session_coverage_before_gap = False
         self._session_date_before_gap = None
 
+    def _mark_gap(self, expected: int, observed: int | None) -> None:
+        if not self.gap_detected:
+            self._coverage_before_gap = self.coverage_complete
+            self._session_coverage_before_gap = self.session_coverage_complete
+            self._session_date_before_gap = self.session_date_utc
+        self.coverage_complete = False
+        self.session_coverage_complete = False
+        self.gap_detected = True
+        self.gap_expected_id = expected
+        self.gap_observed_id = observed
+
     def _apply_contiguous(
         self,
         parsed: tuple[int, Decimal, Decimal, int, bool, date, Decimal, Decimal],
@@ -146,10 +157,16 @@ class AggTradeCvdState:
 
     def ingest(self, row: dict[str, Any]) -> str:
         """Apply one live aggTrade event or return an explicit gap/duplicate state."""
-        parsed = _parse_agg_trade(row)
-        trade_id = parsed[0]
         if self.gap_detected:
             return "GAP_PENDING"
+        try:
+            parsed = _parse_agg_trade(row)
+        except OrderFlowStateError:
+            if self.last_agg_trade_id is not None:
+                expected = self.last_agg_trade_id + 1
+                self._mark_gap(expected, expected)
+            raise
+        trade_id = parsed[0]
         if self.last_agg_trade_id is None:
             self.last_agg_trade_id = trade_id - 1
             self.session_date_utc = parsed[5]
@@ -163,16 +180,13 @@ class AggTradeCvdState:
             return "OUT_OF_ORDER"
         expected = self.last_agg_trade_id + 1
         if trade_id != expected:
-            self._coverage_before_gap = self.coverage_complete
-            self._session_coverage_before_gap = self.session_coverage_complete
-            self._session_date_before_gap = self.session_date_utc
-            self.coverage_complete = False
-            self.session_coverage_complete = False
-            self.gap_detected = True
-            self.gap_expected_id = expected
-            self.gap_observed_id = trade_id
+            self._mark_gap(expected, trade_id)
             return "GAP_DETECTED"
-        self._apply_contiguous(parsed)
+        try:
+            self._apply_contiguous(parsed)
+        except OrderFlowStateError:
+            self._mark_gap(expected, trade_id)
+            raise
         return "APPLIED"
 
     def apply_backfill(self, rows: list[dict[str, Any]]) -> str:

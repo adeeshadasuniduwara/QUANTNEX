@@ -982,10 +982,10 @@ async def build_signal(
             "note": "XAUUSD uses its configured Gold feed; Binance Spot order-flow is not applied.",
         }
     elif side and entry_choice:
+        order_flow_mode = "DETERMINISTIC_FIXTURE" if order_flow_override is not None else "PUBLIC_REST_SNAPSHOT"
         try:
             if order_flow_override is not None:
                 order_flow_snapshot = order_flow_override
-                order_flow_mode = "DETERMINISTIC_FIXTURE"
             elif candles_override is None:
                 max_order_flow_age = float(settings.get("max_order_flow_trade_age_seconds", 15.0))
                 if not math.isfinite(max_order_flow_age) or max_order_flow_age <= 0:
@@ -997,7 +997,11 @@ async def build_signal(
                         tick_size=tick_size,
                         max_trade_age_seconds=max_order_flow_age,
                     )
-                order_flow_mode = "PUBLIC_REST_SNAPSHOT"
+                order_flow_mode = (
+                    "DETERMINISTIC_FIXTURE"
+                    if order_flow_snapshot.get("feed_mode") == "DETERMINISTIC_FIXTURE"
+                    else "PUBLIC_REST_SNAPSHOT"
+                )
             else:
                 order_flow_snapshot = None
                 order_flow_mode = "CANDLE_ONLY_REPLAY_BASELINE"
@@ -1029,7 +1033,7 @@ async def build_signal(
             order_flow_payload = {
                 "status": "ERROR",
                 "accepted": False,
-                "data_mode": "PUBLIC_REST_SNAPSHOT" if order_flow_override is None else "DETERMINISTIC_FIXTURE",
+                "data_mode": order_flow_mode,
                 "error": f"{type(exc).__name__}: {exc}",
             }
             quality_filters["order_flow_confirmation"] = False

@@ -121,12 +121,23 @@ def process_trade_candles(db, trade: SignalTrade, candles: list[dict[str, Any]])
         return 0
     ordered = sorted(candles, key=lambda row: as_utc(row["time"]))
     first_time = as_utc(ordered[0]["time"])
-    if first_time > as_utc(trade.signal_time):
+    signal_time = as_utc(trade.signal_time)
+    # A live signal can be emitted just after a candle closes. The first
+    # available post-signal candle may therefore open up to one full signal
+    # timeframe later. Treat only a larger gap as missing history; otherwise
+    # normal 1m/5m/15m signals would remain OPEN forever without being replayed.
+    first_expected_candle = signal_time + timedelta(
+        seconds=TIMEFRAME_SECONDS.get(trade.timeframe, 900)
+    )
+    if first_time > first_expected_candle:
         trade.recovery_status = "PARTIAL"
-        trade.recovery_note = "Provider history begins after this signal; outcome replay is paused to avoid missing an earlier stop or target."
+        trade.recovery_note = (
+            "Provider history begins more than one signal timeframe after this signal; "
+            "outcome replay is paused to avoid missing an earlier stop or target."
+        )
         return 0
     trade.recovery_status = "COMPLETE"
-    trade.recovery_note = "Available closed-candle history covers the signal timestamp."
+    trade.recovery_note = "Available closed-candle history covers the first expected post-signal candle."
     last_processed = as_utc(trade.last_processed_candle_time) if trade.last_processed_candle_time else None
     signal_time = as_utc(trade.signal_time)
     processed = 0

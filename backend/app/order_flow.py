@@ -43,6 +43,8 @@ def normalize_agg_trades(rows: list[dict[str, Any]], *, now: datetime | None = N
         raise OrderFlowDataError("Binance aggregate-trade data is empty.")
     if not math.isfinite(max_age_seconds) or max_age_seconds <= 0:
         raise OrderFlowDataError("max_age_seconds must be finite and positive.")
+    if not math.isfinite(future_tolerance_seconds) or future_tolerance_seconds < 0:
+        raise OrderFlowDataError("future_tolerance_seconds must be finite and non-negative.")
     clock = _aware_utc(now or datetime.now(timezone.utc), "now")
     normalized: dict[int, dict[str, Any]] = {}
     for row in rows:
@@ -62,12 +64,21 @@ def normalize_agg_trades(rows: list[dict[str, Any]], *, now: datetime | None = N
         age = (clock - stamp).total_seconds()
         if age < -future_tolerance_seconds:
             raise OrderFlowDataError("Aggregate-trade data contains a future-dated trade.")
-        normalized[trade_id] = {
+        item = {
             "aggregate_trade_id": trade_id, "price": price, "quantity": quantity,
             "timestamp": stamp, "buyer_is_maker": buyer_is_maker,
             "aggressor_side": "SELL" if buyer_is_maker else "BUY",
             "signed_quantity": -quantity if buyer_is_maker else quantity,
         }
+        previous = normalized.get(trade_id)
+        if previous is not None and any(
+            previous[key] != item[key]
+            for key in ("price", "quantity", "timestamp", "buyer_is_maker")
+        ):
+            raise OrderFlowDataError(
+                f"Aggregate-trade ID {trade_id} has conflicting duplicate payloads."
+            )
+        normalized[trade_id] = item
     result = sorted(normalized.values(), key=lambda item: (item["timestamp"], item["aggregate_trade_id"]))
     latest_age = (clock - result[-1]["timestamp"]).total_seconds()
     if latest_age > max_age_seconds:

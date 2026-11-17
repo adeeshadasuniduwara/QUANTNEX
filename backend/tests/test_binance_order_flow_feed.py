@@ -52,6 +52,11 @@ def test_public_rest_collector_returns_provenance_and_snapshot_only_depth():
         assert result["depth_is_continuous"] is False
         assert result["feed_mode"] == "PUBLIC_REST_SNAPSHOT"
         assert result["data_provenance"]["candle_volume_used"] is False
+        assert result["data_sources"] == {
+            "trades": "https://data-api.binance.vision",
+            "depth": "https://data-api.binance.vision",
+            "session_probe": "https://data-api.binance.vision",
+        }
 
     asyncio.run(run())
 

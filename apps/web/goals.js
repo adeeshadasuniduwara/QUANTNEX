@@ -36,7 +36,7 @@
       const card=document.createElement("button");card.type="button";card.className="certificate-design-card";
       card.dataset.designId=design.id;card.setAttribute("aria-pressed",design.id===selectedCertificateDesign?"true":"false");
       card.classList.toggle("selected",design.id===selectedCertificateDesign);
-      const preview=document.createElement("span");preview.className="certificate-design-preview orientation-"+design.orientation;
+      const preview=document.createElement("span");preview.className="certificate-design-preview orientation-"+design.orientation+" motif-"+design.motif;
       const safeColor=value=>/^#[0-9a-f]{6}$/i.test(value||"")?value:"#777777";
       preview.style.setProperty("--cert-accent",safeColor(design.accent));
       preview.style.setProperty("--cert-light",safeColor(design.light));

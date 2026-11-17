@@ -156,3 +156,33 @@ def test_demo_certificate_api_accepts_selected_landscape_design_without_creating
         "orientation": "landscape",
     })
     assert invalid.status_code == 422
+
+
+def test_portrait_and_landscape_designs_use_disjoint_visual_compositions():
+    from app.certificate_designs import certificate_design_catalog
+
+    designs = certificate_design_catalog()
+    portrait = [item for item in designs if item["orientation"] == "portrait"]
+    landscape = [item for item in designs if item["orientation"] == "landscape"]
+    assert len(portrait) == len(landscape) == 50
+    assert {item["motif"] for item in portrait}.isdisjoint({item["motif"] for item in landscape})
+    assert {item["palette"] for item in portrait}.isdisjoint({item["palette"] for item in landscape})
+    assert len({(item["palette"], item["motif"]) for item in designs}) == 100
+
+
+def test_each_landscape_composition_renders_a_pdf():
+    common = dict(
+        display_name="Landscape Gallery",
+        goal_title="Unique Design Test",
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        achieved_at=datetime(2026, 11, 18, tzinfo=timezone.utc),
+        elapsed_days=321,
+        certificate_id="QX-LANDSCAPE-MOTIFS",
+        integrity_fingerprint="c" * 64,
+        target_amount=2500,
+        saved_amount=2500,
+        currency="USD",
+    )
+    for design_id in ("L-01", "L-02", "L-03", "L-04", "L-05"):
+        pdf = build_goal_certificate_pdf(**common, design_id=design_id, orientation="landscape")
+        assert pdf.startswith(b"%PDF") and len(pdf) > 2000, design_id

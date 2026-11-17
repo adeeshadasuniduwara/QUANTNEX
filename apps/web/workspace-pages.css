@@ -140,3 +140,11 @@ html{transition:zoom 180ms cubic-bezier(.2,.75,.25,1)}
 .certificate-design-preview.orientation-landscape:before{inset:9%}
 #goalCertificateDesignStatus{margin:0;color:#c6b47f;font-size:10px}
 @media(max-width:620px){.certificate-design-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-height:520px}.certificate-gallery-toolbar{align-items:stretch;flex-direction:column}.certificate-gallery-toolbar label{min-width:0}.certificate-design-card{padding:7px}.certificate-design-card.selected{padding:6px}}
+
+
+/* Landscape templates have their own five composition families, not portrait reskins. */
+.certificate-design-preview.motif-ribbon{border-style:solid;border-width:4px 7px 4px 7px;background:linear-gradient(135deg,var(--cert-light) 0 8%,var(--cert-paper) 8% 92%,var(--cert-light) 92%)}
+.certificate-design-preview.motif-wave{border:0;box-shadow:inset 0 5px 0 var(--cert-accent),inset 0 -8px 0 var(--cert-light);background:repeating-linear-gradient(170deg,var(--cert-paper),var(--cert-paper) 12px,var(--cert-light) 13px,var(--cert-paper) 15px)}
+.certificate-design-preview.motif-sidepanel{border:0;background:linear-gradient(90deg,var(--cert-light) 0 23%,var(--cert-paper) 23% 100%);box-shadow:inset 7px 0 0 var(--cert-accent)}
+.certificate-design-preview.motif-sunburst{border:0;background:repeating-conic-gradient(from 0deg at 50% 18%,var(--cert-paper) 0deg 10deg,var(--cert-light) 11deg 12deg);box-shadow:inset 0 0 0 5px var(--cert-accent)}
+.certificate-design-preview.motif-grid{border:1px solid var(--cert-accent);background:linear-gradient(var(--cert-light) 1px,transparent 1px),linear-gradient(90deg,var(--cert-light) 1px,transparent 1px),var(--cert-paper);background-size:14px 14px}

@@ -48,6 +48,7 @@ jobs:
           node --check apps/web/quantnex-view-intelligence.js
           node --check apps/web/quantnex-view-chart.js
           node --check apps/web/workspace-pages.js
+          node --check apps/web/binance-center.js
           node apps/web/workspace-pages.test.cjs
           node apps/web/goals.test.cjs
           node apps/web/journal-export.test.cjs

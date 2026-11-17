@@ -102,7 +102,7 @@ def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
                     p=canvas.beginPath(); p.moveTo(x+sx*length,y); p.lineTo(x,y); p.lineTo(x,y+sy*length)
                     canvas.drawPath(p,stroke=1,fill=0)
                     canvas.setFillColor(light); canvas.circle(x+sx*4*mm,y+sy*4*mm,1.5*mm,fill=1,stroke=0)
-        else:  # medallion
+        elif motif == "medallion":
             canvas.setLineWidth(1.0)
             canvas.rect(10*mm,10*mm,page_w-20*mm,page_h-20*mm,fill=0,stroke=1)
             cx,cy=page_w/2,page_h-20*mm
@@ -113,7 +113,60 @@ def build_goal_certificate_pdf(*, display_name: str, goal_title: str,
             for y in (18*mm,page_h-18*mm):
                 canvas.line(28*mm,y,page_w/2-18*mm,y)
                 canvas.line(page_w/2+18*mm,y,page_w-28*mm,y)
-        if motif != "medallion":
+        elif motif == "ribbon":
+            canvas.setLineWidth(1.5)
+            canvas.roundRect(10*mm,10*mm,page_w-20*mm,page_h-20*mm,5*mm,fill=0,stroke=1)
+            for xdir in (0,1):
+                x=10*mm if xdir==0 else page_w-10*mm
+                sign=1 if xdir==0 else -1
+                p=canvas.beginPath(); p.moveTo(x, page_h-10*mm)
+                p.lineTo(x+sign*25*mm,page_h-10*mm); p.lineTo(x+sign*19*mm,page_h-24*mm)
+                p.lineTo(x+sign*12*mm,page_h-17*mm); p.close()
+                canvas.setFillColor(light); canvas.drawPath(p,fill=1,stroke=1)
+            canvas.setStrokeColor(accent)
+            canvas.line(32*mm,28*mm,page_w-32*mm,28*mm)
+        elif motif == "wave":
+            canvas.setLineWidth(1.6)
+            for offset, color in ((0,accent),(4*mm,light),(8*mm,accent)):
+                canvas.setStrokeColor(color)
+                p=canvas.beginPath(); p.moveTo(12*mm,22*mm+offset)
+                p.curveTo(page_w*0.28,8*mm+offset,page_w*0.42,38*mm+offset,page_w*0.58,22*mm+offset)
+                p.curveTo(page_w*0.74,7*mm+offset,page_w*0.86,36*mm+offset,page_w-12*mm,22*mm+offset)
+                canvas.drawPath(p,stroke=1,fill=0)
+            canvas.setStrokeColor(light); canvas.line(12*mm,page_h-22*mm,page_w-12*mm,page_h-22*mm)
+        elif motif == "sidepanel":
+            canvas.setFillColor(colors.Color(accent.red,accent.green,accent.blue,alpha=0.10))
+            panel=canvas.beginPath(); panel.moveTo(10*mm,10*mm); panel.lineTo(55*mm,10*mm)
+            panel.lineTo(55*mm,page_h-10*mm); panel.lineTo(10*mm,page_h-10*mm); panel.close()
+            canvas.drawPath(panel,fill=1,stroke=0)
+            canvas.setStrokeColor(accent); canvas.setLineWidth(1.8)
+            canvas.line(58*mm,14*mm,58*mm,page_h-14*mm)
+            for y in (22*mm,page_h-22*mm):
+                canvas.line(65*mm,y,page_w-14*mm,y)
+            canvas.setStrokeColor(light); canvas.rect(14*mm,14*mm,37*mm,page_h-28*mm,fill=0,stroke=1)
+        elif motif == "sunburst":
+            cx,cy=page_w/2,page_h-22*mm
+            canvas.setLineWidth(0.8)
+            for angle in range(0,360,15):
+                rad=math.radians(angle)
+                canvas.setStrokeColor(light if angle%30 else accent)
+                canvas.line(cx+math.cos(rad)*10*mm,cy+math.sin(rad)*10*mm,
+                            cx+math.cos(rad)*17*mm,cy+math.sin(rad)*17*mm)
+            canvas.setStrokeColor(accent); canvas.circle(cx,cy,9*mm,fill=0,stroke=1)
+            canvas.circle(cx,cy,6*mm,fill=0,stroke=1); star(canvas,cx,cy,3.5*mm,1.4*mm)
+            canvas.rect(10*mm,10*mm,page_w-20*mm,page_h-20*mm,fill=0,stroke=1)
+        else:  # architectural grid
+            canvas.setLineWidth(0.7); canvas.setStrokeColor(light)
+            inset=13*mm
+            canvas.rect(inset,inset,page_w-2*inset,page_h-2*inset,fill=0,stroke=1)
+            for x in (page_w*0.25,page_w*0.75):
+                canvas.line(x,14*mm,x,page_h-14*mm)
+            for y in (page_h*0.22,page_h*0.78):
+                canvas.line(14*mm,y,page_w-14*mm,y)
+            canvas.setStrokeColor(accent); canvas.setLineWidth(2.0)
+            canvas.line(14*mm,14*mm,38*mm,14*mm)
+            canvas.line(page_w-38*mm,page_h-14*mm,page_w-14*mm,page_h-14*mm)
+        if motif not in {"medallion","sunburst"}:
             canvas.setFillColor(accent)
             for x in (18*mm,page_w-18*mm):
                 for y in (18*mm,page_h-18*mm):

@@ -955,3 +955,16 @@ def test_binance_execution_context_converts_non_stable_quote_asset_to_usd(monkey
     assert context["quote_asset_usd_rate"] == 100050
     assert context["bid_depth_usd"] > context["bid_depth_quote"]
     assert context["ask_depth_usd"] > context["ask_depth_quote"]
+
+
+def test_legacy_crypto_shortlist_never_bypasses_live_spot_metadata(monkeypatch):
+    import asyncio
+    from app import signal_engine
+
+    async def current_universe():
+        return ["ETHUSDT"]
+
+    monkeypatch.setattr(signal_engine, "get_binance_spot_symbols", current_universe)
+    assert "BTCUSDT" in signal_engine.CRYPTO_SYMBOLS
+    assert asyncio.run(signal_engine.is_binance_spot_symbol("BTCUSDT")) is False
+    assert asyncio.run(signal_engine.is_binance_spot_symbol("ETHUSDT")) is True

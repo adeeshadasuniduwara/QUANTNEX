@@ -1017,6 +1017,8 @@ async def build_signal(
                     side,
                     order_flow_snapshot,
                     max_trade_age_seconds=float(settings.get("max_order_flow_trade_age_seconds", 15.0)),
+                    max_depth_age_seconds=float(settings.get("max_order_book_snapshot_age_seconds", 5.0)),
+                    now=as_of if candles_override is not None else datetime.now(timezone.utc),
                 )
                 order_flow_payload = summarize_order_flow_snapshot(order_flow_snapshot, decision)
                 order_flow_payload["data_mode"] = order_flow_mode

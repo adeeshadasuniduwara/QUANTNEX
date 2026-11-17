@@ -34,9 +34,9 @@ Implemented in `backend/app/binance_order_flow_feed.py`:
 
 PR [#169](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/169) merged as `6a380e4c257d48e1188aeb3557e12581cb0a4b49`. All four PR checks passed. Post-merge Backend/Web checks were subsequently blocked by eight pre-existing signal-lifecycle tests, not by this collector; those lifecycle failures were traced and fixed in PR #186.
 
-## Phase B2 — session coverage and dynamic universe smoke rotation (implementation branch)
+## Phase B2 — session coverage and dynamic universe smoke rotation (PR checks passed; merge pending)
 
-Branch: `feat/binance-dynamic-orderflow-coverage` (CI pending).
+Branch: `feat/binance-dynamic-orderflow-coverage`. PR #187 head `d1a7e7c9a5caac91a36b2598543de96efc818984` passed Backend CI (303 tests), Backend/Web CI on Python 3.12 and 3.14 (303 tests each) and Web checks. Merge is pending final diff/base review.
 
 ### Order-flow correctness changes
 

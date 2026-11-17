@@ -151,3 +151,29 @@ def test_depth_snapshot_rejects_crossed_or_malformed_levels():
         book.load_snapshot(10, [["100.2", "2"]], [["100.1", "2"]])
     with pytest.raises(OrderFlowStateError, match="decimal"):
         book.load_snapshot(10, [["bad", "2"]], [["100.1", "2"]])
+
+
+def test_aggtrade_backfill_across_utc_rollover_does_not_restore_new_session_delta():
+    state = AggTradeCvdState("BTCUSDT")
+    state.begin_utc_session(100, date(2026, 11, 17))
+    state.ingest(agg_trade(100, 100, 1, day=17, hour=23, minute=59))
+    assert state.ingest(agg_trade(102, 100, 1, day=18, hour=0, minute=0)) == "GAP_DETECTED"
+
+    assert state.apply_backfill([
+        agg_trade(101, 100, 2, day=17, hour=23, minute=59),
+        agg_trade(102, 100, 3, day=18, hour=0, minute=0),
+    ]) == "RECOVERED"
+    snapshot = state.snapshot()
+    assert snapshot["cvd_value"] == 6.0
+    assert snapshot["session_delta"] is None
+    assert snapshot["session_delta_coverage_complete"] is False
+
+
+def test_depth_gap_clears_stale_levels_so_invalid_book_cannot_be_reused():
+    book = BinanceSpotDepthBook()
+    book.load_snapshot(20, [["100", "2"]], [["100.1", "2"]])
+    assert book.apply_diff({"U": 22, "u": 22, "b": [], "a": []}) == "GAP_DETECTED"
+    snapshot = book.snapshot()
+    assert snapshot["valid"] is False
+    assert snapshot["bids"] == []
+    assert snapshot["asks"] == []

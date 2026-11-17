@@ -468,37 +468,58 @@ Automatic, high-quality Binance signals remain the primary objective. Order-flow
 - No claim of improved win rate or profitability is made.
 
 
-## 2026-11-17 — Phase 16: Binance public REST host failover (in progress)
+## 2026-11-17 — Phase 16: Binance public REST host failover (merged PR #188)
 
-Branch: `fix/binance-public-data-endpoint-failover` (created from post-merge `main` commit `3666519818fb20ded9c1be9259c7e004e8f06dda`).
+### Finding and changes
 
-### Finding
+- The scheduled live smoke run on 2026-11-16 failed before scanning because the GitHub runner could not retrieve Spot `exchangeInfo` from the single configured REST host.
+- Added `backend/app/binance_public.py`: HTTPS-only, public `/api/v3` routes; prefers `data-api.binance.vision`, then official Binance REST hosts; bounded 3.5-second host attempts (1.5-second connect timeout); four concurrent requests per event loop; successful-host reuse.
+- Failover retries transport, invalid JSON, HTTP 408/425 and server failures. It stops on 418/429 rate limits, 403/451 WAF or geo restrictions, and ordinary client validation errors.
+- Routed Spot exchange metadata, bookTicker, depth, klines, historical klines and order-flow requests through the helper. Provider host provenance is preserved.
 
-The last scheduled smoke run failed before scanning because `get_binance_spot_symbols()` contacted only `api.binance.com` and could not retrieve `exchangeInfo`. Binance's official Spot documentation lists multiple REST hosts and a dedicated unauthenticated public-market-data host. A single-host dependency is an avoidable availability weakness.
+### Verification
 
-### Changes in progress
+- PR [#188](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/188) merged to `main` as `a8fc002b214a037fd4e1ba63e9c68223444684b1`.
+- Post-merge Backend CI and Backend/Web CI passed on the current main commit; the separate Telegram Update Notifications workflow failed because the repository's configured Telegram chat target is invalid/self-directed. This does not affect backend/web test results.
+- The only verified crypto signal market remains Binance Spot. USDⓈ-M and COIN-M Futures are not wired into the signal engine.
+- The latest visible live smoke run remains the 2026-11-16 run, which failed before symbol discovery. The post-failover scheduled runner reachability has not yet been demonstrated; do not treat CI unit tests as live-provider verification.
 
-- Added `backend/app/binance_public.py` with an HTTPS-only, `/api/v3`-only public REST client.
-- Prefer `data-api.binance.vision`, then try the official general/GCP/alternate Binance hosts for transport failures, invalid JSON, 408/425 and server errors; stop on WAF/geo restrictions and rate limits.
-- Stop immediately on HTTP 418/429 and preserve `Retry-After`; stop on ordinary client-validation errors such as invalid symbol instead of retrying them across hosts.
-- Cap each host attempt at 3.5 seconds (1.5-second connect timeout), limit concurrency to four per event loop, and reuse the last successful host within that loop.
-- Route Spot `exchangeInfo`, `bookTicker`, depth, klines, historical klines and order-flow aggTrades/session probes through the shared helper.
-- Preserve source-host provenance in execution context and order-flow snapshots.
-- Add deterministic mocked tests for host failover, invalid-symbol no-retry, rate-limit stop, all-host failure, route restriction, loop isolation and symbol-discovery integration.
+## 2026-11-17 — Phase 17: order-flow-aware Binance Spot signal gate (implementation in progress)
+
+### User priority
+
+Automatic, high-quality Binance signals remain the primary objective. Order-flow must influence signal eligibility, not merely appear in a dashboard. WAIT is preferred over a candidate whose live order-flow evidence is missing, stale, neutral or contradictory.
+
+### Changes on branch `feat/orderflow-aware-signal-gate`
+
+- Added `evaluate_order_flow_confirmation()` to `backend/app/order_flow.py`.
+- The evaluator checks two non-duplicated directional observations: Binance aggregate-trade aggressor `delta_ratio` and quote-notional L2 depth imbalance. It reports supporting, conflicting and neutral evidence separately.
+- A live Spot candidate now requests the read-only public AggTrade + depth snapshot after the existing candle/confluence and execution-entry gates pass. The signal is rejected to WAIT unless at least one observation supports the direction and support count exceeds conflict count.
+- Stale, malformed, unproven or unavailable trade/order-flow data fails closed. No candle-volume-derived bid/ask delta is accepted.
+- Signal payloads include compact trade-side delta, buy/sell volume, window-delta scope, full-session delta only when ID coverage is complete, explicit persistent-CVD unavailable state, L2 spread/depth/microprice, footprint summary, source hosts and snapshot continuity state.
+- Historical candle-only backtest remains an explicitly labeled baseline; no historical trade/depth data is invented. Deterministic order-flow fixtures are labeled separately from live public REST data.
+
+### Tests added
+
+- Hand-controlled BUY and SELL order-flow confirmation cases.
+- CONTRADICTED, MIXED, NEUTRAL, stale and invalid-provenance cases.
+- End-to-end synthetic long/short signal fixtures now require aligned order-flow evidence.
+- End-to-end negative cases verify contradictory and stale order-flow returns WAIT.
+- Existing historical replay test asserts that candle-only replay reports order flow unavailable rather than claiming it was validated.
 
 ### Verification status
 
-- PR #188 is open. Head `e2114a0076875646707188f8d6c5882030e7f4df` passed Backend CI run #615 (314 tests) and Backend/Web CI run #737 (314 tests on Python 3.12 and 3.14; `web-check` passed).
-- PR #188 is mergeable against `main` at `3666519818fb20ded9c1be9259c7e004e8f06dda`; merge is pending final diff/security review and a current-base check.
-- The live smoke workflow has not yet been verified against this failover implementation. The latest scheduled run found is still the 2026-11-16 provider failure; no 2026-11-17 scheduled run was visible at the time of this check.
-- No real orders, API keys or private endpoints are used.
+- Implementation and tests are committed to the feature branch; PR and GitHub Actions checks are the next gate.
+- This sign-confluence evaluator is not calibrated as a win probability. It has not yet demonstrated incremental expectancy or win-rate improvement.
+- The current REST depth is one snapshot, not a continuous sequence-validated book. Persistent CVD, reconnect-safe backfill and historical trade/depth replay remain incomplete.
+- The scheduled live smoke runner has not yet been observed succeeding after PR #188's endpoint failover.
 
 ### Exact next steps
 
-1. Finish Phase 16 tests, create PR, review the full diff/security and merge only after all relevant CI checks pass; verify post-merge main.
-2. Inspect the next scheduled rotating 20-pair live smoke run for dynamic universe count, sample and per-host provider diagnostics.
-3. Implement bounded WebSocket AggTrade state with reconnect/backfill, ID-gap detection and persistent/reconstructable UTC-session delta.
-4. Implement the Binance Spot depth snapshot + diff-stream sequence bridge; invalidate/resync immediately on any update-ID gap.
-5. Integrate source-aware order-flow evidence into `build_signal` with explicit support/conflict/unavailable/veto states and deterministic long/short fixtures.
-6. Extend replay with historical trades/depth only where data can be retained/reconstructed; keep candle-only performance clearly separated from combined order-flow claims.
-7. Add transparent method registry and ablation tests for existing structure/SMC plus VWAP, volume profile, liquidity and regime methods before adding more indicators.
+1. Review branch diff and run Backend CI on Python 3.12/3.14 plus Backend/Web CI.
+2. Fix all failing tests; create PR against latest main and merge only after checks, diff/security and mergeability pass.
+3. Verify post-merge CI and separately verify a live read-only smoke run on the GitHub runner.
+4. Implement bounded WebSocket AggTrade state, ID-gap detection, reconnect/backfill and persistent/reconstructable UTC-session CVD.
+5. Implement the depth snapshot + diff-stream sequence bridge; invalidate/resync on every update-ID gap.
+6. Add synchronized historical trade/depth capture and replay before evaluating order-flow's incremental value.
+7. Only then add further strategy-registry methods (VWAP, volume profile, regime/pullback/continuation variants) with causal fixtures and ablation evidence.

@@ -131,6 +131,11 @@ def _order_flow_snapshot(delta_ratio=0.25, depth_imbalance=0.15, age=1.0):
             "bid_ask_semantics": "Aggressor-side inferred trade delta; not consolidated quoted bid/ask volume.",
             "candle_volume_used": False,
         },
+        "data_sources": {"trades": "fixture", "depth": "fixture"},
+        "depth_is_continuous": False,
+        "depth_snapshot_update_id": 123,
+        "depth_observed_at": NOW.isoformat(),
+        "feed_mode": "DETERMINISTIC_FIXTURE",
         "order_book": {"depth_imbalance": depth_imbalance},
     }
 
@@ -169,6 +174,10 @@ def test_order_flow_confirmation_rejects_stale_or_unproven_trade_side_data():
 
     with pytest.raises(OrderFlowDataError, match="stale"):
         evaluate_order_flow_confirmation("BUY", _order_flow_snapshot(age=16.0))
+    stale_depth = _order_flow_snapshot()
+    stale_depth["depth_observed_at"] = (NOW - timedelta(seconds=10)).isoformat()
+    with pytest.raises(OrderFlowDataError, match="depth snapshot is stale"):
+        evaluate_order_flow_confirmation("BUY", stale_depth, now=NOW)
     unproven = _order_flow_snapshot()
     unproven["data_provenance"]["candle_volume_used"] = True
     with pytest.raises(OrderFlowDataError, match="provenance"):

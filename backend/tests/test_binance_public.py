@@ -169,3 +169,26 @@ def test_public_rest_remembers_last_successful_host_within_event_loop():
     assert first == ({"ok": True}, "https://mirror.test")
     assert second == ({"ok": True}, "https://mirror.test")
     assert requests == ["primary.test", "mirror.test", "mirror.test"]
+
+
+@pytest.mark.parametrize(
+    ("status", "message"),
+    [(403, "WAF security block"), (451, "Region restricted")],
+)
+def test_public_rest_stops_on_waf_or_geo_restriction(status, message):
+    requests = []
+
+    def handler(request):
+        requests.append(request.url.host)
+        return httpx.Response(status, json={"msg": message})
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            with pytest.raises(BinancePublicDataError, match=message):
+                await get_binance_public_json(
+                    client, "/api/v3/exchangeInfo",
+                    base_urls=("https://primary.test", "https://mirror.test"),
+                )
+
+    asyncio.run(run())
+    assert requests == ["primary.test"]

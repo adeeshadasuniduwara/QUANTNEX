@@ -37,7 +37,7 @@ Binance documents the alternative REST base URLs and recommends the market-data-
 
 ## WebSocket follow-on
 
-Binance also documents the public market-data WebSocket host `data-stream.binance.vision`. It is not used by this REST helper; the next stream phase should use it for public AggTrade and depth streams, with REST snapshot bridging and update-ID gap invalidation. User Data Streams are not available on the market-data-only host.
+Binance also documents the public market-data WebSocket host `data-stream.binance.vision`. It is not used by this REST helper; the next stream phase should use it for public AggTrade and depth streams, with REST snapshot bridging and update-ID gap invalidation. User Data Streams are not available on the market-data-only host. The stream design must handle 24-hour connection expiry/serverShutdown, 20-second ping frames with pong within 60 seconds, at most 1,024 streams per connection, five incoming messages per second and 300 connection attempts per five minutes.
 
 ## Limitations
 

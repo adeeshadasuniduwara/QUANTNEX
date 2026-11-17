@@ -182,14 +182,14 @@ def _format_telegram_message(message: str) -> str:
     lines = content.splitlines()
     rendered = []
     if not lines or "QUANTNEX" not in lines[0].upper():
-        rendered.extend(["<b>✦ QUANTNEX</b>", ""])
+        rendered.extend(["<b>✨ QUANTNEX</b>", ""])
     for index, line in enumerate(lines):
         safe = html.escape(line, quote=False)
         stripped = line.strip()
         if not stripped:
             rendered.append("")
         elif index == 0:
-            rendered.append("<b>✦ " + safe + "</b>" if "QUANTNEX" in stripped.upper() else "<b>" + safe + "</b>")
+            rendered.append("<b>✨ " + safe + "</b>" if "QUANTNEX" in stripped.upper() else "<b>" + safe + "</b>")
         elif stripped.isupper() and len(stripped) > 3:
             rendered.append("<b>" + safe + "</b>")
         elif ":" in line:

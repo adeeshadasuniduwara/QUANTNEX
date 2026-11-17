@@ -69,6 +69,8 @@ A scheduled live smoke run failed at Binance Spot `exchangeInfo` discovery befor
 
 ## Phase B3 — continuous ingestion (next)
 
+Use Binance's public market-data WebSocket host `data-stream.binance.vision` for Spot AggTrade and diff-depth streams; User Data Streams are not available on that host. Bridge each depth stream to a REST snapshot and invalidate/resync on any update-ID gap.
+
 - Add bounded per-symbol rolling trade state with aggregate-trade ID tracking, deduplication, REST backfill and reconnect recovery.
 - Add WebSocket depth snapshot bridging using Binance's documented update-ID sequence procedure; invalidate and resync immediately on any gap.
 - Persist or safely reconstruct UTC-session delta and cumulative delta; expose explicit data-quality states for gaps, resets, reconnects and stale data.

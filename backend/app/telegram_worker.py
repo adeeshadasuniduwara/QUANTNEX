@@ -118,6 +118,9 @@ BOT_COMMANDS = [
     {"command":"gold_setup","description":"Enable daily Gold reports at 00:00 and 12:00"},
     {"command":"gold_status","description":"Check daily Gold report settings"},
     {"command":"gold_off","description":"Disable scheduled Gold reports"},
+    {"command":"binance","description":"Open Binance demo connection setup guide"},
+    {"command":"binance_status","description":"Check Binance Spot and Futures testnet status"},
+    {"command":"binance_off","description":"Emergency stop: keep Binance auto trading OFF"},
 ]
 
 MENU = {"inline_keyboard": [
@@ -521,6 +524,26 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
         return ("QUANTNEX Daily Gold reports: "+("ON" if enabled else "OFF")
             +"\\nSchedule: 00:00 and 12:00 Asia/Colombo."
             +"\\nCommands: /gold · /gold_setup · /gold_off")
+    if command in {"/binance", "/binance_connect"}:
+        return ("🔐 QUANTNEX · BINANCE DEMO SETUP\\n\\n"
+            "Open QUANTNEX → Binance Exchange. Enter Spot Testnet and USD-M Futures Testnet API keys/secrets separately.\\n"
+            "Never send API keys or secrets in Telegram chat. Use TESTNET keys only; disable withdrawals.\\n\\n"
+            "🇱🇰 සිංහල\\n"
+            "QUANTNEX → Binance Exchange පිටුවට ගොස් Spot Testnet සහ Futures Testnet API Key/Secret වෙන වෙනම ඇතුළත් කරන්න.\\n"
+            "API keys හෝ secrets Telegram chat එකට එවන්න එපා. Testnet keys පමණක් භාවිතා කරන්න.\\n\\n"
+            "Demo connections and risk limits are available. Signal-to-order execution is not enabled in this release; Auto Trading stays OFF.")
+    if command=="/binance_status":
+        spot=bool(_get(db,user_id,"binance_spot_api_key_enc") and _get(db,user_id,"binance_spot_api_secret_enc"))
+        futures=bool(_get(db,user_id,"binance_futures_api_key_enc") and _get(db,user_id,"binance_futures_api_secret_enc"))
+        return ("🔷 BINANCE TESTNET STATUS\\nSpot: "+("CONNECTED" if spot else "NOT CONNECTED")
+            +"\\nUSD-M Futures: "+("CONNECTED" if futures else "NOT CONNECTED")
+            +"\\nAuto Trading: OFF · Order execution disabled in this release."
+            +"\\n\\n🇱🇰 සිංහල\\nSpot: "+("සම්බන්ධයි" if spot else "සම්බන්ධ නැහැ")
+            +"\\nFutures: "+("සම්බන්ධයි" if futures else "සම්බන්ධ නැහැ")
+            +"\\nස්වයංක්‍රීය ගනුදෙනු: අක්‍රියයි.")
+    if command=="/binance_off":
+        _set(db,user_id,"binance_auto_trading_enabled","false");db.commit()
+        return "🛑 Binance Auto Trading: OFF.\\n🇱🇰 Binance ස්වයංක්‍රීය ගනුදෙනු අක්‍රිය කර ඇත. No orders are submitted."
     if command=="/status":
         return "QUANTNEX bot connected. Crypto feed: Binance Spot public candles with Coinbase fallback for BTC/ETH/SOL. Gold feed: "+(gold_feed_provider() or "not configured")+". Broker execution: disabled."
     if command=="/scan":

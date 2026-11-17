@@ -981,3 +981,39 @@ def test_legacy_crypto_shortlist_never_bypasses_live_spot_metadata(monkeypatch):
     assert "BTCUSDT" in signal_engine.CRYPTO_SYMBOLS
     assert asyncio.run(signal_engine.is_binance_spot_symbol("BTCUSDT")) is False
     assert asyncio.run(signal_engine.is_binance_spot_symbol("ETHUSDT")) is True
+
+
+def test_binance_spot_symbol_discovery_fails_over_to_official_market_data_host(monkeypatch):
+    import asyncio
+    import httpx
+    from app import binance_public, signal_engine
+
+    monkeypatch.setattr(signal_engine, "_BINANCE_SPOT_SYMBOLS_CACHE", None)
+    monkeypatch.setattr(
+        binance_public, "BINANCE_SPOT_PUBLIC_BASES",
+        ("https://primary.test", "https://mirror.test"),
+    )
+    requests = []
+    exchange_info = {"symbols": [{
+        "symbol": "BTCUSDT", "status": "TRADING",
+        "baseAsset": "BTC", "quoteAsset": "USDT",
+        "isSpotTradingAllowed": True, "filters": [],
+    }]}
+
+    def handler(request):
+        requests.append(request.url.host)
+        if request.url.host == "primary.test":
+            return httpx.Response(503, json={"msg": "temporary host outage"})
+        return httpx.Response(200, json=exchange_info)
+
+    original_client = httpx.AsyncClient
+    transport = httpx.MockTransport(handler)
+
+    def mock_client(*args, **kwargs):
+        return original_client(*args, transport=transport, **kwargs)
+
+    monkeypatch.setattr(signal_engine.httpx, "AsyncClient", mock_client)
+    symbols = asyncio.run(signal_engine.get_binance_spot_symbols(force_refresh=True))
+
+    assert symbols == ["BTCUSDT"]
+    assert requests == ["primary.test", "mirror.test"]

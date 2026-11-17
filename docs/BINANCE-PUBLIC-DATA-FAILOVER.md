@@ -16,7 +16,7 @@ The client prefers the dedicated unauthenticated public-market-data host, then u
 6. `https://api3.binance.com`
 7. `https://api4.binance.com`
 
-Binance documents the alternative REST base URLs and recommends the market-data-only host for public market data. It also notes that api1–api4 can be less stable. See the [Spot REST API documentation](https://developers.binance.com/en/docs/products/spot/rest-api) and [Market Data Only URLs](https://developers.binance.me/en/docs/products/spot/faqs/market_data_only).
+Binance documents the alternative REST base URLs and recommends the market-data-only host for public market data. It also notes that api1–api4 can be less stable. See the [Spot REST API documentation](https://developers.binance.com/en/docs/products/spot/rest-api) and [Market Data Only URLs](https://developers.binance.com/en/docs/products/spot/faqs/market_data_only).
 
 ## Retry policy
 
@@ -34,6 +34,10 @@ Binance documents the alternative REST base URLs and recommends the market-data-
 - `/api/v3/ticker/bookTicker` and `/api/v3/depth` — execution context.
 - `/api/v3/klines` — live candles and historical candle replay.
 - `/api/v3/aggTrades` — recent trade delta and UTC session-start probe.
+
+## WebSocket follow-on
+
+Binance also documents the public market-data WebSocket host `data-stream.binance.vision`. It is not used by this REST helper; the next stream phase should use it for public AggTrade and depth streams, with REST snapshot bridging and update-ID gap invalidation. User Data Streams are not available on the market-data-only host.
 
 ## Limitations
 

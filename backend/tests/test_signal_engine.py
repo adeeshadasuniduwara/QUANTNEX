@@ -464,7 +464,7 @@ def test_low_price_crypto_signal_levels_keep_required_precision(monkeypatch):
             "footprint": [],
             "data_provenance": {"candle_volume_used": False, "bid_ask_semantics": "Aggressor-side inferred trade delta"},
             "data_sources": {"trades": "https://data-api.binance.vision", "depth": "https://data-api.binance.vision"},
-            "feed_mode": "PUBLIC_REST_SNAPSHOT", "depth_is_continuous": False,
+            "feed_mode": "DETERMINISTIC_FIXTURE", "depth_is_continuous": False,
             "depth_snapshot_update_id": 123, "depth_observed_at": now.isoformat(),
             "quality": "OBSERVED_AGGRESSOR_DELTA_AND_L2_SNAPSHOT",
         }

@@ -178,3 +178,20 @@ def test_depth_gap_clears_stale_levels_so_invalid_book_cannot_be_reused():
     assert snapshot["valid"] is False
     assert snapshot["bids"] == []
     assert snapshot["asks"] == []
+
+
+
+def test_malformed_or_non_monotonic_trade_invalidates_cvd_until_valid_backfill():
+    state = AggTradeCvdState("BTCUSDT")
+    state.begin_utc_session(100, date(2026, 11, 17))
+    state.ingest(agg_trade(100, 100, 1, hour=12, minute=0))
+
+    with pytest.raises(OrderFlowStateError, match="timestamps must not move backwards"):
+        state.ingest(agg_trade(101, 100, 1, hour=11, minute=59))
+    assert state.snapshot()["cvd_value"] is None
+    assert state.snapshot()["gap_detected"] is True
+
+    assert state.apply_backfill([
+        agg_trade(101, 100, 2, hour=12, minute=1),
+    ]) == "RECOVERED"
+    assert state.snapshot()["cvd_value"] == 3.0

@@ -184,3 +184,14 @@ Do not convert static code inspection or CI success into a claim that a real ext
 - Native chart now reserves a 12-bar right-side gutter so the latest candle is not pinned to the chart edge. The viewport stays stable while live candles append.
 - Mouse/touch chart gestures now support horizontal history pan (including limited future space), vertical price pan, independent price-axis scaling and time zoom; pointer geometry uses the same responsive price-axis width as rendering.
 - Evidence: lifecycle and chart contract tests added/updated. Real browser interaction, provider-driven live tick speed and visual verification on desktop/mobile remain device-level checks.
+
+
+## Update 030 — Signal outcome labels, persistent chart markers, Telegram live cards and daily pair report
+
+- New confirmed stop-loss closures use the explicit `SL_HIT` outcome instead of the ambiguous generic `STOPPED` label. Existing historical `STOPPED` rows remain intact and render as `SL HIT`; signal history is not deleted or rewritten.
+- Existing staged protection remains: TP1 moves the remaining simulated stop to entry, TP2 trails it to TP1, and the trade stays active until a later stop/profit-lock exit or TP3 completion. Ambiguous same-candle SL/TP bars stay active and are not guessed.
+- QUANTNEX VIEW now reloads the persisted signal ledger for the selected pair and paints BUY below / SELL above the originating candle, preserving historical markers after chart refreshes. The latest analysis signal also receives a live marker.
+- Each connected Telegram bot receives one signal card per tracked signal with pair, BUY/SELL, entry, active SL and TP1–TP3. The same Telegram message is edited as provider-backed mark price changes and when the outcome changes; floating result is shown in R, clearly labelled simulated (no broker order).
+- Live marks refresh from the configured market-data provider with a shared per-symbol cache; unavailable/stale prices are not fabricated.
+- Added a landscape vector PDF report for confirmed signal outcomes, pair-by-pair all-history win rates, daily closed trades, open positions, and R-based summary. Scheduled delivery defaults ON for connected bots at 21:00 Asia/Colombo; the existing per-bot toggle remains available.
+- Evidence: lifecycle, Telegram-card, PDF statistics and chart-marker regression tests added. Actual connected-bot delivery, live provider latency, browser rendering and the first scheduled 21:00 delivery remain external runtime checks.

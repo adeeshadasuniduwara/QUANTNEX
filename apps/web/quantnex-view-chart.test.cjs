@@ -43,7 +43,7 @@ console.log("QUANTNEX chart redraw performance regression checks passed.");
 
 
 
-assert.ok(html.includes("quantnex-view-chart.js?v=20261116-tradingview-axes-tools1"), "Shared chart analysis must invalidate the chart bundle cache.");
+assert.ok(html.includes("quantnex-view-chart.js?v=20261116-signal-markers1"), "Shared chart analysis must invalidate the chart bundle cache.");
 
 assert.match(js, /quantnex:market-tick/, "Gold chart must consume the shared market tick feed.");
 assert.doesNotMatch(js, /goldTimer|scan\(\)/, "The chart must not call the removed scan function or poll full Gold history every five seconds.");
@@ -103,3 +103,9 @@ assert.match(js, /view\.priceShift=view\.drag\.priceShift\+\(e\.clientY-view\.dr
 assert.match(js, /right=r\.width-priceAxisWidth\(r\.width\)/, "Pointer gestures must use the same responsive price-axis boundary as drawing.");
 assert.match(css, /touch-action:none/, "Touch gestures must be routed to chart pan/zoom instead of browser page scrolling.");
 console.log("QUANTNEX VIEW free pan, future-bar gutter and touch gesture checks passed.");
+
+assert.match(js, /signalHistory=\[\]/, "Chart must keep a persisted signal-history collection for BUY/SELL markers.");
+assert.match(js, /api\/v1\/signals\/trades\?symbol=/, "Chart must reload persisted signal history for the selected pair.");
+assert.match(js, /label=buy\?"BUY":"SELL"/, "Confirmed signal markers must visibly label BUY or SELL beside the originating candle.");
+assert.match(js, /signalHistory\.forEach/, "Historical signal labels must be reconstructed from the ledger, not only the latest analysis.");
+console.log("QUANTNEX persistent BUY/SELL history marker checks passed.");

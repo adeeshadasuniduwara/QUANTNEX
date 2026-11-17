@@ -8,7 +8,7 @@ import math
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from .database import SessionLocal
 from .models import SignalTrade, SignalTradeEvent
@@ -121,13 +121,13 @@ def process_trade_candles(db, trade: SignalTrade, candles: list[dict[str, Any]])
         return 0
     ordered = sorted(candles, key=lambda row: as_utc(row["time"]))
     first_time = as_utc(ordered[0]["time"])
-    if first_time > as_utc(trade.signal_time):
+    last_processed = as_utc(trade.last_processed_candle_time) if trade.last_processed_candle_time else None
+    if last_processed is None and first_time > as_utc(trade.signal_time) + timedelta(seconds=TIMEFRAME_SECONDS.get(trade.timeframe, 900)):
         trade.recovery_status = "PARTIAL"
         trade.recovery_note = "Provider history begins after this signal; outcome replay is paused to avoid missing an earlier stop or target."
         return 0
     trade.recovery_status = "COMPLETE"
     trade.recovery_note = "Available closed-candle history covers the signal timestamp."
-    last_processed = as_utc(trade.last_processed_candle_time) if trade.last_processed_candle_time else None
     signal_time = as_utc(trade.signal_time)
     processed = 0
     for row in ordered:
@@ -189,7 +189,7 @@ def process_trade_candles(db, trade: SignalTrade, candles: list[dict[str, Any]])
                 event_type = "PROTECTED_STOP_HIT"
             else:
                 trade.realized_r = -1.0
-                trade.status = "STOPPED"
+                trade.status = "SL_HIT"
                 event_type = "SL_HIT"
             trade.stopped_at = candle_time
             observed = op if _touches(trade.side, op, op, stop, False) else stop
@@ -241,7 +241,7 @@ def trade_payload(trade: SignalTrade, events: list[SignalTradeEvent] | None = No
         "entry_price": trade.entry_price, "limit_price": trade.limit_price,
         "stop_loss": trade.stop_loss, "active_stop_loss": trade.active_stop_loss,
         "tp1": trade.tp1, "tp2": trade.tp2, "tp3": trade.tp3,
-        "status": trade.status, "signal_time": stamp(trade.signal_time),
+        "status": "SL_HIT" if trade.status == "STOPPED" else trade.status, "signal_time": stamp(trade.signal_time),
         "filled_at": stamp(trade.filled_at), "tp1_hit": trade.tp1_hit,
         "tp2_hit": trade.tp2_hit, "tp3_hit": trade.tp3_hit,
         "tp1_at": stamp(trade.tp1_at), "tp2_at": stamp(trade.tp2_at), "tp3_at": stamp(trade.tp3_at),
@@ -264,6 +264,9 @@ async def signal_lifecycle_worker() -> None:
     while True:
         try:
             with SessionLocal() as db:
+                # Permanently migrate legacy terminal labels so no client can surface STOPPED.
+                db.execute(update(SignalTrade).where(SignalTrade.status == "STOPPED").values(status="SL_HIT"))
+                db.commit()
                 active = list(db.scalars(select(SignalTrade).where(SignalTrade.status.in_(tuple(ACTIVE_STATES)))))
                 symbols = sorted({trade.symbol for trade in active})
                 now = asyncio.get_running_loop().time()

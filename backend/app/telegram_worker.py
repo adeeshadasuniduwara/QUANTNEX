@@ -1,6 +1,6 @@
 """Background Telegram command and TP1 notification worker."""
 from __future__ import annotations
-import asyncio, json, logging, math
+import asyncio, json, logging, math, time
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from typing import Any
@@ -10,10 +10,38 @@ from .database import SessionLocal
 from .models import GoalContribution, PaperTrade, PersonalGoal, Preference, SignalTrade, SignalTradeEvent
 from .security import decrypt_secret
 from .config import TWELVE_DATA_API_KEY, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
-from .signal_engine import build_signal, MarketDataError, gold_feed_configured, gold_feed_provider
+from .signal_engine import build_signal, fetch_candles_with_provider, MarketDataError, gold_feed_configured, gold_feed_provider
 from .events import event_hub
 
 logger = logging.getLogger("quantnex.telegram")
+
+# Process-wide Telegram outbound protection.
+_TELEGRAM_CHAT_INTERVAL_SECONDS = 2.0
+_TELEGRAM_GLOBAL_INTERVAL_SECONDS = 0.2  # cap this worker at 5 outbound calls/sec
+_TELEGRAM_CHAT_LOCKS: dict[str, asyncio.Lock] = {}
+_TELEGRAM_CHAT_LAST_SENT: dict[str, float] = {}
+_TELEGRAM_GLOBAL_LOCK = asyncio.Lock()
+_TELEGRAM_GLOBAL_LAST_SENT = 0.0
+
+
+async def _wait_telegram_rate_limit(chat_id: str | int) -> None:
+    """Serialize outbound chat traffic and apply per-chat plus global pacing."""
+    global _TELEGRAM_GLOBAL_LAST_SENT
+    key = str(chat_id)
+    lock = _TELEGRAM_CHAT_LOCKS.setdefault(key, asyncio.Lock())
+    async with lock:
+        now = time.monotonic()
+        wait = _TELEGRAM_CHAT_INTERVAL_SECONDS - (now - _TELEGRAM_CHAT_LAST_SENT.get(key, 0.0))
+        if wait > 0:
+            await asyncio.sleep(wait)
+        async with _TELEGRAM_GLOBAL_LOCK:
+            now = time.monotonic()
+            global_wait = (_TELEGRAM_GLOBAL_INTERVAL_SECONDS - (now - _TELEGRAM_GLOBAL_LAST_SENT)) if _TELEGRAM_GLOBAL_LAST_SENT > 0 else 0.0
+            if global_wait > 0:
+                await asyncio.sleep(global_wait)
+            _TELEGRAM_GLOBAL_LAST_SENT = time.monotonic()
+        _TELEGRAM_CHAT_LAST_SENT[key] = time.monotonic()
+
 
 def _get(db, user_id: int, key: str, default: str="") -> str:
     row=db.scalar(select(Preference).where(Preference.user_id==user_id,Preference.key==key))
@@ -123,7 +151,7 @@ SUBMENUS = {
         [{"text":"M30","callback_data":"qx:settf:30"},{"text":"M50","callback_data":"qx:settf:50"},{"text":"H1","callback_data":"qx:settf:60"}],
         [{"text":"Trend M15","callback_data":"qx:settrend:15"},{"text":"Trend M30","callback_data":"qx:settrend:30"}],
         [{"text":"Trend H1","callback_data":"qx:settrend:60"},{"text":"Trend H4","callback_data":"qx:settrend:240"}],
-        [{"text":"▶ Enable alerts","callback_data":"qx:resume"},{"text":"⏸ Pause alerts","callback_data":"qx:pause"}],
+        [{"text":"▶ Resume Telegram","callback_data":"qx:resume"},{"text":"⏸ Pause Telegram","callback_data":"qx:pause"}],
         [{"text":"🔎 Feed status","callback_data":"qx:status"},{"text":"🛡 Risk settings","callback_data":"qx:risk"}],
         [{"text":"🏠 Main menu","callback_data":"qx:menu:home"}]
     ]},
@@ -135,7 +163,7 @@ SUBMENUS = {
     ]},
     "qx:menu:reports": {"inline_keyboard": [
         [{"text":"📄 Today's PDF report","callback_data":"qx:daily"}],
-        [{"text":"🕗 Daily PDF 20:00 ON/OFF","callback_data":"qx:daily_toggle"}],
+        [{"text":"🕘 Daily PDF 21:00 ON/OFF","callback_data":"qx:daily_toggle"}],
         [{"text":"🎯 Personal goals","callback_data":"qx:goals"}],
         [{"text":"🏠 Main menu","callback_data":"qx:menu:home"}]
     ]},
@@ -158,12 +186,14 @@ MENU_TITLES = {
 
 async def _telegram_post(client, token: str, method: str, payload: dict):
     url=f"https://api.telegram.org/bot{token}/{method}"
+    if method in {"sendMessage", "editMessageText", "sendDocument"} and payload.get("chat_id") is not None:
+        await _wait_telegram_rate_limit(payload["chat_id"])
     for attempt in range(3):
         response=await client.post(url,json=payload)
         try: data=response.json()
         except ValueError: data={}
         if response.status_code == 429 and attempt < 2:
-            await asyncio.sleep(max(1,min(10,int((data.get("parameters") or {}).get("retry_after",2)))))
+            await asyncio.sleep(max(1,int((data.get("parameters") or {}).get("retry_after",2))))
             continue
         if response.status_code >= 500 and attempt < 2:
             await asyncio.sleep(2 ** attempt)
@@ -188,8 +218,11 @@ def _format_telegram_message(message: str) -> str:
             rendered.append("")
         elif index == 0:
             rendered.append("<b>✨ " + safe + "</b>" if "QUANTNEX" in line.upper() else "<b>" + safe + "</b>")
-        elif (line.strip().isupper() and len(line.strip()) > 3) or line.strip().startswith(("📈", "🧠", "🛡", "🎯", "📊", "⚙", "🚀", "🏅", "🔒")):
+        elif (line.strip().isupper() and len(line.strip()) > 3) or line.strip().startswith(("📈", "🧠", "🛡", "🎯", "📊", "⚙", "🚀", "🏅", "🔒", "💎", "🟢", "🔴", "📡")):
             rendered.append("<b>" + safe + "</b>")
+        elif ":" in line and len(line.split(":", 1)[0]) <= 24:
+            label, value = safe.split(":", 1)
+            rendered.append("<b>" + label + ":</b>" + value)
         else:
             rendered.append(safe)
     return "\n".join(rendered)[:3900]
@@ -207,22 +240,15 @@ async def _deliver_auto_signal(client, token: str, chat_id: str, message: str,
 
 
 async def _send(client, token: str, chat_id: str, text: str, reply_markup: dict | None = None):
-    # Telegram shows its animated typing indicator while a reply is being prepared.
-    try:
-        await _telegram_post(client, token, "sendChatAction", {"chat_id": chat_id, "action": "typing"})
-    except Exception:
-        pass
+    # Avoid extra typing-action API calls; visible messages pass through the shared limiter.
     payload={"chat_id":chat_id,"text":_format_telegram_message(text),"parse_mode":"HTML","disable_web_page_preview":True}
     if reply_markup: payload["reply_markup"]=reply_markup
     return await _telegram_post(client,token,"sendMessage",payload)
 
 async def _send_pdf(client, token: str, chat_id: str, pdf: bytes, filename: str, caption: str):
-    try:
-        await _telegram_post(client, token, "sendChatAction", {"chat_id": chat_id, "action": "upload_document"})
-    except Exception:
-        pass
     url=f"https://api.telegram.org/bot{token}/sendDocument"
     for attempt in range(3):
+        await _wait_telegram_rate_limit(chat_id)
         response=await client.post(url,data={"chat_id":chat_id,"caption":_format_telegram_message(caption)[:1000],"parse_mode":"HTML"},
             files={"document":(filename,pdf,"application/pdf")})
         try: data=response.json()
@@ -245,14 +271,14 @@ async def _edit_message(client, token: str, chat_id: str, message_id: int, text:
     return await _telegram_post(client,token,"editMessageText",payload)
 
 async def _deliver_daily_pdf(client, db, user_id: int, token: str, chat_id: str, report_day=None):
-    from .telegram_reporting import build_daily_paper_pdf
-    pdf, stats=build_daily_paper_pdf(db,user_id,report_day)
-    caption=("📊 QUANTNEX Daily Paper Report · "+stats["date"]+"\n"
-        +"Closed: "+str(stats["closed"])+" · Win rate: "+format(stats["win_rate"],".2f")+"%\n"
-        +"Gross profit: $"+format(stats["gross_profit"],".2f")+" · Losses: $"+format(stats["total_loss"],".2f")+"\n"
-        +"Recorded paper P&L: $"+format(stats["net"],".2f")+" · Open at cutoff: "+str(stats["open_at_cutoff"])+"\n"
-        +"Profit factor: "+(stats["profit_factor"] is not None and str(stats["profit_factor"]) or "—")+" · simulated ledger only; costs may be excluded.")
-    await _send_pdf(client,token,chat_id,pdf,"QUANTNEX-Paper-Report-"+stats["date"]+".pdf",caption)
+    from .telegram_reporting import build_daily_signal_pdf
+    pdf, stats=build_daily_signal_pdf(db,user_id,report_day)
+    caption=("📊 QUANTNEX Daily Signal Report · "+stats["date"]+"\n"
+        +"Closed signals: "+str(stats["closed"])+" · Win rate: "+format(stats["win_rate"],".2f")+"%\n"
+        +"Wins: "+str(stats["wins"])+" · Losses: "+str(stats["losses"])+" · BE: "+str(stats["breakeven"])+"\n"
+        +"Net result: "+format(stats["net_r"],"+.2f")+"R · Open at cutoff: "+str(stats["open_at_cutoff"])+"\n"
+        +"Pair-by-pair win rates included · vector-quality PDF · simulated signal ledger.")
+    await _send_pdf(client,token,chat_id,pdf,"QUANTNEX-Signal-Report-"+stats["date"]+".pdf",caption)
     return stats
 
 def _paper_dashboard(db, user_id: int) -> str:
@@ -366,31 +392,36 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
                       "Use /hidden_tools <category> to inspect a category.",
                       "Note: this is the roadmap catalogue; tools are enabled only after implementation and testing."])
         return "\n".join(lines)
+    if command == "/pause":
+        _set(db, user_id, "telegram_notifications_paused", "true")
+        db.commit()
+        return "⏸ QUANTNEX Telegram notifications are PAUSED. Use /resume whenever you want to receive new signal alerts again. Bot commands and status replies will still work."
+    if command == "/resume":
+        _set(db, user_id, "telegram_notifications_paused", "false")
+        # Skip everything accumulated while paused; resume only from the current live edge.
+        latest_trade = db.scalar(select(SignalTrade.id).where(
+            SignalTrade.user_id == user_id
+        ).order_by(SignalTrade.id.desc()).limit(1))
+        _set(db, user_id, "telegram_signal_start_after_id", str(latest_trade or 0))
+        _set(db, user_id, "telegram_signal_message_map", "{}")
+        db.commit()
+        return "▶ QUANTNEX Telegram notifications are RESUMED. Only fresh signals from now on will be sent; paused-period backlog is skipped."
     if command in {"/start","/help"}:
         return (
-            "QUANTNEX · YOUR SMART TRADING COMPANION\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "🌍 ENGLISH\n"
-            "Welcome to QUANTNEX — a trading intelligence workspace built to help you study markets, analyse setups and manage your trading routine.\n\n"
-            "✨ WHAT YOU CAN DO\n"
-            "📈 Scan supported crypto markets and Gold (when its local data feed is configured).\n"
-            "🧠 Review multi-timeframe signals, confirmations and Entry / SL / TP plans.\n"
-            "🛡 Manage alert settings and monitor your paper-trading workspace.\n"
-            "📊 View your paper ledger, daily PDF reports and personal goals.\n"
-            "🔐 Your workspace settings and personal records remain in your local QUANTNEX environment.\n\n"
-            "🇱🇰 සිංහල\n"
-            "QUANTNEX වෙත සාදරයෙන් පිළිගනිමු! මෙය වෙළඳපොළ අධ්‍යයනය, trade setups විශ්ලේෂණය සහ ඔබගේ trading routine එක කළමනාකරණය සඳහා නිර්මාණය කළ intelligent workspace එකකි.\n\n"
-            "✨ ඔබට මෙයින් කළ හැක්කේ\n"
-            "📈 සහාය දක්වන Crypto markets සහ Gold market scan කිරීම.\n"
-            "🧠 Multi-timeframe signals, confirmations, Entry / SL / TP සැලසුම් බැලීම.\n"
-            "🛡 Alerts සහ Paper Trading පාලනය කිරීම.\n"
-            "📊 Paper ledger, Daily PDF reports සහ Personal Goals පරීක්ෂා කිරීම.\n"
-            "🔐 ඔබගේ පුද්ගලික දත්ත සහ settings ඔබගේ local QUANTNEX workspace එකේම පවතී.\n\n"
-            "⚠️ IMPORTANT · ආරක්ෂාව\n"
-            "Signals are analysis only. Paper mode is simulated. No live broker orders are placed by this Telegram assistant. Always verify market data, spread and risk yourself.\n"
-            "Signals යනු විශ්ලේෂණ තොරතුරු පමණයි. මෙය profit හෝ win-rate සහතිකයක් නොවේ.\n\n"
-            "👇 TAP A BUTTON BELOW TO OPEN YOUR WORKSPACE\n"
-            "👇 පහත Button එකක් තෝරාගෙන ආරම්භ කරන්න."
+            "💎 QUANTNEX SIGNALS\n"
+            "YOUR SMART TRADING COMPANION\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "Welcome aboard. Your market intelligence feed is ready.\n\n"
+            "📡 WHAT YOU WILL RECEIVE\n"
+            "• Fresh confirmed BUY / SELL setups\n"
+            "• Entry, Stop Loss, TP 1, TP 2 and All TP levels\n"
+            "• One clean signal card per trade, updated as it develops\n"
+            "• No historical trade dump when you connect\n\n"
+            "🛡 RISK MANAGEMENT IS THE KEY 🔑\n"
+            "Signals are analysis only. Check the market, position size and risk before taking a trade.\n\n"
+            "🇱🇰 QUANTNEX වෙත සාදරයෙන් පිළිගනිමු! අලුත් confirmed signals පමණක් මෙතැනට ලැබේවි.\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "Trade smart. Stay disciplined."
         )
     if command=="/timeframes":
         enabled=", ".join(names.get(str(x),str(x)) for x in settings.get("enabled",[]))
@@ -469,36 +500,179 @@ def _signal_lifecycle_message(trade, event) -> str:
 
 
 async def _deliver_pending_signal_events(client, db, user_id: int, token: str, chat_id: str) -> None:
-    cutoff = datetime.now(timezone.utc) - timedelta(seconds=30)
+    """Acknowledge lifecycle events; the single signal card is edited by the live-card worker."""
     pending = list(db.scalars(select(SignalTradeEvent).where(
-        SignalTradeEvent.user_id == user_id, SignalTradeEvent.telegram_sent_at.is_(None),
-        or_(SignalTradeEvent.telegram_last_attempt_at.is_(None),
-            SignalTradeEvent.telegram_last_attempt_at <= cutoff),
-    ).order_by(SignalTradeEvent.created_at).limit(10)))
+        SignalTradeEvent.user_id == user_id, SignalTradeEvent.telegram_sent_at.is_(None)
+    ).order_by(SignalTradeEvent.created_at).limit(100)))
+    if not pending:
+        return
+    now = datetime.now(timezone.utc)
     for event in pending:
-        trade = db.get(SignalTrade, event.trade_id)
-        message = _signal_lifecycle_message(trade, event) if trade is not None else ""
-        if not message:
-            event.telegram_sent_at = datetime.now(timezone.utc)
-            db.commit()
-            continue
-        event.telegram_attempts = int(event.telegram_attempts or 0) + 1
-        event.telegram_last_attempt_at = datetime.now(timezone.utc)
+        event.telegram_sent_at = now
+    db.commit()
+
+
+async def _refresh_signal_live_prices(db, user_id: int, quote_cache: dict, now_monotonic: float) -> None:
+    """Refresh open signal marks from the configured market-data provider, shared per symbol."""
+    active = list(db.scalars(select(SignalTrade).where(
+        SignalTrade.user_id == user_id, SignalTrade.status.in_(("OPEN", "PENDING")))))
+    for symbol in sorted({trade.symbol for trade in active}):
+        cached = quote_cache.get(symbol)
+        if cached and now_monotonic - cached[0] < 12:
+            price = cached[1]
+        else:
+            try:
+                candles, _provider = await fetch_candles_with_provider("1min", 2, symbol)
+                if not candles:
+                    continue
+                row = candles[-1]
+                price = float(row["close"])
+                if not math.isfinite(price) or price <= 0:
+                    continue
+                raw_time = str(row.get("time") or "").replace("Z", "+00:00")
+                stamp = datetime.fromisoformat(raw_time)
+                if stamp.tzinfo is None:
+                    stamp = stamp.replace(tzinfo=timezone.utc)
+                age = (datetime.now(timezone.utc)-stamp.astimezone(timezone.utc)).total_seconds()
+                if age > 120 or age < -30:
+                    continue
+                quote_cache[symbol] = (now_monotonic, price)
+            except (MarketDataError, httpx.HTTPError, KeyError, TypeError, ValueError, OverflowError):
+                continue
+        for trade in active:
+            if trade.symbol == symbol:
+                trade.last_price = price
+    if active:
         db.commit()
+
+
+def _normalise_outcome_status(value: str | None) -> str:
+    status = str(value or "OPEN").strip().upper()
+    # Legacy rows used STOPPED for the original stop-loss terminal state.
+    return "SL_HIT" if status == "STOPPED" else status
+
+
+def _signal_live_message(trade) -> str:
+    price = float(trade.last_price or trade.entry_price)
+    risk = max(float(trade.risk_distance or abs(trade.entry_price-trade.stop_loss)), 1e-12)
+    move = (price-float(trade.entry_price))/risk if trade.side == "BUY" else (float(trade.entry_price)-price)/risk
+    status = _normalise_outcome_status(trade.status)
+    terminal = status in {"SL_HIT","STOPPED","PROTECTED_EXIT","LOCKED_PROFIT_EXIT","TARGETS_COMPLETE","EXPIRED"}
+    if status in {"SL_HIT","STOPPED"}: outcome = "STOP LOSS HIT"
+    elif status == "PROTECTED_EXIT": outcome = "BREAKEVEN PROTECTION · PARTIAL PROFIT SECURED"
+    elif status == "LOCKED_PROFIT_EXIT": outcome = "PROFIT LOCKED"
+    elif status == "TARGETS_COMPLETE": outcome = "ALL TARGETS COMPLETED"
+    elif status == "EXPIRED": outcome = "LIMIT ENTRY EXPIRED · NOT FILLED"
+    elif status == "PENDING": outcome = "WAITING FOR LIMIT ENTRY"
+    else: outcome = "LIVE · HOLDING UNTIL SL OR TP"
+    result = float(trade.realized_r or 0)
+    lines = [
+        "💎 QUANTNEX BOT SIGNAL · "+trade.symbol,
+        "🟢 BUY" if trade.side == "BUY" else "🔴 SELL",
+        "Status: "+outcome,
+        "━━━━━━━━━━━━━━━━━━━━",
+        "Entry : "+format(float(trade.entry_price), ".10g"),
+        "TP1: "+format(float(trade.tp1), ".10g") + (" ✓" if trade.tp1_hit else ""),
+        "TP2: "+format(float(trade.tp2), ".10g") + (" ✓" if trade.tp2_hit else ""),
+        "TP3: "+format(float(trade.tp3), ".10g") + (" ✓" if trade.tp3_hit else ""),
+        "SL: "+format(float(trade.active_stop_loss or trade.stop_loss), ".10g"),
+        "━━━━━━━━━━━━━━━━━━━━",
+    ]
+    if terminal:
+        lines.append("Final realized result: "+("%+.2fR" % result))
+    elif status == "OPEN":
+        lines.append("Demo floating P&L: "+("%+.2fR" % move))
+        lines.append("Protection: "+("BE stop active" if trade.tp1_hit else "Original SL active")+
+                     (" · TP1 profit secured" if trade.tp1_hit else ""))
+    lines.append("Risk management is the key 🔑")
+    lines.append("Simulated signal tracking only · no broker order was placed.")
+    return "\n".join(lines)
+
+
+async def _sync_signal_trade_messages(client, db, user_id: int, token: str, chat_id: str,
+                                      edit_interval: int = 20) -> None:
+    """Create one Telegram card per signal, then edit that same message as price/outcome changes."""
+    import json
+    try:
+        start_after_id = int(_get(db, user_id, "telegram_signal_start_after_id", "0") or 0)
+    except (TypeError, ValueError):
+        start_after_id = 0
+    rows = list(db.scalars(select(SignalTrade).where(
+        SignalTrade.user_id == user_id,
+        SignalTrade.id > start_after_id,
+        SignalTrade.source.in_(("QUANTNEX_VIEW", "AUTO_TELEGRAM_SCAN")),
+    ).order_by(SignalTrade.id.asc()).limit(20)))
+    raw = _get(db, user_id, "telegram_signal_message_map", "{}")
+    try:
+        mapping = json.loads(raw) if raw else {}
+    except (TypeError, ValueError):
+        mapping = {}
+    if not isinstance(mapping, dict):
+        mapping = {}
+    now = datetime.now(timezone.utc)
+    changed = False
+    terminal = {"SL_HIT","STOPPED","PROTECTED_EXIT","LOCKED_PROFIT_EXIT","TARGETS_COMPLETE","EXPIRED"}
+    for trade in rows:
+        key = str(trade.id)
+        record = mapping.get(key) if isinstance(mapping.get(key), dict) else {}
+        message_id = record.get("message_id")
+        if not message_id:
+            try:
+                sent = await _send(client, token, chat_id, _signal_live_message(trade))
+                message_id = sent.get("message_id")
+                if not message_id:
+                    continue
+                mapping[key] = {"message_id": int(message_id),
+                                "last_price": float(trade.last_price or trade.entry_price),
+                                "last_status": trade.status, "last_tp1": bool(trade.tp1_hit), "last_tp2": bool(trade.tp2_hit),
+                                "last_tp3": bool(trade.tp3_hit), "last_active_stop": float(trade.active_stop_loss or trade.stop_loss),
+                                "last_edit_at": now.isoformat()}
+                changed = True
+            except Exception as exc:
+                logger.warning("Signal Telegram card send deferred for user %s trade %s: %s",
+                               user_id, trade.id, type(exc).__name__)
+            continue
+        price = float(trade.last_price or trade.entry_price)
+        old_price = float(record.get("last_price") or 0)
+        old_status = str(record.get("last_status") or "")
+        last_edit = record.get("last_edit_at")
         try:
-            await _send(client, token, chat_id, message)
-            event.telegram_sent_at = datetime.now(timezone.utc)
-            db.commit()
+            last_edit_at = datetime.fromisoformat(last_edit) if last_edit else now - timedelta(days=1)
+            if last_edit_at.tzinfo is None:
+                last_edit_at = last_edit_at.replace(tzinfo=timezone.utc)
+        except (TypeError, ValueError):
+            last_edit_at = now - timedelta(days=1)
+        materially_changed = abs(price-old_price) > max(abs(old_price)*0.00005, 1e-12)
+        status_changed = trade.status != old_status
+        progress_changed = (bool(record.get("last_tp1")) != bool(trade.tp1_hit)
+                            or bool(record.get("last_tp2")) != bool(trade.tp2_hit)
+                            or bool(record.get("last_tp3")) != bool(trade.tp3_hit)
+                            or float(record.get("last_active_stop") or 0) != float(trade.active_stop_loss or trade.stop_loss))
+        if not status_changed and not progress_changed and (not materially_changed or (now-last_edit_at).total_seconds() < edit_interval):
+            continue
+        try:
+            await _edit_message(client, token, chat_id, int(message_id), _signal_live_message(trade))
+            record.update({"message_id": int(message_id), "last_price": price,
+                           "last_status": trade.status, "last_tp1": bool(trade.tp1_hit), "last_tp2": bool(trade.tp2_hit),
+                           "last_tp3": bool(trade.tp3_hit), "last_active_stop": float(trade.active_stop_loss or trade.stop_loss),
+                           "last_edit_at": now.isoformat()})
+            mapping[key] = record
+            changed = True
         except Exception as exc:
-            db.rollback()
-            logger.warning("Signal outcome Telegram delivery deferred for local user %s: %s",
-                           user_id, type(exc).__name__)
+            # Telegram's "message is not modified" response is harmless; retry only
+            # after a future price/status change or the next worker cycle.
+            logger.debug("Signal Telegram card edit deferred for user %s trade %s: %s",
+                         user_id, trade.id, type(exc).__name__)
+    if changed:
+        _set(db, user_id, "telegram_signal_message_map", json.dumps(mapping, separators=(",", ":")))
+        db.commit()
 
 
 async def telegram_worker() -> None:
-    """Poll connected user bots, respond to commands and monitor active TP1 levels."""
+    """Poll connected bots, keep signal cards live, and deliver scheduled reports."""
     last_monitor={}
     last_daily_attempt={}
+    live_quote_cache={}
     async with httpx.AsyncClient(timeout=12) as client:
         while True:
             try:
@@ -508,6 +682,13 @@ async def telegram_worker() -> None:
                         user_id=token_row.user_id
                         chat_id=_get(db,user_id,"telegram_chat_id")
                         if not chat_id:continue
+                        # First-time connection baseline: never dump pre-existing signal history.
+                        if _get(db, user_id, "telegram_signal_start_after_id") is None:
+                            latest_trade = db.scalar(select(SignalTrade.id).where(
+                                SignalTrade.user_id == user_id
+                            ).order_by(SignalTrade.id.desc()).limit(1))
+                            _set(db, user_id, "telegram_signal_start_after_id", str(latest_trade or 0))
+                            db.commit()
                         try:token=decrypt_secret(token_row.value)
                         except ValueError:continue
                         offset=int(_get(db,user_id,"telegram_update_offset","0") or "0")
@@ -565,17 +746,17 @@ async def telegram_worker() -> None:
                                                 else:
                                                     answer="⚠️ Unsupported trend timeframe.";keyboard=SUBMENUS["qx:menu:signals"]
                                             elif action=="qx:daily_toggle":
-                                                enabled=_get(db,user_id,"telegram_daily_report_enabled","false")=="true"
+                                                enabled=_get(db,user_id,"telegram_daily_report_enabled","true")=="true"
                                                 _set(db,user_id,"telegram_daily_report_enabled","false" if enabled else "true")
                                                 db.commit()
-                                                answer="🕗 Daily PDF at 20:00 Asia/Colombo is now "+("OFF" if enabled else "ON")+"."
+                                                answer="🕘 Daily PDF at 21:00 Asia/Colombo is now "+("OFF" if enabled else "ON")+"."
                                             elif action=="qx:daily":
                                                 try:
                                                     stats=await _deliver_daily_pdf(client,db,user_id,token,chat_id)
-                                                    answer="📄 Today report sent · Closed "+str(stats["closed"])+" · Win rate "+format(stats["win_rate"],".2f")+"% · Net $"+format(stats["net"],".2f")
+                                                    answer="📄 Today signal report sent · Closed "+str(stats["closed"])+" · Win rate "+format(stats["win_rate"],".2f")+"% · Net "+format(stats["net_r"],"+.2f")+"R"
                                                 except Exception as exc:
                                                     logger.warning("Daily PDF request failed for local user %s: %s",user_id,type(exc).__name__)
-                                                    answer="Could not generate/send PDF. Check the PaperTrade ledger and Telegram connection."
+                                                    answer="Could not generate/send PDF. Check the signal outcome ledger and Telegram connection."
                                             elif action.startswith("qx:scan:"): answer=await _handle_command(client,db,user_id,token,chat_id,"/scan "+action.split(":")[-1])
                                             elif action=="qx:status": answer=await _handle_command(client,db,user_id,token,chat_id,"/status")
                                             elif action=="qx:timeframes": answer=await _handle_command(client,db,user_id,token,chat_id,"/timeframes")
@@ -606,11 +787,17 @@ async def telegram_worker() -> None:
                                             elif action=="qx:risk": answer=_risk_dashboard(db,user_id)
                                             elif action=="qx:market": answer=await _handle_command(client,db,user_id,token,chat_id,"/scan BTCUSDT")
                                             elif action=="qx:pause" or action=="qx:resume":
-                                                try: auto_settings=json.loads(_get(db,user_id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}'))
-                                                except ValueError: auto_settings={"enabled":False,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}
-                                                auto_settings["enabled"]=(action=="qx:resume")
-                                                _set(db,user_id,"auto_signal_settings",json.dumps(auto_settings));db.commit()
-                                                answer="Telegram Auto Signals "+("RESUMED" if auto_settings["enabled"] else "PAUSED")+". This controls alerts only, not trading execution."
+                                                paused = action == "qx:pause"
+                                                _set(db, user_id, "telegram_notifications_paused", "true" if paused else "false")
+                                                if not paused:
+                                                    latest_trade = db.scalar(select(SignalTrade.id).where(
+                                                        SignalTrade.user_id == user_id
+                                                    ).order_by(SignalTrade.id.desc()).limit(1))
+                                                    _set(db, user_id, "telegram_signal_start_after_id", str(latest_trade or 0))
+                                                    _set(db, user_id, "telegram_signal_message_map", "{}")
+                                                db.commit()
+                                                answer = ("⏸ All QUANTNEX signal notifications are PAUSED. Use Resume whenever you want." if paused
+                                                    else "▶ QUANTNEX notifications RESUMED. Only fresh signals from now on; paused-period backlog skipped.")
                                             elif action=="qx:help":
                                                 answer="QUANTNEX HELP & QUICK GUIDE\\nUse the buttons to navigate Markets, Signals, Paper Desk, Reports and Settings.\\nChoose a market to scan, select signal timeframes, pause or resume alerts, review paper results and download a daily PDF.\\nNo slash commands are needed.\\n\\nSignals are analysis only. No live broker orders are placed."
                                                 keyboard=MENU
@@ -622,11 +809,20 @@ async def telegram_worker() -> None:
                                         chat=message.get("chat") or {}
                                         if str(chat.get("id"))!=str(chat_id) and not (str(chat_id).startswith("@") and ("@"+str(chat.get("username","")).lower())==str(chat_id).lower()):continue
                                         command=message.get("text","")
+                                        command_name=command.strip().split(" ")[0].split("@")[0].lower()
+                                        is_start=command_name == "/start"
+                                        if is_start:
+                                            latest_trade = db.scalar(select(SignalTrade.id).where(
+                                                SignalTrade.user_id == user_id
+                                            ).order_by(SignalTrade.id.desc()).limit(1))
+                                            _set(db, user_id, "telegram_signal_start_after_id", str(latest_trade or 0))
+                                            _set(db, user_id, "telegram_signal_message_map", "{}")
+                                            db.commit()
                                         answer=await _handle_command(client,db,user_id,token,chat_id,command)
                                         if answer:
-                                            is_start=command.strip().split(" ")[0].split("@")[0].lower() in {"/start","/help"}
+                                            is_welcome=command_name in {"/start","/help"}
                                             is_plain_text=bool(command.strip()) and not command.strip().startswith("/")
-                                            await _send(client,token,chat_id,answer,MENU if (is_start or is_plain_text) else None)
+                                            await _send(client,token,chat_id,answer,MENU if (is_welcome or is_plain_text) else None)
                                     except Exception as update_error:
                                         logger.warning("Telegram update %s failed for local user %s: %s",
                                                        update.get("update_id"), user_id, type(update_error).__name__)
@@ -635,7 +831,11 @@ async def telegram_worker() -> None:
                                         _persist_update_offset(db,user_id,offset)
                         except (httpx.HTTPError,ValueError) as exc:
                             logger.warning("Telegram polling failed for local user %s: %s",user_id,type(exc).__name__)
-                        await _deliver_pending_signal_events(client, db, user_id, token, chat_id)
+                        notifications_paused = _get(db, user_id, "telegram_notifications_paused", "false").strip().lower() == "true"
+                        if not notifications_paused:
+                            await _deliver_pending_signal_events(client, db, user_id, token, chat_id)
+                            await _refresh_signal_live_prices(db, user_id, live_quote_cache, asyncio.get_running_loop().time())
+                            await _sync_signal_trade_messages(client, db, user_id, token, chat_id)
                         now=asyncio.get_running_loop().time()
                         # Automatic signals scan each selected market independently.
                         auto_raw=_get(db,user_id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}')
@@ -644,7 +844,7 @@ async def telegram_worker() -> None:
                         interval=auto_settings["interval_seconds"]
                         auto_key=(user_id,"auto")
                         selected=auto_settings["symbols"]
-                        if auto_settings["enabled"] and selected and now-last_monitor.get(auto_key,0)>=interval:
+                        if not notifications_paused and auto_settings["enabled"] and selected and now-last_monitor.get(auto_key,0)>=interval:
                             signal_raw=_get(db,user_id,"signal_settings",'{"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":8}')
                             signal_settings=_normalise_signal_settings(signal_raw)
                             db.commit()
@@ -677,8 +877,10 @@ async def telegram_worker() -> None:
                                                 +"Confluence: "+str(candidate["score"])+"/10 (rule count, not win probability)\n"
                                                 +"Confirmations: "+", ".join(candidate["confirmations"])+"\n"
                                                 +"Signal only; verify spread, fees and execution. No order is placed.")
-                                            delivered=await _deliver_auto_signal(client,token,chat_id,msg,fingerprint,previous,db,user_id,fingerprint_key)
-                                            if delivered:
+                                            # The persistent signal-card worker sends one Telegram message
+                                            # and edits it for live P&L/outcomes; do not send a duplicate alert.
+                                            if _should_send_auto_signal(fingerprint, previous):
+                                                _set(db, user_id, fingerprint_key, fingerprint)
                                                 db.commit()
                                     # Keep the last delivered fingerprint when no setup is present.
                                     # This prevents duplicate alerts if the same candle briefly loses and regains confluence.
@@ -687,11 +889,11 @@ async def telegram_worker() -> None:
                                     logger.warning("Auto-signal scan failed for local user %s market %s: %s",
                                                    user_id,market_symbol,type(exc).__name__)
                             last_monitor[auto_key]=now
-                        # Optional daily PDF delivery, once per Colombo calendar day at/after 20:00.
-                        if _get(db,user_id,"telegram_daily_report_enabled","false")=="true":
+                        # Automatic per-bot signal PDF delivery, once per Colombo calendar day at/after 21:00.
+                        if _get(db,user_id,"telegram_daily_report_enabled","true")=="true":
                             local_now=datetime.now(ZoneInfo("Asia/Colombo"))
                             sent_day=_get(db,user_id,"telegram_daily_report_sent_date","")
-                            if local_now.hour>=20 and sent_day!=local_now.date().isoformat() and now-last_daily_attempt.get(user_id,0)>=300:
+                            if local_now.hour>=21 and sent_day!=local_now.date().isoformat() and now-last_daily_attempt.get(user_id,0)>=300:
                                 last_daily_attempt[user_id]=now
                                 try:
                                     await _deliver_daily_pdf(client,db,user_id,token,chat_id,local_now.date())

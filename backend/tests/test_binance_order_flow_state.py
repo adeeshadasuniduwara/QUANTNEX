@@ -47,7 +47,8 @@ def test_aggtrade_duplicate_and_out_of_order_events_do_not_double_count():
     snapshot = state.snapshot()
     assert snapshot["cvd_value"] == 3.0
     assert snapshot["applied_trade_count"] == 1
-    assert snapshot["duplicate_count"] == 2
+    assert snapshot["duplicate_count"] == 1
+    assert snapshot["out_of_order_count"] == 1
 
 
 def test_aggtrade_gap_invalidates_cvd_until_contiguous_backfill_recovers():

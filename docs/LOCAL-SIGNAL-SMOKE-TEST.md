@@ -36,4 +36,4 @@ A successful smoke test proves that the selected provider returned usable data a
 
 ## Automated public-crypto check
 
-GitHub Actions also runs the read-only crypto smoke test daily through the **QUANTNEX Live Crypto Signal Smoke** workflow (BTCUSDT, ETHUSDT and SOLUSDT). It can be started manually from the repository's Actions tab. This cloud check does not test the local MT5 terminal or Gold feed.
+GitHub Actions runs the read-only **QUANTNEX Live Crypto Signal Smoke** workflow daily. The updated workflow discovers the eligible Binance Spot universe from current `exchangeInfo` and scans a deterministic rotating sample of 20 pairs per run. This is a rate-conscious smoke subset, not a full-universe scan in one run. Use `python smoke_signal_engine.py --universe-sample-size 20` for the same mode, or pass `--symbols BTCUSDT,ETHUSDT` for an explicit sample. Pairs without enough fully closed candle history are reported as `[SKIP]`; provider/data failures remain `[ERROR]` and fail the job. Coinbase fallback remains limited to BTC/ETH/SOL. This cloud check does not test the local MT5 terminal or Gold feed. Binance USDⓈ-M and COIN-M Futures are not included.

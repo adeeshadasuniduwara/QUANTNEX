@@ -179,6 +179,9 @@ def test_signal_reports_all_sources_when_timeframes_use_mixed_providers(monkeypa
             "min_notional": "5", "observed_at": now.isoformat(), "provider": "Binance Spot",
         }
 
+    async def valid_spot_symbol(candidate):
+        return candidate == "BTCUSDT"
+    monkeypatch.setattr(signal_engine, "is_binance_spot_symbol", valid_spot_symbol)
     monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
     monkeypatch.setattr(signal_engine, "get_binance_spot_execution_context", fake_execution)
     settings = {
@@ -208,6 +211,9 @@ def test_signal_reports_combined_provider_sources_for_mixed_timeframes(monkeypat
             "min_notional": "5", "observed_at": now.isoformat(), "provider": "Binance Spot",
         }
 
+    async def valid_spot_symbol(candidate):
+        return candidate == "BTCUSDT"
+    monkeypatch.setattr(signal_engine, "is_binance_spot_symbol", valid_spot_symbol)
     monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
     monkeypatch.setattr(signal_engine, "get_binance_spot_execution_context", fake_execution)
     settings = {
@@ -252,6 +258,9 @@ def test_real_signal_pipeline_generates_a_resting_limit_at_ob_zone(monkeypatch):
             "min_notional": "5", "observed_at": now.isoformat(), "provider": "Binance Spot",
         }
 
+    async def valid_spot_symbol(candidate):
+        return candidate == "BTCUSDT"
+    monkeypatch.setattr(signal_engine, "is_binance_spot_symbol", valid_spot_symbol)
     monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
     monkeypatch.setattr(signal_engine, "inspect_tf", bullish_analysis)
     monkeypatch.setattr(signal_engine, "get_binance_spot_execution_context", fake_execution)
@@ -300,6 +309,9 @@ def test_signal_pipeline_returns_wait_when_spread_blocks_market_and_limit(monkey
             "min_notional": "5", "observed_at": now.isoformat(), "provider": "Binance Spot",
         }
 
+    async def valid_spot_symbol(candidate):
+        return candidate == "BTCUSDT"
+    monkeypatch.setattr(signal_engine, "is_binance_spot_symbol", valid_spot_symbol)
     monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
     monkeypatch.setattr(signal_engine, "inspect_tf", bullish_analysis)
     monkeypatch.setattr(signal_engine, "get_binance_spot_execution_context", wide_spread_execution)
@@ -324,6 +336,8 @@ def test_build_signal_supports_historical_replay_without_live_provider_calls(mon
 
     async def no_live_fetch(*_args, **_kwargs):
         raise AssertionError("Historical replay must not fetch live candles.")
+    async def no_live_symbol_lookup(_symbol):
+        raise AssertionError("Historical replay must not fetch live exchange metadata.")
 
     def bullish_analysis(_rows):
         structure = {
@@ -350,6 +364,7 @@ def test_build_signal_supports_historical_replay_without_live_provider_calls(mon
     }
 
     monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", no_live_fetch)
+    monkeypatch.setattr(signal_engine, "is_binance_spot_symbol", no_live_symbol_lookup)
     monkeypatch.setattr(signal_engine, "inspect_tf", bullish_analysis)
     settings = {"primary": "5", "trend": "60", "enabled": ["60", "30", "15", "5", "1"], "min_score": 8}
     result = asyncio.run(signal_engine.build_signal(

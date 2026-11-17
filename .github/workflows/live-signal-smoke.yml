@@ -28,4 +28,4 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: Run live public crypto signal smoke test
-        run: python smoke_signal_engine.py --symbols BTCUSDT,ETHUSDT,SOLUSDT
+        run: python smoke_signal_engine.py --universe-sample-size 20

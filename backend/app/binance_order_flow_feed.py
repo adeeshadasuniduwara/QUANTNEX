@@ -51,7 +51,7 @@ async def fetch_spot_order_flow(
     """
     if not isinstance(symbol, str) or not _SYMBOL_RE.fullmatch(symbol):
         raise BinanceOrderFlowFeedError("Invalid Binance Spot symbol.")
-    if not isinstance(trade_limit, int) or not 1 <= trade_limit <= 1000:
+    if isinstance(trade_limit, bool) or not isinstance(trade_limit, int) or not 1 <= trade_limit <= 1000:
         raise BinanceOrderFlowFeedError("trade_limit must be between 1 and 1000.")
     if depth_limit not in (5, 10, 20, 50, 100, 500, 1000):
         raise BinanceOrderFlowFeedError("Unsupported Binance depth limit.")
@@ -59,9 +59,15 @@ async def fetch_spot_order_flow(
     if clock.tzinfo is None:
         raise BinanceOrderFlowFeedError("now must be timezone-aware.")
 
+    session_start = clock.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     trades_task = _get_json(client, "/api/v3/aggTrades", {"symbol": symbol, "limit": trade_limit})
     depth_task = _get_json(client, "/api/v3/depth", {"symbol": symbol, "limit": depth_limit})
-    trades, depth = await asyncio.gather(trades_task, depth_task)
+    session_probe_task = _get_json(client, "/api/v3/aggTrades", {
+        "symbol": symbol, "startTime": int(session_start.timestamp() * 1000), "limit": 1,
+    })
+    trades, depth, session_probe = await asyncio.gather(
+        trades_task, depth_task, session_probe_task
+    )
     observed_at = datetime.now(timezone.utc)
     if not isinstance(trades, list) or not trades:
         raise BinanceOrderFlowFeedError("Binance returned no aggregate trades.")
@@ -73,6 +79,37 @@ async def fetch_spot_order_flow(
         raise BinanceOrderFlowFeedError("Depth snapshot is missing lastUpdateId.") from exc
     if last_update_id < 0:
         raise BinanceOrderFlowFeedError("Depth snapshot has an invalid update ID.")
+    session_start_trade_id = None
+    session_start_probe_at = None
+    if isinstance(session_probe, list) and session_probe:
+        try:
+            session_start_trade_id = int(session_probe[0]["a"])
+            session_start_probe_ms = int(session_probe[0]["T"])
+            session_start_probe_at = datetime.fromtimestamp(
+                session_start_probe_ms / 1000, timezone.utc
+            ).isoformat()
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            raise BinanceOrderFlowFeedError("UTC session-start trade probe is malformed.") from exc
+        if session_start_trade_id < 0 or session_start_probe_ms < int(session_start.timestamp() * 1000):
+            raise BinanceOrderFlowFeedError("UTC session-start trade probe is invalid.")
+        if session_start_probe_ms > int(clock.timestamp() * 1000) + 2000:
+            raise BinanceOrderFlowFeedError("UTC session-start trade probe is future-dated.")
+        for row in trades:
+            if not isinstance(row, dict) or str(row.get("a")) != str(session_start_trade_id):
+                continue
+            try:
+                recent_probe_ms = int(row["T"])
+            except (KeyError, TypeError, ValueError, OverflowError) as exc:
+                raise BinanceOrderFlowFeedError(
+                    "Recent session-start trade row is malformed."
+                ) from exc
+            if recent_probe_ms != session_start_probe_ms:
+                raise BinanceOrderFlowFeedError(
+                    "UTC session-start probe conflicts with the recent trade response."
+                )
+            break
+    elif not isinstance(session_probe, list):
+        raise BinanceOrderFlowFeedError("UTC session-start trade probe is invalid.")
 
     try:
         metrics = calculate_order_flow(
@@ -82,6 +119,7 @@ async def fetch_spot_order_flow(
             now=clock,
             max_trade_age_seconds=max_trade_age_seconds,
             tick_size=tick_size,
+            session_start_trade_id=session_start_trade_id,
         )
     except (ValueError, TypeError, OverflowError) as exc:
         raise BinanceOrderFlowFeedError(f"Order-flow data rejected: {exc}") from exc
@@ -92,6 +130,7 @@ async def fetch_spot_order_flow(
         "depth_snapshot_update_id": last_update_id,
         "depth_is_continuous": False,
         "depth_observed_at": observed_at.isoformat(),
+        "session_start_probe_at": session_start_probe_at,
         "feed_mode": "PUBLIC_REST_SNAPSHOT",
     })
     return metrics

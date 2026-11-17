@@ -39,12 +39,15 @@ def test_order_flow_calculates_aggressor_delta_session_delta_and_footprint():
     rows = [trade(1, 100, 2, 3, False), trade(2, 101, 1, 2, True), trade(3, 100.4, 3, 1, False)]
     result = calculate_order_flow(
         rows, [["100", "2"], ["99.9", "1"]], [["100.1", "1"], ["100.2", "2"]],
-        now=NOW, tick_size="1",
+        now=NOW, tick_size="1", session_start_trade_id=1,
     )
     assert result["buy_volume"] == 5
     assert result["sell_volume"] == 1
     assert result["delta"] == 4
     assert result["session_delta"] == 4
+    assert result["session_delta_coverage_complete"] is True
+    assert result["window_cumulative_delta"] == 4
+    assert result["cvd_value"] is None
     assert result["quote_delta"] == pytest.approx(400.2)
     assert result["data_provenance"]["candle_volume_used"] is False
     assert result["footprint"][0]["price"] == 100
@@ -73,3 +76,44 @@ def test_crossed_or_unsorted_order_books_are_rejected():
 def test_ohlcv_volume_cannot_be_mistaken_for_observed_delta():
     with pytest.raises(OrderFlowDataError):
         normalize_agg_trades([{"open": 100, "high": 101, "low": 99, "volume": 500}], now=NOW)
+
+
+def test_session_delta_is_not_claimed_complete_without_full_session_id_coverage():
+    rows = [trade(1, 100, 2, 3, False), trade(3, 101, 1, 2, True)]
+    result = calculate_order_flow(
+        rows, [["100", "2"]], [["100.1", "1"]],
+        now=NOW, tick_size="1", session_start_trade_id=1,
+    )
+    assert result["session_delta"] is None
+    assert result["session_delta_sample"] == 1
+    assert result["session_delta_coverage_complete"] is False
+    assert result["session_delta_scope"] == "RECENT_WINDOW_SAMPLE_ONLY"
+
+
+def test_session_delta_is_unavailable_when_latest_trade_window_started_mid_session():
+    rows = [trade(10, 100, 2, 3, False), trade(11, 101, 1, 2, True)]
+    result = calculate_order_flow(
+        rows, [["100", "2"]], [["100.1", "1"]],
+        now=NOW, tick_size="1", session_start_trade_id=1,
+    )
+    assert result["session_delta"] is None
+    assert result["session_delta_sample"] == 1
+    assert result["session_delta_coverage_complete"] is False
+
+
+def test_conflicting_duplicate_aggregate_trade_ids_are_rejected():
+    rows = [
+        trade(1, 100, 2, 2, False),
+        trade(1, 100, 3, 2, False),
+    ]
+    with pytest.raises(OrderFlowDataError, match="conflicting duplicate"):
+        normalize_agg_trades(rows, now=NOW)
+
+
+def test_negative_future_tolerance_is_rejected():
+    with pytest.raises(OrderFlowDataError, match="future_tolerance_seconds"):
+        normalize_agg_trades(
+            [trade(1, 100, 1, 1, False)],
+            now=NOW,
+            future_tolerance_seconds=-1,
+        )

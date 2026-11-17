@@ -9,7 +9,7 @@ from app.binance_order_flow_feed import (
     fetch_spot_order_flow,
 )
 
-NOW = datetime(2026, 11, 16, 4, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 11, 16, 0, 0, 10, tzinfo=timezone.utc)
 
 
 def _client():
@@ -17,6 +17,10 @@ def _client():
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/aggTrades"):
+            if "startTime" in request.url.params:
+                return httpx.Response(200, json=[
+                    {"a": 1, "p": "100", "q": "2", "T": stamp, "m": False},
+                ])
             return httpx.Response(200, json=[
                 {"a": 1, "p": "100", "q": "2", "T": stamp, "m": False},
                 {"a": 2, "p": "100.1", "q": "1", "T": stamp + 500, "m": True},
@@ -41,6 +45,9 @@ def test_public_rest_collector_returns_provenance_and_snapshot_only_depth():
         assert result["buy_volume"] == 2
         assert result["sell_volume"] == 1
         assert result["delta"] == 1
+        assert result["session_delta"] == 1
+        assert result["session_delta_coverage_complete"] is True
+        assert result["session_start_probe_at"] is not None
         assert result["depth_snapshot_update_id"] == 123456
         assert result["depth_is_continuous"] is False
         assert result["feed_mode"] == "PUBLIC_REST_SNAPSHOT"

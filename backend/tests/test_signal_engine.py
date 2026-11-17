@@ -923,6 +923,10 @@ def test_binance_execution_context_reads_exchange_filters_and_live_book(monkeypa
     assert context["quote_asset_usd_rate"] == 1.0
     assert context["bid_depth_usd"] == context["bid_depth_quote"]
     assert context["ask_depth_usd"] == context["ask_depth_quote"]
+    assert context["data_sources"] == {
+        "quote": "https://data-api.binance.vision",
+        "depth": "https://data-api.binance.vision",
+    }
 
 
 def test_binance_execution_context_converts_non_stable_quote_asset_to_usd(monkeypatch):

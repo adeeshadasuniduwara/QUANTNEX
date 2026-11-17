@@ -118,14 +118,14 @@ Only after Spot order-flow is stable:
 | Funding / open interest / liquidations | Not applicable to Spot | Not wired | Not wired | Not available |
 | Historical trade/depth replay | Not yet; current walk-forward uses candles and assumed execution costs | Not wired | Not wired | Not available |
 
-The current supported crypto signal market is Binance Spot only. A Spot SELL is not a Futures short. The current order-flow feed does not claim true consolidated quoted bid/ask volume: it infers aggressor side from Binance aggregate trades. The REST depth response's local receive timestamp is not an exchange event timestamp and does not replace a WebSocket sequence bridge.
+The current supported crypto signal market is Binance Spot only. A Spot SELL is not a Futures short. The current order-flow feed does not claim true consolidated quoted bid/ask volume: it infers aggressor side from Binance aggregate trades. The REST depth response's local receive timestamp is not an exchange event timestamp and does not replace a WebSocket sequence bridge. The live gate rejects snapshots whose local receive age exceeds five seconds, but this is not a substitute for exchange-event sequencing.
 
-## Phase C0 — order-flow-aware live signal gate (implementation PR)
+## Phase C0 — order-flow-aware live signal gate (PR #189; CI passed, merge pending)
 
-Branch: `feat/orderflow-aware-signal-gate`.
+Branch: `feat/orderflow-aware-signal-gate`. PR checks passed on Python 3.12, Python 3.14, backend schema/test job and web-check. Latest main base at review: `a8fc002b214a037fd4e1ba63e9c68223444684b1`.
 
 - Add a deterministic order-flow evaluator that uses two non-duplicated observations: recent aggressor `delta_ratio` and L2 quote-notional depth imbalance. Microprice is included in the report but is not counted as a third independent vote because it is derived from top-of-book quantities.
-- A live Binance Spot candidate is eligible only when order-flow data is present, provenance confirms no candle-volume substitution, trade data is fresh, and directional support count exceeds conflict count with at least one supporting observation.
+- A live Binance Spot candidate is eligible only when order-flow data is present, provenance confirms no candle-volume substitution, trade data is fresh, the L2 snapshot's local receive age is at most five seconds, and directional support count exceeds conflict count with at least one supporting observation.
 - CONTRADICTED, MIXED, NEUTRAL, malformed, stale or unavailable order-flow data produces WAIT; no threshold is relaxed to manufacture signals.
 - Include compact per-signal evidence: trade count/age, buy/sell volumes, delta and delta ratio, window-delta scope, UTC session-delta value/coverage, explicit persistent-CVD unavailable status, L2 spread/depth imbalance/microprice, footprint bucket summary, source hosts and depth snapshot continuity state.
 - Historical candle-only walk-forward remains a baseline and explicitly reports order flow unavailable. Deterministic fixtures can inject order-flow snapshots to prove long/short pipeline behavior, but they are not historical-market performance evidence.

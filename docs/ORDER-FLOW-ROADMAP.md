@@ -151,3 +151,17 @@ Limitations: these are pure state machines only. No WebSocket client, reconnect/
 - Add bounded queues, stream/request limits, exponential backoff with jitter, cancellation and shutdown tests.
 - Feed validated state into signal eligibility and distinguish live-complete, incomplete, gap and REST-snapshot-only data states.
 - Capture synchronized historical trade/depth replay before measuring order-flow incremental value against the candle-only baseline.
+
+
+## Live Binance public-data verification — 2026-11-17 08:39 UTC
+
+A read-only Binance connector check succeeded independently of GitHub Actions:
+- Spot exchangeInfo returned 3,703 symbols. Applying status == TRADING, isSpotTradingAllowed == true and Spot permission-set eligibility yielded 1,373 active Spot pairs; 2,330 returned symbols were in BREAK status.
+- All 1,373 eligible pairs contained PRICE_FILTER, LOT_SIZE, MARKET_LOT_SIZE and NOTIONAL; none required the legacy MIN_NOTIONAL filter because NOTIONAL was present.
+- BTCUSDT returned recent Spot aggregate trades, a 20-level L2 REST snapshot and five 1-minute candles. This verifies current public endpoint access and sample payloads, not a full 1,373-pair scan or a live signal.
+
+### Newly verified execution-filter gap
+
+get_binance_spot_symbols() currently caches symbol/base/quote and the filter dictionary, but get_binance_spot_execution_context() consumes only PRICE_FILTER, LOT_SIZE and NOTIONAL. It does not yet preserve/check orderTypes, MARKET_LOT_SIZE, base/quote precision or market-specific min/max quantity constraints. select_binance_entry() can therefore recommend MARKET/LIMIT without checking that the corresponding order type is enabled for that symbol. No orders are placed, but signal execution metadata must be corrected before calling the entry pipeline complete.
+
+Next core fix: preserve full Spot exchange metadata, validate MARKET/LIMIT against orderTypes, report both LOT_SIZE and MARKET_LOT_SIZE constraints, and add fixtures for zero market step/min values, missing filters, and unsupported order types. Then continue with the WebSocket adapter.

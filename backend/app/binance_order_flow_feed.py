@@ -95,12 +95,19 @@ async def fetch_spot_order_flow(
         if session_start_probe_ms > int(clock.timestamp() * 1000) + 2000:
             raise BinanceOrderFlowFeedError("UTC session-start trade probe is future-dated.")
         for row in trades:
-            if int(row.get("a", -1)) == session_start_trade_id:
-                if int(row.get("T", -1)) != session_start_probe_ms:
-                    raise BinanceOrderFlowFeedError(
-                        "UTC session-start probe conflicts with the recent trade response."
-                    )
-                break
+            if not isinstance(row, dict) or str(row.get("a")) != str(session_start_trade_id):
+                continue
+            try:
+                recent_probe_ms = int(row["T"])
+            except (KeyError, TypeError, ValueError, OverflowError) as exc:
+                raise BinanceOrderFlowFeedError(
+                    "Recent session-start trade row is malformed."
+                ) from exc
+            if recent_probe_ms != session_start_probe_ms:
+                raise BinanceOrderFlowFeedError(
+                    "UTC session-start probe conflicts with the recent trade response."
+                )
+            break
     elif not isinstance(session_probe, list):
         raise BinanceOrderFlowFeedError("UTC session-start trade probe is invalid.")
 

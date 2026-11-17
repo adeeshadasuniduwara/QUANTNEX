@@ -1118,6 +1118,10 @@ def test_gold_signal_scan_accepts_mt5_without_twelve_data_key(monkeypatch):
 def test_gold_auto_signals_can_be_enabled_with_mt5_without_twelve_data(monkeypatch):
     from app import signal_engine
 
+    async def valid_spot_symbol(symbol):
+        return symbol == "BTCUSDT"
+    monkeypatch.setattr(signal_engine, "is_binance_spot_symbol", valid_spot_symbol)
+
     monkeypatch.setattr(signal_engine, "TWELVE_DATA_API_KEY", "")
     monkeypatch.setattr(signal_engine, "QUANTNEX_MT5_ENABLED", True)
     monkeypatch.setattr(

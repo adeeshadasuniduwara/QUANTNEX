@@ -227,6 +227,8 @@ def evaluate_order_flow_confirmation(
     snapshot: dict[str, Any],
     *,
     max_trade_age_seconds: float = 15.0,
+    max_depth_age_seconds: float = 5.0,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """Evaluate directional confirmation from observed aggressor delta and an L2 snapshot.
 
@@ -237,13 +239,45 @@ def evaluate_order_flow_confirmation(
     """
     if side not in {"BUY", "SELL"}:
         raise OrderFlowDataError("side must be BUY or SELL.")
-    if not math.isfinite(max_trade_age_seconds) or max_trade_age_seconds <= 0:
-        raise OrderFlowDataError("max_trade_age_seconds must be finite and positive.")
+    try:
+        trade_age_limit = float(max_trade_age_seconds)
+        depth_age_limit = float(max_depth_age_seconds)
+    except (TypeError, ValueError, OverflowError):
+        raise OrderFlowDataError("Order-flow freshness limits must be numeric.") from None
+    if (
+        isinstance(max_trade_age_seconds, bool) or isinstance(max_depth_age_seconds, bool)
+        or not math.isfinite(trade_age_limit) or trade_age_limit <= 0
+        or not math.isfinite(depth_age_limit) or depth_age_limit <= 0
+    ):
+        raise OrderFlowDataError("Order-flow freshness limits must be finite and positive.")
     if not isinstance(snapshot, dict) or snapshot.get("market_type") != "BINANCE_SPOT":
         raise OrderFlowDataError("Order-flow snapshot must identify Binance Spot market data.")
     provenance = snapshot.get("data_provenance")
-    if not isinstance(provenance, dict) or provenance.get("candle_volume_used") is not False:
-        raise OrderFlowDataError("Order-flow snapshot lacks verified trade-side provenance.")
+    if (
+        not isinstance(provenance, dict)
+        or provenance.get("candle_volume_used") is not False
+        or "aggressor" not in str(provenance.get("bid_ask_semantics") or "").lower()
+    ):
+        raise OrderFlowDataError("Order-flow snapshot lacks verified aggressor-side provenance.")
+    if not isinstance(snapshot.get("depth_is_continuous"), bool):
+        raise OrderFlowDataError("Order-flow snapshot must declare its depth continuity state.")
+    update_id = snapshot.get("depth_snapshot_update_id")
+    if isinstance(update_id, bool) or not isinstance(update_id, int) or update_id < 0:
+        raise OrderFlowDataError("Order-flow snapshot has an invalid depth update ID.")
+    if not isinstance(snapshot.get("data_sources"), dict):
+        raise OrderFlowDataError("Order-flow snapshot is missing source-host provenance.")
+    depth_stamp = snapshot.get("depth_observed_at")
+    try:
+        observed = datetime.fromisoformat(str(depth_stamp).replace("Z", "+00:00"))
+        observed = _aware_utc(observed, "depth_observed_at")
+        clock = _aware_utc(now or datetime.now(timezone.utc), "now")
+        depth_age = (clock - observed).total_seconds()
+    except (TypeError, ValueError, OverflowError):
+        raise OrderFlowDataError("Order-flow depth snapshot has an invalid receive timestamp.") from None
+    if depth_age < -2.0 or depth_age > depth_age_limit:
+        raise OrderFlowDataError(
+            f"Order-flow depth snapshot is stale or future-dated ({depth_age:.2f}s; maximum {depth_age_limit:.2f}s)."
+        )
     trade_count = snapshot.get("trade_count")
     age = snapshot.get("trade_data_age_seconds")
     delta_ratio = snapshot.get("delta_ratio")
@@ -258,9 +292,9 @@ def evaluate_order_flow_confirmation(
         raise OrderFlowDataError("Order-flow snapshot is missing numeric delta or depth evidence.") from None
     if not all(math.isfinite(value) for value in (age_value, delta_value, depth_value)):
         raise OrderFlowDataError("Order-flow evidence contains non-finite values.")
-    if age_value < 0 or age_value > max_trade_age_seconds:
+    if age_value < 0 or age_value > trade_age_limit:
         raise OrderFlowDataError(
-            f"Order-flow trades are stale ({age_value:.2f}s; maximum {max_trade_age_seconds:.2f}s)."
+            f"Order-flow trades are stale ({age_value:.2f}s; maximum {trade_age_limit:.2f}s)."
         )
     if not -1.0 <= delta_value <= 1.0 or not -1.0 <= depth_value <= 1.0:
         raise OrderFlowDataError("Order-flow delta/depth imbalance is outside its normalized range.")
@@ -296,6 +330,8 @@ def evaluate_order_flow_confirmation(
         "support_count": len(supporting),
         "conflict_count": len(conflicting),
         "confirmation_score": len(supporting) - len(conflicting),
+        "trade_data_age_seconds": round(age_value, 3),
+        "depth_data_age_seconds": round(depth_age, 3),
         "supporting_evidence": supporting,
         "conflicting_evidence": conflicting,
         "neutral_evidence": neutral,
@@ -303,6 +339,7 @@ def evaluate_order_flow_confirmation(
         "limitations": [
             "Aggressor side is inferred from Binance aggregate-trade buyer-is-maker semantics.",
             "Depth imbalance is one REST L2 snapshot, not a sequence-validated continuous book.",
+            "Depth freshness uses local receive time; Binance REST depth does not provide an exchange event timestamp here.",
             "Recent-window delta is not persistent CVD; UTC session delta is valid only when coverage is complete.",
         ],
     }

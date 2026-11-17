@@ -562,3 +562,13 @@ The merged PR #189 adds a conservative live REST order-flow gate. The next criti
 3. Connect REST depth snapshot + buffered diff events to the sequence state; resync on every gap.
 4. Integrate state completeness into signal eligibility and capture synchronized historical trade/depth replay.
 5. Measure combined order-flow value against the candle-only baseline using chronological replay and ablation.
+
+
+## 2026-11-17 — live public Binance validation and next verified gap
+
+- At 2026-11-17 08:39 UTC, the read-only Binance connector returned Spot exchangeInfo with 3,703 symbols; 1,373 passed TRADING, isSpotTradingAllowed and Spot permission-set filters, while 2,330 were BREAK.
+- All 1,373 active eligible Spot symbols had PRICE_FILTER, LOT_SIZE, MARKET_LOT_SIZE and NOTIONAL; legacy MIN_NOTIONAL was absent but not needed because NOTIONAL existed.
+- BTCUSDT public AggTrades, 20-level REST depth and 1m klines returned successfully. This proves sample endpoint access only; it is not a full-universe scan and does not prove a live signal.
+- The latest visible GitHub Live Crypto Signal Smoke run remains the 2026-11-16 pre-failover failure; no post-PR #188 scheduled smoke success is visible yet.
+- Code audit found a remaining core gap: the Spot symbol cache stores only symbol/base/quote/filter data, and the execution context uses PRICE_FILTER, LOT_SIZE and NOTIONAL but not orderTypes, MARKET_LOT_SIZE, base/quote precision or market-specific min/max quantity. The entry selector therefore does not yet verify that MARKET or LIMIT is allowed for the selected pair.
+- Next phase must fix exchange metadata/order-type/filter handling before WebSocket integration. Keep all trading read-only/paper-only.

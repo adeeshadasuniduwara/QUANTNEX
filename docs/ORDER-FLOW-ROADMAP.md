@@ -133,19 +133,21 @@ Branch: `feat/orderflow-aware-signal-gate`. PR [#189](https://github.com/adeesha
 
 ## Phase C1 — deterministic Spot order-flow stream state (merged PR #191)
 
-- Implement WebSocket AggTrade rolling state, duplicate and aggregate-trade ID gap detection, reconnect/backfill and UTC session anchoring.
-- Implement REST snapshot + diff-depth WebSocket sequence bridging; invalidate/resync on any update-ID gap.
-- Persist/reconstruct CVD with explicit completeness and reset states.
-- Add synchronized replay fixtures and historical trade/depth capture before claiming the combined model has out-of-sample performance.
+PR [#191](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/191) merged to `main` as `1f953140f18af5555abf4ed7d008789824a96bd2`. PR and post-merge CI passed 332 tests on Python 3.12 and 332 tests on Python 3.14; schema/test and web-check jobs passed. The optional Telegram announce workflow failed due the invalid/self-directed chat target, unrelated to application code.
 
+Implemented in `backend/app/binance_order_flow_state.py`:
+- `AggTradeCvdState`: UTC-session seed, Decimal aggressor delta and quote delta, duplicate/out-of-order handling, aggregate-trade ID gap invalidation, paged backfill recovery, and explicit CVD/session completeness.
+- UTC rollover preserves CVD's `SINCE_STATE_SEED` scope but marks the new session delta incomplete. Backfill spanning midnight cannot incorrectly restore new-session completeness.
+- `BinanceSpotDepthBook`: REST snapshot loading, buffered diff bridge, zero-quantity deletion, update-ID gap detection, crossed/locked-book rejection, and clearing levels on invalidation.
+- Thirteen deterministic tests cover hand-computed delta/CVD, duplicates, ID gaps, partial/full backfill, UTC rollover, depth snapshot bridge, deletes, sequence gaps, resync and malformed/crossed books.
 
-### Phase C1 implementation note — merged PR #191
+Limitations: these are pure state machines only. No WebSocket client, reconnect/backoff, REST backfill network loop, persistent storage or live signal integration is included. The live signal gate remains REST-snapshot based; do not describe persistent CVD or continuous sequence-validated L2 as live-enabled yet.
 
-The current branch implements the deterministic state layer in `backend/app/binance_order_flow_state.py`:
+## Phase C2 — read-only WebSocket adapter and live state integration (next)
 
-- `AggTradeCvdState`: session-start seed, Decimal aggressor delta and quote delta, duplicate/out-of-order handling, gap detection, paged backfill recovery, and separate CVD/session coverage flags.
-- UTC rollover preserves CVD's `SINCE_STATE_SEED` scope but marks the new session delta incomplete. Backfill spanning midnight cannot incorrectly restore the new session's completeness.
-- `BinanceSpotDepthBook`: REST snapshot loading, buffered diff bridge, zero-quantity deletion, update-ID gap detection, crossed/locked-book rejection, and level clearing on invalidation.
-- Thirteen deterministic tests cover hand-computed long/short delta, duplicates, ID gaps, partial/full backfill, UTC rollover, snapshot bridge, deletes, sequence gaps, resync and malformed/crossed books.
-
-PR [#191](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/191) merged to `main` as `1f953140f18af5555abf4ed7d008789824a96bd2`. PR and post-merge CI passed 332 tests on Python 3.12 and 332 tests on Python 3.14; schema/test and web-check jobs passed. The optional Telegram announce workflow failed due the invalid/self-directed chat target, unrelated to application code. This is still a pure state machine only: no WebSocket client, reconnect/backoff, REST backfill network loop, persistent storage or live signal integration is included. Until Phase C2 is merged, the live signal gate remains REST-snapshot based.
+- Add an explicit WebSocket dependency and bounded per-symbol subscription manager using Binance public Spot streams; do not subscribe to every eligible symbol at once.
+- On reconnect, REST-backfill aggTrades from the last contiguous ID and keep CVD/session state incomplete until every missing ID is recovered.
+- Buffer depth diffs while obtaining a REST snapshot, bridge the first valid event, and invalidate/resync on every update-ID gap.
+- Add bounded queues, stream/request limits, exponential backoff with jitter, cancellation and shutdown tests.
+- Feed validated state into signal eligibility and distinguish live-complete, incomplete, gap and REST-snapshot-only data states.
+- Capture synchronized historical trade/depth replay before measuring order-flow incremental value against the candle-only baseline.

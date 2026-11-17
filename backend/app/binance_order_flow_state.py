@@ -51,7 +51,10 @@ def _parse_agg_trade(row: dict[str, Any]) -> tuple[int, Decimal, Decimal, int, b
         raise OrderFlowStateError("Aggregate trade event contains non-positive or negative values.")
     if not isinstance(buyer_is_maker, bool):
         raise OrderFlowStateError("Aggregate trade buyer-is-maker flag must be boolean.")
-    event_date = datetime.fromtimestamp(timestamp_ms / 1000, timezone.utc).date()
+    try:
+        event_date = datetime.fromtimestamp(timestamp_ms / 1000, timezone.utc).date()
+    except (OverflowError, OSError, ValueError):
+        raise OrderFlowStateError("Aggregate trade timestamp is outside the supported UTC range.") from None
     sign = Decimal("-1") if buyer_is_maker else Decimal("1")
     return trade_id, price, quantity, timestamp_ms, buyer_is_maker, event_date, quantity * sign, price * quantity * sign
 
@@ -81,6 +84,7 @@ class AggTradeCvdState:
     gap_observed_id: int | None = None
     applied_trade_count: int = 0
     duplicate_count: int = 0
+    out_of_order_count: int = 0
     last_trade_time_ms: int | None = None
     _coverage_before_gap: bool = field(default=False, repr=False)
     _session_coverage_before_gap: bool = field(default=False, repr=False)
@@ -94,8 +98,8 @@ class AggTradeCvdState:
     def begin_utc_session(self, first_trade_id: int, session_date: date) -> None:
         """Seed a session-complete state at the known first trade ID for a UTC date."""
         first_id = _int_value(first_trade_id, "first session trade ID")
-        if first_id < 0 or not isinstance(session_date, date):
-            raise OrderFlowStateError("A non-negative first trade ID and UTC session date are required.")
+        if first_id < 0 or not isinstance(session_date, date) or isinstance(session_date, datetime):
+            raise OrderFlowStateError("A non-negative first trade ID and UTC date (not datetime) are required.")
         self.last_agg_trade_id = first_id - 1
         self.cumulative_delta = Decimal("0")
         self.cumulative_quote_delta = Decimal("0")
@@ -110,6 +114,7 @@ class AggTradeCvdState:
         self.gap_observed_id = None
         self.applied_trade_count = 0
         self.duplicate_count = 0
+        self.out_of_order_count = 0
         self.last_trade_time_ms = None
         self._coverage_before_gap = False
         self._session_coverage_before_gap = False
@@ -120,6 +125,8 @@ class AggTradeCvdState:
         parsed: tuple[int, Decimal, Decimal, int, bool, date, Decimal, Decimal],
     ) -> None:
         trade_id, _price, _quantity, timestamp_ms, _buyer_is_maker, event_date, signed_qty, signed_quote = parsed
+        if self.last_trade_time_ms is not None and timestamp_ms < self.last_trade_time_ms:
+            raise OrderFlowStateError("Aggregate trade timestamps must not move backwards.")
         if self.session_date_utc is None:
             self.session_date_utc = event_date
             self.session_coverage_complete = False
@@ -149,8 +156,11 @@ class AggTradeCvdState:
             self.coverage_complete = False
             self.session_coverage_complete = False
         if trade_id <= self.last_agg_trade_id:
-            self.duplicate_count += 1
-            return "DUPLICATE" if trade_id == self.last_agg_trade_id else "OUT_OF_ORDER"
+            if trade_id == self.last_agg_trade_id:
+                self.duplicate_count += 1
+                return "DUPLICATE"
+            self.out_of_order_count += 1
+            return "OUT_OF_ORDER"
         expected = self.last_agg_trade_id + 1
         if trade_id != expected:
             self._coverage_before_gap = self.coverage_complete
@@ -223,6 +233,7 @@ class AggTradeCvdState:
             "gap_observed_id": self.gap_observed_id,
             "applied_trade_count": self.applied_trade_count,
             "duplicate_count": self.duplicate_count,
+            "out_of_order_count": self.out_of_order_count,
             "last_trade_time_ms": self.last_trade_time_ms,
         }
 

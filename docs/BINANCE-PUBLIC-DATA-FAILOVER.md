@@ -26,6 +26,7 @@ Binance documents the alternative REST base URLs and recommends the market-data-
 - Cap each host attempt at 3.5 seconds (1.5-second connect timeout) and limit concurrent requests to four per event loop, bounding worst-case failover latency.
 - Restrict the helper to HTTPS origins and public `/api/v3` paths. No signed/private endpoints, API keys or trading routes are allowed.
 - Return the successful base URL so execution and order-flow payloads can record data provenance.
+- Remember the last successful host per event loop and try it first on the next request, avoiding repeated timeouts when one documented host is unavailable.
 
 ## Integrated routes
 

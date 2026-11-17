@@ -123,3 +123,22 @@ def test_public_rest_rejects_non_public_routes():
                 await get_binance_public_json(client, "/api/v3/../account")
 
     asyncio.run(run())
+
+
+def test_public_request_limit_is_safe_across_separate_event_loops():
+    def handler(request):
+        return httpx.Response(200, json={"ok": True})
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            results = await asyncio.gather(*[
+                get_binance_public_json(
+                    client, "/api/v3/ping", base_urls=("https://mirror.test",)
+                )
+                for _ in range(8)
+            ])
+        assert len(results) == 8
+        assert all(payload == {"ok": True} for payload, _source in results)
+
+    asyncio.run(run())
+    asyncio.run(run())

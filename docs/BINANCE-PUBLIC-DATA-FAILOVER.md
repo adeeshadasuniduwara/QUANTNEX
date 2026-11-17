@@ -20,8 +20,8 @@ Binance documents the alternative REST base URLs and recommends the market-data-
 
 ## Retry policy
 
-- Try the next official host for connection/timeout failures, invalid JSON, server errors and host-level access/geo responses (403/451).
-- Stop on HTTP 418 or 429. Preserve `Retry-After`; do not fan out across hosts after an IP ban or rate limit.
+- Try the next official host for connection/timeout failures, invalid JSON, HTTP 408/425 and server errors.
+- Stop on HTTP 403/451 (WAF/security or geo/legal restriction) and on 418/429 (rate limit/IP ban). Preserve `Retry-After` for 418/429; do not fan out after a restriction or rate limit.
 - Stop on ordinary client errors such as HTTP 400 invalid symbol; another hostname cannot repair invalid request parameters.
 - Cap each host attempt at 3.5 seconds (1.5-second connect timeout) and limit concurrent requests to four per event loop, bounding worst-case failover latency.
 - Restrict the helper to HTTPS origins and public `/api/v3` paths. No signed/private endpoints, API keys or trading routes are allowed.

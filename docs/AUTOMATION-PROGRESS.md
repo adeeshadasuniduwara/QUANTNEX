@@ -488,8 +488,9 @@ The last scheduled smoke run failed before scanning because `get_binance_spot_sy
 
 ### Verification status
 
-- Implementation and tests are committed on this feature branch; PR and CI are pending.
-- The live smoke workflow has not yet been verified against this failover implementation.
+- PR #188 is open. Head `e2114a0076875646707188f8d6c5882030e7f4df` passed Backend CI run #615 (314 tests) and Backend/Web CI run #737 (314 tests on Python 3.12 and 3.14; `web-check` passed).
+- PR #188 is mergeable against `main` at `3666519818fb20ded9c1be9259c7e004e8f06dda`; merge is pending final diff/security review and a current-base check.
+- The live smoke workflow has not yet been verified against this failover implementation. The latest scheduled run found is still the 2026-11-16 provider failure; no 2026-11-17 scheduled run was visible at the time of this check.
 - No real orders, API keys or private endpoints are used.
 
 ### Exact next steps

@@ -484,7 +484,7 @@ Automatic, high-quality Binance signals remain the primary objective. Order-flow
 - The only verified crypto signal market remains Binance Spot. USDⓈ-M and COIN-M Futures are not wired into the signal engine.
 - The latest visible live smoke run remains the 2026-11-16 run, which failed before symbol discovery. The post-failover scheduled runner reachability has not yet been demonstrated; do not treat CI unit tests as live-provider verification.
 
-## 2026-11-17 — Phase 17: order-flow-aware Binance Spot signal gate (PR #189; CI passed, merge pending)
+## 2026-11-17 — Phase 17: order-flow-aware Binance Spot signal gate (merged PR #189; post-merge checks passed)
 
 ### User priority
 
@@ -509,17 +509,15 @@ Automatic, high-quality Binance signals remain the primary objective. Order-flow
 
 ### Verification status
 
-- PR [#189](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/189) is open from `feat/orderflow-aware-signal-gate`, based on main `a8fc002b214a037fd4e1ba63e9c68223444684b1`. Implementation code commit `6f6702424b5a866d23e1b8afd5f1516b7f1caa52` passed all four checks: Backend CI test/schema job, Python 3.12 tests, Python 3.14 tests and web-check. Subsequent documentation-only commits are being rechecked on the latest PR head before merge. The full diff was reviewed; no secrets or unrelated changes were found. Merge and post-merge verification remain pending.
+- PR [#189](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/189) merged from `feat/orderflow-aware-signal-gate` to `main` as `c94aa41e72121500656aac584ad8b4406b887ad6`; main was verified to point at that merge commit. PR and post-merge Backend CI passed 319 tests on Python 3.12 and 319 tests on Python 3.14. Backend schema/test and web-check jobs passed. The optional Telegram announce workflow failed because the configured Telegram chat target is invalid/self-directed; this does not affect code or signal tests. The full diff was reviewed; no secrets or unrelated changes were found.
 - This sign-confluence evaluator is not calibrated as a win probability. It has not yet demonstrated incremental expectancy or win-rate improvement.
 - The current REST depth is one snapshot, not a continuous sequence-validated book. Persistent CVD, reconnect-safe backfill and historical trade/depth replay remain incomplete.
 - The scheduled live smoke runner has not yet been observed succeeding after PR #188's endpoint failover.
 
 ### Exact next steps
 
-1. Re-fetch PR #189 and latest main; verify mergeability/base/head, then merge using squash only if all checks remain green.
-2. Verify the merge commit on main and post-merge Backend CI plus Backend/Web CI.
-3. Separately verify a live read-only smoke run on the GitHub runner after the REST failover merge.
-4. Implement bounded WebSocket AggTrade state, ID-gap detection, reconnect/backfill and persistent/reconstructable UTC-session CVD.
-5. Implement the depth snapshot + diff-stream sequence bridge; invalidate/resync on every update-ID gap.
-6. Add synchronized historical trade/depth capture and replay before evaluating order-flow's incremental value.
-7. Only then add further strategy-registry methods (VWAP, volume profile, regime/pullback/continuation variants) with causal fixtures and ablation evidence.
+1. Separately verify a live read-only smoke run on the GitHub runner after the REST failover merge; the latest visible scheduled run is still the 2026-11-16 pre-failover failure.
+2. Implement bounded WebSocket AggTrade state, ID-gap detection, reconnect/backfill and persistent/reconstructable UTC-session CVD.
+3. Implement the depth snapshot + diff-stream sequence bridge; invalidate/resync on every update-ID gap.
+4. Add synchronized historical trade/depth capture and replay before evaluating order-flow's incremental value.
+5. Only then add further strategy-registry methods (VWAP, volume profile, regime/pullback/continuation variants) with causal fixtures and ablation evidence.

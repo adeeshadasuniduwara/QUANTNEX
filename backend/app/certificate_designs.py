@@ -32,7 +32,7 @@ def certificate_design_catalog():
                 number = (palette_index - 1) * len(MOTIFS) + motif_index
                 result.append({
                     "id": f"{'P' if orientation == 'portrait' else 'L'}-{number:02d}",
-                    "name": f"{palette_name} · {motif_name}",
+                    "name": f"{palette_name} · {motif_name} · {label}",
                     "orientation": orientation,
                     "orientation_label": label,
                     "palette": palette_name,

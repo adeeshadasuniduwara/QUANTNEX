@@ -776,16 +776,16 @@
       </section>
 
 
-      <section class="section-heading" id="binance-center"><div><div class="overline">EXCHANGE CONNECTIONS · TESTNET ONLY</div><h2>Binance Exchange Center</h2><p>Connect Spot and USD-M Futures demo accounts, configure risk limits and monitor the execution readiness state.</p></div><span class="pill">DEMO · TESTNET</span></section>
+      <section class="section-heading" id="binance-center"><div><div class="overline">EXCHANGE CONNECTIONS · DEMO TRADING ONLY</div><h2>Binance Exchange Center</h2><p>Connect Spot and USD-M Futures demo accounts, configure risk limits and monitor the execution readiness state.</p></div><span class="pill">DEMO TRADING</span></section>
       <section class="panel workspace-page-panel binance-center-panel">
-        <div class="workspace-page-toolbar"><div><strong>Connection status</strong><p id="bnStatus" role="status">Checking Binance testnet…</p></div><button class="secondary-btn" id="bnRefresh" type="button">Refresh status</button></div>
+        <div class="workspace-page-toolbar"><div><strong>Connection status</strong><p id="bnStatus" role="status">Checking Binance Demo Trading…</p></div><button class="secondary-btn" id="bnRefresh" type="button">Refresh status</button></div>
         <div class="workspace-page-cards" id="bnCards">
-          <article class="workspace-page-card"><span>Spot Testnet</span><strong id="bnSpotState">—</strong></article>
-          <article class="workspace-page-card"><span>USD-M Futures Testnet</span><strong id="bnFuturesState">—</strong></article>
+          <article class="workspace-page-card"><span>Spot Demo</span><strong id="bnSpotState">—</strong></article>
+          <article class="workspace-page-card"><span>USD-M Futures Demo</span><strong id="bnFuturesState">—</strong></article>
           <article class="workspace-page-card"><span>Auto Trading</span><strong id="bnAutoState">OFF</strong></article>
           <article class="workspace-page-card"><span>Execution</span><strong>Not enabled</strong><small>Signal-to-order execution is intentionally disabled in this release.</small></article>
         </div>
-        <div class="bn-security-note"><strong>Security first</strong><p>Use Binance Spot Demo Trading and Futures Testnet keys only. Never paste live API keys here. Disable withdrawals; restrict keys to the QUANTNEX host where possible. Secrets are encrypted in the local backend and never displayed again. API keys must not be sent through Telegram chat.</p></div>
+        <div class="bn-security-note"><strong>Security first</strong><p>Use Binance Spot Demo Trading and USD-M Futures Demo Trading keys only. Never paste live API keys here. Disable withdrawals; restrict keys to the QUANTNEX host where possible. Secrets are encrypted in the local backend and never displayed again. API keys must not be sent through Telegram chat.</p></div>
         <div class="bn-credential-grid">
           <form id="bnSpotConnectForm" class="workspace-page-form bn-connect-form bn-credential-card">
             <div class="bn-credential-heading"><strong>Binance Spot Demo Trading</strong><span id="bnSpotCredentialState">Not connected</span></div>
@@ -812,7 +812,7 @@
           </form>
         </div>
         <div class="bn-risk-block">
-          <div class="workspace-page-toolbar"><div><strong>Autonomous trading policy</strong><p>Prepare the strategy and execution limits. These settings do not start trading.</p></div><span class="pill">TESTNET POLICY</span></div>
+          <div class="workspace-page-toolbar"><div><strong>Autonomous trading policy</strong><p>Prepare the strategy and execution limits. These settings do not start trading.</p></div><span class="pill">DEMO POLICY</span></div>
           <form id="bnAutoConfigForm" class="workspace-page-form">
             <label>Markets<select id="bnMarketModes" multiple><option value="SPOT" selected>Spot · long only</option><option value="USD_M_FUTURES" selected>USD-M Futures · long / short</option></select></label>
             <label>Trading styles<select id="bnStrategies" multiple><option value="SCALPING" selected>Scalping</option><option value="SWING" selected>Swing</option></select></label>
@@ -827,7 +827,7 @@
           </form>
           <p class="p7-note" id="bnReadiness">Execution readiness checks will appear here.</p>
         </div>
-        <div class="bn-security-note bn-warning"><strong>Automation status: safely disabled</strong><p>Policy settings can be prepared now. Automatic order execution remains OFF until the dedicated execution worker, exchange-specific protective orders, durable trade recovery and end-to-end Testnet tests are implemented and verified. No orders are placed by connecting, testing or saving this policy.</p></div>
+        <div class="bn-security-note bn-warning"><strong>Automation status: safely disabled</strong><p>Policy settings can be prepared now. Automatic order execution remains OFF until the dedicated execution worker, exchange-specific protective orders, durable trade recovery and end-to-end Demo Trading tests are implemented and verified. No orders are placed by connecting, testing or saving this policy.</p></div>
       </section>
       <section class="section-heading" id="integrations-center"><div><div class="overline">WORKSPACE SETTINGS · CONNECTION HEALTH</div><h2>Connections &amp; Integrations</h2><p>Check which optional local providers and integrations are configured without exposing any API keys or bot tokens.</p></div><span class="pill">SECRET SAFE</span></section>
       <section class="panel workspace-page-panel">
@@ -914,7 +914,7 @@
   <script src="welcome-whats-new.js?v=20261113-1"></script>
   <script src="prop-challenge.js"></script>
   <script src="donation.js?v=20261113-bep20"></script>
-  <script src="binance-center.js?v=20261118-separate-testnet-keys1"></script>
+  <script src="binance-center.js?v=20261118-demo-credentials2"></script>
   <script src="navigation.js"></script>
 </body>
 </html>

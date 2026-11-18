@@ -323,7 +323,17 @@ function watchSupervisorUpdate(target){
       const response=await fetch("/__quantnex/check",{cache:"no-store"});
       if(response.ok){
         const state=await response.json();
-        if(state.managed_by_supervisor&&!state.update_available&&state.installed===state.latest){
+        if(state.sync_error){
+          supervisorWatchTarget="";
+          const status=$("webUpdateStatus");
+          if(status)status.textContent="Local source repair failed: "+state.sync_error+". Your existing workspace was kept running; click Check for updates to retry.";
+          showUpdateToast("QUANTNEX source repair failed: "+state.sync_error);
+          return;
+        }
+        if(state.syncing){
+          const status=$("webUpdateStatus");
+          if(status)status.textContent=state.message||"Verifying and repairing the local QUANTNEX source…";
+        }else if(state.managed_by_supervisor&&!state.update_available&&state.installed===state.latest){
           supervisorWatchTarget="";
           sessionStorage.setItem("quantnex.webUpdateComplete","1");
           sessionStorage.setItem("quantnex.webUpdateVersion",state.latest||target);
@@ -354,15 +364,17 @@ async function checkLocalUpdate(options={}){
       releaseVersionLabel.textContent=result.latest||"GitHub main unavailable";
       if(result.release_notes)releaseNotesLink.href=result.release_notes;
       if(installButton)installButton.hidden=true;
-      if(result.update_available){
+      if(result.update_available||!silent){
         latestUpdateCommit=result.commit_sha||result.latest||"";
         renderUpdateDetails(result,false);
         watchSupervisorUpdate(latestUpdateCommit);
-        if(!silent)status.textContent="Update detected. Sending an immediate check to the QUANTNEX supervisor…";
+        if(!silent)status.textContent=result.update_available
+          ?"Update detected. Sending an immediate full-source sync to the QUANTNEX supervisor…"
+          :"Checking the installed source files and repairing anything missing…";
         const queued=await fetch("/__quantnex/check-now",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
         const receipt=await queued.json().catch(()=>({}));
         if(!queued.ok&&queued.status!==409)throw new Error(receipt.error||"The supervisor could not accept the update check.");
-        if(!silent)status.textContent="Update detected ("+result.latest+"). The supervisor will install it and refresh this workspace after the safe restart.";
+        if(!silent)status.textContent="Full source verification queued for "+result.latest+". QUANTNEX will refresh after the safe check/restart.";
         else status.textContent=result.message||"A source update is waiting for the supervisor's safe restart.";
       }else{
         latestUpdateCommit="";

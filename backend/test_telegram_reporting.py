@@ -55,6 +55,30 @@ def test_telegram_text_messages_get_branded_emoji_headers():
 
 
 
+
+def test_telegram_formatter_preserves_safe_html_tags_and_real_line_breaks():
+    from app.telegram_worker import _format_telegram_message
+
+    message = (
+        "🌍 <b>QUANTNEX · NEW MARKET SESSION</b>\n\n"
+        "🇺🇸 <b>New York SESSION OPENED</b>\n"
+        "Closes in: 8h 59m\n"
+        "Expected close (Sri Lanka): 03:30 AM\n\n"
+        "<b>Currently running:</b> London + New York\n"
+        "🇱🇰 All times are Sri Lanka time. Session hours follow local DST rules."
+    )
+    rendered = _format_telegram_message(message)
+
+    assert "<b>✨ 🌍 <b>QUANTNEX · NEW MARKET SESSION</b></b>" in rendered
+    assert "🇺🇸 <b>New York SESSION OPENED</b>" in rendered
+    assert "<b>Closes in:</b> 8h 59m" in rendered
+    assert "<b>Expected close (Sri Lanka):</b> 03:30 AM" in rendered
+    assert "<b>Currently running:</b> London + New York" in rendered
+    assert "\\n" not in rendered
+    assert "&lt;b&gt;" not in rendered
+    assert "&lt;script&gt;" in _format_telegram_message("<script>")
+
+
 def test_telegram_menu_is_button_first_and_has_all_primary_sections():
     from app.telegram_worker import MENU, SUBMENUS
 

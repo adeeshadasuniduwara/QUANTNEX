@@ -219,7 +219,10 @@ def _format_telegram_message(message: str) -> str:
         if not stripped:
             rendered.append("")
         elif index == 0:
-            rendered.append("<b>✨ " + safe + "</b>" if "QUANTNEX" in stripped.upper() else "<b>" + safe + "</b>")
+            if "QUANTNEX" in stripped.upper() and "<b>" in safe.lower():
+                rendered.append("✨ " + safe)
+            else:
+                rendered.append("<b>✨ " + safe + "</b>" if "QUANTNEX" in stripped.upper() else "<b>" + safe + "</b>")
         elif stripped.isupper() and len(stripped) > 3:
             rendered.append("<b>" + safe + "</b>")
         elif ":" in line:

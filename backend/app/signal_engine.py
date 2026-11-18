@@ -155,65 +155,6 @@ async def is_binance_spot_symbol(symbol: str) -> bool:
     return normalized in set(await get_binance_spot_symbols())
 
 
-async def get_binance_spot_execution_context(symbol: str) -> dict[str, Any]:
-    """Fetch fresh top-of-book and depth plus the pair's exchange price filters."""
-    normalized = str(symbol or "").strip().upper()
-    info = await get_binance_spot_symbol_info(normalized)
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(12, connect=5)) as client:
-            quote, quote_source_base = await get_binance_public_json(
-                client, "/api/v3/ticker/bookTicker", {"symbol": normalized}
-            )
-            depth, depth_source_base = await get_binance_public_json(
-                client, "/api/v3/depth", {"symbol": normalized, "limit": 20}
-            )
-            quote_asset = str(info.get("quote_asset") or "").upper()
-            stable_quotes = {"USDT", "USDC", "FDUSD", "BUSD", "TUSD", "USDP", "DAI", "USDE"}
-            quote_asset_usd_rate = 1.0 if quote_asset in stable_quotes else None
-            quote_asset_usd_rate_source = "stablecoin_parity_assumption" if quote_asset_usd_rate else None
-            if quote_asset_usd_rate is None and _BINANCE_SPOT_SYMBOLS_CACHE:
-                known_symbols = _BINANCE_SPOT_SYMBOLS_CACHE[1]
-                conversion_symbol = next(
-                    (quote_asset + suffix for suffix in ("USDT", "USDC", "FDUSD", "BUSD")
-                     if quote_asset + suffix in known_symbols),
-                    None,
-                )
-                if conversion_symbol:
-                    try:
-                        conversion, _conversion_source_base = await get_binance_public_json(
-                            client, "/api/v3/ticker/bookTicker", {"symbol": conversion_symbol}
-                        )
-                        conversion_bid = float(conversion["bidPrice"])
-                        conversion_ask = float(conversion["askPrice"])
-                        if (
-                            math.isfinite(conversion_bid) and math.isfinite(conversion_ask)
-                            and conversion_bid > 0 and conversion_ask >= conversion_bid
-                        ):
-                            quote_asset_usd_rate = (conversion_bid + conversion_ask) / 2
-                            quote_asset_usd_rate_source = conversion_symbol
-                    except (BinancePublicDataError, httpx.HTTPError, ValueError, TypeError, KeyError):
-                        quote_asset_usd_rate = None
-    except (BinancePublicDataError, httpx.HTTPError, ValueError, TypeError) as exc:
-        raise MarketDataError(f"Could not retrieve fresh Binance Spot execution data for {normalized}: {exc}") from exc
-
-    try:
-        bid = float(quote["bidPrice"])
-        ask = float(quote["askPrice"])
-        bid_qty = float(quote["bidQty"])
-        ask_qty = float(quote["askQty"])
-        if not all(math.isfinite(value) for value in (bid, ask, bid_qty, ask_qty)):
-            raise ValueError()
-        if bid <= 0 or ask < bid or bid_qty < 0 or ask_qty < 0:
-            raise ValueError()
-        bids = depth.get("bids", [])
-        asks = depth.get("asks", [])
-        bid_depth_quote = sum(float(row[0]) * float(row[1]) for row in bids[:10])
-        ask_depth_quote = sum(float(row[0]) * float(row[1]) for row in asks[:10])
-        if not all(math.isfinite(value) and value >= 0 for value in (bid_depth_quote, ask_depth_quote)):
-            raise ValueError()
-    except (AttributeError, KeyError, IndexError, TypeError, ValueError, OverflowError):
-        raise MarketDataError(f"Binance returned invalid top-of-book/depth data for {normalized}.") from None
-
 def _normalise_lot_filter(
     filter_data: Any, *, allow_disabled_step: bool = False
 ) -> dict[str, Any]:
@@ -309,6 +250,69 @@ def _normalise_notional_filter(filter_data: Any) -> dict[str, Any]:
     }
 
 
+async def get_binance_spot_execution_context(symbol: str) -> dict[str, Any]:
+    """Fetch fresh book data and authoritative, symbol-specific Spot order filters."""
+    normalized = str(symbol or "").strip().upper()
+    info = await get_binance_spot_symbol_info(normalized)
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(12, connect=5)) as client:
+            quote, quote_source_base = await get_binance_public_json(
+                client, "/api/v3/ticker/bookTicker", {"symbol": normalized}
+            )
+            depth, depth_source_base = await get_binance_public_json(
+                client, "/api/v3/depth", {"symbol": normalized, "limit": 20}
+            )
+            quote_asset = str(info.get("quote_asset") or "").upper()
+            stable_quotes = {"USDT", "USDC", "FDUSD", "BUSD", "TUSD", "USDP", "DAI", "USDE"}
+            quote_asset_usd_rate = 1.0 if quote_asset in stable_quotes else None
+            quote_asset_usd_rate_source = "stablecoin_parity_assumption" if quote_asset_usd_rate else None
+            if quote_asset_usd_rate is None and _BINANCE_SPOT_SYMBOLS_CACHE:
+                known_symbols = _BINANCE_SPOT_SYMBOLS_CACHE[1]
+                conversion_symbol = next(
+                    (quote_asset + suffix for suffix in ("USDT", "USDC", "FDUSD", "BUSD")
+                     if quote_asset + suffix in known_symbols),
+                    None,
+                )
+                if conversion_symbol:
+                    try:
+                        conversion, _conversion_source_base = await get_binance_public_json(
+                            client, "/api/v3/ticker/bookTicker", {"symbol": conversion_symbol}
+                        )
+                        conversion_bid = float(conversion["bidPrice"])
+                        conversion_ask = float(conversion["askPrice"])
+                        if (
+                            math.isfinite(conversion_bid) and math.isfinite(conversion_ask)
+                            and conversion_bid > 0 and conversion_ask >= conversion_bid
+                        ):
+                            quote_asset_usd_rate = (conversion_bid + conversion_ask) / 2
+                            quote_asset_usd_rate_source = conversion_symbol
+                    except (BinancePublicDataError, httpx.HTTPError, ValueError, TypeError, KeyError):
+                        quote_asset_usd_rate = None
+    except (BinancePublicDataError, httpx.HTTPError, ValueError, TypeError) as exc:
+        raise MarketDataError(
+            f"Could not retrieve fresh Binance Spot execution data for {normalized}: {exc}"
+        ) from exc
+
+    try:
+        bid = float(quote["bidPrice"])
+        ask = float(quote["askPrice"])
+        bid_qty = float(quote["bidQty"])
+        ask_qty = float(quote["askQty"])
+        if not all(math.isfinite(value) for value in (bid, ask, bid_qty, ask_qty)):
+            raise ValueError()
+        if bid <= 0 or ask < bid or bid_qty < 0 or ask_qty < 0:
+            raise ValueError()
+        bids = depth.get("bids", [])
+        asks = depth.get("asks", [])
+        bid_depth_quote = sum(float(row[0]) * float(row[1]) for row in bids[:10])
+        ask_depth_quote = sum(float(row[0]) * float(row[1]) for row in asks[:10])
+        if not all(math.isfinite(value) and value >= 0 for value in (bid_depth_quote, ask_depth_quote)):
+            raise ValueError()
+    except (AttributeError, KeyError, IndexError, TypeError, ValueError, OverflowError):
+        raise MarketDataError(
+            f"Binance returned invalid top-of-book/depth data for {normalized}."
+        ) from None
+
     mid = (bid + ask) / 2
     spread_bps = ((ask - bid) / mid) * 10000 if mid > 0 else float("inf")
     filters = info.get("filters", {})
@@ -357,19 +361,21 @@ def _normalise_notional_filter(filter_data: Any) -> dict[str, Any]:
             "step_size": None, "min_quantity": None, "max_quantity": None,
             "source": "UNAVAILABLE", "valid": False,
         }
+
     filter_reasons = []
     if "MARKET" not in order_types:
         filter_reasons.append("MARKET is not listed in exchangeInfo orderTypes")
-    elif not market_lot_constraints["valid"]:
-        filter_reasons.append("MARKET_LOT_SIZE is missing or invalid")
+    elif not market_order_constraints_valid:
+        filter_reasons.append("MARKET order filters are missing or invalid")
     if "LIMIT" not in order_types:
         filter_reasons.append("LIMIT is not listed in exchangeInfo orderTypes")
-    elif not limit_lot_constraints["valid"]:
-        filter_reasons.append("LOT_SIZE is missing or invalid")
+    elif not limit_order_constraints_valid:
+        filter_reasons.append("LIMIT order filters are missing or invalid")
     if not price_constraints["valid"]:
         filter_reasons.append("PRICE_FILTER tickSize is missing or invalid")
     if not notional_constraints["valid"]:
         filter_reasons.append("NOTIONAL/MIN_NOTIONAL constraints are missing or invalid")
+
     return {
         "symbol": normalized,
         "provider": "Binance Spot",

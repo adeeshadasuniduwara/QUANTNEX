@@ -185,7 +185,10 @@ def create_setup_session(payload: CreateSession, workspace_hash: str = Depends(_
 async def complete_setup(payload: CompleteSetup, db=Depends(_db)):
     now = datetime.now(timezone.utc)
     session = db.scalar(select(SetupSession).where(SetupSession.token_hash == _hash(payload.session_token)))
-    if session is None or session.consumed_at is not None or session.expires_at <= now:
+    expires_at = session.expires_at if session is not None else None
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if session is None or session.consumed_at is not None or expires_at <= now:
         raise HTTPException(status_code=410, detail="This setup link has expired or was already used. Send /binance to your QUANTNEX bot for a fresh link.")
     # Consume before external calls to prevent replay and concurrent double submission.
     session.consumed_at = now

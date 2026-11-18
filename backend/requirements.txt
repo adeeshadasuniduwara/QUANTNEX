@@ -1,5 +1,7 @@
 fastapi==0.115.12
 uvicorn[standard]==0.34.2
+# Explicit runtime dependency for the Binance public Spot order-flow stream adapter.
+websockets>=13.1,<18
 # 2.0.41+ contains the Python 3.14 typing.Union fix used by Mapped[int | None].
 sqlalchemy==2.0.55
 httpx==0.28.1

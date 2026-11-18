@@ -20,6 +20,10 @@ Android updates are checked against the latest GitHub Release. The app verifies 
 
 The Android app needs an HTTPS Web workspace URL reachable from the phone. A `127.0.0.1` URL on a Windows computer is not reachable from an Android phone. The Android app does not expose or tunnel the local-only Backend API. Personal browser journal data remains in that browser profile.
 
+## Binance mobile setup (optional secure cloud gateway)
+
+QUANTNEX can offer phone-based Binance Spot and USD-M Futures TESTNET setup through the connected Telegram bot. This is an isolated HTTPS service under `services/binance-gateway`; it does not expose the local QUANTNEX API or synchronize the local journal/wallet. Deploy it with persistent PostgreSQL storage and a dedicated Fernet encryption key, then configure `QUANTNEX_BINANCE_GATEWAY_URL` in each local Backend `.env`. The bot sends a five-minute, one-use setup link; API keys and secrets are entered only on the HTTPS page and encrypted by the gateway. Never forward the link. The gateway has no order-placement route and Auto Trading remains OFF. See [the gateway deployment guide](services/binance-gateway/README.md).
+
 ## Run the Web workspace on Windows
 
 1. Install Python 3.11 or newer and make sure the Python launcher (`py`) or `python` is available in PATH.

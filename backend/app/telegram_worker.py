@@ -343,6 +343,92 @@ def _gold_report_slot(local_now: datetime) -> str | None:
     return None
 
 
+
+MARKET_SESSIONS = (
+    ("sydney", "Sydney", "🇦🇺", "Australia/Sydney", 8, 17),
+    ("asia", "Asia · Tokyo", "🌏", "Asia/Tokyo", 9, 18),
+    ("london", "London", "🇬🇧", "Europe/London", 8, 17),
+    ("new-york", "New York", "🇺🇸", "America/New_York", 8, 17),
+)
+COLOMBO = ZoneInfo("Asia/Colombo")
+
+
+def _market_session_snapshot(now: datetime | None = None) -> dict[str, dict[str, Any]]:
+    """Return currently open FX sessions and their next close, using DST-aware local zones."""
+    instant = now or datetime.now(timezone.utc)
+    if instant.tzinfo is None:
+        instant = instant.replace(tzinfo=timezone.utc)
+    result: dict[str, dict[str, Any]] = {}
+    for session_id, name, flag, zone_name, open_hour, close_hour in MARKET_SESSIONS:
+        local = instant.astimezone(ZoneInfo(zone_name))
+        is_open = local.weekday() < 5 and open_hour <= local.hour < close_hour
+        if not is_open:
+            continue
+        close_local = local.replace(hour=close_hour, minute=0, second=0, microsecond=0)
+        close_utc = close_local.astimezone(timezone.utc)
+        close_colombo = close_utc.astimezone(COLOMBO)
+        result[session_id] = {
+            "name": name,
+            "flag": flag,
+            "close_utc": close_utc,
+            "close_colombo": close_colombo,
+        }
+    return result
+
+
+def _market_session_open_ids(snapshot: dict[str, dict[str, Any]]) -> str:
+    return ",".join(sorted(snapshot))
+
+
+async def _notify_new_market_sessions(client, db, user_id: int, token: str, chat_id: str,
+                                      now: datetime | None = None) -> list[str]:
+    """Notify a connected user once when a major session opens; persist state to avoid duplicates."""
+    snapshot = _market_session_snapshot(now)
+    current_ids = _market_session_open_ids(snapshot)
+    previous_raw = _get(db, user_id, "telegram_market_sessions_open", "")
+    # First observation establishes a baseline; it must not send misleading startup alerts.
+    if previous_raw == "":
+        _set(db, user_id, "telegram_market_sessions_open", current_ids)
+        db.commit()
+        return []
+    previous_ids = {item for item in previous_raw.split(",") if item}
+    current_set = set(snapshot)
+    newly_opened = [session_id for session_id in snapshot if session_id not in previous_ids]
+    if not newly_opened:
+        if previous_raw != current_ids:
+            _set(db, user_id, "telegram_market_sessions_open", current_ids)
+            db.commit()
+        return []
+    lines = []
+    for session_id in newly_opened:
+        item = snapshot[session_id]
+        remaining = max(0, int((item["close_utc"] - (now or datetime.now(timezone.utc)).astimezone(timezone.utc)).total_seconds()))
+        hours, remainder = divmod(remaining, 3600)
+        minutes = remainder // 60
+        countdown = (str(hours) + "h " if hours else "") + str(minutes) + "m"
+        lines.append(
+            item["flag"] + " <b>" + item["name"] + " SESSION OPENED</b>"
+            + "\\nCloses in: " + countdown
+            + "\\nExpected close (Sri Lanka): " + item["close_colombo"].strftime("%I:%M %p")
+        )
+    active_names = " + ".join(snapshot[key]["name"] for key in snapshot)
+    message = (
+        "🌍 <b>QUANTNEX · NEW MARKET SESSION</b>\\n\\n"
+        + "\\n\\n".join(lines)
+        + "\\n\\n<b>Currently running:</b> " + active_names
+        + "\\n🇱🇰 All times are Sri Lanka time. Session hours follow local DST rules."
+    )
+    try:
+        await _send(client, token, chat_id, message)
+    except Exception:
+        db.rollback()
+        logger.warning("Market-session Telegram alert deferred for local user %s", user_id)
+        return []
+    _set(db, user_id, "telegram_market_sessions_open", current_ids)
+    db.commit()
+    return newly_opened
+
+
 def _paper_dashboard(db, user_id: int) -> str:
     rows=list(db.scalars(select(PaperTrade).where(PaperTrade.user_id==user_id)))
     opened=[row for row in rows if str(row.status).upper()=="OPEN"]

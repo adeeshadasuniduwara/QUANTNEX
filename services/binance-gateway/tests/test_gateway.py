@@ -1,10 +1,13 @@
 import os
+import sys
+from pathlib import Path
 from cryptography.fernet import Fernet
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_binance_gateway.db")
 os.environ.setdefault("QUANTNEX_GATEWAY_PUBLIC_URL", "https://gateway.test")
 os.environ.setdefault("QUANTNEX_GATEWAY_ENCRYPTION_KEY", Fernet.generate_key().decode())
 os.environ.setdefault("QUANTNEX_GATEWAY_ALLOW_INSECURE_LOCAL", "1")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pytest
 from fastapi.testclient import TestClient

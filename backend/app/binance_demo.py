@@ -24,8 +24,8 @@ from .binance_auto_config import AutoTradingConfig, safe_auto_status
 
 router = APIRouter(prefix="/api/v1/exchanges/binance", tags=["Binance demo"])
 
-SPOT_BASE = "https://testnet.binance.vision"
-FUTURES_BASE = "https://testnet.binancefuture.com"
+SPOT_BASE = "https://demo-api.binance.com"
+FUTURES_BASE = "https://demo-fapi.binance.com"
 
 
 def _workspace(db: Session) -> User:
@@ -63,12 +63,15 @@ async def _verify(base: str, api_key: str, secret: str, path: str) -> dict:
         async with httpx.AsyncClient(timeout=httpx.Timeout(12, connect=5)) as client:
             response = await client.get(base + path, params=_signed_params(secret), headers=headers)
         if response.status_code in (401, 403):
-            raise HTTPException(status_code=422, detail="Binance rejected the API key or its testnet permissions.")
+            raise HTTPException(status_code=422, detail="Binance Demo Trading rejected the credentials. Check that both values are the Demo API key/secret pair, that the key is active, and that API access is permitted.")
         if response.status_code == 429 or response.status_code >= 500:
-            raise HTTPException(status_code=503, detail="Binance testnet is temporarily rate-limited or unavailable. Try again shortly.")
+            raise HTTPException(status_code=503, detail="Binance Demo Trading is temporarily rate-limited or unavailable. Try again shortly.")
         if response.status_code >= 400:
             try:
-                detail = response.json().get("msg", "Binance credential check failed.")
+                payload = response.json()
+                code = payload.get("code")
+                message = payload.get("msg", "Binance credential check failed.")
+                detail = f"Binance error {code}: {message}" if code is not None else message
             except ValueError:
                 detail = "Binance credential check failed."
             raise HTTPException(status_code=422, detail=str(detail)[:240])
@@ -77,23 +80,23 @@ async def _verify(base: str, api_key: str, secret: str, path: str) -> dict:
             raise HTTPException(status_code=502, detail="Binance returned an unexpected account response.")
         return data
     except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="Binance testnet connection timed out.")
+        raise HTTPException(status_code=504, detail="Binance Demo Trading connection timed out.")
     except httpx.HTTPError:
-        raise HTTPException(status_code=502, detail="Could not reach Binance testnet. Check the internet connection.")
+        raise HTTPException(status_code=502, detail="Could not reach Binance Demo Trading. Check the internet connection.")
 
 def _store_credentials(db: Session, user_id: int, exchange: str, api_key: str, api_secret: str) -> None:
     """Update only one exchange credential pair; never overwrite the other venue."""
     prefix = "binance_spot" if exchange == "spot" else "binance_futures"
     _set(db, user_id, prefix + "_api_key_enc", encrypt_secret(api_key.strip()))
     _set(db, user_id, prefix + "_api_secret_enc", encrypt_secret(api_secret.strip()))
-    _set(db, user_id, "binance_connection_mode", "testnet")
+    _set(db, user_id, "binance_connection_mode", "demo")
 
 
 def _credential_keys(exchange: str) -> tuple[str, str, str, str]:
     if exchange == "spot":
         return ("binance_spot_api_key_enc", "binance_spot_api_secret_enc", SPOT_BASE, "/api/v3/account")
     if exchange == "futures":
-        return ("binance_futures_api_key_enc", "binance_futures_api_secret_enc", FUTURES_BASE, "/fapi/v2/account")
+        return ("binance_futures_api_key_enc", "binance_futures_api_secret_enc", FUTURES_BASE, "/fapi/v3/account")
     raise ValueError("Unsupported Binance testnet market.")
 
 
@@ -105,8 +108,8 @@ class BinanceConnect(BaseModel):
 
 
 class BinanceCredentialPair(BaseModel):
-    api_key: str = Field(min_length=20, max_length=160)
-    api_secret: str = Field(min_length=20, max_length=160)
+    api_key: str = Field(min_length=1, max_length=256)
+    api_secret: str = Field(min_length=1, max_length=256)
 
 
 class BinanceRiskSettings(BaseModel):
@@ -124,7 +127,7 @@ class BinanceAutoTrading(BaseModel):
 async def connect_binance(payload: BinanceConnect, db: Session = Depends(get_db)):
     user = _workspace(db)
     spot = await _verify(SPOT_BASE, payload.spot_api_key.strip(), payload.spot_api_secret.strip(), "/api/v3/account")
-    futures = await _verify(FUTURES_BASE, payload.futures_api_key.strip(), payload.futures_api_secret.strip(), "/fapi/v2/account")
+    futures = await _verify(FUTURES_BASE, payload.futures_api_key.strip(), payload.futures_api_secret.strip(), "/fapi/v3/account")
     for key, value in (
         ("binance_spot_api_key_enc", encrypt_secret(payload.spot_api_key.strip())),
         ("binance_spot_api_secret_enc", encrypt_secret(payload.spot_api_secret.strip())),
@@ -132,15 +135,15 @@ async def connect_binance(payload: BinanceConnect, db: Session = Depends(get_db)
         ("binance_futures_api_secret_enc", encrypt_secret(payload.futures_api_secret.strip())),
     ):
         _set(db, user.id, key, value)
-    _set(db, user.id, "binance_connection_mode", "testnet")
+    _set(db, user.id, "binance_connection_mode", "demo")
     _set(db, user.id, "binance_auto_trading_enabled", "false")
     db.commit()
     return {
         "connected": True,
-        "mode": "demo_testnet",
+        "mode": "binance_demo",
         "spot": {"connected": True, "can_trade": bool(spot.get("canTrade"))},
         "futures": {"connected": True, "can_trade": bool(futures.get("canTrade"))},
-        "message": "Both Binance testnet accounts verified. No orders were placed.",
+        "message": "Both Binance Demo Trading accounts verified. No orders were placed.",
     }
 
 
@@ -150,20 +153,20 @@ async def connect_binance_spot(payload: BinanceCredentialPair, db: Session = Dep
     account = await _verify(SPOT_BASE, payload.api_key.strip(), payload.api_secret.strip(), "/api/v3/account")
     _store_credentials(db, user.id, "spot", payload.api_key, payload.api_secret)
     db.commit()
-    return {"connected": True, "exchange": "spot", "mode": "demo_testnet",
+    return {"connected": True, "exchange": "spot", "mode": "binance_demo",
             "can_trade": bool(account.get("canTrade")),
-            "message": "Binance Spot Testnet verified and saved. Futures credentials were left unchanged."}
+            "message": "Binance Spot Demo Trading credentials verified and saved. Futures credentials were left unchanged."}
 
 
 @router.post("/connect/futures")
 async def connect_binance_futures(payload: BinanceCredentialPair, db: Session = Depends(get_db)):
     user = _workspace(db)
-    account = await _verify(FUTURES_BASE, payload.api_key.strip(), payload.api_secret.strip(), "/fapi/v2/account")
+    account = await _verify(FUTURES_BASE, payload.api_key.strip(), payload.api_secret.strip(), "/fapi/v3/account")
     _store_credentials(db, user.id, "futures", payload.api_key, payload.api_secret)
     db.commit()
-    return {"connected": True, "exchange": "futures", "mode": "demo_testnet",
+    return {"connected": True, "exchange": "futures", "mode": "binance_demo",
             "can_trade": bool(account.get("canTrade")),
-            "message": "Binance USD-M Futures Testnet verified and saved. Spot credentials were left unchanged."}
+            "message": "Binance USD-M Futures Demo Trading credentials verified and saved. Spot credentials were left unchanged."}
 
 
 @router.delete("/connect/spot")
@@ -225,7 +228,7 @@ def binance_status(db: Session = Depends(get_db)):
         auto_config = AutoTradingConfig()
     readiness = safe_auto_status(auto_config, spot_verified=spot, futures_verified=futures,
                                   worker_ready=False, protection_ready=False)
-    return {"mode": "demo_testnet", "spot_connected": spot, "futures_connected": futures,
+    return {"mode": "binance_demo", "spot_connected": spot, "futures_connected": futures,
             "credential_storage": "encrypted_local_database",
             "auto_trading_enabled": _get(db, user.id, "binance_auto_trading_enabled") == "true",
             "execution": "disabled_until_worker_and_protection_validation",
@@ -260,7 +263,7 @@ def get_binance_auto_config(db: Session = Depends(get_db)):
         config = AutoTradingConfig.model_validate_json(_get(db, user.id, "binance_auto_config", "{}"))
     except (ValueError, TypeError):
         config = AutoTradingConfig()
-    return {"config": config.model_dump(), "mode": "BINANCE_TESTNET"}
+    return {"config": config.model_dump(), "mode": "BINANCE_DEMO"}
 
 
 @router.put("/auto-config")
@@ -272,7 +275,7 @@ def save_binance_auto_config(payload: AutoTradingConfig, db: Session = Depends(g
     _set(db, user.id, "binance_auto_trading_enabled", "false")
     db.commit()
     return {"saved": True, "enabled": False, "config": payload.model_dump(),
-            "message": "Testnet auto-trading policy saved. Execution remains OFF until worker and protective-order validation pass."}
+            "message": "Demo Trading auto-trading policy saved. Execution remains OFF until worker and protective-order validation pass."}
 
 
 @router.put("/auto-trading")
@@ -305,7 +308,7 @@ async def test_binance_connection(db: Session = Depends(get_db)):
     user = _workspace(db)
     values = {
         "spot": ("binance_spot_api_key_enc", "binance_spot_api_secret_enc", SPOT_BASE, "/api/v3/account"),
-        "futures": ("binance_futures_api_key_enc", "binance_futures_api_secret_enc", FUTURES_BASE, "/fapi/v2/account"),
+        "futures": ("binance_futures_api_key_enc", "binance_futures_api_secret_enc", FUTURES_BASE, "/fapi/v3/account"),
     }
     results = {}
     for name, (key_name, secret_name, base, path) in values.items():
@@ -318,4 +321,4 @@ async def test_binance_connection(db: Session = Depends(get_db)):
             results[name] = {"connected": True, "can_trade": bool(account.get("canTrade"))}
         except (ValueError, HTTPException) as exc:
             results[name] = {"connected": False, "reason": exc.detail if isinstance(exc, HTTPException) else "Stored credentials could not be decrypted"}
-    return {"mode": "demo_testnet", "results": results}
+    return {"mode": "binance_demo", "results": results}

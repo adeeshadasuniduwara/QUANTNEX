@@ -36,7 +36,7 @@ async function refresh(){
   $("bnAutoDca").checked=cfg.dca_enabled===true;
   const checks=data.readiness?.checks||{};
   $("bnReadiness").textContent="Readiness · "+Object.entries(checks).map(([k,v])=>k.replaceAll("_"," ")+": "+(v?"PASS":"WAIT")).join(" · ");
-  status("Binance DEMO testnet · "+(data.spot_connected&&data.futures_connected?"Both connections verified.":"Connect both demo environments to continue.")+" Auto Trading is "+(data.auto_trading_enabled?"ON":"OFF")+".");
+  status("Binance DEMO Trading · "+(data.spot_connected&&data.futures_connected?"Both connections verified.":"Connect both demo environments to continue.")+" Auto Trading is "+(data.auto_trading_enabled?"ON":"OFF")+".");
  }catch(error){status("Local API unavailable: "+error.message,true);}
 }
 const connectExchange=async(exchange,formId,buttonId,keyId,secretId)=>{
@@ -58,7 +58,7 @@ const testExchange=async exchange=>{
 $("bnSpotTest").addEventListener("click",()=>testExchange("spot"));
 $("bnFuturesTest").addEventListener("click",()=>testExchange("futures"));
 const disconnectExchange=async exchange=>{
- if(!window.confirm("Remove only the saved Binance "+exchange.toUpperCase()+" Testnet credentials?"))return;
+ if(!window.confirm("Remove only the saved Binance "+exchange.toUpperCase()+" Demo Trading credentials?"))return;
  try{await request("/connect/"+exchange,{method:"DELETE"});status(exchange.toUpperCase()+" credentials removed. The other exchange credentials are unchanged.");await refresh();}
  catch(error){status("Disconnect failed: "+error.message,true);}
 };
@@ -75,7 +75,7 @@ $("bnAutoConfigForm").addEventListener("submit",async event=>{
  try{
   const dca=$("bnAutoDca").checked;
   const payload={
-   enabled:false,environment:"BINANCE_TESTNET",
+   enabled:false,environment:"BINANCE_DEMO",
    market_modes:selected("bnMarketModes"),strategies:selected("bnStrategies"),
    max_trades_per_day:Number($("bnAutoDaily").value),
    max_open_positions:Number($("bnAutoOpen").value),

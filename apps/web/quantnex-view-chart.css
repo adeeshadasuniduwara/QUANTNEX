@@ -56,3 +56,5 @@
 
 /* Keep the live quote readable and prevent the canvas price axis from clipping on narrow screens. */
 .qx-native-chart-canvas{overflow:visible}
+
+/* Live market-session clock is a chart-side panel on desktop and stacks below on mobile. */

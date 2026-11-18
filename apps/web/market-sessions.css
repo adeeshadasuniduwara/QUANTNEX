@@ -1,0 +1,141 @@
+/* Live global session clock alongside the native QUANTNEX VIEW chart. */
+.qx-chart-panel.qx-chart-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 258px;
+  grid-template-rows: auto auto auto minmax(420px, auto) auto;
+  column-gap: 12px;
+  row-gap: 10px;
+}
+.qx-chart-panel > .qx-chart-topbar,
+.qx-chart-panel > .qx-chart-options,
+.qx-chart-panel > .qx-drawing-toolbar,
+.qx-chart-panel > .qx-chart-footer {
+  grid-column: 1 / -1;
+}
+.qx-chart-panel > .qx-chart-topbar { grid-row: 1; }
+.qx-chart-panel > .qx-chart-options { grid-row: 2; }
+.qx-chart-panel > .qx-drawing-toolbar { grid-row: 3; }
+.qx-chart-panel > .qx-chart-host { grid-column: 1; grid-row: 4; min-width: 0; }
+.qx-chart-panel > .qx-market-sessions { grid-column: 2; grid-row: 4; align-self: stretch; }
+.qx-chart-panel > .qx-chart-footer { grid-row: 5; }
+
+.qx-market-sessions {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--border, #30343c);
+  border-radius: 11px;
+  background: linear-gradient(160deg, rgba(24, 31, 42, .92), rgba(10, 14, 20, .96));
+  color: var(--text, #e8edf5);
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.qx-market-sessions-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.qx-market-sessions-head > div { display: grid; gap: 3px; }
+.qx-market-sessions-kicker { color: var(--muted, #9299a5); font-size: 8px; letter-spacing: .12em; font-weight: 800; }
+.qx-market-sessions-title { font-size: 13px; font-weight: 800; }
+.qx-session-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #45d6a3;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .1em;
+}
+.qx-session-live i {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #45d6a3; box-shadow: 0 0 9px rgba(69,214,163,.7);
+}
+.qx-session-clocks { display: grid; grid-template-columns: 1fr; gap: 7px; }
+.qx-session-clock {
+  padding: 9px 10px;
+  border: 1px solid rgba(139, 157, 181, .18);
+  border-radius: 8px;
+  background: rgba(3, 7, 12, .48);
+}
+.qx-session-clock-label { display: flex; justify-content: space-between; gap: 6px; color: var(--muted, #9299a5); font-size: 8px; letter-spacing: .08em; font-weight: 800; }
+.qx-session-clock-time { display: block; margin-top: 4px; color: #f4f7fb; font-size: 23px; line-height: 1.1; letter-spacing: -.04em; }
+.qx-session-clock-date { display: block; margin-top: 4px; color: #a3adba; font-size: 9px; }
+.qx-session-active {
+  padding: 9px 10px;
+  border: 1px solid rgba(69, 214, 163, .28);
+  border-radius: 8px;
+  background: rgba(24, 118, 87, .12);
+  color: #55d8a8;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .06em;
+}
+.qx-session-active[data-state="closed"] {
+  border-color: rgba(164, 174, 190, .2);
+  background: rgba(120, 132, 150, .08);
+  color: #b0bac7;
+}
+.qx-session-overlap {
+  padding: 7px 9px;
+  border: 1px solid rgba(104, 164, 255, .3);
+  border-radius: 7px;
+  background: rgba(59, 115, 205, .12);
+  color: #9bc4ff;
+  font-size: 9px;
+  line-height: 1.4;
+}
+.qx-session-list { display: grid; gap: 2px; }
+.qx-session-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(139, 157, 181, .12);
+}
+.qx-session-row:last-child { border-bottom: 0; }
+.qx-session-identity { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.qx-session-flag { width: 18px; text-align: center; font-size: 13px; }
+.qx-session-labels, .qx-session-state { display: grid; gap: 3px; min-width: 0; }
+.qx-session-labels strong { color: #e5ebf3; font-size: 10px; font-weight: 700; }
+.qx-session-labels small { color: #8995a5; font-size: 8px; line-height: 1.35; }
+.qx-session-state { text-align: right; flex: 0 0 auto; }
+.qx-session-state strong { color: #9aa6b5; font-size: 8px; letter-spacing: .08em; }
+.qx-session-row[data-state="open"] .qx-session-state strong { color: #45d6a3; }
+.qx-session-state small { color: #8f9bab; font-size: 8px; }
+.qx-session-next {
+  margin-top: auto;
+  padding-top: 9px;
+  border-top: 1px solid rgba(139, 157, 181, .16);
+  color: #a9c8ff;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+@media (max-width: 980px) {
+  .qx-chart-panel.qx-chart-panel {
+    grid-template-columns: minmax(0, 1fr) 230px;
+    column-gap: 9px;
+  }
+}
+@media (max-width: 760px) {
+  .qx-chart-panel.qx-chart-panel {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+  }
+  .qx-chart-panel > .qx-chart-topbar,
+  .qx-chart-panel > .qx-chart-options,
+  .qx-chart-panel > .qx-drawing-toolbar,
+  .qx-chart-panel > .qx-chart-host,
+  .qx-chart-panel > .qx-market-sessions,
+  .qx-chart-panel > .qx-chart-footer {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .qx-market-sessions { gap: 9px; }
+  .qx-session-clocks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .qx-session-clock-time { font-size: 20px; }
+}

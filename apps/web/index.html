@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="signal-tool.css">
   <link rel="stylesheet" href="quantnex-view-intelligence.css">
   <link rel="stylesheet" href="quantnex-view-chart.css?v=20261116-price-axis-fix1">
+  <link rel="stylesheet" href="market-sessions.css?v=20261118-live-sessions1">
   <link rel="stylesheet" href="workspace-pages.css?v=20261118-distinct-certificate100">
   <link rel="stylesheet" href="workspace-polish.css?v=20261116-sidebar-compact1">
   <link rel="stylesheet" href="welcome-whats-new.css?v=20261113-1">
@@ -219,6 +220,30 @@
           <span class="qx-chart-status" id="qxChartStatus" role="status">Connecting to local market data…</span>
         </div>
         <div id="qxChartHost" class="qx-chart-host"><div class="qx-chart-loading">Loading live candles…</div></div>
+        <aside class="qx-market-sessions" id="qxMarketSessions" aria-label="Live global market sessions">
+          <div class="qx-market-sessions-head">
+            <div><span class="qx-market-sessions-kicker">GLOBAL MARKET CLOCK</span><strong class="qx-market-sessions-title">Market Sessions</strong></div>
+            <span class="qx-session-live"><i></i> LIVE</span>
+          </div>
+          <div class="qx-session-clocks">
+            <article class="qx-session-clock">
+              <div class="qx-session-clock-label"><span>🇱🇰 SRI LANKA</span><span id="qxColomboOffset">—</span></div>
+              <strong class="qx-session-clock-time" id="qxColomboTime">--:--:--</strong>
+              <small class="qx-session-clock-date" id="qxColomboDate">Loading local time…</small>
+            </article>
+            <article class="qx-session-clock">
+              <div class="qx-session-clock-label"><span>🇺🇸 NEW YORK</span><span id="qxNewYorkOffset">—</span></div>
+              <strong class="qx-session-clock-time" id="qxNewYorkTime">--:--:--</strong>
+              <small class="qx-session-clock-date" id="qxNewYorkDate">Loading New York time…</small>
+            </article>
+          </div>
+          <div class="qx-session-active" id="qxSessionActive" data-state="closed">CHECKING LIVE SESSIONS…</div>
+          <div class="qx-session-overlap" id="qxSessionOverlap" hidden></div>
+          <div class="qx-session-list" id="qxSessionList">
+            <div class="qx-session-row"><div class="qx-session-identity"><span class="qx-session-flag">🌏</span><div class="qx-session-labels"><strong>Asia · Tokyo</strong><small>09:00–18:00 local</small></div></div><div class="qx-session-state"><strong>CHECKING</strong></div></div>
+          </div>
+          <div class="qx-session-next" id="qxSessionNext">Calculating next market transition…</div>
+        </aside>
         <div class="qx-chart-footer"><span id="qxChartProvider">Market feed: waiting</span><span>Native QUANTNEX canvas engine · Binance live WebSocket for crypto · local chart settings</span></div>
       </section>
       <section class="qx-chart-intelligence" aria-live="polite" aria-label="Live chart intelligence">
@@ -850,6 +875,7 @@
 
   <script src="signal-tool.js?v=20261116-qx-signal-consolidation1"></script>
   <script src="quantnex-view-chart.js?v=20261116-price-axis-fix1"></script>
+  <script src="market-sessions.js?v=20261118-live-sessions1"></script>
   <script src="quantnex-view-intelligence.js?v=20261116-signal-lifecycle1"></script>
   <script src="workspace-polish.js?v=20261114-single-icon2"></script>
   <script src="welcome-whats-new.js?v=20261113-1"></script>

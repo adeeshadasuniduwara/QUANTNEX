@@ -193,7 +193,7 @@ def test_real_signal_pipeline_generates_and_delivers_synthetic_setup(monkeypatch
     assert candidate["signal_candle_time"]
     if symbol != "XAUUSD":
         assert candidate["order_flow"]["status"] == "CONFIRMED"
-        assert candidate["order_flow"]["data_mode"] == "DETERMINISTIC_FIXTURE"
+        assert candidate["order_flow"]["data_mode"] == "PUBLIC_WEBSOCKET_STREAM"
     assert all(result["quality_filters"].values())
     if symbol != "XAUUSD":
         assert candidate["entry_type"] == "MARKET"
@@ -541,3 +541,58 @@ def test_live_signal_waits_when_order_flow_data_is_stale(monkeypatch):
     assert result["quality_filters"]["order_flow_confirmation"] is False
     assert result["order_flow"]["status"] == "ERROR"
     assert "stale" in result["order_flow"]["error"].lower()
+
+
+def test_live_candidate_waits_until_sequence_validated_orderflow_stream_is_ready(monkeypatch):
+    now = datetime.now(timezone.utc)
+
+    async def fake_fetch(interval, _outputsize, _symbol):
+        return _synthetic_setup("BUY", interval, now), "Binance Spot"
+
+    async def fake_execution(_symbol):
+        close = _synthetic_setup("BUY", "5min", now)[-1]["close"]
+        return {
+            "best_bid": close - 0.005, "best_ask": close + 0.005, "mid_price": close,
+            "spread_bps": 0.9, "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
+            "tick_size": "0.01", "step_size": "0.001", "min_quantity": "0.001",
+            "min_notional": "5", "order_types": ["LIMIT", "MARKET"],
+            "limit_order_constraints_valid": True, "market_order_constraints_valid": True,
+            "observed_at": now.isoformat(), "provider": "Binance Spot",
+        }
+
+    class NotReadyOrderFlowManager:
+        async def get_snapshot(self, symbol, _tick_size, **_kwargs):
+            return {
+                "symbol": symbol,
+                "market_type": "BINANCE_SPOT",
+                "status": "BOOTSTRAPPING",
+                "signal_ready": False,
+                "order_flow": None,
+                "last_error": None,
+                "manager": {"active_streams": 1, "max_streams": 8},
+            }
+
+    async def fake_valid_symbol(_symbol):
+        return True
+
+    monkeypatch.setattr(signal_engine, "is_binance_spot_symbol", fake_valid_symbol)
+    monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
+    monkeypatch.setattr(signal_engine, "get_binance_spot_execution_context", fake_execution)
+    monkeypatch.setattr(
+        signal_engine, "get_binance_spot_order_flow_manager",
+        lambda: NotReadyOrderFlowManager(),
+    )
+
+    result = asyncio.run(signal_engine.build_signal({
+        "primary": "5",
+        "trend": "60",
+        "enabled": ["60", "30", "15", "5", "1"],
+        "min_score": 8,
+    }, "BTCUSDT"))
+
+    assert result["status"] == "WAIT"
+    assert result["signal"] is None
+    assert result["quality_filters"]["order_flow_confirmation"] is False
+    assert result["order_flow"]["status"] == "BOOTSTRAPPING"
+    assert result["order_flow"]["data_mode"] == "PUBLIC_WEBSOCKET_STREAM"
+    assert "sequence-validated" in result["message"].lower()

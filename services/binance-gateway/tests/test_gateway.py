@@ -70,3 +70,34 @@ def test_invalid_chat_id_is_rejected(client):
     response = client.post("/v1/setup-sessions", headers={"X-QUANTNEX-Workspace-Key": "a"*64},
                            json={"telegram_chat_id": "-100123"})
     assert response.status_code == 422
+
+def test_expired_session_is_rejected(client):
+    from datetime import datetime, timedelta, timezone
+    key = "e" * 64
+    headers = {"X-QUANTNEX-Workspace-Key": key}
+    link = client.post("/v1/setup-sessions", headers=headers,
+                       json={"telegram_chat_id": "456789"}).json()["setup_url"]
+    token = link.split("#", 1)[1]
+    with gateway.SessionLocal() as db:
+        row = db.query(gateway.SetupSession).one()
+        row.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        db.commit()
+    payload = {"session_token": token, "spot_api_key": "S"*32, "spot_api_secret": "s"*32,
+               "futures_api_key": "F"*32, "futures_api_secret": "f"*32}
+    response = client.post("/v1/setup-sessions/complete", json=payload)
+    assert response.status_code == 410
+
+
+def test_validation_error_never_echoes_submitted_secrets(client):
+    marker = "THIS_IS_A_SECRET_VALUE_THAT_MUST_NOT_ECHO"
+    response = client.post("/v1/setup-sessions/complete", json={
+        "session_token": "x"*48, "spot_api_key": "S"*32, "spot_api_secret": marker,
+        "futures_api_key": "F"*32, "futures_api_secret": "f"*32,
+    })
+    assert response.status_code == 422
+    assert marker not in response.text
+
+
+def test_no_order_placement_route_exists(client):
+    paths = {route.path for route in gateway.app.routes}
+    assert not any("order" in path.lower() or "trade" in path.lower() for path in paths)

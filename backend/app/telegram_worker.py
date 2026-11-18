@@ -675,7 +675,9 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
                 ("\nSpread: "+str(sig["execution_quality"]["spread_bps"])+" bps · estimated round-trip cost: "+str(sig["execution_quality"]["estimated_round_trip_cost_bps"])+" bps" if sig.get("execution_quality") else "")+
                 "\nSL: "+str(sig["stop_loss"])+
                 "\nTP1: "+str(sig["tp1"])+"\nTP2: "+str(sig["tp2"])+"\nTP3: "+str(sig["tp3"])+
-                "\nConfluence: "+str(sig["score"])+"/10 (rule count, not win probability)\nConfirmations: "+", ".join(sig["confirmations"])+
+                "\nConfluence: "+str(sig["score"])+"/10 (rule count, not win probability)\n"
+                +"TF alignment: "+", ".join(str(tf)+"m "+str(bias) for tf,bias in (sig.get("timeframe_alignment") or {}).items())+"\n"
+                +"Confirmations: "+", ".join(sig["confirmations"])+
                 "\nSignal only. Verify spread, fees and execution. No broker order is placed.")
         except MarketDataError as exc:return "Signal scan unavailable: "+str(exc)
         except Exception:return "Signal scan failed. Check the local API logs and market-data provider configuration."
@@ -728,7 +730,10 @@ async def _deliver_pending_signal_events(client, db, user_id: int, token: str, c
             db.commit()
             continue
         trade = db.get(SignalTrade, event.trade_id)
-        message = _signal_lifecycle_message(trade, event) if trade is not None else ""
+        message = (
+            _signal_lifecycle_message(trade, event)
+            if trade is not None and trade.status != "SUPERSEDED" else ""
+        )
         if not message:
             event.telegram_sent_at = datetime.now(timezone.utc)
             db.commit()
@@ -959,6 +964,7 @@ async def telegram_worker() -> None:
                                             msg=("QUANTNEX · AUTO SIGNAL · "+market_symbol+" "+candidate["side"]+"\n"
                                                 +"Market data: "+str(scan.get("provider","Unknown"))+"\n"
                                                 +"Signal TF: "+str(candidate["timeframe"])+"m · Trend TF: "+str(candidate["trend_timeframe"])+"m\n"
+                                                +"TF alignment: "+", ".join(str(tf)+"m "+str(bias) for tf,bias in (candidate.get("timeframe_alignment") or {}).items())+"\n"
                                                 +"Entry type: "+str(candidate.get("entry_type","REFERENCE"))+"\n"
                                                 +"Entry: "+("MARKET ("+str(candidate["entry"])+")" if candidate.get("entry_type")=="MARKET" else "LIMIT ("+str(candidate.get("limit_price") or candidate["entry"])+")")+
                                                 ("\nLimit price: "+str(candidate["limit_price"]) if candidate.get("entry_type")=="LIMIT" else "")+"\n"

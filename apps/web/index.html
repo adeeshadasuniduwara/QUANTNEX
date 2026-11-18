@@ -18,7 +18,7 @@
   <link rel="stylesheet" href="navigation.css?v=20261112-fade1">
   <link rel="stylesheet" href="prop-challenge.css?v=20261112-challenge1">
   <link rel="stylesheet" href="donation.css?v=20261113-bep20">
-  <link rel="stylesheet" href="binance-center.css?v=20261118-separate-testnet-keys1">
+  <link rel="stylesheet" href="binance-center.css?v=20261118-demo-credentials2">
 </head>
 <body>
   <div class="layout">
@@ -785,18 +785,18 @@
           <article class="workspace-page-card"><span>Auto Trading</span><strong id="bnAutoState">OFF</strong></article>
           <article class="workspace-page-card"><span>Execution</span><strong>Not enabled</strong><small>Signal-to-order execution is intentionally disabled in this release.</small></article>
         </div>
-        <div class="bn-security-note"><strong>Security first</strong><p>Use Binance Spot Testnet and Futures Testnet keys only. Never paste live API keys here. Disable withdrawals; restrict keys to the QUANTNEX host where possible. Secrets are encrypted in the local backend and never displayed again. API keys must not be sent through Telegram chat.</p></div>
+        <div class="bn-security-note"><strong>Security first</strong><p>Use Binance Spot Demo Trading and Futures Testnet keys only. Never paste live API keys here. Disable withdrawals; restrict keys to the QUANTNEX host where possible. Secrets are encrypted in the local backend and never displayed again. API keys must not be sent through Telegram chat.</p></div>
         <div class="bn-credential-grid">
           <form id="bnSpotConnectForm" class="workspace-page-form bn-connect-form bn-credential-card">
-            <div class="bn-credential-heading"><strong>Binance Spot Testnet</strong><span id="bnSpotCredentialState">Not connected</span></div>
-            <label>Spot API Key<input id="bnSpotKey" type="password" minlength="20" maxlength="160" autocomplete="off" required></label>
-            <label>Spot API Secret<input id="bnSpotSecret" type="password" minlength="20" maxlength="160" autocomplete="new-password" required></label>
+            <div class="bn-credential-heading"><strong>Binance Spot Demo Trading</strong><span id="bnSpotCredentialState">Not connected</span></div>
+            <label>Spot API Key<input id="bnSpotKey" type="password" minlength="1" maxlength="256" autocomplete="off" required></label>
+            <label>Spot API Secret<input id="bnSpotSecret" type="password" minlength="1" maxlength="256" autocomplete="new-password" required></label>
             <div class="bn-actions"><button class="primary-btn" type="submit" id="bnSpotConnect">Verify &amp; save Spot</button><button class="secondary-btn" type="button" id="bnSpotTest">Test saved Spot</button><button class="secondary-btn" type="button" id="bnSpotDisconnect">Disconnect Spot</button></div>
           </form>
           <form id="bnFuturesConnectForm" class="workspace-page-form bn-connect-form bn-credential-card">
-            <div class="bn-credential-heading"><strong>Binance USD-M Futures Testnet</strong><span id="bnFuturesCredentialState">Not connected</span></div>
-            <label>Futures API Key<input id="bnFuturesKey" type="password" minlength="20" maxlength="160" autocomplete="off" required></label>
-            <label>Futures API Secret<input id="bnFuturesSecret" type="password" minlength="20" maxlength="160" autocomplete="new-password" required></label>
+            <div class="bn-credential-heading"><strong>Binance USD-M Futures Demo Trading</strong><span id="bnFuturesCredentialState">Not connected</span></div>
+            <label>Futures API Key<input id="bnFuturesKey" type="password" minlength="1" maxlength="256" autocomplete="off" required></label>
+            <label>Futures API Secret<input id="bnFuturesSecret" type="password" minlength="1" maxlength="256" autocomplete="new-password" required></label>
             <div class="bn-actions"><button class="primary-btn" type="submit" id="bnFuturesConnect">Verify &amp; save Futures</button><button class="secondary-btn" type="button" id="bnFuturesTest">Test saved Futures</button><button class="secondary-btn" type="button" id="bnFuturesDisconnect">Disconnect Futures</button></div>
           </form>
         </div>

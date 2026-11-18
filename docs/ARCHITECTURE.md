@@ -44,6 +44,10 @@ The local source supervisor updates the Web and Backend source tree from the off
 
 Android APKs are released separately through GitHub Releases. The Android app checks for a newer release, verifies the APK digest against `SHA256SUMS.txt`, and launches Android's package installer. The same private signing keystore must be used for every production APK so upgrades remain compatible.
 
+## Optional Binance mobile credential gateway
+
+`services/binance-gateway` is a separate HTTPS service for phone-based Binance TESTNET credential setup. The local Backend never binds to a public interface and sends only a random per-workspace capability to the gateway over HTTPS. Telegram delivers a five-minute one-use link; the browser submits credentials directly to the gateway, which verifies TESTNET access and encrypts the values with a dedicated managed Fernet key. The link is a bearer capability and must not be forwarded. The gateway does not share the local wallet/journal database and contains no order-placement endpoint. Deploy it only with persistent PostgreSQL storage, HTTPS ingress, managed encryption-key backups and restricted operator access.
+
 ## Current limitations
 
 The Android shell requires an HTTPS-hosted Web workspace and does not connect to the local-only Backend. Browser journal data remains in that browser profile. No broker order placement or verified win-rate calculation is implemented. Before any future remote Backend deployment, add a proper identity and authorization model, HTTPS, managed secrets, migrations, rate limiting, audit logs, monitoring, backups and security testing.

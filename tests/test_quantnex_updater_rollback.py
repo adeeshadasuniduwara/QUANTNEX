@@ -73,6 +73,8 @@ class FullSourceManifestTests(unittest.TestCase):
         self.assertIsNone(updater._safe_relative("data/user_settings.json"))
         self.assertIsNone(updater._safe_relative("backend/data/trading.sqlite"))
         self.assertIsNone(updater._safe_relative("backend/.env"))
+        self.assertIsNone(updater._safe_relative("backend/quantnex.db"))
+        self.assertIsNone(updater._safe_relative("backend/quantnex.sqlite3"))
 
     def test_managed_source_manifest_round_trips_without_touching_user_files(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -173,9 +173,12 @@ class BinanceSpotOrderFlowStream:
         for _ in range(self.max_backfill_pages):
             if not self.trade_state.gap_detected:
                 return
-            expected = self.trade_state.gap_expected_id
-            if expected is None:
-                raise BinanceSpotOrderFlowStreamError("Trade gap has no expected aggregate-trade ID.")
+            last_id = self.trade_state.last_agg_trade_id
+            if last_id is None:
+                raise BinanceSpotOrderFlowStreamError("Trade gap has no last contiguous aggregate-trade ID.")
+            # apply_backfill may have advanced partway through a multi-page gap;
+            # continue from the next contiguous ID, not the original gap marker.
+            expected = last_id + 1
             rows, source = await self._fetch_public(
                 client,
                 "/api/v3/aggTrades",

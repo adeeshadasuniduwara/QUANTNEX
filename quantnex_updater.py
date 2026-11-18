@@ -407,8 +407,8 @@ def _stage_full_snapshot(root: Path, commit_sha: str, expected_paths: list[str])
         raise
 
 
-def check_and_apply(root: Path) -> dict:
-    """Reconcile the entire managed source snapshot while leaving all user/runtime data untouched."""
+def check_and_apply(root: Path, force_reconcile: bool = False) -> dict:
+    """Reconcile the full source snapshot, optionally repairing a same-SHA local install."""
     root = root.resolve()
     latest = _request_json(f"https://api.github.com/repos/{REPOSITORY}/commits/{BRANCH}")
     latest_sha = latest.get("sha")
@@ -419,7 +419,7 @@ def check_and_apply(root: Path) -> dict:
     installed_sha = state.get("commit_sha")
     if not _valid_sha(installed_sha):
         return _bootstrap_snapshot(root, latest_sha)
-    if installed_sha == latest_sha:
+    if installed_sha == latest_sha and not force_reconcile:
         return {"status": "current", "version": "main@" + latest_sha[:7],
                 "changed_files": [], "restart_required": False}
 

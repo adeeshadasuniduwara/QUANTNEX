@@ -122,7 +122,7 @@ class BinanceSpotOrderFlowManager:
             trade_age = float(max_trade_age_seconds)
             depth_age = float(max_depth_age_seconds)
         except (InvalidOperation, TypeError, ValueError, OverflowError):
-            raise BinanceSpotOrderFlowManagerError("Tick size and stream freshness settings must be numeric.") from None
+            raise BinanceSpotOrderFlowManagerError("tick size and stream freshness settings must be numeric.") from None
         if not tick.is_finite() or tick <= 0:
             raise BinanceSpotOrderFlowManagerError("Binance Spot symbol tick size must be finite and positive.")
         if not math.isfinite(wait) or wait < 0:

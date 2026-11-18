@@ -1,6 +1,6 @@
 """Background Telegram command and TP1 notification worker."""
 from __future__ import annotations
-import asyncio, json, logging, math
+import asyncio, json, logging, math, secrets
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from typing import Any
@@ -8,8 +8,8 @@ import httpx
 from sqlalchemy import select, func, or_
 from .database import SessionLocal
 from .models import GoalContribution, PaperTrade, PersonalGoal, Preference, SignalTrade, SignalTradeEvent
-from .security import decrypt_secret
-from .config import TWELVE_DATA_API_KEY, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
+from .security import decrypt_secret, encrypt_secret
+from .config import TWELVE_DATA_API_KEY, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL, QUANTNEX_BINANCE_GATEWAY_URL
 from .signal_engine import build_signal, MarketDataError, gold_feed_configured, gold_feed_provider
 from .events import event_hub
 
@@ -23,6 +23,58 @@ def _set(db, user_id: int, key: str, value: str) -> None:
     row=db.scalar(select(Preference).where(Preference.user_id==user_id,Preference.key==key))
     if row is None: db.add(Preference(user_id=user_id,key=key,value=value))
     else: row.value=value
+
+async def _create_binance_mobile_setup_link(client: httpx.AsyncClient, db, user_id: int, chat_id: str) -> str:
+    """Create a short-lived gateway link without moving credentials through Telegram."""
+    if not QUANTNEX_BINANCE_GATEWAY_URL.startswith("https://"):
+        raise RuntimeError("The secure Binance gateway HTTPS URL is not configured.")
+    if not str(chat_id).isdigit() or int(chat_id) <= 0:
+        raise RuntimeError("For security, mobile Binance setup must be started from a private Telegram chat.")
+    stored_workspace_key = _get(db, user_id, "binance_gateway_workspace_key")
+    if stored_workspace_key:
+        try:
+            workspace_key = decrypt_secret(stored_workspace_key)
+        except ValueError as exc:
+            raise RuntimeError("The saved gateway workspace key cannot be decrypted. Check QUANTNEX_SECRET_KEY.") from exc
+    else:
+        workspace_key = secrets.token_urlsafe(48)
+        _set(db, user_id, "binance_gateway_workspace_key", encrypt_secret(workspace_key))
+        db.commit()
+    response = await client.post(
+        QUANTNEX_BINANCE_GATEWAY_URL + "/v1/setup-sessions",
+        headers={"X-QUANTNEX-Workspace-Key": workspace_key},
+        json={"telegram_chat_id": str(chat_id)},
+    )
+    response.raise_for_status()
+    data = response.json()
+    setup_url = str(data.get("setup_url", ""))
+    if not setup_url.startswith(QUANTNEX_BINANCE_GATEWAY_URL + "/setup#"):
+        raise RuntimeError("The secure gateway returned an unexpected setup URL.")
+    return setup_url
+
+
+async def _binance_mobile_status(client: httpx.AsyncClient, db, user_id: int) -> str:
+    stored_workspace_key = _get(db, user_id, "binance_gateway_workspace_key")
+    if not stored_workspace_key:
+        return "🔷 Binance TESTNET: NOT CONNECTED. Use /binance to create a secure phone setup link."
+    try:
+        workspace_key = decrypt_secret(stored_workspace_key)
+    except ValueError:
+        return "Binance gateway workspace key needs recovery. Check QUANTNEX_SECRET_KEY before reconnecting."
+    response = await client.get(
+        QUANTNEX_BINANCE_GATEWAY_URL + "/v1/workspaces/status",
+        headers={"X-QUANTNEX-Workspace-Key": workspace_key},
+    )
+    response.raise_for_status()
+    data = response.json()
+    spot = bool(data.get("spot_connected"))
+    futures = bool(data.get("futures_connected"))
+    return ("🔷 BINANCE TESTNET STATUS\\nSpot: " + ("CONNECTED" if spot else "NOT CONNECTED")
+        + "\\nUSD-M Futures: " + ("CONNECTED" if futures else "NOT CONNECTED")
+        + "\\nAuto Trading: OFF · Order execution is not available."
+        + "\\n\\n🇱🇰 සිංහල\\nSpot: " + ("සම්බන්ධයි" if spot else "සම්බන්ධ නැහැ")
+        + "\\nFutures: " + ("සම්බන්ධයි" if futures else "සම්බන්ධ නැහැ")
+        + "\\nස්වයංක්‍රීය ගනුදෙනු: අක්‍රියයි.")
 
 def _normalise_auto_signal_settings(raw: str) -> dict[str, Any]:
     defaults = {"enabled": False, "interval_seconds": 180,
@@ -914,11 +966,37 @@ async def telegram_worker() -> None:
                                         chat=message.get("chat") or {}
                                         if str(chat.get("id"))!=str(chat_id) and not (str(chat_id).startswith("@") and ("@"+str(chat.get("username","")).lower())==str(chat_id).lower()):continue
                                         command=message.get("text","")
-                                        answer=await _handle_command(client,db,user_id,token,chat_id,command)
+                                        command_name=command.strip().split(" ")[0].split("@")[0].lower() if command.strip() else ""
+                                        reply_markup=None
+                                        if command_name in {"/binance", "/binance_connect"} and QUANTNEX_BINANCE_GATEWAY_URL:
+                                            try:
+                                                setup_url=await _create_binance_mobile_setup_link(client,db,user_id,chat_id)
+                                                answer=("🔐 QUANTNEX · SECURE BINANCE MOBILE SETUP\\n\\n"
+                                                    "Tap the button below to open the private HTTPS setup page. This one-time link expires in 5 minutes. Do not forward it.\\n"
+                                                    "Enter Spot Testnet and USD-M Futures Testnet API keys/secrets on that page only. Nothing sensitive is sent in this Telegram chat.\\n\\n"
+                                                    "🇱🇰 සිංහල\\n"
+                                                    "පහත button එක ඔබලා ආරක්ෂිත HTTPS පිටුවට යන්න. Link එක විනාඩි 5කින් කල් ඉකුත් වන අතර එක් වරක් පමණයි භාවිත කළ හැක්කේ. වෙනත් අයට යවන්න එපා. API Key/Secret එම ආරක්ෂිත පිටුවේ පමණක් ඇතුළත් කරන්න.\\n\\n"
+                                                    "TESTNET keys only · Withdrawals disabled · No orders placed · Auto Trading OFF.")
+                                                reply_markup={"inline_keyboard":[[{"text":"🔐 Open Secure Binance Setup","url":setup_url}]]}
+                                            except Exception as gateway_error:
+                                                logger.warning("Binance mobile setup link failed for local user %s: %s",
+                                                               user_id,type(gateway_error).__name__)
+                                                answer=("Secure Binance mobile setup is temporarily unavailable. Check the gateway HTTPS URL and try /binance again.\\n"
+                                                    "🇱🇰 ආරක්ෂිත mobile setup එක දැනට ලබාගත නොහැක. Gateway configuration පරීක්ෂා කර නැවත උත්සාහ කරන්න.")
+                                        elif command_name=="/binance_status" and QUANTNEX_BINANCE_GATEWAY_URL:
+                                            try:
+                                                answer=await _binance_mobile_status(client,db,user_id)
+                                            except Exception as gateway_error:
+                                                logger.warning("Binance mobile status failed for local user %s: %s",
+                                                               user_id,type(gateway_error).__name__)
+                                                answer="Could not read Binance cloud status. Try again shortly."
+                                        else:
+                                            answer=await _handle_command(client,db,user_id,token,chat_id,command)
                                         if answer:
-                                            is_start=command.strip().split(" ")[0].split("@")[0].lower() in {"/start","/help"}
+                                            is_start=command_name in {"/start","/help"}
                                             is_plain_text=bool(command.strip()) and not command.strip().startswith("/")
-                                            await _send(client,token,chat_id,answer,MENU if (is_start or is_plain_text) else None)
+                                            await _send(client,token,chat_id,answer,
+                                                reply_markup or (MENU if (is_start or is_plain_text) else None))
                                     except Exception as update_error:
                                         logger.warning("Telegram update %s failed for local user %s: %s",
                                                        update.get("update_id"), user_id, type(update_error).__name__)

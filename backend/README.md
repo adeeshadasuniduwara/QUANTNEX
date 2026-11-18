@@ -152,3 +152,10 @@ Phase 07 adds a multi-market intelligence layer while preserving the local-only,
 - Only DEMO accounts are accepted. REAL and CONTEST accounts are rejected. MT5 credentials are used only for the local in-memory connection and are not written to the database or browser storage.
 - The local guardian polls while the backend is running. On a daily or overall loss breach it locks the challenge and attempts to close open DEMO positions; broker rejection, terminal/network failure or backend shutdown can prevent closure.
 - No order-opening endpoint or live account execution path is exposed.
+
+
+## Binance mobile setup (optional cloud gateway)
+
+The local API remains loopback-only. For phone-based Binance TESTNET setup, deploy the isolated service in [services/binance-gateway](../services/binance-gateway/README.md) to an HTTPS container host with persistent PostgreSQL storage and a dedicated Fernet encryption key. Configure only `QUANTNEX_BINANCE_GATEWAY_URL=https://your-gateway-host` in this local Backend's `.env`, then restart the Backend. The Telegram worker creates a random per-workspace capability locally and sends a five-minute, one-use setup link to the user's private Telegram chat. Binance API keys/secrets are entered on the HTTPS page and never sent as Telegram message content.
+
+The gateway stores Binance TESTNET credentials encrypted at rest. Its one-time link is a bearer capability: do not forward it, and use it only from the private chat where it was delivered. The gateway is separate from the local journal/wallet API and has no live-order route. Auto Trading stays OFF. See the gateway deployment guide for required database, HTTPS, encryption-key and backup controls.

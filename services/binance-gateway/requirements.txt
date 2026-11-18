@@ -1,0 +1,7 @@
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+sqlalchemy==2.0.55
+httpx==0.28.1
+cryptography>=46.0.0,<47.0
+pytest==8.3.5
+psycopg[binary]>=3.2.10,<4.0

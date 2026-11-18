@@ -64,9 +64,33 @@ def _order_flow_fixture(side: str, now: datetime, *, contradictory: bool = False
 
 
 def _install_order_flow_fixture(monkeypatch, side: str, *, contradictory: bool = False, stale: bool = False):
-    async def fake_order_flow(_client, _symbol, **_kwargs):
-        return _order_flow_fixture(side, datetime.now(timezone.utc), contradictory=contradictory, stale=stale)
-    monkeypatch.setattr(signal_engine, "fetch_spot_order_flow", fake_order_flow)
+    class FixtureOrderFlowManager:
+        async def get_snapshot(self, symbol, _tick_size, **_kwargs):
+            snapshot = _order_flow_fixture(
+                side, datetime.now(timezone.utc),
+                contradictory=contradictory, stale=stale,
+            )
+            snapshot["feed_mode"] = "PUBLIC_WEBSOCKET_STREAM"
+            snapshot["depth_is_continuous"] = True
+            snapshot["order_book"]["source"] = "BINANCE_SPOT_SEQUENCE_VALIDATED_DEPTH_STREAM"
+            snapshot["data_provenance"]["book_source"] = (
+                "Binance Spot sequence-validated diff-depth stream"
+            )
+            snapshot["quality"] = "OBSERVED_AGGRESSOR_DELTA_AND_SEQUENCE_VALIDATED_L2"
+            return {
+                "symbol": symbol,
+                "market_type": "BINANCE_SPOT",
+                "status": "LIVE",
+                "signal_ready": True,
+                "order_flow": snapshot,
+                "manager": {"active_streams": 1, "max_streams": 8},
+            }
+
+    monkeypatch.setattr(
+        signal_engine,
+        "get_binance_spot_order_flow_manager",
+        lambda: FixtureOrderFlowManager(),
+    )
 
 
 def _synthetic_setup(direction: str, interval: str, now: datetime):

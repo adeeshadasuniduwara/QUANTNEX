@@ -172,3 +172,37 @@ def test_sell_direction_targets_are_evaluated_correctly():
     assert trade.tp1_hit and trade.tp2_hit and trade.tp3_hit
     assert trade.realized_r == 1.9
     db.close()
+
+def test_one_active_trade_per_symbol_blocks_other_timeframes_sides_and_sources():
+    db, user = _session()
+    now = datetime(2026, 11, 16, 4, 0, tzinfo=timezone.utc)
+    first_signal = _signal(now, "BUY")
+    first_signal["timeframe"] = "5"
+    first, created = record_signal(db, user.id, first_signal, "AUTO_TELEGRAM_SCAN")
+    assert created is True
+
+    alternate_tf = _signal(now + timedelta(minutes=5), "BUY")
+    alternate_tf["timeframe"] = "15"
+    blocked_tf, tf_created = record_signal(db, user.id, alternate_tf, "MULTI_TF_SCAN")
+    assert tf_created is False
+    assert blocked_tf.id == first.id
+
+    opposite_side = _signal(now + timedelta(minutes=10), "SELL")
+    opposite_side["timeframe"] = "1"
+    blocked_side, side_created = record_signal(db, user.id, opposite_side, "QUANTNEX_VIEW")
+    assert side_created is False
+    assert blocked_side.id == first.id
+    assert db.query(type(first)).filter_by(user_id=user.id, symbol="BTCUSDT", status="OPEN").count() == 1
+    db.close()
+
+
+def test_different_symbols_can_have_independent_active_trades():
+    db, user = _session()
+    now = datetime(2026, 11, 16, 4, 0, tzinfo=timezone.utc)
+    btc, btc_created = record_signal(db, user.id, _signal(now), "AUTO_TELEGRAM_SCAN")
+    eth_signal = {**_signal(now + timedelta(minutes=1)), "symbol": "ETHUSDT"}
+    eth, eth_created = record_signal(db, user.id, eth_signal, "AUTO_TELEGRAM_SCAN")
+    assert btc_created and eth_created
+    assert btc.id != eth.id
+    db.close()
+

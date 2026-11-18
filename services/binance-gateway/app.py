@@ -18,6 +18,8 @@ from urllib.parse import urlencode
 import httpx
 from cryptography.fernet import Fernet
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, create_engine, select, update
@@ -71,6 +73,13 @@ class BinanceCredential(Base):
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="QUANTNEX Binance Mobile Gateway", version="1.0.0",
               description="HTTPS-only mobile credential setup for Binance Spot and USD-M Futures TESTNET.")
+
+@app.exception_handler(RequestValidationError)
+async def safe_validation_error(_request: Request, exc: RequestValidationError):
+    # Never echo submitted API keys/secrets in validation responses.
+    errors = [{"loc": list(item.get("loc", ())), "msg": item.get("msg", "Invalid input"),
+               "type": item.get("type", "value_error")} for item in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": errors})
 
 def _db():
     db = SessionLocal()

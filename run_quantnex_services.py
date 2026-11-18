@@ -188,7 +188,8 @@ def check_for_automatic_update(force_reconcile: bool = False) -> bool:
             print("[AUTO UPDATE] Installed source baseline recorded: " + result["version"], flush=True)
         elif result["status"] == "current":
             print("[AUTO UPDATE] QUANTNEX is up to date: " + result["version"], flush=True)
-        UPDATE_PROGRESS_FILE.unlink(missing_ok=True)
+        if not UPDATE_ROLLBACK_MARKER.is_file():
+            UPDATE_PROGRESS_FILE.unlink(missing_ok=True)
         UPDATE_ERROR_FILE.unlink(missing_ok=True)
         return False
     except Exception as exc:

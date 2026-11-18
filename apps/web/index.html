@@ -785,13 +785,21 @@
           <article class="workspace-page-card"><span>Execution</span><strong>Not enabled</strong><small>Signal-to-order execution is intentionally disabled in this release.</small></article>
         </div>
         <div class="bn-security-note"><strong>Security first</strong><p>Use Binance Spot Testnet and Futures Testnet keys only. Never paste live API keys here. Disable withdrawals; restrict keys to the QUANTNEX host where possible. Secrets are encrypted in the local backend and never displayed again. API keys must not be sent through Telegram chat.</p></div>
-        <form id="bnConnectForm" class="workspace-page-form bn-connect-form">
-          <label>Spot Testnet API Key<input id="bnSpotKey" type="password" minlength="20" maxlength="160" autocomplete="off" required></label>
-          <label>Spot Testnet Secret<input id="bnSpotSecret" type="password" minlength="20" maxlength="160" autocomplete="new-password" required></label>
-          <label>USD-M Futures Testnet API Key<input id="bnFuturesKey" type="password" minlength="20" maxlength="160" autocomplete="off" required></label>
-          <label>USD-M Futures Testnet Secret<input id="bnFuturesSecret" type="password" minlength="20" maxlength="160" autocomplete="new-password" required></label>
-          <div class="bn-actions"><button class="primary-btn" type="submit" id="bnConnect">Verify &amp; connect both testnets</button><button class="secondary-btn" type="button" id="bnTest">Test saved connection</button><button class="secondary-btn" type="button" id="bnDisconnect">Disconnect</button></div>
-        </form>
+        <div class="bn-credential-grid">
+          <form id="bnSpotConnectForm" class="workspace-page-form bn-connect-form bn-credential-card">
+            <div class="bn-credential-heading"><strong>Binance Spot Testnet</strong><span id="bnSpotCredentialState">Not connected</span></div>
+            <label>Spot API Key<input id="bnSpotKey" type="password" minlength="20" maxlength="160" autocomplete="off" required></label>
+            <label>Spot API Secret<input id="bnSpotSecret" type="password" minlength="20" maxlength="160" autocomplete="new-password" required></label>
+            <div class="bn-actions"><button class="primary-btn" type="submit" id="bnSpotConnect">Verify &amp; save Spot</button><button class="secondary-btn" type="button" id="bnSpotTest">Test saved Spot</button><button class="secondary-btn" type="button" id="bnSpotDisconnect">Disconnect Spot</button></div>
+          </form>
+          <form id="bnFuturesConnectForm" class="workspace-page-form bn-connect-form bn-credential-card">
+            <div class="bn-credential-heading"><strong>Binance USD-M Futures Testnet</strong><span id="bnFuturesCredentialState">Not connected</span></div>
+            <label>Futures API Key<input id="bnFuturesKey" type="password" minlength="20" maxlength="160" autocomplete="off" required></label>
+            <label>Futures API Secret<input id="bnFuturesSecret" type="password" minlength="20" maxlength="160" autocomplete="new-password" required></label>
+            <div class="bn-actions"><button class="primary-btn" type="submit" id="bnFuturesConnect">Verify &amp; save Futures</button><button class="secondary-btn" type="button" id="bnFuturesTest">Test saved Futures</button><button class="secondary-btn" type="button" id="bnFuturesDisconnect">Disconnect Futures</button></div>
+          </form>
+        </div>
+        <p class="p7-note">You can connect either market independently. Saving or replacing one credential pair never changes the other pair. Secrets are encrypted in the local database; the updater preserves the database and backend/.env.</p>
         <div class="bn-risk-block">
           <div class="workspace-page-toolbar"><div><strong>Risk &amp; daily limits</strong><p>Saved locally and defaulted conservatively.</p></div></div>
           <form id="bnRiskForm" class="workspace-page-form">

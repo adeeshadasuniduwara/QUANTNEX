@@ -120,6 +120,42 @@ class AggTradeCvdState:
         self._session_coverage_before_gap = False
         self._session_date_before_gap = None
 
+    def begin_stream_seed(self, first_trade_id: int, first_trade_time_ms: int) -> None:
+        """Start a complete CVD baseline from a bounded stream bootstrap window.
+
+        This makes CVD complete only since the supplied seed trade, not from
+        UTC session start. Session delta deliberately remains incomplete until
+        a separate full-session anchor/backfill proves its coverage.
+        """
+        first_id = _int_value(first_trade_id, "first stream seed trade ID")
+        timestamp_ms = _int_value(first_trade_time_ms, "first stream seed timestamp")
+        if first_id < 0 or timestamp_ms < 0:
+            raise OrderFlowStateError("Stream seed trade ID and timestamp must be non-negative.")
+        try:
+            seed_date = datetime.fromtimestamp(timestamp_ms / 1000, timezone.utc).date()
+        except (OverflowError, OSError, ValueError):
+            raise OrderFlowStateError("Stream seed timestamp is outside the supported UTC range.") from None
+
+        self.last_agg_trade_id = first_id - 1
+        self.cumulative_delta = Decimal("0")
+        self.cumulative_quote_delta = Decimal("0")
+        self.session_delta = Decimal("0")
+        self.session_quote_delta = Decimal("0")
+        self.session_date_utc = seed_date
+        self.session_start_trade_id = None
+        self.coverage_complete = True
+        self.session_coverage_complete = False
+        self.gap_detected = False
+        self.gap_expected_id = None
+        self.gap_observed_id = None
+        self.applied_trade_count = 0
+        self.duplicate_count = 0
+        self.out_of_order_count = 0
+        self.last_trade_time_ms = None
+        self._coverage_before_gap = False
+        self._session_coverage_before_gap = False
+        self._session_date_before_gap = None
+
     def _mark_gap(self, expected: int, observed: int | None) -> None:
         if not self.gap_detected:
             self._coverage_before_gap = self.coverage_complete

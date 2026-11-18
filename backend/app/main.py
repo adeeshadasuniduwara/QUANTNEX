@@ -866,7 +866,7 @@ async def scan_market_signal(symbol: str = "BTCUSDT", user: User = Depends(local
             event_hub.publish("signals.lifecycle.changed", "signal_trade", "created", {"trade_id": tracked.id, "symbol": tracked.symbol})
         token_enc=_preference(db,user.id,"telegram_bot_token_enc")
         chat_id=_preference(db,user.id,"telegram_chat_id")
-        if token_enc and chat_id:
+        if token_enc and chat_id and created:
             try:
                 token=decrypt_secret(token_enc)
                 market_symbol=result.get("symbol",symbol)

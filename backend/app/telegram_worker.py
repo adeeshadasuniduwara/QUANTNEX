@@ -118,9 +118,6 @@ BOT_COMMANDS = [
     {"command":"gold_setup","description":"Enable daily Gold reports at 00:00 and 12:00"},
     {"command":"gold_status","description":"Check daily Gold report settings"},
     {"command":"gold_off","description":"Disable scheduled Gold reports"},
-    {"command":"binance","description":"Binance demo connection setup guide"},
-    {"command":"binance_status","description":"Binance Spot and Futures testnet status"},
-    {"command":"binance_off","description":"Emergency stop · keep auto trading OFF"},
     {"command":"binance","description":"Open Binance demo connection setup guide"},
     {"command":"binance_status","description":"Check Binance Spot and Futures testnet status"},
     {"command":"binance_off","description":"Emergency stop: keep Binance auto trading OFF"},
@@ -669,6 +666,22 @@ async def telegram_worker() -> None:
                             except Exception as command_error:
                                 logger.warning("Telegram command registration failed for local user %s: %s",
                                                user_id,type(command_error).__name__)
+                        release_version="0.6.5"
+                        if _get(db,user_id,"telegram_release_notice_version","")!=release_version:
+                            try:
+                                await _send(client,token,chat_id,
+                                    "🚀 QUANTNEX UPDATE · v"+release_version+"\\n\\n"
+                                    "Binance demo connection center is now available. Connect Spot Testnet and USD-M Futures Testnet separately, verify credentials, and configure conservative daily risk limits.\\n\\n"
+                                    "Telegram commands: /binance · /binance_status · /binance_off\\n\\n"
+                                    "🔐 Security: enter API keys only in the QUANTNEX local dashboard. Never send secrets in Telegram. Testnet keys only.\\n"
+                                    "⚠️ This release does not place orders. Signal-to-order execution and Auto Trading remain disabled.\\n\\n"
+                                    "🇱🇰 සිංහල: Binance Demo සම්බන්ධතාව සහ Risk Limits දැන් QUANTNEX තුළ ඇත. API keys Dashboard එකේ පමණක් ඇතුළත් කරන්න. Telegram එකට secrets එවන්න එපා. මෙම update එකෙන් orders ස්වයංක්‍රීයව යවන්නේ නැහැ; Auto Trading අක්‍රියයි.")
+                                _set(db,user_id,"telegram_release_notice_version",release_version)
+                                db.commit()
+                            except Exception as release_error:
+                                db.rollback()
+                                logger.warning("Telegram release notice deferred for local user %s: %s",
+                                               user_id,type(release_error).__name__)
                         offset=int(_get(db,user_id,"telegram_update_offset","0") or "0")
                         # Do not hold a SQLite read snapshot while waiting on Telegram.
                         db.commit()

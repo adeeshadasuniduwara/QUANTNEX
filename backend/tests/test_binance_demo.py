@@ -127,5 +127,5 @@ def test_spot_and_futures_demo_account_verification_paths_are_correct():
         "binance_futures_api_key_enc",
         "binance_futures_api_secret_enc",
         "https://demo-fapi.binance.com",
-        "/fapi/v2/account",
+        "/fapi/v3/account",
     )

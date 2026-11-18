@@ -69,7 +69,7 @@ def test_telegram_formatter_preserves_safe_html_tags_and_real_line_breaks():
     )
     rendered = _format_telegram_message(message)
 
-    assert "<b>✨ 🌍 <b>QUANTNEX · NEW MARKET SESSION</b></b>" in rendered
+    assert "✨ 🌍 <b>QUANTNEX · NEW MARKET SESSION</b>" in rendered
     assert "🇺🇸 <b>New York SESSION OPENED</b>" in rendered
     assert "<b>Closes in:</b> 8h 59m" in rendered
     assert "<b>Expected close (Sri Lanka):</b> 03:30 AM" in rendered

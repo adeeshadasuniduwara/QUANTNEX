@@ -118,8 +118,10 @@ def stable_event_id(user_id: int, event_type: str, order_id: str, status: str) -
 
 def safe_auto_status(config: AutoTradingConfig, *, spot_verified: bool, futures_verified: bool,
                      worker_ready: bool, protection_ready: bool) -> dict[str, Any]:
+    selected_modes = set(config.market_modes)
     checks = {"testnet_only": config.environment == "BINANCE_TESTNET",
-              "spot_credentials": spot_verified, "futures_credentials": futures_verified,
+              "spot_credentials": ("SPOT" not in selected_modes) or spot_verified,
+              "futures_credentials": ("USD_M_FUTURES" not in selected_modes) or futures_verified,
               "execution_worker": worker_ready, "protective_orders": protection_ready}
     ready = all(checks.values())
     return {"enabled": bool(config.enabled and ready), "ready": ready, "checks": checks,

@@ -427,6 +427,27 @@ def round_price_to_tick(value: float, tick_size: str, *, round_up: bool) -> floa
         raise MarketDataError("Binance returned an invalid price tick size.") from None
 
 
+def _price_within_exchange_filter(value: float, price_filter: Any) -> bool:
+    """Check enabled Binance PRICE_FILTER bounds and tick alignment."""
+    raw = price_filter if isinstance(price_filter, dict) else {}
+    try:
+        price = Decimal(str(value))
+        tick = Decimal(str(raw.get("tick_size") or "0"))
+        minimum = Decimal(str(raw.get("min_price") or "0"))
+        maximum = Decimal(str(raw.get("max_price") or "0"))
+        if not all(item.is_finite() for item in (price, tick, minimum, maximum)) or price <= 0:
+            return False
+        if minimum > 0 and price < minimum:
+            return False
+        if maximum > 0 and price > maximum:
+            return False
+        if tick > 0 and price % tick != 0:
+            return False
+        return True
+    except (ArithmeticError, TypeError, ValueError):
+        return False
+
+
 def select_binance_entry(
     side: str, close: float, atr_value: float, zone: dict[str, float] | None,
     execution: dict[str, Any], settings: dict[str, Any] | None = None,
@@ -466,16 +487,7 @@ def select_binance_entry(
     )
 
     def within_price_filter(value: float) -> bool:
-        try:
-            minimum = float(execution.get("price_filter", {}).get("min_price") or 0)
-            maximum = float(execution.get("price_filter", {}).get("max_price") or 0)
-            return (
-                math.isfinite(minimum) and math.isfinite(maximum)
-                and (minimum <= 0 or value >= minimum)
-                and (maximum <= 0 or value <= maximum)
-            )
-        except (TypeError, ValueError, AttributeError, OverflowError):
-            return False
+        return _price_within_exchange_filter(value, execution.get("price_filter"))
 
     market_price = ask if side == "BUY" else bid
     market_drift = abs(market_price - close) / atr_value
@@ -1194,6 +1206,19 @@ async def build_signal(
             entry_choice["entry_price"] = round_price_to_tick(
                 float(entry_choice["entry_price"]), tick_size, round_up=round_entry_up
             )
+            if not _price_within_exchange_filter(
+                entry_choice["entry_price"], execution.get("price_filter")
+            ):
+                side = None
+                entry_choice = None
+                quality_filters["execution_quality"] = False
+                entry_rejection_reason = (
+                    "Rounded entry price violates the symbol's Binance PRICE_FILTER bounds or tick size."
+                )
+                execution_quality = {
+                    "accepted": False,
+                    "rejection_reason": entry_rejection_reason,
+                }
 
     order_flow_payload: dict[str, Any] = {"status": "NOT_EVALUATED"}
     if symbol == "XAUUSD":
@@ -1354,6 +1379,22 @@ async def build_signal(
                 quality_filters["execution_quality"] = True
                 execution_quality["accepted"] = True
                 expiry_seconds = 900 if entry_choice["entry_type"] == "LIMIT" else 60
+
+        if side and entry_choice and symbol != "XAUUSD" and not all(
+            _price_within_exchange_filter(level, execution.get("price_filter"))
+            for level in (entry, sl, tp1, tp2, tp3)
+        ):
+            side = None
+            entry_choice = None
+            quality_filters["execution_quality"] = False
+            entry_rejection_reason = (
+                "Calculated entry/SL/TP levels violate the symbol's Binance PRICE_FILTER bounds or tick size."
+            )
+            execution_quality = {
+                **(execution_quality or {}),
+                "accepted": False,
+                "rejection_reason": entry_rejection_reason,
+            }
 
         if side and entry_choice:
             signal = {

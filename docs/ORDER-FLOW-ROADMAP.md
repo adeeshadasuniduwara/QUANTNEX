@@ -196,17 +196,6 @@ A separate read-only Binance connector check verified current Spot public data f
 The daily GitHub smoke run is a separate rotating 20-pair sample from the dynamic Spot universe. Its latest observed scheduled run succeeded on 2026-11-17, but no same-day full-universe run was available in this audit. The live connector check above validates current BTCUSDT data only.
 
 
-## Latest core checkpoint — 2026-11-18 07:35 UTC
-
-- Main is `b88f11237ab0791b261b46139ff3f56cd201d4cd`. PR #203 merged the sequence-validated single-symbol Spot WebSocket adapter; post-merge Backend CI and Backend/Web CI passed.
-- Latest scheduled `QUANTNEX Live Crypto Signal Smoke` run found in GitHub Actions is 2026-11-17 09:12:45 UTC. It discovered 1,373 eligible Binance Spot pairs, scanned a rotating 20-pair subset, and completed 20 scans with 0 provider errors and 0 insufficient-history skips. All 20 were WAIT (confluence 3–6/10). This proves public provider/scan execution only; it does not prove the signal engine can generate profitable signals or that all pairs were scanned. No newer scheduled smoke run was returned in the current Actions audit.
-- Market coverage remains Binance Spot only for crypto signals. USDⓈ-M and COIN-M Futures remain unverified/not wired; XAUUSD remains a separate provider path.
-- Live order-flow on main has a robust single-symbol adapter but it is not yet connected to `build_signal`. Current branch `feat/spot-orderflow-manager-signal-integration` adds bounded lifecycle ownership and requires sequence-validated stream readiness for live Spot signals.
-- Historical walk-forward still lacks synchronized historical aggressor trades and L2 replay. CVD is in-memory and since bootstrap seed only; full UTC session delta requires an independent anchor. No measured order-flow uplift, profitability or calibrated win probability is claimed.
-- Next after this branch: run full CI, merge only if all checks pass and the diff is safe, verify post-merge main; then build a fair dynamic stream scheduler for the eligible Spot universe and capture synchronized trade/depth replay for out-of-sample/ablation evaluation.
-
-
-
 ## Phase C2 — sequence-validated single-symbol Spot WebSocket adapter (merged PR #203)
 
 Branch: `feat/binance-spot-orderflow-websocket`. PR [#203](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/203) merged to `main` on 2026-11-18 as `b88f11237ab0791b261b46139ff3f56cd201d4cd`.

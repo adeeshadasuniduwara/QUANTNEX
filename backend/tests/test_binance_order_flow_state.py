@@ -195,3 +195,34 @@ def test_malformed_or_non_monotonic_trade_invalidates_cvd_until_valid_backfill()
         agg_trade(101, 100, 2, hour=12, minute=1),
     ]) == "RECOVERED"
     assert state.snapshot()["cvd_value"] == 3.0
+
+
+def test_stream_seed_makes_cvd_complete_only_since_seed_not_full_session():
+    state = AggTradeCvdState("BTCUSDT")
+    first = agg_trade(700, 100, 2, day=18, hour=9)
+    state.begin_stream_seed(first["a"], first["T"])
+
+    assert state.ingest(first) == "APPLIED"
+    assert state.ingest(agg_trade(701, 101, 1, day=18, hour=9, buyer_is_maker=True)) == "APPLIED"
+    snapshot = state.snapshot()
+
+    assert snapshot["cvd_value"] == 1.0
+    assert snapshot["cvd_scope"] == "SINCE_STATE_SEED"
+    assert snapshot["cvd_status"] == "COMPLETE_SINCE_STATE_SEED"
+    assert snapshot["session_delta"] is None
+    assert snapshot["session_delta_coverage_complete"] is False
+
+
+def test_stream_seed_cvd_recovers_only_after_contiguous_rest_backfill():
+    state = AggTradeCvdState("BTCUSDT")
+    first = agg_trade(900, 100, 1, day=18, hour=9)
+    state.begin_stream_seed(first["a"], first["T"])
+    state.ingest(first)
+
+    assert state.ingest(agg_trade(902, 100, 3, day=18, hour=9)) == "GAP_DETECTED"
+    assert state.snapshot()["cvd_value"] is None
+    assert state.apply_backfill([
+        agg_trade(901, 100, 2, day=18, hour=9),
+        agg_trade(902, 100, 3, day=18, hour=9),
+    ]) == "RECOVERED"
+    assert state.snapshot()["cvd_value"] == 6.0

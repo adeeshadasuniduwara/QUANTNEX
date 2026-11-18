@@ -91,7 +91,7 @@ def test_expired_session_is_rejected(client):
 def test_validation_error_never_echoes_submitted_secrets(client):
     marker = "THIS_IS_A_SECRET_VALUE_THAT_MUST_NOT_ECHO"
     response = client.post("/v1/setup-sessions/complete", json={
-        "session_token": "x"*48, "spot_api_key": "S"*32, "spot_api_secret": marker,
+        "session_token": "x"*48, "spot_api_key": "short", "spot_api_secret": marker,
         "futures_api_key": "F"*32, "futures_api_secret": "f"*32,
     })
     assert response.status_code == 422

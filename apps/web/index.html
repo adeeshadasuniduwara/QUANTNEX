@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="signal-tool.css">
   <link rel="stylesheet" href="quantnex-view-intelligence.css">
   <link rel="stylesheet" href="quantnex-view-chart.css?v=20261116-price-axis-fix1">
-  <link rel="stylesheet" href="market-sessions.css?v=20261118-overview-sessions2">
+  <link rel="stylesheet" href="market-sessions.css?v=20261118-chart-sessions1">
   <link rel="stylesheet" href="workspace-pages.css?v=20261118-distinct-certificate100">
   <link rel="stylesheet" href="workspace-polish.css?v=20261116-sidebar-compact1">
   <link rel="stylesheet" href="welcome-whats-new.css?v=20261113-1">
@@ -90,36 +90,7 @@
 
 
       
-      <section class="qx-overview-sessions" aria-label="Live global market sessions">
-        <div class="qx-overview-sessions-intro">
-          <div><span class="qx-market-sessions-kicker">GLOBAL MARKET HOURS · LIVE</span><h2>Market Sessions</h2><p>Track the world's major trading sessions in Sri Lanka time, with live clocks and opening / closing countdowns.</p></div>
-          <span class="qx-session-live"><i></i> LIVE UPDATING</span>
-        </div>
-        <aside class="qx-market-sessions" id="qxMarketSessions" aria-label="Live global market sessions">
-          <div class="qx-market-sessions-head">
-            <div><span class="qx-market-sessions-kicker">GLOBAL MARKET CLOCK</span><strong class="qx-market-sessions-title">Market Sessions</strong></div>
-            <span class="qx-session-live"><i></i> LIVE</span>
-          </div>
-          <div class="qx-session-clocks">
-            <article class="qx-session-clock">
-              <div class="qx-session-clock-label"><span>🇱🇰 SRI LANKA</span><span id="qxColomboOffset">—</span></div>
-              <strong class="qx-session-clock-time" id="qxColomboTime">--:--:--</strong>
-              <small class="qx-session-clock-date" id="qxColomboDate">Loading local time…</small>
-            </article>
-            <article class="qx-session-clock">
-              <div class="qx-session-clock-label"><span>🇺🇸 NEW YORK</span><span id="qxNewYorkOffset">—</span></div>
-              <strong class="qx-session-clock-time" id="qxNewYorkTime">--:--:--</strong>
-              <small class="qx-session-clock-date" id="qxNewYorkDate">Loading New York time…</small>
-            </article>
-          </div>
-          <div class="qx-session-active" id="qxSessionActive" data-state="closed">CHECKING LIVE SESSIONS…</div>
-          <div class="qx-session-overlap" id="qxSessionOverlap" hidden></div>
-          <div class="qx-session-list" id="qxSessionList">
-            <div class="qx-session-row"><div class="qx-session-identity"><span class="qx-session-flag">🌏</span><div class="qx-session-labels"><strong>Asia · Tokyo</strong><small>09:00–18:00 local</small></div></div><div class="qx-session-state"><strong>CHECKING</strong></div></div>
-          </div>
-          <div class="qx-session-next" id="qxSessionNext">Calculating next market transition…</div>
-        </aside>
-      </section>
+
 
       <section class="market-ticker-grid" aria-label="Live market overview">
         <article class="panel market-ticker"><div class="market-ticker-head"><span class="coin-mark btc-mark">₿</span><div><strong>Bitcoin</strong><small>BTC / USD · Live feed</small></div><span class="chart-live"><i></i> LIVE</span></div><strong class="ticker-price" id="btcLivePrice">Loading…</strong><small class="ticker-foot" id="btcLiveUpdated">Waiting for market feed</small></article>
@@ -253,6 +224,36 @@
         </div>
         <div id="qxChartHost" class="qx-chart-host"><div class="qx-chart-loading">Loading live candles…</div></div>
         <div class="qx-chart-footer"><span id="qxChartProvider">Market feed: waiting</span><span>Native QUANTNEX canvas engine · Binance live WebSocket for crypto · local chart settings</span></div>
+      </section>
+      <section class="qx-chart-sessions" aria-label="Live global market sessions">
+        <div class="qx-chart-sessions-intro">
+          <div><span class="qx-market-sessions-kicker">GLOBAL MARKET HOURS · LIVE</span><h2>Market Sessions</h2><p>Track the world's major trading sessions in Sri Lanka time, with live clocks and opening / closing countdowns.</p></div>
+          <span class="qx-session-live"><i></i> LIVE UPDATING</span>
+        </div>
+        <aside class="qx-market-sessions" id="qxMarketSessions" aria-label="Live global market sessions">
+          <div class="qx-market-sessions-head">
+            <div><span class="qx-market-sessions-kicker">GLOBAL MARKET CLOCK</span><strong class="qx-market-sessions-title">Market Sessions</strong></div>
+            <span class="qx-session-live"><i></i> LIVE</span>
+          </div>
+          <div class="qx-session-clocks">
+            <article class="qx-session-clock">
+              <div class="qx-session-clock-label"><span>🇱🇰 SRI LANKA</span><span id="qxColomboOffset">—</span></div>
+              <strong class="qx-session-clock-time" id="qxColomboTime">--:--:--</strong>
+              <small class="qx-session-clock-date" id="qxColomboDate">Loading local time…</small>
+            </article>
+            <article class="qx-session-clock">
+              <div class="qx-session-clock-label"><span>🇺🇸 NEW YORK</span><span id="qxNewYorkOffset">—</span></div>
+              <strong class="qx-session-clock-time" id="qxNewYorkTime">--:--:--</strong>
+              <small class="qx-session-clock-date" id="qxNewYorkDate">Loading New York time…</small>
+            </article>
+          </div>
+          <div class="qx-session-active" id="qxSessionActive" data-state="closed">CHECKING LIVE SESSIONS…</div>
+          <div class="qx-session-overlap" id="qxSessionOverlap" hidden></div>
+          <div class="qx-session-list" id="qxSessionList">
+            <div class="qx-session-row"><div class="qx-session-identity"><span class="qx-session-flag">🌏</span><div class="qx-session-labels"><strong>Asia · Tokyo</strong><small>09:00–18:00 local</small></div></div><div class="qx-session-state"><strong>CHECKING</strong></div></div>
+          </div>
+          <div class="qx-session-next" id="qxSessionNext">Calculating next market transition…</div>
+        </aside>
       </section>
       <section class="qx-chart-intelligence" aria-live="polite" aria-label="Live chart intelligence">
         <div><div class="qx-chart-intelligence-head"><strong>LIVE STRUCTURE &amp; CONFIRMATIONS</strong><small id="qxChartIntelState">SCANNING</small></div>

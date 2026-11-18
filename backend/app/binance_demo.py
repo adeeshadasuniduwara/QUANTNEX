@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from .database import get_db
 from .models import Preference, User
 from .security import decrypt_secret, encrypt_secret
+from .binance_auto_config import AutoTradingConfig, safe_auto_status
 
 router = APIRouter(prefix="/api/v1/exchanges/binance", tags=["Binance demo"])
 
@@ -129,9 +130,17 @@ def binance_status(db: Session = Depends(get_db)):
     spot = bool(_get(db, user.id, "binance_spot_api_key_enc") and _get(db, user.id, "binance_spot_api_secret_enc"))
     futures = bool(_get(db, user.id, "binance_futures_api_key_enc") and _get(db, user.id, "binance_futures_api_secret_enc"))
     settings = _risk_settings(db, user.id)
+    import json
+    try:
+        auto_config = AutoTradingConfig.model_validate_json(_get(db, user.id, "binance_auto_config", "{}"))
+    except (ValueError, TypeError):
+        auto_config = AutoTradingConfig()
+    readiness = safe_auto_status(auto_config, spot_verified=spot, futures_verified=futures,
+                                  worker_ready=False, protection_ready=False)
     return {"mode": "demo_testnet", "spot_connected": spot, "futures_connected": futures,
             "auto_trading_enabled": _get(db, user.id, "binance_auto_trading_enabled") == "true",
-            "execution": "disabled_pending_signal_execution_release", "risk": settings}
+            "execution": "disabled_until_worker_and_protection_validation",
+            "auto_config": auto_config.model_dump(), "readiness": readiness, "risk": settings}
 
 
 def _risk_settings(db: Session, user_id: int) -> dict:
@@ -153,6 +162,28 @@ def save_binance_risk(payload: BinanceRiskSettings, db: Session = Depends(get_db
     _set(db, user.id, "binance_risk_settings", json.dumps(payload.model_dump(), separators=(",", ":")))
     db.commit()
     return {"saved": True, "risk": payload.model_dump()}
+
+
+@router.get("/auto-config")
+def get_binance_auto_config(db: Session = Depends(get_db)):
+    user = _workspace(db)
+    try:
+        config = AutoTradingConfig.model_validate_json(_get(db, user.id, "binance_auto_config", "{}"))
+    except (ValueError, TypeError):
+        config = AutoTradingConfig()
+    return {"config": config.model_dump(), "mode": "BINANCE_TESTNET"}
+
+
+@router.put("/auto-config")
+def save_binance_auto_config(payload: AutoTradingConfig, db: Session = Depends(get_db)):
+    import json
+    user = _workspace(db)
+    payload.enabled = False
+    _set(db, user.id, "binance_auto_config", json.dumps(payload.model_dump(), separators=(",", ":")))
+    _set(db, user.id, "binance_auto_trading_enabled", "false")
+    db.commit()
+    return {"saved": True, "enabled": False, "config": payload.model_dump(),
+            "message": "Testnet auto-trading policy saved. Execution remains OFF until worker and protective-order validation pass."}
 
 
 @router.put("/auto-trading")

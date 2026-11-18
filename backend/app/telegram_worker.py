@@ -718,14 +718,12 @@ async def _deliver_pending_signal_events(client, db, user_id: int, token: str, c
         or_(SignalTradeEvent.telegram_last_attempt_at.is_(None),
             SignalTradeEvent.telegram_last_attempt_at <= cutoff),
     ).order_by(SignalTradeEvent.created_at).limit(10)))
-    protected_trade_ids = {
-        event.trade_id for event in pending
-        if event.event_type in {"PROTECTED_STOP_HIT", "LOCKED_STOP_HIT"}
-    }
+    latest_by_trade = {}
+    for queued in pending:
+        latest_by_trade[queued.trade_id] = queued
     for event in pending:
-        # If TP1 and its later protective exit are both waiting in this batch,
-        # send one final-state alert instead of two near-simultaneous messages.
-        if event.event_type == "TP1_HIT" and event.trade_id in protected_trade_ids:
+        # Collapse a backlog of target/exit updates into one latest-state alert per trade.
+        if latest_by_trade.get(event.trade_id) is not event:
             event.telegram_sent_at = datetime.now(timezone.utc)
             db.commit()
             continue
@@ -950,12 +948,14 @@ async def telegram_worker() -> None:
                                     candidate=scan.get("signal")
                                     if candidate:
                                         from .signal_lifecycle import record_signal
-                                        tracked, _created = record_signal(db, user_id, candidate, "AUTO_TELEGRAM_SCAN")
+                                        tracked, created = record_signal(db, user_id, candidate, "AUTO_TELEGRAM_SCAN")
                                         db.commit()
                                         fingerprint=_auto_signal_fingerprint(market_symbol,candidate)
                                         previous=_get(db,user_id,fingerprint_key)
                                         db.commit()
-                                        if _should_send_auto_signal(fingerprint,previous):
+                                        # Suppress refreshed/alternate-timeframe candidates while this
+                                        # symbol already has an OPEN or PENDING trade.
+                                        if created and _should_send_auto_signal(fingerprint,previous):
                                             msg=("QUANTNEX · AUTO SIGNAL · "+market_symbol+" "+candidate["side"]+"\n"
                                                 +"Market data: "+str(scan.get("provider","Unknown"))+"\n"
                                                 +"Signal TF: "+str(candidate["timeframe"])+"m · Trend TF: "+str(candidate["trend_timeframe"])+"m\n"

@@ -118,6 +118,9 @@ BOT_COMMANDS = [
     {"command":"gold_setup","description":"Enable daily Gold reports at 00:00 and 12:00"},
     {"command":"gold_status","description":"Check daily Gold report settings"},
     {"command":"gold_off","description":"Disable scheduled Gold reports"},
+    {"command":"binance","description":"Open Binance demo connection setup guide"},
+    {"command":"binance_status","description":"Check Binance Spot and Futures testnet status"},
+    {"command":"binance_off","description":"Emergency stop: keep Binance auto trading OFF"},
 ]
 
 MENU = {"inline_keyboard": [
@@ -521,6 +524,26 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
         return ("QUANTNEX Daily Gold reports: "+("ON" if enabled else "OFF")
             +"\\nSchedule: 00:00 and 12:00 Asia/Colombo."
             +"\\nCommands: /gold · /gold_setup · /gold_off")
+    if command in {"/binance", "/binance_connect"}:
+        return ("🔐 QUANTNEX · BINANCE DEMO SETUP\\n\\n"
+            "Open QUANTNEX → Binance Exchange. Enter Spot Testnet and USD-M Futures Testnet API keys/secrets separately.\\n"
+            "Never send API keys or secrets in Telegram chat. Use TESTNET keys only; disable withdrawals.\\n\\n"
+            "🇱🇰 සිංහල\\n"
+            "QUANTNEX → Binance Exchange පිටුවට ගොස් Spot Testnet සහ Futures Testnet API Key/Secret වෙන වෙනම ඇතුළත් කරන්න.\\n"
+            "API keys හෝ secrets Telegram chat එකට එවන්න එපා. Testnet keys පමණක් භාවිතා කරන්න.\\n\\n"
+            "Demo connections and risk limits are available. Signal-to-order execution is not enabled in this release; Auto Trading stays OFF.")
+    if command=="/binance_status":
+        spot=bool(_get(db,user_id,"binance_spot_api_key_enc") and _get(db,user_id,"binance_spot_api_secret_enc"))
+        futures=bool(_get(db,user_id,"binance_futures_api_key_enc") and _get(db,user_id,"binance_futures_api_secret_enc"))
+        return ("🔷 BINANCE TESTNET STATUS\\nSpot: "+("CONNECTED" if spot else "NOT CONNECTED")
+            +"\\nUSD-M Futures: "+("CONNECTED" if futures else "NOT CONNECTED")
+            +"\\nAuto Trading: OFF · Order execution disabled in this release."
+            +"\\n\\n🇱🇰 සිංහල\\nSpot: "+("සම්බන්ධයි" if spot else "සම්බන්ධ නැහැ")
+            +"\\nFutures: "+("සම්බන්ධයි" if futures else "සම්බන්ධ නැහැ")
+            +"\\nස්වයංක්‍රීය ගනුදෙනු: අක්‍රියයි.")
+    if command=="/binance_off":
+        _set(db,user_id,"binance_auto_trading_enabled","false");db.commit()
+        return "🛑 Binance Auto Trading: OFF.\\n🇱🇰 Binance ස්වයංක්‍රීය ගනුදෙනු අක්‍රිය කර ඇත. No orders are submitted."
     if command=="/status":
         return "QUANTNEX bot connected. Crypto feed: Binance Spot public candles with Coinbase fallback for BTC/ETH/SOL. Gold feed: "+(gold_feed_provider() or "not configured")+". Broker execution: disabled."
     if command=="/scan":
@@ -635,14 +658,30 @@ async def telegram_worker() -> None:
                         if not chat_id:continue
                         try:token=decrypt_secret(token_row.value)
                         except ValueError:continue
-                        if _get(db,user_id,"telegram_commands_registered","")!="gold-report-v1":
+                        if _get(db,user_id,"telegram_commands_registered","")!="binance-demo-v1":
                             try:
                                 await _telegram_post(client,token,"setMyCommands",{"commands":BOT_COMMANDS})
-                                _set(db,user_id,"telegram_commands_registered","gold-report-v1")
+                                _set(db,user_id,"telegram_commands_registered","binance-demo-v1")
                                 db.commit()
                             except Exception as command_error:
                                 logger.warning("Telegram command registration failed for local user %s: %s",
                                                user_id,type(command_error).__name__)
+                        release_version="0.6.5"
+                        if _get(db,user_id,"telegram_release_notice_version","")!=release_version:
+                            try:
+                                await _send(client,token,chat_id,
+                                    "🚀 QUANTNEX UPDATE · v"+release_version+"\\n\\n"
+                                    "Binance demo connection center is now available. Connect Spot Testnet and USD-M Futures Testnet separately, verify credentials, and configure conservative daily risk limits.\\n\\n"
+                                    "Telegram commands: /binance · /binance_status · /binance_off\\n\\n"
+                                    "🔐 Security: enter API keys only in the QUANTNEX local dashboard. Never send secrets in Telegram. Testnet keys only.\\n"
+                                    "⚠️ This release does not place orders. Signal-to-order execution and Auto Trading remain disabled.\\n\\n"
+                                    "🇱🇰 සිංහල: Binance Demo සම්බන්ධතාව සහ Risk Limits දැන් QUANTNEX තුළ ඇත. API keys Dashboard එකේ පමණක් ඇතුළත් කරන්න. Telegram එකට secrets එවන්න එපා. මෙම update එකෙන් orders ස්වයංක්‍රීයව යවන්නේ නැහැ; Auto Trading අක්‍රියයි.")
+                                _set(db,user_id,"telegram_release_notice_version",release_version)
+                                db.commit()
+                            except Exception as release_error:
+                                db.rollback()
+                                logger.warning("Telegram release notice deferred for local user %s: %s",
+                                               user_id,type(release_error).__name__)
                         offset=int(_get(db,user_id,"telegram_update_offset","0") or "0")
                         # Do not hold a SQLite read snapshot while waiting on Telegram.
                         db.commit()

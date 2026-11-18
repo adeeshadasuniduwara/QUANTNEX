@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from app.binance_demo import (
     BinanceRiskSettings,
+    BinanceCredentialPair,
     _signed_params,
     _store_credentials,
     _get,
@@ -107,6 +108,18 @@ def test_binance_router_has_separate_spot_and_futures_routes():
     assert "/api/v1/exchanges/binance/test/spot" in paths
     assert "/api/v1/exchanges/binance/test/futures" in paths
     assert "/api/v1/exchanges/binance/connect/spot" in paths
+
+
+
+def test_demo_credential_pair_accepts_shorter_keys_and_trims_whitespace():
+    pair = BinanceCredentialPair(api_key="  demo-key-123  ", api_secret=" demo-secret-456 ")
+    assert pair.api_key == "demo-key-123"
+    assert pair.api_secret == "demo-secret-456"
+
+
+def test_demo_credential_pair_rejects_blank_values():
+    with pytest.raises(ValidationError):
+        BinanceCredentialPair(api_key="   ", api_secret="demo-secret")
 
 
 def test_demo_trading_uses_binance_demo_hosts_not_legacy_testnets():

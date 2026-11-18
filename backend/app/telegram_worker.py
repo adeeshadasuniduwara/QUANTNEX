@@ -227,7 +227,10 @@ def _format_telegram_message(message: str) -> str:
             rendered.append("<b>" + safe + "</b>")
         elif ":" in line:
             label, value = line.split(":", 1)
-            rendered.append("<b>" + escape_text(label) + ":</b>" + escape_text(value))
+            if "<b>" in label.lower() or "<i>" in label.lower():
+                rendered.append(safe)
+            else:
+                rendered.append("<b>" + escape_text(label) + ":</b>" + escape_text(value))
         elif stripped.startswith(("Level-touch alert", "Not a real broker", "Signal only", "Verify any real")):
             rendered.append("<i>" + safe + "</i>")
         else:

@@ -195,26 +195,42 @@ async def _telegram_post(client, token: str, method: str, payload: dict):
     raise RuntimeError("Telegram retry limit reached.")
 
 def _format_telegram_message(message: str) -> str:
-    """Render consistent branded Telegram HTML and normalize escaped line breaks."""
+    """Render branded Telegram HTML, preserving only safe formatting tags."""
     import html
+    import re
+
     content = (str(message or "").replace("\r\n", "\n").replace("\r", "\n")
                .replace("\\\\n", "\n").replace("\\n", "\n").strip() or "No message content.")
+    safe_tag = re.compile(r"</?(?:b|i)>", re.IGNORECASE)
+
+    def escape_text(value: str) -> str:
+        return "".join(
+            part.lower() if safe_tag.fullmatch(part) else html.escape(part, quote=False)
+            for part in re.split(r"(</?(?:b|i)>)", value, flags=re.IGNORECASE)
+        )
+
     lines = content.splitlines()
     rendered = []
     if not lines or "QUANTNEX" not in lines[0].upper():
         rendered.extend(["<b>✨ QUANTNEX</b>", ""])
     for index, line in enumerate(lines):
-        safe = html.escape(line, quote=False)
+        safe = escape_text(line)
         stripped = line.strip()
         if not stripped:
             rendered.append("")
         elif index == 0:
-            rendered.append("<b>✨ " + safe + "</b>" if "QUANTNEX" in stripped.upper() else "<b>" + safe + "</b>")
+            if "QUANTNEX" in stripped.upper() and "<b>" in safe.lower():
+                rendered.append("✨ " + safe)
+            else:
+                rendered.append("<b>✨ " + safe + "</b>" if "QUANTNEX" in stripped.upper() else "<b>" + safe + "</b>")
         elif stripped.isupper() and len(stripped) > 3:
             rendered.append("<b>" + safe + "</b>")
         elif ":" in line:
             label, value = line.split(":", 1)
-            rendered.append("<b>" + html.escape(label, quote=False) + ":</b>" + html.escape(value, quote=False))
+            if "<b>" in label.lower() or "<i>" in label.lower():
+                rendered.append(safe)
+            else:
+                rendered.append("<b>" + escape_text(label) + ":</b>" + escape_text(value))
         elif stripped.startswith(("Level-touch alert", "Not a real broker", "Signal only", "Verify any real")):
             rendered.append("<i>" + safe + "</i>")
         else:
@@ -411,15 +427,15 @@ async def _notify_new_market_sessions(client, db, user_id: int, token: str, chat
         countdown = (str(hours) + "h " if hours else "") + str(minutes) + "m"
         lines.append(
             item["flag"] + " <b>" + item["name"] + " SESSION OPENED</b>"
-            + "\\nCloses in: " + countdown
-            + "\\nExpected close (Sri Lanka): " + item["close_colombo"].strftime("%I:%M %p")
+            + "\nCloses in: " + countdown
+            + "\nExpected close (Sri Lanka): " + item["close_colombo"].strftime("%I:%M %p")
         )
     active_names = " + ".join(snapshot[key]["name"] for key in snapshot)
     message = (
-        "🌍 <b>QUANTNEX · NEW MARKET SESSION</b>\\n\\n"
-        + "\\n\\n".join(lines)
-        + "\\n\\n<b>Currently running:</b> " + active_names
-        + "\\n🇱🇰 All times are Sri Lanka time. Session hours follow local DST rules."
+        "🌍 <b>QUANTNEX · NEW MARKET SESSION</b>\n\n"
+        + "\n\n".join(lines)
+        + "\n\n<b>Currently running:</b> " + active_names
+        + "\n🇱🇰 All times are Sri Lanka time. Session hours follow local DST rules."
     )
     try:
         await _send(client, token, chat_id, message)

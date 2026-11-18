@@ -15,6 +15,7 @@ TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "").strip()
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "").strip()
 QUANTNEX_MT5_ENABLED = os.getenv("QUANTNEX_MT5_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 QUANTNEX_MT5_GOLD_SYMBOL = os.getenv("QUANTNEX_MT5_GOLD_SYMBOL", "XAUUSD").strip() or "XAUUSD"
+QUANTNEX_BINANCE_GATEWAY_URL = os.getenv("QUANTNEX_BINANCE_GATEWAY_URL", "").strip().rstrip("/")
 
 if ENVIRONMENT == "production" and SECRET_KEY == "local-development-only-change-me":
     raise ValueError("Set a strong QUANTNEX_SECRET_KEY in production.")

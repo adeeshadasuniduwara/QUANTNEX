@@ -180,7 +180,7 @@ Source references: [Binance Spot filters](https://github.com/binance/binance-spo
 
 Next core phase: implement the read-only WebSocket adapter around the existing `AggTradeCvdState` and `BinanceSpotDepthBook` state machines, then feed only sequence-validated stream state into the signal gate.
 
-## Phase C1.1 — Binance Spot order-filter-aware entry selection (PR in progress)
+## Phase C1.1 — Binance Spot order-filter-aware entry selection (merged PR #202)
 
 Branch: `fix/binance-spot-exchange-order-filters`, based on main `5876b9cda4596bad0309574019da5b1d762b9878`.
 
@@ -190,7 +190,7 @@ Changed files:
 - `backend/tests/test_signal_pipeline_e2e.py`: make deterministic execution fixtures explicitly declare the exchange order/filter capabilities they assume.
 - This roadmap: update verified capabilities and next step.
 
-PR #202 checks passed on head `ecc4454feeaac2e3dcaab72b696b6632abd6e518`: Backend CI, Backend/Web CI, Python 3.12 tests, Python 3.14 tests and web-check all succeeded. The compare shows 9 commits ahead and 0 behind main; GitHub reports mergeable. The full diff is limited to the signal engine, two deterministic test files and this roadmap; the added-line secret scan found no credential patterns. Merge is the next action; post-merge main verification and CI are still required.
+PR [#202](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/202) merged to main as `b4fba45301e3c456e3dba741e369354650a08a8d`. PR-head Backend CI, Backend/Web CI, Python 3.12, Python 3.14 and web-check all passed. Post-merge Backend CI and Backend/Web CI both passed on main. The optional Telegram update-notification workflow failed because its configured chat target is invalid/self-directed; it is unrelated to signal code and required checks.
 
 Important boundary: a signal carries the applicable constraints but not a computed base/quote order quantity. It must not be described as an exchange-valid order ticket until position sizing is implemented and every min/max/step/notional filter is checked against the actual quantity.
 
@@ -204,3 +204,33 @@ A separate read-only Binance connector check verified current Spot public data f
 - Top-10 L2 quote-notional imbalance was about `-0.978` (ask-heavy) and best spread about `0.00155 bps`. This is a short sample and can change immediately; it is not a directional signal or a backtest result.
 
 The daily GitHub smoke run is a separate rotating 20-pair sample from the dynamic Spot universe. Its latest observed scheduled run succeeded on 2026-11-17, but no same-day full-universe run was available in this audit. The live connector check above validates current BTCUSDT data only.
+
+
+## Phase C2 — single-symbol Spot WebSocket order-flow adapter (implementation branch)
+
+Branch: `feat/binance-spot-orderflow-websocket`, created from latest main `b4fba45301e3c456e3dba741e369354650a08a8d`.
+
+Implementation:
+- Add explicit `websockets>=13.1,<18` runtime dependency and a read-only combined-stream client for one symbol's `@aggTrade` and `@depth@100ms` feeds on `data-stream.binance.vision`.
+- Connect before fetching REST seeds; buffer incoming events while loading the latest 1,000 aggregate trades and a 100-level depth snapshot.
+- Add `AggTradeCvdState.begin_stream_seed`: CVD is complete only since the bounded bootstrap seed, not from the start of the UTC session. Session delta stays unavailable as a full-session value until an independent session anchor proves complete coverage.
+- Bridge buffered depth events to REST `lastUpdateId`; only mark depth sequence-valid after a contiguous post-snapshot update. Any gap, crossed book, invalid message or buffer overflow drops the book and forces reconnect/resnapshot.
+- Preserve trade state across reconnects, recover aggregate-trade ID gaps through bounded `fromId` REST backfill (maximum 50 pages per recovery), and keep CVD unavailable while a gap remains.
+- Bound recent-trade and bootstrap buffers; configure WebSocket ping/pong, max message size/queue, reconnect backoff with jitter, callback isolation and graceful stop.
+- Expose an explicit `signal_ready` state plus observed delta/footprint, stream-seeded CVD and sequence-validated L2 metrics. The snapshot clearly labels full UTC session delta unavailable unless anchored.
+- Add deterministic tests for stream-seed CVD semantics, combined-message routing, long/short-safe trade-side preservation, ID-gap backfill, depth sequence invalidation and REST/WebSocket bootstrap bridging.
+
+Current branch boundary: this is a reusable single-symbol adapter, not a global stream manager. It is not yet connected to the application's lifecycle or `build_signal`; the current live signal gate continues using the REST snapshot path. Do not claim continuous order flow is already powering user-facing automatic signals. A bounded on-demand symbol manager and signal-gate integration remain the next dependent work.
+
+### Phase C2 validation gates
+- Run Backend CI on Python 3.12 and 3.14 plus Backend/Web CI.
+- Review full diff and secret scan before PR merge.
+- After merge, verify main and post-merge CI before adding a bounded subscription manager or changing signal eligibility.
+- Test against a live public single-symbol WebSocket in a separate read-only smoke check; a successful connection does not prove profitable signals.
+
+## Latest core checkpoint — 2026-11-18
+
+- Main is `b4fba45301e3c456e3dba741e369354650a08a8d`; PR #202 is merged and its post-merge Backend CI and Backend/Web CI passed.
+- Last observed `QUANTNEX Live Crypto Signal Smoke` run was 2026-11-17 09:12:45 UTC. It discovered 1,373 eligible Spot pairs, scanned a rotating 20-pair subset, and completed 20 scans with 0 provider errors and 0 insufficient-history skips. All 20 results were WAIT (confluence 3–6/10); this proves provider/scan execution only, not that the engine can generate a profitable signal or that the whole universe was scanned.
+- Current market coverage remains Binance Spot only. USDⓈ-M and COIN-M Futures are not wired.
+- Next: complete and validate the WebSocket adapter, then integrate it through a bounded on-demand stream manager into the signal gate. Do not subscribe to all 1,373 eligible pairs simultaneously. Capture synchronized trade/depth replay before claiming any incremental order-flow win-rate or expectancy improvement.

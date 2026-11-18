@@ -1,6 +1,9 @@
 /* Live market-session dashboard, displayed on the QUANTNEX Overview page. */
 .qx-overview-sessions { margin:18px 0 22px; padding:20px; border:1px solid rgba(111,145,190,.22); border-radius:16px; background:radial-gradient(ellipse at 88% 0%,rgba(47,105,170,.16),transparent 42%),linear-gradient(145deg,#111923,#0b1018 72%); box-shadow:0 14px 34px rgba(0,0,0,.18); }
 .qx-overview-sessions-intro { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:16px; }
+.qx-market-sessions-kicker { display:block; color:#8fa0b5; font-size:9px; letter-spacing:.13em; font-weight:800; }
+.qx-session-live { display:inline-flex; align-items:center; gap:6px; flex:0 0 auto; color:#45d6a3; font-size:9px; font-weight:800; letter-spacing:.1em; }
+.qx-session-live i { width:7px; height:7px; border-radius:50%; background:#45d6a3; box-shadow:0 0 10px rgba(69,214,163,.7); }
 .qx-overview-sessions-intro h2 { margin:5px 0; color:#eef4fc; font-size:20px; letter-spacing:-.025em; }
 .qx-overview-sessions-intro p { margin:0; max-width:650px; color:#9ba9bb; font-size:11px; line-height:1.55; }
 .qx-overview-sessions > .qx-market-sessions { display:grid; grid-template-columns:minmax(230px,.8fr) minmax(0,1.2fr); grid-template-areas:"clocks sessions" "active sessions" "overlap next"; gap:12px 18px; padding:0; border:0; border-radius:0; background:transparent; }
@@ -26,5 +29,5 @@
 .qx-session-row[data-state="open"] .qx-session-state strong { color:#45d6a3; }
 .qx-session-state small { color:#8f9bab; font-size:9px; }
 .qx-session-next { grid-area:next; align-self:end; padding:10px 12px; border:1px solid rgba(111,145,190,.18); border-radius:9px; background:rgba(3,7,12,.28); color:#a9c8ff; font-size:10px; line-height:1.5; }
-@media(max-width:900px){.qx-overview-sessions>.qx-market-sessions{grid-template-columns:1fr}.qx-session-clocks{grid-template-columns:repeat(2,minmax(0,1fr))}.qx-session-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:900px){.qx-overview-sessions>.qx-market-sessions{grid-template-columns:1fr;grid-template-areas:"clocks" "active" "overlap" "sessions" "next"}.qx-session-clocks{grid-template-columns:repeat(2,minmax(0,1fr))}.qx-session-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.qx-overview-sessions{padding:14px;margin:14px 0 18px}.qx-overview-sessions-intro{display:grid;gap:10px}.qx-overview-sessions-intro h2{font-size:18px}.qx-session-list{grid-template-columns:1fr}.qx-session-clock{padding:10px 8px}.qx-session-clock-time{font-size:20px}.qx-session-row{padding:9px 0}}

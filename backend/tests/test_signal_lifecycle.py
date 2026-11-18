@@ -206,3 +206,29 @@ def test_different_symbols_can_have_independent_active_trades():
     assert btc.id != eth.id
     db.close()
 
+
+def test_legacy_duplicate_active_plans_are_consolidated_to_newest_symbol_plan():
+    from app.models import SignalTrade
+    from app.signal_lifecycle import enforce_single_active_trade_per_symbol
+
+    db, user = _session()
+    now = datetime(2026, 11, 16, 4, 0, tzinfo=timezone.utc)
+    older, _ = record_signal(db, user.id, _signal(now))
+    newer_signal = _signal(now + timedelta(minutes=5))
+    newer_signal["timeframe"] = "5"
+    # Simulate a duplicate created by the pre-fix implementation.
+    newer = SignalTrade(
+        user_id=user.id, fingerprint="legacy-newer", source="AUTO_TELEGRAM_SCAN",
+        symbol="BTCUSDT", side="SELL", timeframe="5", entry_type="MARKET",
+        entry_price=100.0, stop_loss=105.0, active_stop_loss=105.0,
+        tp1=95.0, tp2=90.0, tp3=85.0, risk_distance=5.0,
+        status="OPEN", signal_time=now + timedelta(minutes=5),
+    )
+    db.add(newer)
+    db.flush()
+
+    assert enforce_single_active_trade_per_symbol(db) == 1
+    assert older.status == "SUPERSEDED"
+    assert newer.status == "OPEN"
+    db.close()
+

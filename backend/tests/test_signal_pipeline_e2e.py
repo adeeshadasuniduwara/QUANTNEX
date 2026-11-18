@@ -140,7 +140,8 @@ def test_real_signal_pipeline_generates_and_delivers_synthetic_setup(monkeypatch
             "best_bid": close - 0.005, "best_ask": close + 0.005, "mid_price": close,
             "spread_bps": 0.9, "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
             "tick_size": "0.01", "step_size": "0.001", "min_quantity": "0.001",
-            "min_notional": "5", "observed_at": now.isoformat(), "provider": "Binance Spot",
+            "min_notional": "5", "order_types": ["LIMIT", "MARKET"],
+            "limit_order_constraints_valid": True, "market_order_constraints_valid": True, "observed_at": now.isoformat(), "provider": "Binance Spot",
         }
 
     async def fake_valid_symbol(symbol):
@@ -238,7 +239,8 @@ def test_signal_reports_all_sources_when_timeframes_use_mixed_providers(monkeypa
             "best_bid": close - 0.005, "best_ask": close + 0.005, "mid_price": close,
             "spread_bps": 0.9, "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
             "tick_size": "0.01", "step_size": "0.001", "min_quantity": "0.001",
-            "min_notional": "5", "observed_at": now.isoformat(), "provider": "Binance Spot",
+            "min_notional": "5", "order_types": ["LIMIT", "MARKET"],
+            "limit_order_constraints_valid": True, "market_order_constraints_valid": True, "observed_at": now.isoformat(), "provider": "Binance Spot",
         }
 
     async def valid_spot_symbol(candidate):
@@ -271,7 +273,8 @@ def test_signal_reports_combined_provider_sources_for_mixed_timeframes(monkeypat
             "best_bid": close - 0.005, "best_ask": close + 0.005, "mid_price": close,
             "spread_bps": 0.9, "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
             "tick_size": "0.01", "step_size": "0.001", "min_quantity": "0.001",
-            "min_notional": "5", "observed_at": now.isoformat(), "provider": "Binance Spot",
+            "min_notional": "5", "order_types": ["LIMIT", "MARKET"],
+            "limit_order_constraints_valid": True, "market_order_constraints_valid": True, "observed_at": now.isoformat(), "provider": "Binance Spot",
         }
 
     async def valid_spot_symbol(candidate):
@@ -319,7 +322,8 @@ def test_real_signal_pipeline_generates_a_resting_limit_at_ob_zone(monkeypatch):
             "best_bid": 102.0, "best_ask": 102.02, "mid_price": 102.01,
             "spread_bps": 2.0, "bid_depth_quote": 2000.0, "ask_depth_quote": 2000.0,
             "tick_size": "0.01", "step_size": "0.001", "min_quantity": "0.001",
-            "min_notional": "5", "observed_at": now.isoformat(), "provider": "Binance Spot",
+            "min_notional": "5", "order_types": ["LIMIT", "MARKET"],
+            "limit_order_constraints_valid": True, "market_order_constraints_valid": True, "observed_at": now.isoformat(), "provider": "Binance Spot",
         }
 
     async def valid_spot_symbol(candidate):
@@ -371,7 +375,8 @@ def test_signal_pipeline_returns_wait_when_spread_blocks_market_and_limit(monkey
             "best_bid": 102.0, "best_ask": 102.8, "mid_price": 102.4,
             "spread_bps": 78.12, "bid_depth_quote": 50000.0, "ask_depth_quote": 50000.0,
             "tick_size": "0.01", "step_size": "0.001", "min_quantity": "0.001",
-            "min_notional": "5", "observed_at": now.isoformat(), "provider": "Binance Spot",
+            "min_notional": "5", "order_types": ["LIMIT", "MARKET"],
+            "limit_order_constraints_valid": True, "market_order_constraints_valid": True, "observed_at": now.isoformat(), "provider": "Binance Spot",
         }
 
     async def valid_spot_symbol(candidate):
@@ -424,7 +429,8 @@ def test_build_signal_supports_historical_replay_without_live_provider_calls(mon
         "spread_bps": 0.9, "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
         "bid_depth_usd": 20000.0, "ask_depth_usd": 20000.0,
         "tick_size": "0.01", "step_size": "0.001", "min_quantity": "0.001",
-        "min_notional": "5", "observed_at": replay_as_of.isoformat(),
+        "min_notional": "5", "order_types": ["LIMIT", "MARKET"],
+            "limit_order_constraints_valid": True, "market_order_constraints_valid": True, "observed_at": replay_as_of.isoformat(),
         "provider": "Historical Binance Spot replay", "is_replay": True,
     }
 
@@ -457,7 +463,8 @@ def test_live_signal_waits_when_order_flow_contradicts_direction(monkeypatch):
             "best_bid": close - 0.005, "best_ask": close + 0.005, "mid_price": close,
             "spread_bps": 0.9, "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
             "tick_size": "0.01", "step_size": "0.001", "min_quantity": "0.001",
-            "min_notional": "5", "observed_at": now.isoformat(), "provider": "Binance Spot",
+            "min_notional": "5", "order_types": ["LIMIT", "MARKET"],
+            "limit_order_constraints_valid": True, "market_order_constraints_valid": True, "observed_at": now.isoformat(), "provider": "Binance Spot",
         }
 
     async def valid_symbol(candidate):
@@ -490,7 +497,8 @@ def test_live_signal_waits_when_order_flow_data_is_stale(monkeypatch):
             "best_bid": close - 0.005, "best_ask": close + 0.005, "mid_price": close,
             "spread_bps": 0.9, "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
             "tick_size": "0.01", "step_size": "0.001", "min_quantity": "0.001",
-            "min_notional": "5", "observed_at": now.isoformat(), "provider": "Binance Spot",
+            "min_notional": "5", "order_types": ["LIMIT", "MARKET"],
+            "limit_order_constraints_valid": True, "market_order_constraints_valid": True, "observed_at": now.isoformat(), "provider": "Binance Spot",
         }
 
     async def valid_symbol(candidate):

@@ -100,10 +100,31 @@ async def get_binance_spot_symbols(force_refresh: bool = False) -> list[str]:
                 for value in (item.get("filters") or [])
                 if isinstance(value, dict) and value.get("filterType")
             }
+            order_types = item.get("orderTypes") or []
+            if not isinstance(order_types, list):
+                order_types = []
             symbols[symbol] = {
                 "symbol": symbol,
                 "base_asset": base,
                 "quote_asset": quote,
+                "status": str(item.get("status") or ""),
+                "is_spot_trading_allowed": spot_allowed is True or (
+                    spot_allowed is None and (
+                        "SPOT" in permissions or any(
+                            isinstance(group, list) and "SPOT" in group
+                            for group in permission_sets
+                        )
+                    )
+                ),
+                "permissions": list(permissions) if isinstance(permissions, list) else [],
+                "permission_sets": [
+                    list(group) for group in permission_sets if isinstance(group, list)
+                ],
+                "order_types": sorted({str(value).upper() for value in order_types if str(value).strip()}),
+                "base_asset_precision": item.get("baseAssetPrecision"),
+                "quote_asset_precision": item.get("quoteAssetPrecision"),
+                "quote_precision": item.get("quotePrecision"),
+                "quote_order_qty_market_allowed": item.get("quoteOrderQtyMarketAllowed") is True,
                 "filters": filters,
             }
         if not symbols:
@@ -134,8 +155,103 @@ async def is_binance_spot_symbol(symbol: str) -> bool:
     return normalized in set(await get_binance_spot_symbols())
 
 
+def _normalise_lot_filter(
+    filter_data: Any, *, allow_disabled_step: bool = False
+) -> dict[str, Any]:
+    """Preserve Binance lot constraints, including disabled MARKET sub-rules.
+
+    Binance Spot currently reports MARKET_LOT_SIZE stepSize=minQty=0 for
+    BTCUSDT. In that case those two market-specific sub-rules are disabled;
+    the effective market quantity still inherits LOT_SIZE constraints.
+    """
+    raw = filter_data if isinstance(filter_data, dict) else {}
+    fields = {
+        "step_size": raw.get("stepSize"),
+        "min_quantity": raw.get("minQty"),
+        "max_quantity": raw.get("maxQty"),
+    }
+    try:
+        step = Decimal(str(fields["step_size"]))
+        minimum = Decimal(str(fields["min_quantity"]))
+        maximum = Decimal(str(fields["max_quantity"]))
+        step_disabled = step.is_finite() and step == 0
+        min_disabled = minimum.is_finite() and minimum == 0
+        valid = (
+            step.is_finite() and (step > 0 or (allow_disabled_step and step_disabled and min_disabled))
+            and minimum.is_finite() and minimum >= 0
+            and maximum.is_finite() and maximum > 0
+            and maximum >= minimum
+        )
+    except (ArithmeticError, TypeError, ValueError):
+        valid = False
+        step_disabled = False
+        min_disabled = False
+    return {
+        **fields,
+        "valid": valid,
+        "step_size_disabled": step_disabled,
+        "min_quantity_disabled": min_disabled,
+    }
+
+
+def _normalise_price_filter(filter_data: Any) -> dict[str, Any]:
+    """Return exact price bounds/tick; never invent a fallback tick size."""
+    raw = filter_data if isinstance(filter_data, dict) else {}
+    fields = {
+        "tick_size": raw.get("tickSize"),
+        "min_price": raw.get("minPrice"),
+        "max_price": raw.get("maxPrice"),
+    }
+    try:
+        tick = Decimal(str(fields["tick_size"]))
+        minimum = Decimal(str(fields["min_price"] or "0"))
+        maximum = Decimal(str(fields["max_price"] or "0"))
+        valid = (
+            tick.is_finite() and tick > 0
+            and minimum.is_finite() and minimum >= 0
+            and maximum.is_finite() and maximum >= 0
+            and (maximum == 0 or minimum == 0 or maximum >= minimum)
+        )
+    except (ArithmeticError, TypeError, ValueError):
+        valid = False
+    return {**fields, "valid": valid}
+
+
+def _normalise_notional_filter(filter_data: Any) -> dict[str, Any]:
+    """Preserve both current NOTIONAL and legacy MIN_NOTIONAL market flags."""
+    raw = filter_data if isinstance(filter_data, dict) else {}
+    minimum_raw = raw.get("minNotional", raw.get("minNotionalValue"))
+    maximum_raw = raw.get("maxNotional")
+    try:
+        minimum = Decimal(str(minimum_raw))
+        minimum_valid = minimum.is_finite() and minimum > 0
+    except (ArithmeticError, TypeError, ValueError):
+        minimum_valid = False
+    maximum_valid = True
+    if maximum_raw not in (None, ""):
+        try:
+            maximum = Decimal(str(maximum_raw))
+            maximum_valid = maximum.is_finite() and maximum > 0
+        except (ArithmeticError, TypeError, ValueError):
+            maximum_valid = False
+    apply_min = raw.get("applyMinToMarket")
+    if apply_min is None:
+        apply_min = raw.get("applyToMarket")
+    # Unknown market applicability is treated conservatively as enabled.
+    if not isinstance(apply_min, bool):
+        apply_min = True
+    return {
+        "min_notional": minimum_raw,
+        "max_notional": maximum_raw,
+        "apply_min_to_market": apply_min,
+        "apply_max_to_market": raw.get("applyMaxToMarket") is True,
+        "valid": minimum_valid and maximum_valid,
+        "present": bool(raw),
+    }
+
+
 async def get_binance_spot_execution_context(symbol: str) -> dict[str, Any]:
-    """Fetch fresh top-of-book and depth plus the pair's exchange price filters."""
+    """Fetch fresh book data and authoritative, symbol-specific Spot order filters."""
     normalized = str(symbol or "").strip().upper()
     info = await get_binance_spot_symbol_info(normalized)
     try:
@@ -173,7 +289,9 @@ async def get_binance_spot_execution_context(symbol: str) -> dict[str, Any]:
                     except (BinancePublicDataError, httpx.HTTPError, ValueError, TypeError, KeyError):
                         quote_asset_usd_rate = None
     except (BinancePublicDataError, httpx.HTTPError, ValueError, TypeError) as exc:
-        raise MarketDataError(f"Could not retrieve fresh Binance Spot execution data for {normalized}: {exc}") from exc
+        raise MarketDataError(
+            f"Could not retrieve fresh Binance Spot execution data for {normalized}: {exc}"
+        ) from exc
 
     try:
         bid = float(quote["bidPrice"])
@@ -191,15 +309,73 @@ async def get_binance_spot_execution_context(symbol: str) -> dict[str, Any]:
         if not all(math.isfinite(value) and value >= 0 for value in (bid_depth_quote, ask_depth_quote)):
             raise ValueError()
     except (AttributeError, KeyError, IndexError, TypeError, ValueError, OverflowError):
-        raise MarketDataError(f"Binance returned invalid top-of-book/depth data for {normalized}.") from None
+        raise MarketDataError(
+            f"Binance returned invalid top-of-book/depth data for {normalized}."
+        ) from None
 
     mid = (bid + ask) / 2
     spread_bps = ((ask - bid) / mid) * 10000 if mid > 0 else float("inf")
     filters = info.get("filters", {})
-    price_filter = filters.get("PRICE_FILTER", {})
-    lot_filter = filters.get("LOT_SIZE", {})
-    notional_filter = filters.get("NOTIONAL") or filters.get("MIN_NOTIONAL") or {}
-    tick_size = str(price_filter.get("tickSize") or "0.00000001")
+    price_constraints = _normalise_price_filter(filters.get("PRICE_FILTER"))
+    limit_lot_constraints = _normalise_lot_filter(filters.get("LOT_SIZE"))
+    market_lot_constraints = _normalise_lot_filter(
+        filters.get("MARKET_LOT_SIZE"), allow_disabled_step=True
+    )
+    notional_filter = filters.get("NOTIONAL") or filters.get("MIN_NOTIONAL")
+    notional_constraints = _normalise_notional_filter(notional_filter)
+    order_types = list(info.get("order_types") or [])
+    tick_size = str(price_constraints["tick_size"]) if price_constraints["valid"] else None
+    limit_order_constraints_valid = bool(
+        "LIMIT" in order_types and price_constraints["valid"]
+        and limit_lot_constraints["valid"] and notional_constraints["valid"]
+    )
+    market_order_constraints_valid = bool(
+        "MARKET" in order_types and price_constraints["valid"]
+        and limit_lot_constraints["valid"] and market_lot_constraints["valid"]
+        and notional_constraints["present"] and notional_constraints["valid"]
+    )
+    market_effective_step = (
+        market_lot_constraints["step_size"]
+        if not market_lot_constraints["step_size_disabled"]
+        else limit_lot_constraints["step_size"]
+    )
+    market_effective_min = (
+        market_lot_constraints["min_quantity"]
+        if not market_lot_constraints["min_quantity_disabled"]
+        else limit_lot_constraints["min_quantity"]
+    )
+    try:
+        effective_market_max = min(
+            Decimal(str(limit_lot_constraints["max_quantity"])),
+            Decimal(str(market_lot_constraints["max_quantity"])),
+        )
+        market_lot_effective = {
+            "step_size": str(market_effective_step),
+            "min_quantity": str(market_effective_min),
+            "max_quantity": str(effective_market_max),
+            "source": "MARKET_LOT_SIZE intersected with LOT_SIZE",
+            "valid": market_order_constraints_valid,
+        }
+    except (ArithmeticError, TypeError, ValueError):
+        market_lot_effective = {
+            "step_size": None, "min_quantity": None, "max_quantity": None,
+            "source": "UNAVAILABLE", "valid": False,
+        }
+
+    filter_reasons = []
+    if "MARKET" not in order_types:
+        filter_reasons.append("MARKET is not listed in exchangeInfo orderTypes")
+    elif not market_order_constraints_valid:
+        filter_reasons.append("MARKET order filters are missing or invalid")
+    if "LIMIT" not in order_types:
+        filter_reasons.append("LIMIT is not listed in exchangeInfo orderTypes")
+    elif not limit_order_constraints_valid:
+        filter_reasons.append("LIMIT order filters are missing or invalid")
+    if not price_constraints["valid"]:
+        filter_reasons.append("PRICE_FILTER tickSize is missing or invalid")
+    if not notional_constraints["valid"]:
+        filter_reasons.append("NOTIONAL/MIN_NOTIONAL constraints are missing or invalid")
+
     return {
         "symbol": normalized,
         "provider": "Binance Spot",
@@ -217,9 +393,22 @@ async def get_binance_spot_execution_context(symbol: str) -> dict[str, Any]:
         "bid_depth_usd": bid_depth_quote * quote_asset_usd_rate if quote_asset_usd_rate else 0.0,
         "ask_depth_usd": ask_depth_quote * quote_asset_usd_rate if quote_asset_usd_rate else 0.0,
         "tick_size": tick_size,
-        "step_size": str(lot_filter.get("stepSize") or ""),
-        "min_quantity": str(lot_filter.get("minQty") or ""),
-        "min_notional": str(notional_filter.get("minNotional") or notional_filter.get("minNotionalValue") or ""),
+        "step_size": str(limit_lot_constraints["step_size"] or ""),
+        "min_quantity": str(limit_lot_constraints["min_quantity"] or ""),
+        "min_notional": str(notional_constraints["min_notional"] or ""),
+        "order_types": order_types,
+        "base_asset_precision": info.get("base_asset_precision"),
+        "quote_asset_precision": info.get("quote_asset_precision"),
+        "quote_precision": info.get("quote_precision"),
+        "quote_order_qty_market_allowed": info.get("quote_order_qty_market_allowed") is True,
+        "price_filter": price_constraints,
+        "limit_lot_size": limit_lot_constraints,
+        "market_lot_size": market_lot_constraints,
+        "market_lot_size_effective": market_lot_effective,
+        "notional_filter": notional_constraints,
+        "limit_order_constraints_valid": limit_order_constraints_valid,
+        "market_order_constraints_valid": market_order_constraints_valid,
+        "order_filter_rejection_reason": "; ".join(filter_reasons) or None,
         "observed_at": datetime.now(timezone.utc).isoformat(),
         "data_sources": {"quote": quote_source_base, "depth": depth_source_base},
     }
@@ -236,6 +425,27 @@ def round_price_to_tick(value: float, tick_size: str, *, round_up: bool) -> floa
         return float(units * tick)
     except (ArithmeticError, ValueError, TypeError):
         raise MarketDataError("Binance returned an invalid price tick size.") from None
+
+
+def _price_within_exchange_filter(value: float, price_filter: Any) -> bool:
+    """Check enabled Binance PRICE_FILTER bounds and tick alignment."""
+    raw = price_filter if isinstance(price_filter, dict) else {}
+    try:
+        price = Decimal(str(value))
+        tick = Decimal(str(raw.get("tick_size") or "0"))
+        minimum = Decimal(str(raw.get("min_price") or "0"))
+        maximum = Decimal(str(raw.get("max_price") or "0"))
+        if not all(item.is_finite() for item in (price, tick, minimum, maximum)) or price <= 0:
+            return False
+        if minimum > 0 and price < minimum:
+            return False
+        if maximum > 0 and price > maximum:
+            return False
+        if tick > 0 and price % tick != 0:
+            return False
+        return True
+    except (ArithmeticError, TypeError, ValueError):
+        return False
 
 
 def select_binance_entry(
@@ -264,10 +474,29 @@ def select_binance_entry(
     limit_depth_floor = float(settings.get("min_limit_depth_usd", settings.get("min_limit_depth_quote", 1000.0)))
     market_drift_cap = float(settings.get("max_market_entry_deviation_atr", 0.20))
     limit_distance_cap = float(settings.get("max_limit_entry_distance_atr", 0.75))
+    is_replay = execution.get("is_replay") is True
+    order_types = {
+        str(value).upper() for value in (execution.get("order_types") or [])
+        if str(value).strip()
+    }
+    market_allowed = is_replay or (
+        "MARKET" in order_types and execution.get("market_order_constraints_valid") is True
+    )
+    limit_allowed = is_replay or (
+        "LIMIT" in order_types and execution.get("limit_order_constraints_valid") is True
+    )
+
+    def within_price_filter(value: float) -> bool:
+        return _price_within_exchange_filter(value, execution.get("price_filter"))
+
     market_price = ask if side == "BUY" else bid
     market_drift = abs(market_price - close) / atr_value
 
-    if spread <= market_spread_cap and depth >= market_depth_floor and market_drift <= market_drift_cap:
+    if (
+        market_allowed and within_price_filter(market_price)
+        and spread <= market_spread_cap and depth >= market_depth_floor
+        and market_drift <= market_drift_cap
+    ):
         return {
             "entry_type": "MARKET",
             "entry_price": market_price,
@@ -286,7 +515,8 @@ def select_binance_entry(
         favorable = candidate < ask if side == "BUY" else candidate > bid
         distance = abs(mid - candidate) / atr_value if candidate > 0 else float("inf")
         if (
-            spread <= limit_spread_cap
+            limit_allowed and within_price_filter(candidate)
+            and spread <= limit_spread_cap
             and depth >= limit_depth_floor
             and favorable
             and distance <= limit_distance_cap
@@ -952,9 +1182,11 @@ async def build_signal(
         if not entry_choice:
             side = None
             quality_filters["execution_quality"] = False
+            filter_detail = execution.get("order_filter_rejection_reason")
             entry_rejection_reason = (
                 "No safe MARKET entry or technically justified LIMIT retracement met the spread, "
-                "liquidity and price-distance rules."
+                "liquidity, order-type, exchange-filter and price-distance rules."
+                + (f" Exchange filter detail: {filter_detail}." if filter_detail else "")
             )
             execution_quality = {
                 "spread_bps": round(float(execution["spread_bps"]), 3),
@@ -974,6 +1206,19 @@ async def build_signal(
             entry_choice["entry_price"] = round_price_to_tick(
                 float(entry_choice["entry_price"]), tick_size, round_up=round_entry_up
             )
+            if not _price_within_exchange_filter(
+                entry_choice["entry_price"], execution.get("price_filter")
+            ):
+                side = None
+                entry_choice = None
+                quality_filters["execution_quality"] = False
+                entry_rejection_reason = (
+                    "Rounded entry price violates the symbol's Binance PRICE_FILTER bounds or tick size."
+                )
+                execution_quality = {
+                    "accepted": False,
+                    "rejection_reason": entry_rejection_reason,
+                }
 
     order_flow_payload: dict[str, Any] = {"status": "NOT_EVALUATED"}
     if symbol == "XAUUSD":
@@ -1103,6 +1348,19 @@ async def build_signal(
                 "step_size": execution["step_size"],
                 "min_quantity": execution["min_quantity"],
                 "min_notional": execution["min_notional"],
+                "order_types": execution.get("order_types", []),
+                "base_asset_precision": execution.get("base_asset_precision"),
+                "quote_asset_precision": execution.get("quote_asset_precision"),
+                "quote_precision": execution.get("quote_precision"),
+                "quote_order_qty_market_allowed": execution.get("quote_order_qty_market_allowed", False),
+                "price_filter": execution.get("price_filter"),
+                "limit_lot_size": execution.get("limit_lot_size"),
+                "market_lot_size": execution.get("market_lot_size"),
+                "market_lot_size_effective": execution.get("market_lot_size_effective"),
+                "notional_filter": execution.get("notional_filter"),
+                "limit_order_constraints_valid": execution.get("limit_order_constraints_valid"),
+                "market_order_constraints_valid": execution.get("market_order_constraints_valid"),
+                "quantity_validation_status": "NOT_CHECKED_NO_ORDER_QUANTITY_IN_SIGNAL",
                 "quote_observed_at": execution["observed_at"],
                 "provider": execution["provider"],
                 "data_mode": "HISTORICAL_REPLAY_ASSUMED" if execution.get("is_replay") else "LIVE_ORDER_BOOK",
@@ -1121,6 +1379,22 @@ async def build_signal(
                 quality_filters["execution_quality"] = True
                 execution_quality["accepted"] = True
                 expiry_seconds = 900 if entry_choice["entry_type"] == "LIMIT" else 60
+
+        if side and entry_choice and symbol != "XAUUSD" and not all(
+            _price_within_exchange_filter(level, execution.get("price_filter"))
+            for level in (entry, sl, tp1, tp2, tp3)
+        ):
+            side = None
+            entry_choice = None
+            quality_filters["execution_quality"] = False
+            entry_rejection_reason = (
+                "Calculated entry/SL/TP levels violate the symbol's Binance PRICE_FILTER bounds or tick size."
+            )
+            execution_quality = {
+                **(execution_quality or {}),
+                "accepted": False,
+                "rejection_reason": entry_rejection_reason,
+            }
 
         if side and entry_choice:
             signal = {
@@ -1146,6 +1420,19 @@ async def build_signal(
                 "confirmations": checks,
                 "risk_distance": round(risk, price_precision),
                 "execution_quality": execution_quality,
+                "exchange_filters": None if execution is None else {
+                    "order_types": execution.get("order_types", []),
+                    "price_filter": execution.get("price_filter") if execution else None,
+                    "limit_lot_size": execution.get("limit_lot_size") if execution else None,
+                    "market_lot_size": execution.get("market_lot_size"),
+                    "market_lot_size_effective": execution.get("market_lot_size_effective"),
+                    "notional_filter": execution.get("notional_filter"),
+                    "base_asset_precision": execution.get("base_asset_precision"),
+                    "quote_asset_precision": execution.get("quote_asset_precision"),
+                    "quote_precision": execution.get("quote_precision"),
+                    "quote_order_qty_market_allowed": execution.get("quote_order_qty_market_allowed", False),
+                    "quantity_validation_status": "NOT_CHECKED_NO_ORDER_QUANTITY_IN_SIGNAL",
+                },
                 "order_flow": order_flow_payload,
             }
     if symbol != "XAUUSD" and side is None and score >= threshold and not entry_rejection_reason:

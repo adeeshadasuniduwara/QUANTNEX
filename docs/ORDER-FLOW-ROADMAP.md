@@ -107,9 +107,9 @@ Only after Spot order-flow is stable:
 
 | Capability | Binance Spot | USDⓈ-M Futures | COIN-M Futures | XAUUSD feed |
 |---|---|---|---|---|
-| Dynamic symbol/instrument metadata | Yes: `/api/v3/exchangeInfo`, active Spot permission/status and symbol filters | Not wired | Not wired | MT5/Twelve Data configuration, not Binance metadata |
+| Dynamic symbol/instrument metadata | Yes: `/api/v3/exchangeInfo`, active Spot permission/status, orderTypes, asset precision and full symbol filters | Not wired | Not wired | MT5/Twelve Data configuration, not Binance metadata |
 | OHLCV signal candles | Yes; public klines with closed-candle freshness checks | Not wired | Not wired | MT5 or Twelve Data |
-| Adaptive MARKET/LIMIT decision | Yes; analytical choice only, with spread/depth/ATR and zone-distance gates | Not wired | Not wired | Reference price only; Binance execution not applicable |
+| Adaptive MARKET/LIMIT decision | Yes; analytical choice only, with spread/depth/ATR/zone gates plus orderTypes and validated exchange filters; quantity still not calculated | Not wired | Not wired | Reference price only; Binance execution not applicable |
 | Aggressor-side trade delta | Yes; recent `aggTrades`, buyer-is-maker semantics | Not wired | Not wired | Not available from current Gold candle/quote adapters |
 | UTC session delta | Only when the current response begins at the UTC session's first aggregate-trade ID and every subsequent ID is contiguous; otherwise unavailable/sample only | Not wired | Not wired | Not available |
 | Persistent CVD | Deterministic state machine exists; not wired to live WebSocket or persistence | Not wired | Not wired | Not available |
@@ -117,6 +117,7 @@ Only after Spot order-flow is stable:
 | Order-book depth | Live REST L2 snapshot; sequence-validated diff state machine exists but is not connected to live stream | Not wired | Not wired | Not available |
 | Funding / open interest / liquidations | Not applicable to Spot | Not wired | Not wired | Not available |
 | Historical trade/depth replay | Not yet; current walk-forward uses candles and assumed execution costs | Not wired | Not wired | Not available |
+| Exchange order constraints | PRICE_FILTER, LOT_SIZE, MARKET_LOT_SIZE (including disabled sub-rules), NOTIONAL/MIN_NOTIONAL and orderTypes preserved; quantity itself is not validated because no size is emitted | Not wired | Not wired | Not applicable |
 
 The current supported crypto signal market is Binance Spot only. A Spot SELL is not a Futures short. The current order-flow feed does not claim true consolidated quoted bid/ask volume: it infers aggressor side from Binance aggregate trades. The REST depth response's local receive timestamp is not an exchange event timestamp and does not replace a WebSocket sequence bridge. The live gate rejects snapshots whose local receive age exceeds five seconds, but this is not a substitute for exchange-event sequencing.
 
@@ -160,8 +161,34 @@ A read-only Binance connector check succeeded independently of GitHub Actions:
 - All 1,373 eligible pairs contained PRICE_FILTER, LOT_SIZE, MARKET_LOT_SIZE and NOTIONAL; none required the legacy MIN_NOTIONAL filter because NOTIONAL was present.
 - BTCUSDT returned recent Spot aggregate trades, a 20-level L2 REST snapshot and five 1-minute candles. This verifies current public endpoint access and sample payloads, not a full 1,373-pair scan or a live signal.
 
-### Newly verified execution-filter gap
+### Execution-filter correction — implemented on branch `fix/binance-spot-exchange-order-filters`
 
-get_binance_spot_symbols() currently caches symbol/base/quote and the filter dictionary, but get_binance_spot_execution_context() consumes only PRICE_FILTER, LOT_SIZE and NOTIONAL. It does not yet preserve/check orderTypes, MARKET_LOT_SIZE, base/quote precision or market-specific min/max quantity constraints. select_binance_entry() can therefore recommend MARKET/LIMIT without checking that the corresponding order type is enabled for that symbol. No orders are placed, but signal execution metadata must be corrected before calling the entry pipeline complete.
+The exchange-filter gap identified above is now addressed in this PR:
 
-Next core fix: preserve full Spot exchange metadata, validate MARKET/LIMIT against orderTypes, report both LOT_SIZE and MARKET_LOT_SIZE constraints, and add fixtures for zero market step/min values, missing filters, and unsupported order types. Then continue with the WebSocket adapter.
+- Dynamic symbol metadata retains `orderTypes`, base/quote precision, `quotePrecision`, `quoteOrderQtyMarketAllowed`, status/permissions and the complete symbol filter map.
+- `PRICE_FILTER.tickSize` is no longer replaced with an invented 1e-8 fallback. A missing/invalid tick makes both entry types ineligible.
+- LIMIT selection requires `LIMIT` in `orderTypes`, a valid `PRICE_FILTER`, `LOT_SIZE` and valid `NOTIONAL`/`MIN_NOTIONAL`.
+- MARKET selection requires `MARKET` in `orderTypes`, valid `MARKET_LOT_SIZE`, the general `LOT_SIZE`, price metadata and notional metadata.
+- Live BTCUSDT `exchangeInfo` was checked directly during this run. Its `MARKET_LOT_SIZE` reports `stepSize=0` and `minQty=0`, while `maxQty` is positive. The implementation records those two sub-rules as disabled and derives effective market quantity step/minimum from `LOT_SIZE`, while intersecting the maximum with `MARKET_LOT_SIZE.maxQty`. This avoids incorrectly disabling MARKET for BTCUSDT and does not invent quantity precision.
+- Signals expose the raw/effective exchange constraints, order types, asset precision and whether quote-order-quantity MARKET is allowed. The payload explicitly says quantity validation was not performed because this signal engine does not yet calculate an order quantity; no actual order is placed.
+- Entry selection refuses unsupported or incomplete MARKET/LIMIT paths rather than silently assuming the order type is available.
+
+Deterministic regression tests cover order-type restrictions, zero-disabled market lot sub-rules, effective MARKET constraints, missing/zero tick rejection, and complete exchange metadata. These tests prove filter handling only; they do not make the signal payload an order ticket.
+
+Source references: [Binance Spot filters](https://github.com/binance/binance-spot-api-docs/blob/master/filters.md) and [live BTCUSDT exchangeInfo](https://data-api.binance.vision/api/v3/exchangeInfo?symbol=BTCUSDT).
+
+Next core phase: implement the read-only WebSocket adapter around the existing `AggTradeCvdState` and `BinanceSpotDepthBook` state machines, then feed only sequence-validated stream state into the signal gate.
+
+## Phase C1.1 — Binance Spot order-filter-aware entry selection (PR in progress)
+
+Branch: `fix/binance-spot-exchange-order-filters`, based on main `5876b9cda4596bad0309574019da5b1d762b9878`.
+
+Changed files:
+- `backend/app/signal_engine.py`: preserve exchangeInfo order/precision fields; parse PRICE_FILTER, LOT_SIZE, MARKET_LOT_SIZE and NOTIONAL/MIN_NOTIONAL; stop inventing tick-size fallbacks; gate MARKET/LIMIT selection against the actual orderTypes and valid symbol filters; include raw/effective constraints in signal metadata.
+- `backend/tests/test_signal_engine.py`: add order-type gating, zero-disabled MARKET lot sub-rule, no-fallback tick and live-shaped exchangeInfo fixtures.
+- `backend/tests/test_signal_pipeline_e2e.py`: make deterministic execution fixtures explicitly declare the exchange order/filter capabilities they assume.
+- This roadmap: update verified capabilities and next step.
+
+Validation pending: run Backend CI, Backend/Web CI, inspect the full diff and added-line secret scan, then merge only if every required check passes. Post-merge CI and the next scheduled dynamic-universe live smoke are still required.
+
+Important boundary: a signal carries the applicable constraints but not a computed base/quote order quantity. It must not be described as an exchange-valid order ticket until position sizing is implemented and every min/max/step/notional filter is checked against the actual quantity.

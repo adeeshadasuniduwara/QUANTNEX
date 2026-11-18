@@ -80,3 +80,21 @@ def test_auto_start_stays_blocked_until_every_gate_passes():
     result = safe_auto_status(AutoTradingConfig(enabled=True), spot_verified=True,
         futures_verified=True, worker_ready=True, protection_ready=False)
     assert result["ready"] is False and result["enabled"] is False
+
+
+def test_spot_only_policy_does_not_require_futures_credentials():
+    cfg = AutoTradingConfig(market_modes=["SPOT"])
+    result = safe_auto_status(cfg, spot_verified=True, futures_verified=False,
+                              worker_ready=True, protection_ready=True)
+    assert result["checks"]["spot_credentials"] is True
+    assert result["checks"]["futures_credentials"] is True
+    assert result["ready"] is True
+
+
+def test_futures_only_policy_does_not_require_spot_credentials():
+    cfg = AutoTradingConfig(market_modes=["USD_M_FUTURES"])
+    result = safe_auto_status(cfg, spot_verified=False, futures_verified=True,
+                              worker_ready=True, protection_ready=True)
+    assert result["checks"]["spot_credentials"] is True
+    assert result["checks"]["futures_credentials"] is True
+    assert result["ready"] is True

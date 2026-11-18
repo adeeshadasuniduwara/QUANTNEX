@@ -11,6 +11,9 @@ from app.binance_demo import (
     _store_credentials,
     _get,
     router,
+    SPOT_BASE,
+    FUTURES_BASE,
+    _credential_keys,
 )
 from app.database import Base
 from app.models import Preference, User
@@ -104,3 +107,25 @@ def test_binance_router_has_separate_spot_and_futures_routes():
     assert "/api/v1/exchanges/binance/test/spot" in paths
     assert "/api/v1/exchanges/binance/test/futures" in paths
     assert "/api/v1/exchanges/binance/connect/spot" in paths
+
+
+def test_demo_trading_uses_binance_demo_hosts_not_legacy_testnets():
+    assert SPOT_BASE == "https://demo-api.binance.com"
+    assert FUTURES_BASE == "https://demo-fapi.binance.com"
+    assert "testnet" not in SPOT_BASE
+    assert "testnet" not in FUTURES_BASE
+
+
+def test_spot_and_futures_demo_account_verification_paths_are_correct():
+    assert _credential_keys("spot") == (
+        "binance_spot_api_key_enc",
+        "binance_spot_api_secret_enc",
+        "https://demo-api.binance.com",
+        "/api/v3/account",
+    )
+    assert _credential_keys("futures") == (
+        "binance_futures_api_key_enc",
+        "binance_futures_api_secret_enc",
+        "https://demo-fapi.binance.com",
+        "/fapi/v2/account",
+    )

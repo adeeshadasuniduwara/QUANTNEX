@@ -21,6 +21,19 @@ async function refresh(){
   $("bnOpenTrades").value=r.max_open_trades??1;
   $("bnRiskPercent").value=r.risk_per_trade_percent??0.5;
   $("bnDailyLoss").value=r.max_daily_loss_percent??2;
+  const cfg=data.auto_config||{};
+  const setMulti=(id,values)=>{const el=$(id);if(el)Array.from(el.options).forEach(o=>o.selected=(values||[]).includes(o.value));};
+  setMulti("bnMarketModes",cfg.market_modes||["SPOT","USD_M_FUTURES"]);
+  setMulti("bnStrategies",cfg.strategies||["SCALPING","SWING"]);
+  $("bnAutoDaily").value=cfg.max_trades_per_day??5;
+  $("bnAutoOpen").value=cfg.max_open_positions??2;
+  $("bnAutoLeverage").value=cfg.futures_leverage_cap??3;
+  $("bnAutoDrawdown").value=cfg.max_total_drawdown_percent??5;
+  $("bnAutoVolume").value=cfg.min_24h_quote_volume??10000000;
+  $("bnAutoSpread").value=cfg.max_spread_bps??12;
+  $("bnAutoDca").checked=cfg.dca_enabled===true;
+  const checks=data.readiness?.checks||{};
+  $("bnReadiness").textContent="Readiness · "+Object.entries(checks).map(([k,v])=>k.replaceAll("_"," ")+": "+(v?"PASS":"WAIT")).join(" · ");
   status("Binance DEMO testnet · "+(data.spot_connected&&data.futures_connected?"Both connections verified.":"Connect both demo environments to continue.")+" Auto Trading is "+(data.auto_trading_enabled?"ON":"OFF")+".");
  }catch(error){status("Local API unavailable: "+error.message,true);}
 }
@@ -57,6 +70,31 @@ $("bnAutoOff").addEventListener("click",async()=>{
  try{await request("/auto-trading",{method:"PUT",body:JSON.stringify({enabled:false})});status("Emergency stop confirmed · Auto Trading OFF.");await refresh();}
  catch(error){status("Could not confirm Auto OFF: "+error.message,true);}
 });
+
+$("bnAutoConfigForm").addEventListener("submit",async event=>{
+ event.preventDefault();
+ const selected=id=>Array.from($(id).selectedOptions).map(option=>option.value);
+ try{
+  const dca=$("bnAutoDca").checked;
+  const payload={
+   enabled:false,environment:"BINANCE_TESTNET",
+   market_modes:selected("bnMarketModes"),strategies:selected("bnStrategies"),
+   max_trades_per_day:Number($("bnAutoDaily").value),
+   max_open_positions:Number($("bnAutoOpen").value),
+   risk_per_trade_percent:0.5,max_daily_loss_percent:2,
+   max_total_drawdown_percent:Number($("bnAutoDrawdown").value),
+   futures_leverage_cap:Number($("bnAutoLeverage").value),futures_margin_type:"ISOLATED",
+   dca_enabled:dca,dca_max_addons:dca?1:0,
+   min_24h_quote_volume:Number($("bnAutoVolume").value),
+   max_spread_bps:Number($("bnAutoSpread").value),
+   min_reward_risk:1.5,max_signal_age_seconds:90
+  };
+  const saved=await request("/auto-config",{method:"PUT",body:JSON.stringify(payload)});
+  status(saved.message);
+  await refresh();
+ }catch(error){status("Could not save autonomous policy: "+error.message,true);}
+});
+
 $("bnRefresh").addEventListener("click",refresh);
 document.addEventListener("DOMContentLoaded",refresh);
 refresh();

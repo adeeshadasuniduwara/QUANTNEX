@@ -94,7 +94,8 @@ $("bnAutoConfigForm").addEventListener("submit",async event=>{
   await refresh();
  }catch(error){status("Could not save autonomous policy: "+error.message,true);}
 });
-\n$("bnRefresh").addEventListener("click",refresh);
+
+$("bnRefresh").addEventListener("click",refresh);
 document.addEventListener("DOMContentLoaded",refresh);
 refresh();
 })();

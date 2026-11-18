@@ -102,7 +102,7 @@ class LauncherRuntimeTests(unittest.TestCase):
 
     def test_pre_update_launcher_passes_browser_suppression_to_new_source(self):
         from types import SimpleNamespace
-        fake_updater = SimpleNamespace(check_and_apply=lambda _root: {
+        fake_updater = SimpleNamespace(check_and_apply=lambda _root, force_reconcile=False: {
             "status": "updated", "message": "updated", "version": "main@abc1234",
             "changed_files": ["run_quantnex_services.py"], "restart_required": True,
         })

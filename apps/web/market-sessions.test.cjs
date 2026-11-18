@@ -48,3 +48,17 @@ assert.equal(session(duringNewYork, "new-york").transitionAt.toISOString(), "202
 assert.equal(formatDuration(3661000), "1h 01m");
 assert.equal(formatDuration(61000), "1m 01s");
 console.log("QUANTNEX live market-session clock: timezone, DST, overlap, weekend and countdown tests passed.");
+
+
+// The live clocks and session board belong beside QUANTNEX VIEW, not the Overview page.
+const fs = require("node:fs");
+const html = fs.readFileSync(require.resolve("./index.html"), "utf8");
+const chartPanel = html.indexOf('<section class="panel chart-panel qx-chart-panel"');
+const chartHost = html.indexOf('id="qxChartHost"', chartPanel);
+const chartEnd = html.indexOf("</section>", chartHost);
+const sessionsPanel = html.indexOf('<section class="qx-chart-sessions"');
+assert.ok(chartPanel >= 0 && chartHost > chartPanel && chartEnd > chartHost);
+assert.ok(sessionsPanel > chartEnd, "market sessions must render immediately after the live chart");
+assert.equal(html.includes('class="qx-overview-sessions"'), false, "remove the duplicate Overview placement");
+assert.ok(html.includes('id="qxColomboTime"') && html.includes('id="qxNewYorkTime"'));
+console.log("QUANTNEX chart session panel placement test passed.");

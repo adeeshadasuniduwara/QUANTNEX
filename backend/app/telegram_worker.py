@@ -8,7 +8,7 @@ import httpx
 from sqlalchemy import select, func, or_
 from .database import SessionLocal
 from .models import GoalContribution, PaperTrade, PersonalGoal, Preference, SignalTrade, SignalTradeEvent
-from .security import decrypt_secret
+from .security import decrypt_secret, encrypt_secret
 from .config import TWELVE_DATA_API_KEY, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL, QUANTNEX_BINANCE_GATEWAY_URL
 from .signal_engine import build_signal, MarketDataError, gold_feed_configured, gold_feed_provider
 from .events import event_hub
@@ -30,10 +30,15 @@ async def _create_binance_mobile_setup_link(client: httpx.AsyncClient, db, user_
         raise RuntimeError("The secure Binance gateway HTTPS URL is not configured.")
     if not str(chat_id).isdigit() or int(chat_id) <= 0:
         raise RuntimeError("For security, mobile Binance setup must be started from a private Telegram chat.")
-    workspace_key = _get(db, user_id, "binance_gateway_workspace_key")
-    if not workspace_key:
+    stored_workspace_key = _get(db, user_id, "binance_gateway_workspace_key")
+    if stored_workspace_key:
+        try:
+            workspace_key = decrypt_secret(stored_workspace_key)
+        except ValueError as exc:
+            raise RuntimeError("The saved gateway workspace key cannot be decrypted. Check QUANTNEX_SECRET_KEY.") from exc
+    else:
         workspace_key = secrets.token_urlsafe(48)
-        _set(db, user_id, "binance_gateway_workspace_key", workspace_key)
+        _set(db, user_id, "binance_gateway_workspace_key", encrypt_secret(workspace_key))
         db.commit()
     response = await client.post(
         QUANTNEX_BINANCE_GATEWAY_URL + "/v1/setup-sessions",
@@ -49,9 +54,13 @@ async def _create_binance_mobile_setup_link(client: httpx.AsyncClient, db, user_
 
 
 async def _binance_mobile_status(client: httpx.AsyncClient, db, user_id: int) -> str:
-    workspace_key = _get(db, user_id, "binance_gateway_workspace_key")
-    if not workspace_key:
+    stored_workspace_key = _get(db, user_id, "binance_gateway_workspace_key")
+    if not stored_workspace_key:
         return "🔷 Binance TESTNET: NOT CONNECTED. Use /binance to create a secure phone setup link."
+    try:
+        workspace_key = decrypt_secret(stored_workspace_key)
+    except ValueError:
+        return "Binance gateway workspace key needs recovery. Check QUANTNEX_SECRET_KEY before reconnecting."
     response = await client.get(
         QUANTNEX_BINANCE_GATEWAY_URL + "/v1/workspaces/status",
         headers={"X-QUANTNEX-Workspace-Key": workspace_key},

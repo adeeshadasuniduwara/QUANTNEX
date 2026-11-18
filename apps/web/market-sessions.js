@@ -185,7 +185,9 @@
     if (active) {
       active.dataset.state = snapshot.active.length ? "open" : "closed";
       const title = snapshot.active.length
-        ? (snapshot.overlap ? snapshot.active.map(function (item) { return item.name.replace(" · Tokyo", ""); }).join(" + ") + " OVERLAP" : snapshot.active[0].name + " SESSION")
+        ? "RUNNING NOW · " + (snapshot.overlap
+          ? snapshot.active.map(function (item) { return item.name.replace(" · Tokyo", ""); }).join(" + ") + " OVERLAP"
+          : snapshot.active[0].name + " SESSION")
         : "NO MAJOR SESSION OPEN";
       active.textContent = title;
     }

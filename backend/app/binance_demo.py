@@ -96,7 +96,7 @@ def _credential_keys(exchange: str) -> tuple[str, str, str, str]:
         return ("binance_spot_api_key_enc", "binance_spot_api_secret_enc", SPOT_BASE, "/api/v3/account")
     if exchange == "futures":
         return ("binance_futures_api_key_enc", "binance_futures_api_secret_enc", FUTURES_BASE, "/fapi/v3/account")
-    raise ValueError("Unsupported Binance testnet market.")
+    raise ValueError("Unsupported Binance Demo Trading market.")
 
 
 class BinanceConnect(BaseModel):

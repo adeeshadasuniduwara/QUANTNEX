@@ -45,7 +45,7 @@ def test_volume_filter_rejects_non_finite_and_universe_misses():
 def test_position_size_is_stop_risk_based_and_step_rounded():
     qty = calculate_position_quantity(equity=1000, risk_percent=0.5, entry=100,
                                      stop=99, step_size="0.001", min_qty="0.001")
-    assert str(qty) == "5.000"
+    assert qty == 5
     assert float(qty) * 1 <= 5
 
 

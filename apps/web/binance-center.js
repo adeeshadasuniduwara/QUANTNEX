@@ -15,6 +15,8 @@ async function refresh(){
   const data=await request("/status");
   $("bnSpotState").textContent=data.spot_connected?"CONNECTED":"NOT CONNECTED";
   $("bnFuturesState").textContent=data.futures_connected?"CONNECTED":"NOT CONNECTED";
+  $("bnSpotCredentialState").textContent=data.spot_connected?"Saved · encrypted":"Not connected";
+  $("bnFuturesCredentialState").textContent=data.futures_connected?"Saved · encrypted":"Not connected";
   $("bnAutoState").textContent=data.auto_trading_enabled?"ON":"OFF";
   const r=data.risk||{};
   $("bnDailyTrades").value=r.max_trades_per_day??1;
@@ -37,16 +39,41 @@ async function refresh(){
   status("Binance DEMO testnet · "+(data.spot_connected&&data.futures_connected?"Both connections verified.":"Connect both demo environments to continue.")+" Auto Trading is "+(data.auto_trading_enabled?"ON":"OFF")+".");
  }catch(error){status("Local API unavailable: "+error.message,true);}
 }
-$("bnConnectForm").addEventListener("submit",async event=>{
- event.preventDefault();const button=$("bnConnect");busy(button,true);
+const connectExchange=async(exchange,formId,buttonId,keyId,secretId)=>{
+ const form=$(formId),button=$(buttonId);busy(button,true);
  try{
-  const data=await request("/connect",{method:"POST",body:JSON.stringify({
-   spot_api_key:$("bnSpotKey").value.trim(),spot_api_secret:$("bnSpotSecret").value.trim(),
-   futures_api_key:$("bnFuturesKey").value.trim(),futures_api_secret:$("bnFuturesSecret").value.trim()
+  const data=await request("/connect/"+exchange,{method:"POST",body:JSON.stringify({
+   api_key:$(keyId).value.trim(),api_secret:$(secretId).value.trim()
   })});
-  $("bnConnectForm").reset();status(data.message);await refresh();
- }catch(error){status("Connection failed: "+error.message,true);}
- finally{busy(button,false,"Verify & connect both testnets");}
+  form.reset();status(data.message);await refresh();
+ }catch(error){status("Could not connect "+exchange+": "+error.message,true);}
+ finally{busy(button,false,exchange==="spot"?"Verify & save Spot":"Verify & save Futures");}
+};
+$("bnSpotConnectForm").addEventListener("submit",event=>{event.preventDefault();connectExchange("spot","bnSpotConnectForm","bnSpotConnect","bnSpotKey","bnSpotSecret");});
+$("bnFuturesConnectForm").addEventListener("submit",event=>{event.preventDefault();connectExchange("futures","bnFuturesConnectForm","bnFuturesConnect","bnFuturesKey","bnFuturesSecret");});
+const testExchange=async exchange=>{
+ try{const data=await request("/test/"+exchange,{method:"POST"});status(exchange.toUpperCase()+": "+(data.connected?"saved credentials verified":"not verified"+(data.reason? " · "+data.reason:"")),!data.connected);await refresh();}
+ catch(error){status("Connection test failed: "+error.message,true);}
+};
+$("bnSpotTest").addEventListener("click",()=>testExchange("spot"));
+$("bnFuturesTest").addEventListener("click",()=>testExchange("futures"));
+const disconnectExchange=async exchange=>{
+ if(!window.confirm("Remove only the saved Binance "+exchange.toUpperCase()+" Testnet credentials?"))return;
+ try{await request("/connect/"+exchange,{method:"DELETE"});status(exchange.toUpperCase()+" credentials removed. The other exchange credentials are unchanged.");await refresh();}
+ catch(error){status("Disconnect failed: "+error.message,true);}
+};
+$("bnSpotDisconnect").addEventListener("click",()=>disconnectExchange("spot"));
+$("bnFuturesDisconnect").addEventListener("click",()=>disconnectExchange("futures"));
+$("bnTest").addEventListener("click",async()=>{
+ const spot=await request("/test/spot",{method:"POST"});
+ const futures=await request("/test/futures",{method:"POST"});
+ status("Spot: "+(spot.connected?"verified":"not configured/verified")+" · Futures: "+(futures.connected?"verified":"not configured/verified"));
+ await refresh();
+});
+$("bnDisconnect").addEventListener("click",async()=>{
+ if(!window.confirm("Remove BOTH saved Binance Testnet credential pairs?"))return;
+ try{await request("/connect",{method:"DELETE"});status("Both Binance testnet connections disconnected.");await refresh();}
+ catch(error){status("Disconnect failed: "+error.message,true);}
 });
 $("bnRiskForm").addEventListener("submit",async event=>{
  event.preventDefault();

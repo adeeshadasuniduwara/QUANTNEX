@@ -63,12 +63,15 @@ async def _verify(base: str, api_key: str, secret: str, path: str) -> dict:
         async with httpx.AsyncClient(timeout=httpx.Timeout(12, connect=5)) as client:
             response = await client.get(base + path, params=_signed_params(secret), headers=headers)
         if response.status_code in (401, 403):
-            raise HTTPException(status_code=422, detail="Binance rejected the API key or its Demo Trading API permissions.")
+            raise HTTPException(status_code=422, detail="Binance Demo Trading rejected the credentials. Check that both values are the Demo API key/secret pair, that the key is active, and that API access is permitted.")
         if response.status_code == 429 or response.status_code >= 500:
             raise HTTPException(status_code=503, detail="Binance Demo Trading is temporarily rate-limited or unavailable. Try again shortly.")
         if response.status_code >= 400:
             try:
-                detail = response.json().get("msg", "Binance credential check failed.")
+                payload = response.json()
+                code = payload.get("code")
+                message = payload.get("msg", "Binance credential check failed.")
+                detail = f"Binance error {code}: {message}" if code is not None else message
             except ValueError:
                 detail = "Binance credential check failed."
             raise HTTPException(status_code=422, detail=str(detail)[:240])
@@ -93,7 +96,7 @@ def _credential_keys(exchange: str) -> tuple[str, str, str, str]:
     if exchange == "spot":
         return ("binance_spot_api_key_enc", "binance_spot_api_secret_enc", SPOT_BASE, "/api/v3/account")
     if exchange == "futures":
-        return ("binance_futures_api_key_enc", "binance_futures_api_secret_enc", FUTURES_BASE, "/fapi/v2/account")
+        return ("binance_futures_api_key_enc", "binance_futures_api_secret_enc", FUTURES_BASE, "/fapi/v3/account")
     raise ValueError("Unsupported Binance testnet market.")
 
 
@@ -105,8 +108,8 @@ class BinanceConnect(BaseModel):
 
 
 class BinanceCredentialPair(BaseModel):
-    api_key: str = Field(min_length=20, max_length=160)
-    api_secret: str = Field(min_length=20, max_length=160)
+    api_key: str = Field(min_length=1, max_length=256)
+    api_secret: str = Field(min_length=1, max_length=256)
 
 
 class BinanceRiskSettings(BaseModel):
@@ -124,7 +127,7 @@ class BinanceAutoTrading(BaseModel):
 async def connect_binance(payload: BinanceConnect, db: Session = Depends(get_db)):
     user = _workspace(db)
     spot = await _verify(SPOT_BASE, payload.spot_api_key.strip(), payload.spot_api_secret.strip(), "/api/v3/account")
-    futures = await _verify(FUTURES_BASE, payload.futures_api_key.strip(), payload.futures_api_secret.strip(), "/fapi/v2/account")
+    futures = await _verify(FUTURES_BASE, payload.futures_api_key.strip(), payload.futures_api_secret.strip(), "/fapi/v3/account")
     for key, value in (
         ("binance_spot_api_key_enc", encrypt_secret(payload.spot_api_key.strip())),
         ("binance_spot_api_secret_enc", encrypt_secret(payload.spot_api_secret.strip())),
@@ -158,7 +161,7 @@ async def connect_binance_spot(payload: BinanceCredentialPair, db: Session = Dep
 @router.post("/connect/futures")
 async def connect_binance_futures(payload: BinanceCredentialPair, db: Session = Depends(get_db)):
     user = _workspace(db)
-    account = await _verify(FUTURES_BASE, payload.api_key.strip(), payload.api_secret.strip(), "/fapi/v2/account")
+    account = await _verify(FUTURES_BASE, payload.api_key.strip(), payload.api_secret.strip(), "/fapi/v3/account")
     _store_credentials(db, user.id, "futures", payload.api_key, payload.api_secret)
     db.commit()
     return {"connected": True, "exchange": "futures", "mode": "binance_demo",
@@ -305,7 +308,7 @@ async def test_binance_connection(db: Session = Depends(get_db)):
     user = _workspace(db)
     values = {
         "spot": ("binance_spot_api_key_enc", "binance_spot_api_secret_enc", SPOT_BASE, "/api/v3/account"),
-        "futures": ("binance_futures_api_key_enc", "binance_futures_api_secret_enc", FUTURES_BASE, "/fapi/v2/account"),
+        "futures": ("binance_futures_api_key_enc", "binance_futures_api_secret_enc", FUTURES_BASE, "/fapi/v3/account"),
     }
     results = {}
     for name, (key_name, secret_name, base, path) in values.items():

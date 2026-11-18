@@ -105,17 +105,19 @@ class TelegramConnectRequest(BaseModel):
 class AutoSignalSettingsRequest(BaseModel):
     enabled: bool = False
     interval_seconds: int = Field(default=180, ge=60, le=3600)
-    symbols: list[str] = Field(default_factory=lambda: ["BTCUSDT","ETHUSDT","SOLUSDT"], max_length=50)
+    universe_mode: str = Field(default="ALL_BINANCE_SPOT", pattern="^(ALL_BINANCE_SPOT|SELECTED)$")
+    batch_size: int = Field(default=50, ge=5, le=100)
+    symbols: list[str] = Field(default_factory=list, max_length=50)
 
     @field_validator("symbols")
     @classmethod
     def valid_auto_signal_symbols(cls, values):
         normalized = list(dict.fromkeys(str(value).strip().upper() for value in values))
-        if not normalized or any(
+        if any(
             value != "XAUUSD" and (not value.isalnum() or len(value) < 5 or len(value) > 30)
             for value in normalized
         ):
-            raise ValueError("Select one or more valid Binance pair symbols or XAUUSD.")
+            raise ValueError("Choose valid Binance pair symbols or XAUUSD.")
         return normalized
 
 class SignalSettingsRequest(BaseModel):

@@ -70,7 +70,7 @@ def test_stream_snapshot_waits_for_depth_sequence_bridge_then_exposes_stream_cvd
     assert ready["order_flow"]["depth_is_continuous"] is True
     assert ready["order_flow"]["cvd_value"] == 1.0
     assert ready["order_flow"]["session_delta"] is None
-    assert ready["order_flow"]["session_delta_scope"] == "SAMPLE_SINCE_STREAM_SEED"
+    assert ready["order_flow"]["session_delta_scope"] == "INCOMPLETE_UTC_SESSION_SAMPLE"
 
 
 def test_stream_recovers_trade_id_gap_with_bounded_rest_backfill(monkeypatch):

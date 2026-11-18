@@ -383,7 +383,10 @@ def _market_session_open_ids(snapshot: dict[str, dict[str, Any]]) -> str:
 async def _notify_new_market_sessions(client, db, user_id: int, token: str, chat_id: str,
                                       now: datetime | None = None) -> list[str]:
     """Notify a connected user once when a major session opens; persist state to avoid duplicates."""
-    snapshot = _market_session_snapshot(now)
+    instant = now or datetime.now(timezone.utc)
+    if instant.tzinfo is None:
+        instant = instant.replace(tzinfo=timezone.utc)
+    snapshot = _market_session_snapshot(instant)
     current_ids = _market_session_open_ids(snapshot)
     previous_raw = _get(db, user_id, "telegram_market_sessions_open", "")
     # First observation establishes a baseline; it must not send misleading startup alerts.
@@ -402,7 +405,7 @@ async def _notify_new_market_sessions(client, db, user_id: int, token: str, chat
     lines = []
     for session_id in newly_opened:
         item = snapshot[session_id]
-        remaining = max(0, int((item["close_utc"] - (now or datetime.now(timezone.utc)).astimezone(timezone.utc)).total_seconds()))
+        remaining = max(0, int((item["close_utc"] - instant.astimezone(timezone.utc)).total_seconds()))
         hours, remainder = divmod(remaining, 3600)
         minutes = remainder // 60
         countdown = (str(hours) + "h " if hours else "") + str(minutes) + "m"
@@ -909,6 +912,7 @@ async def telegram_worker() -> None:
                         except (httpx.HTTPError,ValueError) as exc:
                             logger.warning("Telegram polling failed for local user %s: %s",user_id,type(exc).__name__)
                         await _deliver_pending_signal_events(client, db, user_id, token, chat_id)
+                        await _notify_new_market_sessions(client, db, user_id, token, chat_id)
                         now=asyncio.get_running_loop().time()
                         # Automatic signals scan each selected market independently.
                         auto_raw=_get(db,user_id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}')

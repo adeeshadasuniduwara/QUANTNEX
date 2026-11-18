@@ -1,4 +1,5 @@
 import asyncio
+import math
 
 from app.market_data import get_market_overview, gold_lkr_per_gram
 
@@ -58,7 +59,6 @@ def test_market_overview_combines_provider_fallbacks(monkeypatch):
 
 
 def test_market_prices_reject_nan_and_infinity():
-    import math
     import pytest
     import app.market_data as market_data
 

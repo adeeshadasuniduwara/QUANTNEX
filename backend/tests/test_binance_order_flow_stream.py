@@ -147,13 +147,13 @@ def test_bootstrap_buffers_live_trade_and_depth_events_until_rest_snapshot_is_re
         }, "fixture-depth"
 
     monkeypatch.setattr(stream, "_fetch_public", fake_fetch)
-    recv_task = asyncio.run(stream._bootstrap(FakeWebSocket(), object()))
-    recv_task.cancel()
-    try:
-        asyncio.run(recv_task)
-    except (asyncio.CancelledError, RuntimeError):
-        pass
 
-    assert stream.trade_state.snapshot()["last_agg_trade_id"] == 101
-    assert stream.depth_book.snapshot()["sequence_validated"] is True
-    assert stream.snapshot()["signal_ready"] is True
+    async def run_bootstrap():
+        recv_task = await stream._bootstrap(FakeWebSocket(), object())
+        assert stream.trade_state.snapshot()["last_agg_trade_id"] == 101
+        assert stream.depth_book.snapshot()["sequence_validated"] is True
+        assert stream.snapshot()["signal_ready"] is True
+        recv_task.cancel()
+        await asyncio.gather(recv_task, return_exceptions=True)
+
+    asyncio.run(run_bootstrap())

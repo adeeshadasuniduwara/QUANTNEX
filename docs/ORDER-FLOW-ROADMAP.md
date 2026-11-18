@@ -61,11 +61,11 @@ Merged to `main` as `3666519818fb20ded9c1be9259c7e004e8f06dda`. PR CI passed (30
 - No persistent cache, WebSocket reconnect/backoff, historical order-flow replay, or all-symbol continuous scanner yet.
 
 
-## Phase B2.1 — public REST endpoint failover (in progress)
+## Phase B2.1 — public REST endpoint failover (merged PR #188)
 
 Branch: `fix/binance-public-data-endpoint-failover`.
 
-A scheduled live smoke run failed at Binance Spot `exchangeInfo` discovery before any pair was scanned. The implementation adds a shared public-only REST helper that prefers `data-api.binance.vision`, then falls back to official Binance REST hosts. It retries transport/invalid-JSON/server/408/425 failures, but stops on 403/451 WAF or geo restrictions, 418/429 rate limits and ordinary client validation errors. The helper is restricted to HTTPS origins and public `/api/v3` routes, caps each host attempt at 3.5 seconds (1.5-second connect timeout), limits concurrency per event loop, and records the successful source host and remembers the last successful host per event loop. It is wired into symbol discovery, execution context, candle/history requests and order-flow REST reads. Mocked host-failover tests passed on PR #188 head `e2114a0076875646707188f8d6c5882030e7f4df`: 314 backend tests on Python 3.12 and 3.14 plus Web checks. PR #188 is mergeable; the next scheduled smoke run must still verify actual GitHub-runner reachability.
+A scheduled live smoke run failed at Binance Spot `exchangeInfo` discovery before any pair was scanned. The implementation adds a shared public-only REST helper that prefers `data-api.binance.vision`, then falls back to official Binance REST hosts. It retries transport/invalid-JSON/server/408/425 failures, but stops on 403/451 WAF or geo restrictions, 418/429 rate limits and ordinary client validation errors. The helper is restricted to HTTPS origins and public `/api/v3` routes, caps each host attempt at 3.5 seconds (1.5-second connect timeout), limits concurrency per event loop, and records the successful source host and remembers the last successful host per event loop. It is wired into symbol discovery, execution context, candle/history requests and order-flow REST reads. Mocked host-failover tests passed on PR #188 head `e2114a0076875646707188f8d6c5882030e7f4df`: 314 backend tests on Python 3.12 and 3.14 plus Web checks. PR #188 merged to main as `a8fc002b214a037fd4e1ba63e9c68223444684b1`. The latest scheduled Live Crypto Signal Smoke run observed in this audit was successful on 2026-11-17 09:12:45 UTC; it scans a rotating sample, not every eligible pair.
 
 ## Phase B3 — continuous ingestion (next)
 
@@ -190,6 +190,17 @@ Changed files:
 - `backend/tests/test_signal_pipeline_e2e.py`: make deterministic execution fixtures explicitly declare the exchange order/filter capabilities they assume.
 - This roadmap: update verified capabilities and next step.
 
-Validation pending: run Backend CI, Backend/Web CI, inspect the full diff and added-line secret scan, then merge only if every required check passes. Post-merge CI and the next scheduled dynamic-universe live smoke are still required.
+PR #202 checks passed on head `ecc4454feeaac2e3dcaab72b696b6632abd6e518`: Backend CI, Backend/Web CI, Python 3.12 tests, Python 3.14 tests and web-check all succeeded. The compare shows 9 commits ahead and 0 behind main; GitHub reports mergeable. The full diff is limited to the signal engine, two deterministic test files and this roadmap; the added-line secret scan found no credential patterns. Merge is the next action; post-merge main verification and CI are still required.
 
 Important boundary: a signal carries the applicable constraints but not a computed base/quote order quantity. It must not be described as an exchange-valid order ticket until position sizing is implemented and every min/max/step/notional filter is checked against the actual quantity.
+
+
+## Live Binance public sample — 2026-11-18 06:57 UTC
+
+A separate read-only Binance connector check verified current Spot public data for BTCUSDT (not a QUANTNEX-generated signal):
+- Exchange metadata: `TRADING`, Spot enabled, `LIMIT` and `MARKET` allowed, tick `0.01`, LOT_SIZE step `0.00001`, min notional `5 USDT`.
+- MARKET_LOT_SIZE: `stepSize=0`, `minQty=0`, `maxQty=158.28000225`; effective market step/min therefore inherit LOT_SIZE while the market-specific max remains capped.
+- 20 recent aggregate trades were returned; latest trade age was about 0.9 seconds at the sampled exchange server time. In that small window aggressive buy base volume was `0.00501 BTC`, aggressive sell volume `0.04784 BTC`, and inferred base delta `-0.04283 BTC`.
+- Top-10 L2 quote-notional imbalance was about `-0.978` (ask-heavy) and best spread about `0.00155 bps`. This is a short sample and can change immediately; it is not a directional signal or a backtest result.
+
+The daily GitHub smoke run is a separate rotating 20-pair sample from the dynamic Spot universe. Its latest observed scheduled run succeeded on 2026-11-17, but no same-day full-universe run was available in this audit. The live connector check above validates current BTCUSDT data only.

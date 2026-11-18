@@ -1120,3 +1120,15 @@ def test_binance_price_filter_never_invents_a_tick_size():
 
     result = _normalise_price_filter({"minPrice": "0", "maxPrice": "0", "tickSize": "0"})
     assert result["valid"] is False
+
+
+
+def test_binance_price_filter_checks_bounds_and_tick_alignment():
+    from app.signal_engine import _price_within_exchange_filter
+
+    rules = {"tick_size": "0.01", "min_price": "1.00", "max_price": "100.00"}
+    assert _price_within_exchange_filter(1.00, rules) is True
+    assert _price_within_exchange_filter(100.00, rules) is True
+    assert _price_within_exchange_filter(0.99, rules) is False
+    assert _price_within_exchange_filter(100.01, rules) is False
+    assert _price_within_exchange_filter(10.001, rules) is False

@@ -1,0 +1,35 @@
+name: QUANTNEX Binance Gateway CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/binance-gateway/**"
+      - ".github/workflows/binance-gateway-ci.yml"
+  pull_request:
+    paths:
+      - "services/binance-gateway/**"
+      - ".github/workflows/binance-gateway-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  gateway-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/binance-gateway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install gateway dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Compile gateway
+        run: python -m compileall -q app.py
+      - name: Test gateway security and session lifecycle
+        run: pytest -q

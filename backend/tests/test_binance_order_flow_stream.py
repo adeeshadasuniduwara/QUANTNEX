@@ -120,7 +120,7 @@ def test_bootstrap_buffers_live_trade_and_depth_events_until_rest_snapshot_is_re
     now = datetime.now(timezone.utc)
     stream = BinanceSpotOrderFlowStream("BTCUSDT", "0.1")
 
-    live_trade = trade(101, 100.1, 1, now - timedelta(seconds=1), False)
+    live_trade = {**trade(101, 100.1, 1, now - timedelta(seconds=1), False), "e": "aggTrade"}
     depth_event = {
         "e": "depthUpdate", "s": "BTCUSDT", "U": 201, "u": 201,
         "b": [["100", "3"]], "a": [],

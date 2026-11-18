@@ -64,35 +64,6 @@ const disconnectExchange=async exchange=>{
 };
 $("bnSpotDisconnect").addEventListener("click",()=>disconnectExchange("spot"));
 $("bnFuturesDisconnect").addEventListener("click",()=>disconnectExchange("futures"));
-$("bnTest").addEventListener("click",async()=>{
- const spot=await request("/test/spot",{method:"POST"});
- const futures=await request("/test/futures",{method:"POST"});
- status("Spot: "+(spot.connected?"verified":"not configured/verified")+" · Futures: "+(futures.connected?"verified":"not configured/verified"));
- await refresh();
-});
-$("bnDisconnect").addEventListener("click",async()=>{
- if(!window.confirm("Remove BOTH saved Binance Testnet credential pairs?"))return;
- try{await request("/connect",{method:"DELETE"});status("Both Binance testnet connections disconnected.");await refresh();}
- catch(error){status("Disconnect failed: "+error.message,true);}
-});
-$("bnRiskForm").addEventListener("submit",async event=>{
- event.preventDefault();
- try{
-  const data=await request("/risk",{method:"PUT",body:JSON.stringify({
-   max_trades_per_day:Number($("bnDailyTrades").value),max_open_trades:Number($("bnOpenTrades").value),
-   risk_per_trade_percent:Number($("bnRiskPercent").value),max_daily_loss_percent:Number($("bnDailyLoss").value)
-  })});
-  status("Risk limits saved. Daily trade cap: "+data.risk.max_trades_per_day+".");
- }catch(error){status("Could not save risk limits: "+error.message,true);}
-});
-$("bnTest").addEventListener("click",async()=>{
- try{const data=await request("/test",{method:"POST"});status("Spot: "+(data.results.spot.connected?"verified":"not verified")+" · Futures: "+(data.results.futures.connected?"verified":"not verified"));await refresh();}
- catch(error){status("Connection test failed: "+error.message,true);}
-});
-$("bnDisconnect").addEventListener("click",async()=>{
- try{await request("/connect",{method:"DELETE"});status("Both Binance testnet connections disconnected.");await refresh();}
- catch(error){status("Disconnect failed: "+error.message,true);}
-});
 $("bnAutoOff").addEventListener("click",async()=>{
  try{await request("/auto-trading",{method:"PUT",body:JSON.stringify({enabled:false})});status("Emergency stop confirmed · Auto Trading OFF.");await refresh();}
  catch(error){status("Could not confirm Auto OFF: "+error.message,true);}

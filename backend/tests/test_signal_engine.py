@@ -447,7 +447,8 @@ def test_low_price_crypto_signal_levels_keep_required_precision(monkeypatch):
             "best_bid": 0.000012339, "best_ask": 0.000012341, "mid_price": 0.00001234,
             "spread_bps": 1.62, "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
             "tick_size": "0.00000001", "step_size": "1", "min_quantity": "1",
-            "min_notional": "5", "observed_at": now.isoformat(), "provider": "Binance Spot",
+            "min_notional": "5", "order_types": ["LIMIT", "MARKET"],
+            "limit_order_constraints_valid": True, "market_order_constraints_valid": True, "observed_at": now.isoformat(), "provider": "Binance Spot",
         }
 
     monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
@@ -831,7 +832,8 @@ def test_binance_entry_selector_prefers_market_when_spread_liquidity_and_drift_a
 
     execution = {
         "best_bid": 100.00, "best_ask": 100.02, "mid_price": 100.01,
-        "spread_bps": 2.0, "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
+        "spread_bps": 2.0, "order_types": ["LIMIT", "MARKET"],
+        "limit_order_constraints_valid": True, "market_order_constraints_valid": True, "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
     }
     selected = select_binance_entry("BUY", 100.0, 2.0, None, execution)
     assert selected is not None
@@ -844,7 +846,8 @@ def test_binance_entry_selector_uses_limit_at_confirmed_zone_after_price_runs():
 
     execution = {
         "best_bid": 102.00, "best_ask": 102.02, "mid_price": 102.01,
-        "spread_bps": 2.0, "bid_depth_quote": 2000.0, "ask_depth_quote": 2000.0,
+        "spread_bps": 2.0, "order_types": ["LIMIT", "MARKET"],
+        "limit_order_constraints_valid": True, "market_order_constraints_valid": True, "bid_depth_quote": 2000.0, "ask_depth_quote": 2000.0,
     }
     selected = select_binance_entry(
         "BUY", 100.0, 2.0, {"low": 101.0, "high": 101.2}, execution
@@ -859,7 +862,8 @@ def test_binance_entry_selector_uses_sell_limit_above_bid_at_bearish_zone():
 
     execution = {
         "best_bid": 100.00, "best_ask": 100.02, "mid_price": 100.01,
-        "spread_bps": 2.0, "bid_depth_quote": 2000.0, "ask_depth_quote": 2000.0,
+        "spread_bps": 2.0, "order_types": ["LIMIT", "MARKET"],
+        "limit_order_constraints_valid": True, "market_order_constraints_valid": True, "bid_depth_quote": 2000.0, "ask_depth_quote": 2000.0,
     }
     selected = select_binance_entry(
         "SELL", 102.0, 2.0, {"low": 101.0, "high": 101.2}, execution
@@ -874,7 +878,8 @@ def test_binance_entry_selector_rejects_wide_spread_without_valid_execution():
 
     execution = {
         "best_bid": 100.0, "best_ask": 100.8, "mid_price": 100.4,
-        "spread_bps": 79.68, "bid_depth_quote": 50000.0, "ask_depth_quote": 50000.0,
+        "spread_bps": 79.68, "order_types": ["LIMIT", "MARKET"],
+        "limit_order_constraints_valid": True, "market_order_constraints_valid": True, "bid_depth_quote": 50000.0, "ask_depth_quote": 50000.0,
     }
     assert select_binance_entry(
         "BUY", 100.0, 2.0, {"low": 99.8, "high": 100.0}, execution
@@ -898,10 +903,17 @@ def test_binance_execution_context_reads_exchange_filters_and_live_book(monkeypa
         "symbol": "1000PEPEUSDT", "status": "TRADING",
         "baseAsset": "1000PEPE", "quoteAsset": "USDT",
         "isSpotTradingAllowed": True,
+        "orderTypes": ["LIMIT", "LIMIT_MAKER", "MARKET"],
+        "baseAssetPrecision": 8,
+        "quoteAssetPrecision": 8,
+        "quotePrecision": 8,
+        "quoteOrderQtyMarketAllowed": True,
         "filters": [
-            {"filterType": "PRICE_FILTER", "tickSize": "0.00000001"},
-            {"filterType": "LOT_SIZE", "stepSize": "1", "minQty": "1"},
-            {"filterType": "NOTIONAL", "minNotional": "5"},
+            {"filterType": "PRICE_FILTER", "tickSize": "0.00000001", "minPrice": "0", "maxPrice": "0"},
+            {"filterType": "LOT_SIZE", "stepSize": "1", "minQty": "1", "maxQty": "9000"},
+            {"filterType": "MARKET_LOT_SIZE", "stepSize": "0", "minQty": "0", "maxQty": "158.28"},
+            {"filterType": "NOTIONAL", "minNotional": "5", "maxNotional": "9000000",
+             "applyMinToMarket": True, "applyMaxToMarket": False},
         ],
     }]}
     depth = {
@@ -933,6 +945,18 @@ def test_binance_execution_context_reads_exchange_filters_and_live_book(monkeypa
     assert context["tick_size"] == "0.00000001"
     assert context["step_size"] == "1"
     assert context["min_notional"] == "5"
+    assert context["order_types"] == ["LIMIT", "LIMIT_MAKER", "MARKET"]
+    assert context["base_asset_precision"] == 8
+    assert context["quote_asset_precision"] == 8
+    assert context["quote_precision"] == 8
+    assert context["quote_order_qty_market_allowed"] is True
+    assert context["limit_order_constraints_valid"] is True
+    assert context["market_order_constraints_valid"] is True
+    assert context["market_lot_size"]["step_size_disabled"] is True
+    assert context["market_lot_size_effective"]["step_size"] == "1"
+    assert context["market_lot_size_effective"]["min_quantity"] == "1"
+    assert context["market_lot_size_effective"]["max_quantity"] == "158.28"
+    assert context["notional_filter"]["apply_min_to_market"] is True
     assert context["best_bid"] == 0.00001234
     assert context["best_ask"] == 0.00001235
     assert context["bid_depth_quote"] > 0
@@ -1039,3 +1063,60 @@ def test_binance_spot_symbol_discovery_fails_over_to_official_market_data_host(m
 
     assert symbols == ["BTCUSDT"]
     assert requests == ["primary.test", "mirror.test"]
+
+
+
+def test_binance_entry_selector_respects_exchange_order_types():
+    from app.signal_engine import select_binance_entry
+
+    execution = {
+        "best_bid": 102.00, "best_ask": 102.02, "mid_price": 102.01,
+        "spread_bps": 2.0, "bid_depth_quote": 2000.0, "ask_depth_quote": 2000.0,
+        "order_types": ["LIMIT"],
+        "limit_order_constraints_valid": True,
+        "market_order_constraints_valid": False,
+    }
+    selected = select_binance_entry(
+        "BUY", 102.01, 2.0, {"low": 101.0, "high": 101.2}, execution
+    )
+    assert selected is not None
+    assert selected["entry_type"] == "LIMIT"
+
+
+def test_binance_entry_selector_does_not_fall_back_to_disabled_limit_order():
+    from app.signal_engine import select_binance_entry
+
+    execution = {
+        "best_bid": 102.00, "best_ask": 102.02, "mid_price": 102.01,
+        "spread_bps": 20.0, "bid_depth_quote": 2000.0, "ask_depth_quote": 2000.0,
+        "order_types": ["MARKET"],
+        "limit_order_constraints_valid": False,
+        "market_order_constraints_valid": True,
+    }
+    assert select_binance_entry(
+        "BUY", 102.01, 2.0, {"low": 101.0, "high": 101.2}, execution
+    ) is None
+
+
+def test_binance_market_lot_size_zero_step_uses_lot_size_fallback():
+    from app.signal_engine import _normalise_lot_filter
+
+    disabled_market_rules = _normalise_lot_filter(
+        {"stepSize": "0.00000000", "minQty": "0.00000000", "maxQty": "158.28"},
+        allow_disabled_step=True,
+    )
+    assert disabled_market_rules["valid"] is True
+    assert disabled_market_rules["step_size_disabled"] is True
+    assert disabled_market_rules["min_quantity_disabled"] is True
+
+    invalid_limit_rules = _normalise_lot_filter(
+        {"stepSize": "0", "minQty": "0", "maxQty": "158.28"}
+    )
+    assert invalid_limit_rules["valid"] is False
+
+
+def test_binance_price_filter_never_invents_a_tick_size():
+    from app.signal_engine import _normalise_price_filter
+
+    result = _normalise_price_filter({"minPrice": "0", "maxPrice": "0", "tickSize": "0"})
+    assert result["valid"] is False

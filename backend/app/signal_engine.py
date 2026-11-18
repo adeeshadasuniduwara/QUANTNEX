@@ -1440,6 +1440,9 @@ async def build_signal(
                 "score": score,
                 "out_of": 10,
                 "confirmations": checks,
+                "timeframe_alignment": {
+                    tf: analysis[tf]["bias"] for tf in enabled if tf in analysis
+                },
                 "risk_distance": round(risk, price_precision),
                 "execution_quality": execution_quality,
                 "exchange_filters": None if execution is None else {

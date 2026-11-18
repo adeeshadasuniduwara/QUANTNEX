@@ -675,7 +675,9 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
                 ("\nSpread: "+str(sig["execution_quality"]["spread_bps"])+" bps · estimated round-trip cost: "+str(sig["execution_quality"]["estimated_round_trip_cost_bps"])+" bps" if sig.get("execution_quality") else "")+
                 "\nSL: "+str(sig["stop_loss"])+
                 "\nTP1: "+str(sig["tp1"])+"\nTP2: "+str(sig["tp2"])+"\nTP3: "+str(sig["tp3"])+
-                "\nConfluence: "+str(sig["score"])+"/10 (rule count, not win probability)\nConfirmations: "+", ".join(sig["confirmations"])+
+                "\nConfluence: "+str(sig["score"])+"/10 (rule count, not win probability)\n"
+                +"TF alignment: "+", ".join(str(tf)+"m "+str(bias) for tf,bias in (sig.get("timeframe_alignment") or {}).items())+"\n"
+                +"Confirmations: "+", ".join(sig["confirmations"])+
                 "\nSignal only. Verify spread, fees and execution. No broker order is placed.")
         except MarketDataError as exc:return "Signal scan unavailable: "+str(exc)
         except Exception:return "Signal scan failed. Check the local API logs and market-data provider configuration."
@@ -718,19 +720,20 @@ async def _deliver_pending_signal_events(client, db, user_id: int, token: str, c
         or_(SignalTradeEvent.telegram_last_attempt_at.is_(None),
             SignalTradeEvent.telegram_last_attempt_at <= cutoff),
     ).order_by(SignalTradeEvent.created_at).limit(10)))
-    protected_trade_ids = {
-        event.trade_id for event in pending
-        if event.event_type in {"PROTECTED_STOP_HIT", "LOCKED_STOP_HIT"}
-    }
+    latest_by_trade = {}
+    for queued in pending:
+        latest_by_trade[queued.trade_id] = queued
     for event in pending:
-        # If TP1 and its later protective exit are both waiting in this batch,
-        # send one final-state alert instead of two near-simultaneous messages.
-        if event.event_type == "TP1_HIT" and event.trade_id in protected_trade_ids:
+        # Collapse a backlog of target/exit updates into one latest-state alert per trade.
+        if latest_by_trade.get(event.trade_id) is not event:
             event.telegram_sent_at = datetime.now(timezone.utc)
             db.commit()
             continue
         trade = db.get(SignalTrade, event.trade_id)
-        message = _signal_lifecycle_message(trade, event) if trade is not None else ""
+        message = (
+            _signal_lifecycle_message(trade, event)
+            if trade is not None and trade.status != "SUPERSEDED" else ""
+        )
         if not message:
             event.telegram_sent_at = datetime.now(timezone.utc)
             db.commit()
@@ -950,15 +953,18 @@ async def telegram_worker() -> None:
                                     candidate=scan.get("signal")
                                     if candidate:
                                         from .signal_lifecycle import record_signal
-                                        tracked, _created = record_signal(db, user_id, candidate, "AUTO_TELEGRAM_SCAN")
+                                        tracked, created = record_signal(db, user_id, candidate, "AUTO_TELEGRAM_SCAN")
                                         db.commit()
                                         fingerprint=_auto_signal_fingerprint(market_symbol,candidate)
                                         previous=_get(db,user_id,fingerprint_key)
                                         db.commit()
-                                        if _should_send_auto_signal(fingerprint,previous):
+                                        # Suppress refreshed/alternate-timeframe candidates while this
+                                        # symbol already has an OPEN or PENDING trade.
+                                        if created and _should_send_auto_signal(fingerprint,previous):
                                             msg=("QUANTNEX · AUTO SIGNAL · "+market_symbol+" "+candidate["side"]+"\n"
                                                 +"Market data: "+str(scan.get("provider","Unknown"))+"\n"
                                                 +"Signal TF: "+str(candidate["timeframe"])+"m · Trend TF: "+str(candidate["trend_timeframe"])+"m\n"
+                                                +"TF alignment: "+", ".join(str(tf)+"m "+str(bias) for tf,bias in (candidate.get("timeframe_alignment") or {}).items())+"\n"
                                                 +"Entry type: "+str(candidate.get("entry_type","REFERENCE"))+"\n"
                                                 +"Entry: "+("MARKET ("+str(candidate["entry"])+")" if candidate.get("entry_type")=="MARKET" else "LIMIT ("+str(candidate.get("limit_price") or candidate["entry"])+")")+
                                                 ("\nLimit price: "+str(candidate["limit_price"]) if candidate.get("entry_type")=="LIMIT" else "")+"\n"

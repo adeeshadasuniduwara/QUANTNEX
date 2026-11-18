@@ -866,7 +866,7 @@ async def scan_market_signal(symbol: str = "BTCUSDT", user: User = Depends(local
             event_hub.publish("signals.lifecycle.changed", "signal_trade", "created", {"trade_id": tracked.id, "symbol": tracked.symbol})
         token_enc=_preference(db,user.id,"telegram_bot_token_enc")
         chat_id=_preference(db,user.id,"telegram_chat_id")
-        if token_enc and chat_id:
+        if token_enc and chat_id and created:
             try:
                 token=decrypt_secret(token_enc)
                 market_symbol=result.get("symbol",symbol)
@@ -879,7 +879,9 @@ async def scan_market_signal(symbol: str = "BTCUSDT", user: User = Depends(local
                     ("\nSpread: "+str(signal["execution_quality"]["spread_bps"])+" bps · estimated round-trip cost: "+str(signal["execution_quality"]["estimated_round_trip_cost_bps"])+" bps" if signal.get("execution_quality") else "")+
                     "\nSL: "+str(signal["stop_loss"])+
                     "\nTP1: "+str(signal["tp1"])+"\nTP2: "+str(signal["tp2"])+"\nTP3: "+str(signal["tp3"])+
-                    "\nConfluence: "+str(signal["score"])+"/10 (rule count, not win probability)\nConfirmations: "+", ".join(signal["confirmations"])+
+                    "\nConfluence: "+str(signal["score"])+"/10 (rule count, not win probability)\n"
+                    +"TF alignment: "+", ".join(str(tf)+"m "+str(bias) for tf,bias in (signal.get("timeframe_alignment") or {}).items())+"\n"
+                    +"Confirmations: "+", ".join(signal["confirmations"])+
                     "\nSignal only. Verify spread, fees and execution. No broker order is placed.")
                 async with httpx.AsyncClient(timeout=12) as client:
                     response=await client.post("https://api.telegram.org/bot"+token+"/sendMessage",

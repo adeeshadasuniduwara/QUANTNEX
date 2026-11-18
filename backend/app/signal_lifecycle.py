@@ -72,14 +72,14 @@ def record_signal(db, user_id: int, signal: dict[str, Any], source: str = "QUANT
     ))
     if existing is not None:
         return existing, False
-    if deduplicate_active:
-        active_rows = list(db.scalars(select(SignalTrade).where(
-            SignalTrade.user_id == user_id, SignalTrade.source == source.upper(),
-            SignalTrade.symbol == symbol, SignalTrade.side == side,
-            SignalTrade.timeframe == timeframe, SignalTrade.status.in_(tuple(ACTIVE_STATES)),
-        ).order_by(SignalTrade.signal_time.desc()).limit(1)))
-        if active_rows:
-            return active_rows[0], False
+    # One live plan per user and symbol, regardless of source, side, or timeframe.
+    active_rows = list(db.scalars(select(SignalTrade).where(
+        SignalTrade.user_id == user_id,
+        SignalTrade.symbol == symbol,
+        SignalTrade.status.in_(tuple(ACTIVE_STATES)),
+    ).order_by(SignalTrade.signal_time.desc(), SignalTrade.id.desc()).limit(1)))
+    if active_rows:
+        return active_rows[0], False
     item = SignalTrade(
         user_id=user_id, fingerprint=fingerprint, source=source.upper(), symbol=symbol,
         side=side, timeframe=timeframe, entry_type=entry_type, entry_price=entry,
@@ -269,6 +269,27 @@ def trade_payload(trade: SignalTrade, events: list[SignalTradeEvent] | None = No
     }
 
 
+def enforce_single_active_trade_per_symbol(db) -> int:
+    """Keep the newest live plan per user/symbol and retire legacy duplicates."""
+    active = list(db.scalars(select(SignalTrade).where(
+        SignalTrade.status.in_(tuple(ACTIVE_STATES))
+    ).order_by(SignalTrade.user_id, SignalTrade.symbol, SignalTrade.signal_time.desc(), SignalTrade.id.desc())))
+    kept: set[tuple[int, str]] = set()
+    superseded = 0
+    now = datetime.now(timezone.utc)
+    for trade in active:
+        key = (trade.user_id, trade.symbol)
+        if key not in kept:
+            kept.add(key)
+            continue
+        trade.status = "SUPERSEDED"
+        trade.recovery_status = "COMPLETE"
+        trade.recovery_note = "Retired as a duplicate active plan; a newer plan for this symbol is retained."
+        trade.updated_at = now
+        superseded += 1
+    return superseded
+
+
 async def signal_lifecycle_worker() -> None:
     """Reconcile persisted signals against provider OHLC after startup and throughout the day."""
     from .signal_engine import fetch_candles_with_provider, closed_candles, MarketDataError
@@ -277,6 +298,10 @@ async def signal_lifecycle_worker() -> None:
     while True:
         try:
             with SessionLocal() as db:
+                superseded = enforce_single_active_trade_per_symbol(db)
+                if superseded:
+                    db.commit()
+                    logger.warning("Retired %s legacy duplicate active signal plans", superseded)
                 active = list(db.scalars(select(SignalTrade).where(SignalTrade.status.in_(tuple(ACTIVE_STATES)))))
                 symbols = sorted({trade.symbol for trade in active})
                 now = asyncio.get_running_loop().time()

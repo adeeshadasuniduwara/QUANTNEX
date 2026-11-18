@@ -350,7 +350,7 @@ class BinanceSpotOrderFlowStream:
                 metrics["session_delta_coverage_complete"] = trade_state["session_delta_coverage_complete"]
                 metrics["session_delta_scope"] = (
                     "FULL_UTC_SESSION" if trade_state["session_delta_coverage_complete"]
-                    else "SAMPLE_SINCE_STREAM_SEED"
+                    else "INCOMPLETE_UTC_SESSION_SAMPLE"
                 )
                 metrics["order_book"]["source"] = "BINANCE_SPOT_SEQUENCE_VALIDATED_DEPTH_STREAM"
                 metrics["data_provenance"]["book_source"] = "Binance Spot sequence-validated diff-depth stream"

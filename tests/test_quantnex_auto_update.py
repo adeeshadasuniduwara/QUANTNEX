@@ -121,6 +121,15 @@ class AutomaticUpdateTests(unittest.TestCase):
         self.assertEqual(APP.count("refreshWorkspaceAfterUpdate();") + APP.count("window.setTimeout(refreshWorkspaceAfterUpdate,900);"), 2)
         self.assertNotIn("window.open(", APP)
 
+    def test_full_source_updater_uses_complete_snapshot_and_preserves_user_data(self):
+        source = (ROOT / "quantnex_updater.py").read_text(encoding="utf-8")
+        self.assertIn("_managed_paths_from_tree", source)
+        self.assertIn("_stage_full_snapshot", source)
+        self.assertIn("codeload.github.com/{REPOSITORY}/zip/{commit_sha}", source)
+        self.assertIn("previous_managed_manifest", source)
+        self.assertIn("managed_source_files.json", source)
+        self.assertNotIn("/compare/{installed_sha}", source)
+
     def test_updater_still_pins_and_validates_the_github_archive(self):
         self.assertIn("codeload.github.com/{REPO}/zip/{sha}", UPDATER)
         self.assertIn("validate", UPDATER.lower())

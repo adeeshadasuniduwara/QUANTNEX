@@ -1,4 +1,5 @@
 """Regression tests for automatic rollback after a failed QUANTNEX startup."""
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -30,6 +31,14 @@ class UpdaterRollbackTests(unittest.TestCase):
             self.backup,
             [Path("apps/web/app.js"), Path("backend/app/new_module.py")],
         )
+        rollback_path = self.root / updater.ROLLBACK_RELATIVE
+        rollback = json.loads(rollback_path.read_text(encoding="utf-8"))
+        rollback["previous_managed_paths"] = ["apps/web/app.js"]
+        rollback["previous_managed_manifest"] = json.dumps({
+            "commit_sha": self.previous_sha,
+            "paths": ["apps/web/app.js"],
+        })
+        rollback_path.write_text(json.dumps(rollback), encoding="utf-8")
 
     def tearDown(self):
         self.temp.cleanup()
@@ -39,6 +48,8 @@ class UpdaterRollbackTests(unittest.TestCase):
         self.assertEqual(self.existing.read_text(encoding="utf-8"), "previous version")
         self.assertFalse(self.created.exists())
         self.assertEqual(updater._load_state(self.root)["commit_sha"], self.previous_sha)
+        restored_manifest = json.loads((self.root / updater.MANAGED_RELATIVE).read_text(encoding="utf-8"))
+        self.assertEqual(restored_manifest["paths"], ["apps/web/app.js"])
         self.assertFalse((self.root / updater.ROLLBACK_RELATIVE).exists())
 
     def test_rollback_refuses_to_revert_a_different_installed_revision(self):
@@ -55,3 +66,22 @@ class UpdaterRollbackTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class FullSourceManifestTests(unittest.TestCase):
+    def test_source_roots_include_launcher_scripts_but_exclude_user_data(self):
+        self.assertEqual(updater._safe_relative("scripts/ensure_python.cmd"), Path("scripts/ensure_python.cmd"))
+        self.assertIsNone(updater._safe_relative("data/user_settings.json"))
+        self.assertIsNone(updater._safe_relative("backend/data/trading.sqlite"))
+        self.assertIsNone(updater._safe_relative("backend/.env"))
+
+    def test_managed_source_manifest_round_trips_without_touching_user_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            saved = root / "data" / "user_settings.json"
+            saved.parent.mkdir(parents=True)
+            saved.write_text('{"theme":"dark","token":"keep"}', encoding="utf-8")
+            paths = ["apps/web/app.js", "scripts/ensure_python.cmd"]
+            updater._save_managed_paths(root, "b" * 40, paths)
+            loaded = updater._load_managed_paths(root, "a" * 40)
+            self.assertEqual(loaded, sorted(paths))
+            self.assertEqual(saved.read_text(encoding="utf-8"), '{"theme":"dark","token":"keep"}')

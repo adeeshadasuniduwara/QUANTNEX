@@ -172,8 +172,9 @@ The exchange-filter gap identified above is now addressed in this PR:
 - Live BTCUSDT `exchangeInfo` was checked directly during this run. Its `MARKET_LOT_SIZE` reports `stepSize=0` and `minQty=0`, while `maxQty` is positive. The implementation records those two sub-rules as disabled and derives effective market quantity step/minimum from `LOT_SIZE`, while intersecting the maximum with `MARKET_LOT_SIZE.maxQty`. This avoids incorrectly disabling MARKET for BTCUSDT and does not invent quantity precision.
 - Signals expose the raw/effective exchange constraints, order types, asset precision and whether quote-order-quantity MARKET is allowed. The payload explicitly says quantity validation was not performed because this signal engine does not yet calculate an order quantity; no actual order is placed.
 - Entry selection refuses unsupported or incomplete MARKET/LIMIT paths rather than silently assuming the order type is available.
+- Candidate entries are checked against enabled PRICE_FILTER min/max and tick alignment; rounded entry, SL and TP1–TP3 are checked again before a signal can be emitted. A rounded level outside exchange price bounds produces WAIT.
 
-Deterministic regression tests cover order-type restrictions, zero-disabled market lot sub-rules, effective MARKET constraints, missing/zero tick rejection, and complete exchange metadata. These tests prove filter handling only; they do not make the signal payload an order ticket.
+Deterministic regression tests cover order-type restrictions, zero-disabled market lot sub-rules, effective MARKET constraints, missing/zero tick rejection, price bounds/tick alignment, and complete exchange metadata. These tests prove filter handling only; they do not make the signal payload an order ticket.
 
 Source references: [Binance Spot filters](https://github.com/binance/binance-spot-api-docs/blob/master/filters.md) and [live BTCUSDT exchangeInfo](https://data-api.binance.vision/api/v3/exchangeInfo?symbol=BTCUSDT).
 

@@ -8,6 +8,7 @@ These are indicative prices, not executable quotes.
 from __future__ import annotations
 
 import asyncio
+import math
 from datetime import datetime, timezone
 import time
 from typing import Any
@@ -25,8 +26,18 @@ _FX_CACHE_SECONDS = 3600.0
 _cache: dict[str, tuple[float, Any]] = {}
 
 
+def _positive_finite_price(value: Any, label: str) -> float:
+    """Parse a provider number and reject zero, negative, NaN and infinity."""
+    parsed = float(value)
+    if not math.isfinite(parsed) or parsed <= 0:
+        raise ValueError(f"Market provider returned an invalid {label}.")
+    return parsed
+
+
 def gold_lkr_per_gram(gold_usd_per_troy_ounce: float, usd_lkr: float) -> float:
-    return gold_usd_per_troy_ounce / 31.1034768 * usd_lkr
+    gold = _positive_finite_price(gold_usd_per_troy_ounce, "XAU/USD price")
+    fx = _positive_finite_price(usd_lkr, "USD/LKR rate")
+    return _positive_finite_price(gold / 31.1034768 * fx, "LKR/gram conversion")
 
 
 def _cached(key: str, max_age: float):
@@ -52,10 +63,7 @@ async def _json(client: httpx.AsyncClient, url: str, **kwargs) -> dict:
 
 async def _gold_api_price(client: httpx.AsyncClient, symbol: str) -> float:
     payload = await _json(client, f"{GOLD_API}/{symbol}")
-    value = float(payload["price"])
-    if value <= 0:
-        raise ValueError("Market provider returned a non-positive price.")
-    return value
+    return _positive_finite_price(payload["price"], f"{symbol} price")
 
 
 async def _twelve_price(client: httpx.AsyncClient, symbol: str) -> float | None:
@@ -68,8 +76,7 @@ async def _twelve_price(client: httpx.AsyncClient, symbol: str) -> float | None:
     )
     if payload.get("status") == "error":
         return None
-    value = float(payload["price"])
-    return value if value > 0 else None
+    return _positive_finite_price(payload["price"], f"{symbol} price")
 
 
 async def _btc_price(client: httpx.AsyncClient) -> tuple[float | None, str]:
@@ -82,16 +89,12 @@ async def _btc_price(client: httpx.AsyncClient) -> tuple[float | None, str]:
     except (httpx.HTTPError, KeyError, TypeError, ValueError):
         try:
             payload = await _json(client, BINANCE_API, params={"symbol": "BTCUSDT"})
-            value = float(payload["price"])
-            if value <= 0:
-                raise ValueError("Invalid Binance BTC price.")
+            value = _positive_finite_price(payload["price"], "Binance BTC price")
             return _store("btc", value), "Binance BTCUSDT fallback"
         except (httpx.HTTPError, KeyError, TypeError, ValueError):
             try:
                 payload = await _json(client, COINBASE_TICKER_API)
-                value = float(payload["price"])
-                if value <= 0:
-                    raise ValueError("Invalid Coinbase BTC price.")
+                value = _positive_finite_price(payload["price"], "Coinbase BTC price")
                 return _store("btc", value), "Coinbase Exchange BTC-USD fallback"
             except (httpx.HTTPError, KeyError, TypeError, ValueError):
                 try:
@@ -100,9 +103,7 @@ async def _btc_price(client: httpx.AsyncClient) -> tuple[float | None, str]:
                         "https://api.coingecko.com/api/v3/simple/price",
                         params={"ids": "bitcoin", "vs_currencies": "usd"},
                     )
-                    value = float(payload["bitcoin"]["usd"])
-                    if value <= 0:
-                        raise ValueError("Invalid CoinGecko BTC price.")
+                    value = _positive_finite_price(payload["bitcoin"]["usd"], "CoinGecko BTC price")
                     return _store("btc", value), "CoinGecko BTC/USD fallback"
                 except (httpx.HTTPError, KeyError, TypeError, ValueError):
                     return None, "unavailable"
@@ -133,9 +134,7 @@ async def _usd_lkr(client: httpx.AsyncClient) -> tuple[float | None, str]:
         payload = await _json(client, FX_API)
         if payload.get("result") != "success":
             raise ValueError("Exchange rate provider returned an error.")
-        value = float(payload["rates"]["LKR"])
-        if value <= 0:
-            raise ValueError("Invalid USD/LKR rate.")
+        value = _positive_finite_price(payload["rates"]["LKR"], "USD/LKR rate")
         return _store("usd_lkr", value), "ExchangeRate-API USD/LKR (daily reference)"
     except (httpx.HTTPError, KeyError, TypeError, ValueError):
         try:

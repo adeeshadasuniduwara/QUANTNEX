@@ -214,8 +214,15 @@ async def get_binance_spot_execution_context(symbol: str) -> dict[str, Any]:
     except (AttributeError, KeyError, IndexError, TypeError, ValueError, OverflowError):
         raise MarketDataError(f"Binance returned invalid top-of-book/depth data for {normalized}.") from None
 
-def _normalise_lot_filter(filter_data: Any) -> dict[str, Any]:
-    """Preserve Binance lot constraints and mark them usable only when complete."""
+def _normalise_lot_filter(
+    filter_data: Any, *, allow_disabled_step: bool = False
+) -> dict[str, Any]:
+    """Preserve Binance lot constraints, including disabled MARKET sub-rules.
+
+    Binance Spot currently reports MARKET_LOT_SIZE stepSize=minQty=0 for
+    BTCUSDT. In that case those two market-specific sub-rules are disabled;
+    the effective market quantity still inherits LOT_SIZE constraints.
+    """
     raw = filter_data if isinstance(filter_data, dict) else {}
     fields = {
         "step_size": raw.get("stepSize"),
@@ -226,15 +233,24 @@ def _normalise_lot_filter(filter_data: Any) -> dict[str, Any]:
         step = Decimal(str(fields["step_size"]))
         minimum = Decimal(str(fields["min_quantity"]))
         maximum = Decimal(str(fields["max_quantity"]))
+        step_disabled = step.is_finite() and step == 0
+        min_disabled = minimum.is_finite() and minimum == 0
         valid = (
-            step.is_finite() and step > 0
+            step.is_finite() and (step > 0 or (allow_disabled_step and step_disabled and min_disabled))
             and minimum.is_finite() and minimum >= 0
             and maximum.is_finite() and maximum > 0
             and maximum >= minimum
         )
     except (ArithmeticError, TypeError, ValueError):
         valid = False
-    return {**fields, "valid": valid}
+        step_disabled = False
+        min_disabled = False
+    return {
+        **fields,
+        "valid": valid,
+        "step_size_disabled": step_disabled,
+        "min_quantity_disabled": min_disabled,
+    }
 
 
 def _normalise_price_filter(filter_data: Any) -> dict[str, Any]:
@@ -298,7 +314,9 @@ def _normalise_notional_filter(filter_data: Any) -> dict[str, Any]:
     filters = info.get("filters", {})
     price_constraints = _normalise_price_filter(filters.get("PRICE_FILTER"))
     limit_lot_constraints = _normalise_lot_filter(filters.get("LOT_SIZE"))
-    market_lot_constraints = _normalise_lot_filter(filters.get("MARKET_LOT_SIZE"))
+    market_lot_constraints = _normalise_lot_filter(
+        filters.get("MARKET_LOT_SIZE"), allow_disabled_step=True
+    )
     notional_filter = filters.get("NOTIONAL") or filters.get("MIN_NOTIONAL")
     notional_constraints = _normalise_notional_filter(notional_filter)
     order_types = list(info.get("order_types") or [])
@@ -309,9 +327,36 @@ def _normalise_notional_filter(filter_data: Any) -> dict[str, Any]:
     )
     market_order_constraints_valid = bool(
         "MARKET" in order_types and price_constraints["valid"]
-        and market_lot_constraints["valid"] and notional_constraints["present"]
-        and notional_constraints["valid"]
+        and limit_lot_constraints["valid"] and market_lot_constraints["valid"]
+        and notional_constraints["present"] and notional_constraints["valid"]
     )
+    market_effective_step = (
+        market_lot_constraints["step_size"]
+        if not market_lot_constraints["step_size_disabled"]
+        else limit_lot_constraints["step_size"]
+    )
+    market_effective_min = (
+        market_lot_constraints["min_quantity"]
+        if not market_lot_constraints["min_quantity_disabled"]
+        else limit_lot_constraints["min_quantity"]
+    )
+    try:
+        effective_market_max = min(
+            Decimal(str(limit_lot_constraints["max_quantity"])),
+            Decimal(str(market_lot_constraints["max_quantity"])),
+        )
+        market_lot_effective = {
+            "step_size": str(market_effective_step),
+            "min_quantity": str(market_effective_min),
+            "max_quantity": str(effective_market_max),
+            "source": "MARKET_LOT_SIZE intersected with LOT_SIZE",
+            "valid": market_order_constraints_valid,
+        }
+    except (ArithmeticError, TypeError, ValueError):
+        market_lot_effective = {
+            "step_size": None, "min_quantity": None, "max_quantity": None,
+            "source": "UNAVAILABLE", "valid": False,
+        }
     filter_reasons = []
     if "MARKET" not in order_types:
         filter_reasons.append("MARKET is not listed in exchangeInfo orderTypes")
@@ -353,6 +398,7 @@ def _normalise_notional_filter(filter_data: Any) -> dict[str, Any]:
         "price_filter": price_constraints,
         "limit_lot_size": limit_lot_constraints,
         "market_lot_size": market_lot_constraints,
+        "market_lot_size_effective": market_lot_effective,
         "notional_filter": notional_constraints,
         "limit_order_constraints_valid": limit_order_constraints_valid,
         "market_order_constraints_valid": market_order_constraints_valid,
@@ -1279,6 +1325,7 @@ async def build_signal(
                 "price_filter": execution.get("price_filter"),
                 "limit_lot_size": execution.get("limit_lot_size"),
                 "market_lot_size": execution.get("market_lot_size"),
+                "market_lot_size_effective": execution.get("market_lot_size_effective"),
                 "notional_filter": execution.get("notional_filter"),
                 "limit_order_constraints_valid": execution.get("limit_order_constraints_valid"),
                 "market_order_constraints_valid": execution.get("market_order_constraints_valid"),
@@ -1326,16 +1373,17 @@ async def build_signal(
                 "confirmations": checks,
                 "risk_distance": round(risk, price_precision),
                 "execution_quality": execution_quality,
-                "exchange_filters": execution_quality.get("price_filter") if False else {
-                    "order_types": execution.get("order_types", []) if execution else [],
+                "exchange_filters": None if execution is None else {
+                    "order_types": execution.get("order_types", []),
                     "price_filter": execution.get("price_filter") if execution else None,
                     "limit_lot_size": execution.get("limit_lot_size") if execution else None,
-                    "market_lot_size": execution.get("market_lot_size") if execution else None,
-                    "notional_filter": execution.get("notional_filter") if execution else None,
-                    "base_asset_precision": execution.get("base_asset_precision") if execution else None,
-                    "quote_asset_precision": execution.get("quote_asset_precision") if execution else None,
-                    "quote_precision": execution.get("quote_precision") if execution else None,
-                    "quote_order_qty_market_allowed": execution.get("quote_order_qty_market_allowed", False) if execution else False,
+                    "market_lot_size": execution.get("market_lot_size"),
+                    "market_lot_size_effective": execution.get("market_lot_size_effective"),
+                    "notional_filter": execution.get("notional_filter"),
+                    "base_asset_precision": execution.get("base_asset_precision"),
+                    "quote_asset_precision": execution.get("quote_asset_precision"),
+                    "quote_precision": execution.get("quote_precision"),
+                    "quote_order_qty_market_allowed": execution.get("quote_order_qty_market_allowed", False),
                     "quantity_validation_status": "NOT_CHECKED_NO_ORDER_QUANTITY_IN_SIGNAL",
                 },
                 "order_flow": order_flow_payload,

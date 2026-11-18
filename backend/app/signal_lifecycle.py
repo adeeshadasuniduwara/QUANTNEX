@@ -72,14 +72,14 @@ def record_signal(db, user_id: int, signal: dict[str, Any], source: str = "QUANT
     ))
     if existing is not None:
         return existing, False
-    if deduplicate_active:
-        active_rows = list(db.scalars(select(SignalTrade).where(
-            SignalTrade.user_id == user_id, SignalTrade.source == source.upper(),
-            SignalTrade.symbol == symbol, SignalTrade.side == side,
-            SignalTrade.timeframe == timeframe, SignalTrade.status.in_(tuple(ACTIVE_STATES)),
-        ).order_by(SignalTrade.signal_time.desc()).limit(1)))
-        if active_rows:
-            return active_rows[0], False
+    # One live plan per user and symbol, regardless of source, side, or timeframe.
+    active_rows = list(db.scalars(select(SignalTrade).where(
+        SignalTrade.user_id == user_id,
+        SignalTrade.symbol == symbol,
+        SignalTrade.status.in_(tuple(ACTIVE_STATES)),
+    ).order_by(SignalTrade.signal_time.desc(), SignalTrade.id.desc()).limit(1)))
+    if active_rows:
+        return active_rows[0], False
     item = SignalTrade(
         user_id=user_id, fingerprint=fingerprint, source=source.upper(), symbol=symbol,
         side=side, timeframe=timeframe, entry_type=entry_type, entry_price=entry,

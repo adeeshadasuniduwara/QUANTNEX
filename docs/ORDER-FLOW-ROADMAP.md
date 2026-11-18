@@ -112,9 +112,9 @@ Only after Spot order-flow is stable:
 | Adaptive MARKET/LIMIT decision | Yes; analytical choice only, with spread/depth/ATR/zone gates plus orderTypes and validated exchange filters; quantity still not calculated | Not wired | Not wired | Reference price only; Binance execution not applicable |
 | Aggressor-side trade delta | Yes; recent `aggTrades`, buyer-is-maker semantics | Not wired | Not wired | Not available from current Gold candle/quote adapters |
 | UTC session delta | Only when the current response begins at the UTC session's first aggregate-trade ID and every subsequent ID is contiguous; otherwise unavailable/sample only | Not wired | Not wired | Not available |
-| Persistent CVD | Deterministic state machine exists; not wired to live WebSocket or persistence | Not wired | Not wired | Not available |
+| Persistent CVD | In-memory stream-seeded CVD is available from the bounded bootstrap; scope is only since the seed, it is not persisted, and full UTC-session delta remains unavailable without an independent session anchor | Not wired | Not wired | Not available |
 | Footprint buckets / imbalance | Recent-window price buckets from observed aggTrades | Not wired | Not wired | Not available |
-| Order-book depth | Live REST L2 snapshot; sequence-validated diff state machine exists but is not connected to live stream | Not wired | Not wired | Not available |
+| Order-book depth | Single-symbol Spot WebSocket adapter bridges a REST snapshot to diff updates and invalidates on sequence gaps; sequence-valid only after a contiguous update; not yet integrated into the signal pipeline on main | Not wired | Not wired | Not available |
 | Funding / open interest / liquidations | Not applicable to Spot | Not wired | Not wired | Not available |
 | Historical trade/depth replay | Not yet; current walk-forward uses candles and assumed execution costs | Not wired | Not wired | Not available |
 | Exchange order constraints | PRICE_FILTER, LOT_SIZE, MARKET_LOT_SIZE (including disabled sub-rules), NOTIONAL/MIN_NOTIONAL and orderTypes preserved; quantity itself is not validated because no size is emitted | Not wired | Not wired | Not applicable |
@@ -143,16 +143,6 @@ Implemented in `backend/app/binance_order_flow_state.py`:
 - Thirteen deterministic tests cover hand-computed delta/CVD, duplicates, ID gaps, partial/full backfill, UTC rollover, depth snapshot bridge, deletes, sequence gaps, resync and malformed/crossed books.
 
 Limitations: these are pure state machines only. No WebSocket client, reconnect/backoff, REST backfill network loop, persistent storage or live signal integration is included. The live signal gate remains REST-snapshot based; do not describe persistent CVD or continuous sequence-validated L2 as live-enabled yet.
-
-## Phase C2 — read-only WebSocket adapter and live state integration (next)
-
-- Add an explicit WebSocket dependency and bounded per-symbol subscription manager using Binance public Spot streams; do not subscribe to every eligible symbol at once.
-- On reconnect, REST-backfill aggTrades from the last contiguous ID and keep CVD/session state incomplete until every missing ID is recovered.
-- Buffer depth diffs while obtaining a REST snapshot, bridge the first valid event, and invalidate/resync on every update-ID gap.
-- Add bounded queues, stream/request limits, exponential backoff with jitter, cancellation and shutdown tests.
-- Feed validated state into signal eligibility and distinguish live-complete, incomplete, gap and REST-snapshot-only data states.
-- Capture synchronized historical trade/depth replay before measuring order-flow incremental value against the candle-only baseline.
-
 
 ## Live Binance public-data verification — 2026-11-17 08:39 UTC
 
@@ -206,31 +196,47 @@ A separate read-only Binance connector check verified current Spot public data f
 The daily GitHub smoke run is a separate rotating 20-pair sample from the dynamic Spot universe. Its latest observed scheduled run succeeded on 2026-11-17, but no same-day full-universe run was available in this audit. The live connector check above validates current BTCUSDT data only.
 
 
-## Phase C2 — single-symbol Spot WebSocket order-flow adapter (implementation branch)
+## Phase C2 — sequence-validated single-symbol Spot WebSocket adapter (merged PR #203)
 
-Branch: `feat/binance-spot-orderflow-websocket`, created from latest main `b4fba45301e3c456e3dba741e369354650a08a8d`.
+Branch: `feat/binance-spot-orderflow-websocket`. PR [#203](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/203) merged to `main` on 2026-11-18 as `b88f11237ab0791b261b46139ff3f56cd201d4cd`.
 
-Implementation:
-- Add explicit `websockets>=13.1,<18` runtime dependency and a read-only combined-stream client for one symbol's `@aggTrade` and `@depth@100ms` feeds on `data-stream.binance.vision`.
-- Connect before fetching REST seeds; buffer incoming events while loading the latest 1,000 aggregate trades and a 100-level depth snapshot.
-- Add `AggTradeCvdState.begin_stream_seed`: CVD is complete only since the bounded bootstrap seed, not from the start of the UTC session. Session delta stays unavailable as a full-session value until an independent session anchor proves complete coverage.
-- Bridge buffered depth events to REST `lastUpdateId`; only mark depth sequence-valid after a contiguous post-snapshot update. Any gap, crossed book, invalid message or buffer overflow drops the book and forces reconnect/resnapshot.
-- Preserve trade state across reconnects, recover aggregate-trade ID gaps through bounded `fromId` REST backfill (maximum 50 pages per recovery), and keep CVD unavailable while a gap remains.
-- Bound recent-trade and bootstrap buffers; configure WebSocket ping/pong, max message size/queue, reconnect backoff with jitter, callback isolation and graceful stop.
-- Expose an explicit `signal_ready` state plus observed delta/footprint, stream-seeded CVD and sequence-validated L2 metrics. The snapshot clearly labels full UTC session delta unavailable unless anchored.
-- Add deterministic tests for stream-seed CVD semantics, combined-message routing, long/short-safe trade-side preservation, ID-gap backfill, depth sequence invalidation and REST/WebSocket bootstrap bridging.
+Implemented in `backend/app/binance_order_flow_stream.py`:
+- One read-only Binance Spot combined stream per symbol (`@aggTrade` and `@depth@100ms`); it does not open a connection for every exchangeInfo pair.
+- Connect-before-seed bootstrap buffers live events while fetching recent aggregate trades and a REST depth snapshot, then bridges buffered depth events by Binance update IDs.
+- Trade ID gaps trigger bounded REST `fromId` backfill; unrecoverable gaps leave CVD unavailable.
+- Depth sequence gaps, crossed books, invalid messages and buffer overflow invalidate the book and force reconnect/resnapshot.
+- CVD is scoped to the bounded bootstrap seed, not a full historical series. UTC session delta remains unavailable unless an independent session-start anchor proves coverage.
+- Reconnect backoff/jitter, bounded recent-trade and event buffers, ping/pong, max message/queue sizes, callback isolation and graceful stop are implemented.
+- Tests cover combined-stream routing, bootstrap buffering/bridge, trade-gap recovery and depth-gap invalidation.
 
-Current branch boundary: this is a reusable single-symbol adapter, not a global stream manager. It is not yet connected to the application's lifecycle or `build_signal`; the current live signal gate continues using the REST snapshot path. Do not claim continuous order flow is already powering user-facing automatic signals. A bounded on-demand symbol manager and signal-gate integration remain the next dependent work.
+PR-head Backend CI and Backend/Web CI passed; post-merge main Backend CI and Backend/Web CI passed on commit `b88f112` (Python 3.12, Python 3.14 and web checks). The optional Telegram update-notification workflow failed because its configured chat target is invalid/self-directed; it is not a signal-engine test.
 
-### Phase C2 validation gates
-- Run Backend CI on Python 3.12 and 3.14 plus Backend/Web CI.
-- Review full diff and secret scan before PR merge.
-- After merge, verify main and post-merge CI before adding a bounded subscription manager or changing signal eligibility.
-- Test against a live public single-symbol WebSocket in a separate read-only smoke check; a successful connection does not prove profitable signals.
+Current boundary after PR #203: the adapter is a reusable single-symbol component only. On main it is not yet owned by the application lifecycle and `build_signal` still uses the REST order-flow snapshot path. Do not claim sequence-validated streaming already powers automatic user-facing signals.
 
-## Latest core checkpoint — 2026-11-18
+## Phase C2.1 — bounded stream manager and signal-pipeline integration (current PR branch)
 
-- Main is `b4fba45301e3c456e3dba741e369354650a08a8d`; PR #202 is merged and its post-merge Backend CI and Backend/Web CI passed.
-- Last observed `QUANTNEX Live Crypto Signal Smoke` run was 2026-11-17 09:12:45 UTC. It discovered 1,373 eligible Spot pairs, scanned a rotating 20-pair subset, and completed 20 scans with 0 provider errors and 0 insufficient-history skips. All 20 results were WAIT (confluence 3–6/10); this proves provider/scan execution only, not that the engine can generate a profitable signal or that the whole universe was scanned.
-- Current market coverage remains Binance Spot only. USDⓈ-M and COIN-M Futures are not wired.
-- Next: complete and validate the WebSocket adapter, then integrate it through a bounded on-demand stream manager into the signal gate. Do not subscribe to all 1,373 eligible pairs simultaneously. Capture synchronized trade/depth replay before claiming any incremental order-flow win-rate or expectancy improvement.
+Branch: `feat/spot-orderflow-manager-signal-integration`, based on main `b88f11237ab0791b261b46139ff3f56cd201d4cd`.
+
+Implementation in progress:
+- Add `backend/app/binance_order_flow_manager.py`: an on-demand LRU manager with a hard limit of eight simultaneous per-symbol streams, shared bounded HTTP client, readiness wait, tick-size/freshness validation and graceful cancellation.
+- Start and stop the manager through FastAPI lifespan. A stream is opened only after a candle candidate passes the existing setup and execution gates.
+- Change live Binance Spot `build_signal` to require a ready stream snapshot with contiguous aggTrade coverage and sequence-validated depth. If bootstrapping, reconnecting, stale, evicted or otherwise not ready, return WAIT; do not fall back to REST-only depth for a live signal.
+- Keep deterministic injected order-flow fixtures for end-to-end long/short tests and keep candle-only historical replay explicitly separate from live stream validation.
+- Add manager tests for reuse, LRU capacity, not-ready behavior, invalid tick sizes and tick-size refresh; add a signal-pipeline WAIT test while the stream is bootstrapping.
+
+Capacity boundary: the manager supports at most eight active symbols per application process and uses least-recently-requested eviction. This is a bounded first integration, not simultaneous coverage of every eligible Spot pair. A fair rotating stream scheduler or shared multi-symbol combined-stream manager is still needed for broad automated coverage.
+
+Validation gates before merge:
+- Backend CI on Python 3.12 and 3.14 plus Backend/Web CI.
+- Review the full diff for intended files only and scan for secrets/unrelated changes.
+- Add a live public single-symbol read-only smoke check after CI; record its status separately from deterministic replay fixtures.
+- After merge, verify main and post-merge CI. Then build a fair dynamic stream scheduler and synchronized trade/depth replay capture.
+
+## Latest core checkpoint — 2026-11-18 07:35 UTC
+
+- Main is `b88f11237ab0791b261b46139ff3f56cd201d4cd`. PR #203 merged the sequence-validated single-symbol Spot WebSocket adapter; post-merge Backend CI and Backend/Web CI passed.
+- Latest scheduled `QUANTNEX Live Crypto Signal Smoke` run found in GitHub Actions is 2026-11-17 09:12:45 UTC. It discovered 1,373 eligible Binance Spot pairs, scanned a rotating 20-pair subset, and completed 20 scans with 0 provider errors and 0 insufficient-history skips. All 20 were WAIT (confluence 3–6/10). This proves public provider/scan execution only; it does not prove the signal engine can generate profitable signals or that all pairs were scanned. No newer scheduled smoke run was returned in the current Actions audit.
+- Market coverage remains Binance Spot only for crypto signals. USDⓈ-M and COIN-M Futures remain unverified/not wired; XAUUSD remains a separate provider path.
+- Live order-flow on main has a robust single-symbol adapter but it is not yet connected to `build_signal`. Current branch `feat/spot-orderflow-manager-signal-integration` adds bounded lifecycle ownership and requires sequence-validated stream readiness for live Spot signals.
+- Historical walk-forward still lacks synchronized historical aggressor trades and L2 replay. CVD is in-memory and since bootstrap seed only; full UTC session delta requires an independent anchor. No measured order-flow uplift, profitability or calibrated win probability is claimed.
+- Next after this branch: run full CI, merge only if all checks pass and the diff is safe, verify post-merge main; then build a fair dynamic stream scheduler for the eligible Spot universe and capture synchronized trade/depth replay for out-of-sample/ablation evaluation.

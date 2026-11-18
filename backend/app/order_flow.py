@@ -261,6 +261,11 @@ def evaluate_order_flow_confirmation(
         raise OrderFlowDataError("Order-flow snapshot lacks verified aggressor-side provenance.")
     if not isinstance(snapshot.get("depth_is_continuous"), bool):
         raise OrderFlowDataError("Order-flow snapshot must declare its depth continuity state.")
+    feed_mode = str(snapshot.get("feed_mode") or "")
+    if feed_mode == "PUBLIC_WEBSOCKET_STREAM" and snapshot.get("depth_is_continuous") is not True:
+        raise OrderFlowDataError(
+            "Live WebSocket order-flow requires sequence-validated depth; the book is not continuous."
+        )
     update_id = snapshot.get("depth_snapshot_update_id")
     if isinstance(update_id, bool) or not isinstance(update_id, int) or update_id < 0:
         raise OrderFlowDataError("Order-flow snapshot has an invalid depth update ID.")
@@ -323,6 +328,26 @@ def evaluate_order_flow_confirmation(
         status = "MIXED"
     else:
         status = "NEUTRAL"
+    if feed_mode == "PUBLIC_WEBSOCKET_STREAM":
+        depth_limitations = [
+            "L2 depth is sequence-validated only from the current REST snapshot bridge; any update-ID gap invalidates it until a new bridge succeeds.",
+            "Depth freshness uses local receive time; it is not an exchange-server clock guarantee.",
+        ]
+    else:
+        depth_limitations = [
+            "Depth imbalance is one REST L2 snapshot, not a sequence-validated continuous book.",
+            "Depth freshness uses local receive time; Binance REST depth does not provide an exchange event timestamp here.",
+        ]
+    cvd_status = str(snapshot.get("cvd_status") or "")
+    cvd_scope = str(snapshot.get("cvd_scope") or "")
+    if cvd_status == "COMPLETE_SINCE_STATE_SEED":
+        cvd_limitation = "CVD is complete only since the bounded stream bootstrap seed; it is not a full historical or full-session series."
+    else:
+        cvd_limitation = "CVD is unavailable or incomplete when stream bootstrap coverage is missing or an aggregate-trade ID gap remains."
+    if snapshot.get("session_delta_coverage_complete") is True:
+        session_limitation = "UTC session delta is reported only when the explicit session-start trade ID and every subsequent ID are covered."
+    else:
+        session_limitation = "Full UTC session delta is unavailable without a verified UTC session-start anchor and contiguous trade-ID coverage."
     return {
         "status": status,
         "accepted": status == "CONFIRMED",
@@ -338,9 +363,9 @@ def evaluate_order_flow_confirmation(
         "method": "directional sign confluence v1; not calibrated as win probability",
         "limitations": [
             "Aggressor side is inferred from Binance aggregate-trade buyer-is-maker semantics.",
-            "Depth imbalance is one REST L2 snapshot, not a sequence-validated continuous book.",
-            "Depth freshness uses local receive time; Binance REST depth does not provide an exchange event timestamp here.",
-            "Recent-window delta is not persistent CVD; UTC session delta is valid only when coverage is complete.",
+            *depth_limitations,
+            cvd_limitation,
+            session_limitation,
         ],
     }
 

@@ -182,3 +182,30 @@ def test_order_flow_confirmation_rejects_stale_or_unproven_trade_side_data():
     unproven["data_provenance"]["candle_volume_used"] = True
     with pytest.raises(OrderFlowDataError, match="provenance"):
         evaluate_order_flow_confirmation("BUY", unproven, now=NOW)
+
+def test_live_websocket_confirmation_requires_sequence_validated_depth():
+    from app.order_flow import evaluate_order_flow_confirmation
+
+    snapshot = _order_flow_snapshot()
+    snapshot["feed_mode"] = "PUBLIC_WEBSOCKET_STREAM"
+    snapshot["depth_is_continuous"] = False
+    with pytest.raises(OrderFlowDataError, match="sequence-validated depth"):
+        evaluate_order_flow_confirmation("BUY", snapshot, now=NOW)
+
+
+def test_live_websocket_confirmation_reports_stream_seed_and_session_limitations():
+    from app.order_flow import evaluate_order_flow_confirmation
+
+    snapshot = _order_flow_snapshot()
+    snapshot["feed_mode"] = "PUBLIC_WEBSOCKET_STREAM"
+    snapshot["depth_is_continuous"] = True
+    snapshot["cvd_status"] = "COMPLETE_SINCE_STATE_SEED"
+    snapshot["cvd_scope"] = "SINCE_STATE_SEED"
+    snapshot["session_delta_coverage_complete"] = False
+
+    result = evaluate_order_flow_confirmation("BUY", snapshot, now=NOW)
+
+    assert result["accepted"] is True
+    assert any("sequence-validated" in item.lower() for item in result["limitations"])
+    assert any("bootstrap seed" in item.lower() for item in result["limitations"])
+    assert any("full utc session delta is unavailable" in item.lower() for item in result["limitations"])

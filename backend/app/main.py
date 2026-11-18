@@ -32,9 +32,14 @@ Base.metadata.create_all(bind=engine)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Own all local background workers in one explicit application lifecycle."""
+    """Own all local background workers and read-only market streams."""
+    from .binance_order_flow_manager import (
+        start_binance_spot_order_flow_manager,
+        stop_binance_spot_order_flow_manager,
+    )
     await prepare_local_workspace()
     try:
+        await start_binance_spot_order_flow_manager()
         await start_signal_lifecycle_worker()
         await start_telegram_background_worker()
         await start_prop_challenge_guardian()
@@ -46,6 +51,7 @@ async def lifespan(app: FastAPI):
         await stop_daily_backup_worker()
         await stop_prop_challenge_guardian()
         await stop_telegram_background_worker()
+        await stop_binance_spot_order_flow_manager()
         await stop_signal_lifecycle_worker()
 
 

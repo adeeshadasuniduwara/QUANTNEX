@@ -15,7 +15,7 @@ from typing import Any
 import httpx
 from .config import TWELVE_DATA_API_KEY, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
 from .binance_public import BinancePublicDataError, get_binance_public_json
-from .binance_order_flow_feed import BinanceOrderFlowFeedError, fetch_spot_order_flow
+from .binance_order_flow_manager import BinanceSpotOrderFlowManagerError, get_binance_spot_order_flow_manager
 from .order_flow import OrderFlowDataError, evaluate_order_flow_confirmation, summarize_order_flow_snapshot
 
 BASE = "https://api.twelvedata.com/time_series"
@@ -1227,37 +1227,59 @@ async def build_signal(
             "note": "XAUUSD uses its configured Gold feed; Binance Spot order-flow is not applied.",
         }
     elif side and entry_choice:
-        order_flow_mode = "DETERMINISTIC_FIXTURE" if order_flow_override is not None else "PUBLIC_REST_SNAPSHOT"
+        order_flow_mode = "DETERMINISTIC_FIXTURE" if order_flow_override is not None else "PUBLIC_WEBSOCKET_STREAM"
+        order_flow_snapshot = None
         try:
             if order_flow_override is not None:
                 order_flow_snapshot = order_flow_override
             elif candles_override is None:
                 max_order_flow_age = float(settings.get("max_order_flow_trade_age_seconds", 15.0))
-                if not math.isfinite(max_order_flow_age) or max_order_flow_age <= 0:
-                    raise MarketDataError("Order-flow freshness setting must be finite and positive.")
-                async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=3.0)) as client:
-                    order_flow_snapshot = await fetch_spot_order_flow(
-                        client,
-                        symbol,
-                        tick_size=tick_size,
-                        max_trade_age_seconds=max_order_flow_age,
-                    )
-                order_flow_mode = (
-                    "DETERMINISTIC_FIXTURE"
-                    if order_flow_snapshot.get("feed_mode") == "DETERMINISTIC_FIXTURE"
-                    else "PUBLIC_REST_SNAPSHOT"
+                max_book_age = float(settings.get("max_order_book_snapshot_age_seconds", 5.0))
+                stream_wait = float(settings.get("order_flow_stream_warmup_seconds", 0.75))
+                if (
+                    not math.isfinite(max_order_flow_age) or max_order_flow_age <= 0
+                    or not math.isfinite(max_book_age) or max_book_age <= 0
+                    or not math.isfinite(stream_wait) or stream_wait < 0
+                ):
+                    raise MarketDataError("Order-flow stream freshness and warm-up settings are invalid.")
+
+                stream_result = await get_binance_spot_order_flow_manager().get_snapshot(
+                    symbol,
+                    tick_size,
+                    wait_seconds=stream_wait,
+                    max_trade_age_seconds=max_order_flow_age,
+                    max_depth_age_seconds=max_book_age,
                 )
+                if not stream_result.get("signal_ready") or not isinstance(stream_result.get("order_flow"), dict):
+                    stream_status = str(stream_result.get("status") or "NOT_READY")
+                    order_flow_payload = {
+                        "status": stream_status,
+                        "accepted": False,
+                        "data_mode": order_flow_mode,
+                        "stream_ready": False,
+                        "last_error": stream_result.get("last_error"),
+                        "manager": stream_result.get("manager"),
+                        "note": "A sequence-validated Binance Spot WebSocket trade/depth stream is required; REST-only depth is not used as a live signal fallback.",
+                    }
+                    quality_filters["order_flow_confirmation"] = False
+                    entry_rejection_reason = (
+                        f"Sequence-validated Binance Spot order-flow stream is not ready ({stream_status}); "
+                        "the candidate remains WAIT until trade continuity and depth sequence validation are sound."
+                    )
+                    side = None
+                else:
+                    order_flow_snapshot = stream_result["order_flow"]
+                    order_flow_mode = "PUBLIC_WEBSOCKET_STREAM"
             else:
-                order_flow_snapshot = None
                 order_flow_mode = "CANDLE_ONLY_REPLAY_BASELINE"
 
-            if order_flow_snapshot is None:
+            if candles_override is not None and order_flow_snapshot is None:
                 order_flow_payload = {
                     "status": "NOT_AVAILABLE_CANDLE_ONLY_REPLAY",
                     "accepted": None,
                     "note": "Historical candle replay has no historical aggressor trades or synchronized L2 data; this result is a candle-only baseline.",
                 }
-            else:
+            elif order_flow_snapshot is not None and side is not None:
                 decision = evaluate_order_flow_confirmation(
                     side,
                     order_flow_snapshot,
@@ -1272,10 +1294,10 @@ async def build_signal(
                     status = str(decision["status"]).lower()
                     entry_rejection_reason = (
                         f"Order Flow did not confirm {side}: {status}. "
-                        "Recent aggressor delta and L2 depth must provide net directional support."
+                        "Recent aggressor delta and sequence-validated L2 depth must provide net directional support."
                     )
                     side = None
-        except (BinanceOrderFlowFeedError, OrderFlowDataError, httpx.HTTPError,
+        except (BinanceSpotOrderFlowManagerError, OrderFlowDataError,
                 MarketDataError, ValueError, TypeError, KeyError, OverflowError) as exc:
             order_flow_payload = {
                 "status": "ERROR",
@@ -1285,7 +1307,7 @@ async def build_signal(
             }
             quality_filters["order_flow_confirmation"] = False
             entry_rejection_reason = (
-                "Order Flow data was unavailable, malformed or stale; the live Spot signal was rejected."
+                "Order Flow stream data was unavailable, malformed or stale; the live Spot signal was rejected."
             )
             side = None
     elif symbol != "XAUUSD" and candles_override is not None:

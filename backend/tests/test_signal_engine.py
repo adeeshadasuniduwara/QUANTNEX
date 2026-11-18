@@ -453,24 +453,39 @@ def test_low_price_crypto_signal_levels_keep_required_precision(monkeypatch):
 
     monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
     monkeypatch.setattr(signal_engine, "inspect_tf", bullish_analysis)
-    async def fake_order_flow(_client, _symbol, **_kwargs):
-        return {
-            "market_type": "BINANCE_SPOT", "trade_count": 10, "trade_data_age_seconds": 1.0,
-            "delta_ratio": 0.25, "buy_volume": 3.0, "sell_volume": 1.0, "delta": 2.0,
-            "window_cumulative_delta": 2.0, "window_delta_scope": "LATEST_AGGTRADE_RESPONSE_WINDOW",
-            "cvd_value": None, "cvd_status": "NOT_AVAILABLE_WITHOUT_CONTINUOUS_TRADE_STATE",
-            "session_timezone": "UTC", "session_delta": None,
-            "session_delta_scope": "RECENT_WINDOW_SAMPLE_ONLY", "session_delta_coverage_complete": False,
-            "order_book": {"depth_imbalance": 0.2, "spread_bps": 1.62, "microprice_displacement_bps": 0.1},
-            "footprint": [],
-            "data_provenance": {"candle_volume_used": False, "bid_ask_semantics": "Aggressor-side inferred trade delta"},
-            "data_sources": {"trades": "https://data-api.binance.vision", "depth": "https://data-api.binance.vision"},
-            "feed_mode": "DETERMINISTIC_FIXTURE", "depth_is_continuous": False,
-            "depth_snapshot_update_id": 123, "depth_observed_at": now.isoformat(),
-            "quality": "OBSERVED_AGGRESSOR_DELTA_AND_L2_SNAPSHOT",
-        }
+    class FixtureOrderFlowManager:
+        async def get_snapshot(self, symbol, _tick_size, **_kwargs):
+            snapshot = {
+                "market_type": "BINANCE_SPOT", "trade_count": 10, "trade_data_age_seconds": 1.0,
+                "delta_ratio": 0.25, "buy_volume": 3.0, "sell_volume": 1.0, "delta": 2.0,
+                "window_cumulative_delta": 2.0, "window_delta_scope": "LATEST_AGGTRADE_RESPONSE_WINDOW",
+                "cvd_value": 2.0, "cvd_status": "COMPLETE_SINCE_STATE_SEED",
+                "session_timezone": "UTC", "session_delta": None,
+                "session_delta_scope": "INCOMPLETE_UTC_SESSION_SAMPLE", "session_delta_coverage_complete": False,
+                "order_book": {"depth_imbalance": 0.2, "spread_bps": 1.62, "microprice_displacement_bps": 0.1,
+                               "source": "BINANCE_SPOT_SEQUENCE_VALIDATED_DEPTH_STREAM"},
+                "footprint": [],
+                "data_provenance": {
+                    "candle_volume_used": False,
+                    "bid_ask_semantics": "Aggressor-side inferred trade delta",
+                    "book_source": "Binance Spot sequence-validated diff-depth stream",
+                },
+                "data_sources": {"trades": "https://data-api.binance.vision",
+                                 "depth": "https://data-api.binance.vision"},
+                "feed_mode": "PUBLIC_WEBSOCKET_STREAM", "depth_is_continuous": True,
+                "depth_snapshot_update_id": 123, "depth_observed_at": now.isoformat(),
+                "quality": "OBSERVED_AGGRESSOR_DELTA_AND_SEQUENCE_VALIDATED_L2",
+            }
+            return {
+                "symbol": symbol, "market_type": "BINANCE_SPOT", "status": "LIVE",
+                "signal_ready": True, "order_flow": snapshot,
+                "manager": {"active_streams": 1, "max_streams": 8},
+            }
 
-    monkeypatch.setattr(signal_engine, "fetch_spot_order_flow", fake_order_flow)
+    monkeypatch.setattr(
+        signal_engine, "get_binance_spot_order_flow_manager",
+        lambda: FixtureOrderFlowManager(),
+    )
     monkeypatch.setattr(signal_engine, "get_binance_spot_execution_context", fake_execution)
     settings = {"primary": "5", "trend": "60", "enabled": ["5", "60"], "min_score": 6}
     result = asyncio.run(signal_engine.build_signal(settings, "PEPEUSDT"))

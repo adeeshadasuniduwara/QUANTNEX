@@ -36,7 +36,7 @@ async function refresh(){
   $("bnAutoDca").checked=cfg.dca_enabled===true;
   const checks=data.readiness?.checks||{};
   $("bnReadiness").textContent="Readiness · "+Object.entries(checks).map(([k,v])=>k.replaceAll("_"," ")+": "+(v?"PASS":"WAIT")).join(" · ");
-  status("Binance DEMO testnet · "+(data.spot_connected&&data.futures_connected?"Both connections verified.":"Connect both demo environments to continue.")+" Auto Trading is "+(data.auto_trading_enabled?"ON":"OFF")+".");
+  status("Binance DEMO Trading · "+(data.spot_connected&&data.futures_connected?"Both connections verified.":"Connect both demo environments to continue.")+" Auto Trading is "+(data.auto_trading_enabled?"ON":"OFF")+".");
  }catch(error){status("Local API unavailable: "+error.message,true);}
 }
 const connectExchange=async(exchange,formId,buttonId,keyId,secretId)=>{

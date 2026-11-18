@@ -21,6 +21,8 @@ DATA = ROOT / "data"
 VERSION_FILE = DATA / "quantnex_web_version.json"
 SOURCE_STATE_FILE = DATA / "quantnex_update_state.json"
 SUPERVISOR_CHECK_FILE = DATA / "updates" / "check_requested.json"
+SUPERVISOR_PROGRESS_FILE = DATA / "updates" / "check_in_progress.json"
+SUPERVISOR_ERROR_FILE = DATA / "updates" / "check_error.json"
 REPO = "adeeshadasuniduwara/QUANTNEX"
 BRANCH = "main"
 HOST, PORT = "127.0.0.1", 5500
@@ -57,17 +59,27 @@ def supervisor_update_status() -> dict:
         "files_changed": 0,
         "commits_behind": 1,
     }
-    update_available = not installed or installed != latest["sha"]
+    syncing = SUPERVISOR_CHECK_FILE.is_file() or SUPERVISOR_PROGRESS_FILE.is_file()
+    sync_error = ""
+    try:
+        sync_error = str(json.loads(SUPERVISOR_ERROR_FILE.read_text(encoding="utf-8")).get("message", ""))[:500]
+    except (OSError, ValueError, AttributeError):
+        pass
+    update_available = not installed or installed != latest["sha"] or syncing
     return {
         "installed": "main@" + installed[:7] if installed else "Initial source sync pending",
         "latest": "main@" + latest["sha"][:7],
         "latest_message": latest["message"],
         "update_available": update_available,
         "managed_by_supervisor": True,
+        "syncing": syncing,
+        "sync_error": sync_error,
         "release_notes": latest["html_url"],
         "commit_sha": latest["sha"],
         **details,
         "message": (
+            "A full local source verification/repair is running. QUANTNEX will refresh after the safe restart."
+            if syncing else
             "A source update is available. The QUANTNEX supervisor will install it and restart the services safely."
             if update_available else
             "QUANTNEX source is up to date. Automatic checks continue every five minutes."
@@ -78,8 +90,12 @@ def supervisor_update_status() -> dict:
 def queue_supervisor_check() -> None:
     """Ask the running launcher to perform an immediate safe source check."""
     SUPERVISOR_CHECK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    SUPERVISOR_ERROR_FILE.unlink(missing_ok=True)
     temporary = SUPERVISOR_CHECK_FILE.with_suffix(".tmp")
-    temporary.write_text(json.dumps({"requested_at": datetime.now(timezone.utc).isoformat()}), encoding="utf-8")
+    temporary.write_text(json.dumps({
+        "requested_at": datetime.now(timezone.utc).isoformat(),
+        "force_reconcile": True,
+    }), encoding="utf-8")
     temporary.replace(SUPERVISOR_CHECK_FILE)
 
 

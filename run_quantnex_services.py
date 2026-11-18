@@ -22,6 +22,8 @@ CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 PROCESSES: list[tuple[str, subprocess.Popen]] = []
 UPDATE_INTERVAL_SECONDS = 300
 UPDATE_REQUEST_FILE = ROOT / "data" / "updates" / "check_requested.json"
+UPDATE_PROGRESS_FILE = ROOT / "data" / "updates" / "check_in_progress.json"
+UPDATE_ERROR_FILE = ROOT / "data" / "updates" / "check_error.json"
 UPDATE_ROLLBACK_MARKER = ROOT / "data" / "updates" / "last_update.json"
 
 
@@ -164,16 +166,19 @@ def stop_all() -> None:
     PROCESSES.clear()
 
 
-def check_for_automatic_update() -> bool:
+def check_for_automatic_update(force_reconcile: bool = False) -> bool:
     try:
         from quantnex_updater import check_and_apply
-        result = check_and_apply(ROOT)
+        result = check_and_apply(ROOT, force_reconcile=force_reconcile)
         if result["status"] == "updated":
             print("\n[AUTO UPDATE] " + result["message"], flush=True)
             print("[AUTO UPDATE] Installed " + result["version"], flush=True)
             for path in result["changed_files"][:30]:
                 print("[AUTO UPDATE] " + path, flush=True)
             restart_required = bool(result.get("restart_required"))
+            if not restart_required:
+                UPDATE_PROGRESS_FILE.unlink(missing_ok=True)
+            UPDATE_ERROR_FILE.unlink(missing_ok=True)
             if restart_required:
                 # The currently running (pre-update) launcher must pass this through
                 # its default inherited environment to the newly installed launcher.
@@ -183,18 +188,32 @@ def check_for_automatic_update() -> bool:
             print("[AUTO UPDATE] Installed source baseline recorded: " + result["version"], flush=True)
         elif result["status"] == "current":
             print("[AUTO UPDATE] QUANTNEX is up to date: " + result["version"], flush=True)
+        if not UPDATE_ROLLBACK_MARKER.is_file():
+            UPDATE_PROGRESS_FILE.unlink(missing_ok=True)
+        UPDATE_ERROR_FILE.unlink(missing_ok=True)
         return False
     except Exception as exc:
         print(f"[AUTO UPDATE] Check deferred; existing QUANTNEX will keep running: {type(exc).__name__}: {exc}", flush=True)
+        if force_reconcile:
+            import json
+            UPDATE_PROGRESS_FILE.unlink(missing_ok=True)
+            UPDATE_ERROR_FILE.parent.mkdir(parents=True, exist_ok=True)
+            UPDATE_ERROR_FILE.write_text(json.dumps({"message": str(exc)[:500]}), encoding="utf-8")
         return False
 
 
 def consume_manual_update_request() -> bool:
-    """Consume one browser-requested update check without exposing an update endpoint."""
+    """Move a browser request into a visible in-progress marker for the UI watcher."""
     try:
         if not UPDATE_REQUEST_FILE.is_file():
             return False
         UPDATE_REQUEST_FILE.unlink()
+        UPDATE_PROGRESS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        UPDATE_PROGRESS_FILE.write_text(
+            '{"status":"checking","message":"Checking and repairing the complete local source snapshot…"}',
+            encoding="utf-8",
+        )
+        UPDATE_ERROR_FILE.unlink(missing_ok=True)
         return True
     except OSError as exc:
         print(f"[AUTO UPDATE] Could not consume the manual check request: {exc}", flush=True)
@@ -288,6 +307,8 @@ def main() -> int:
             from quantnex_updater import confirm_update
             if confirm_update(ROOT):
                 print("[AUTO UPDATE] Startup health checks passed; rollback checkpoint confirmed.", flush=True)
+                UPDATE_PROGRESS_FILE.unlink(missing_ok=True)
+                UPDATE_ERROR_FILE.unlink(missing_ok=True)
         except Exception as confirm_error:
             print(f"[AUTO UPDATE] Startup confirmation deferred: {confirm_error}", flush=True)
 
@@ -311,7 +332,7 @@ def main() -> int:
             if manual_check_requested or scheduled_check_due:
                 if manual_check_requested:
                     print("\n[AUTO UPDATE] Manual Check for Updates request received.", flush=True)
-                if check_for_automatic_update():
+                if check_for_automatic_update(force_reconcile=manual_check_requested):
                     print("\n[AUTO UPDATE] Stopping services safely before restart…", flush=True)
                     stop_all()
                     restart_launcher()

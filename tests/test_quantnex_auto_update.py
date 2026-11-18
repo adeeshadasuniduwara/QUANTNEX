@@ -10,6 +10,8 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 APP = (ROOT / "apps" / "web" / "app.js").read_text(encoding="utf-8")
 UPDATER = (ROOT / "apps" / "web" / "quantnex_local_server.py").read_text(encoding="utf-8")
+HTML = (ROOT / "apps" / "web" / "index.html").read_text(encoding="utf-8")
+SOURCE_UPDATER = (ROOT / "quantnex_updater.py").read_text(encoding="utf-8")
 LAUNCHER = (ROOT / "run_quantnex_services.py").read_text(encoding="utf-8")
 
 
@@ -129,6 +131,46 @@ class AutomaticUpdateTests(unittest.TestCase):
         self.assertIn("previous_managed_manifest", source)
         self.assertIn("managed_source_files.json", source)
         self.assertNotIn("/compare/{installed_sha}", source)
+
+
+    def test_same_commit_manual_repair_reconciles_local_file_drift(self):
+        import importlib.util
+        module_path = ROOT / "quantnex_updater.py"
+        spec = importlib.util.spec_from_file_location("quantnex_force_repair_test", module_path)
+        updater = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(updater)
+        commit = "a" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "README.md").write_text("old local copy", encoding="utf-8")
+            staged = root / "staged"
+            staged.mkdir()
+            (staged / "README.md").write_text("official source copy", encoding="utf-8")
+            with patch.object(updater, "_request_json", return_value={"sha": commit}), \
+                 patch.object(updater, "_load_state", return_value={"commit_sha": commit}), \
+                 patch.object(updater, "_load_managed_paths", return_value=["README.md"]), \
+                 patch.object(updater, "_managed_paths_from_tree", return_value=["README.md"]), \
+                 patch.object(updater, "_stage_full_snapshot", return_value=staged):
+                result = updater.check_and_apply(root, force_reconcile=True)
+            self.assertEqual(result["status"], "updated")
+            self.assertEqual((root / "README.md").read_text(encoding="utf-8"), "official source copy")
+            self.assertEqual(result["changed_files"], ["README.md"])
+
+    def test_manual_check_forces_full_source_reconciliation_even_when_sha_matches(self):
+        self.assertIn("force_reconcile: bool = False", SOURCE_UPDATER)
+        self.assertIn("installed_sha == latest_sha and not force_reconcile", SOURCE_UPDATER)
+        self.assertIn("check_and_apply(ROOT, force_reconcile=force_reconcile)", LAUNCHER)
+        self.assertIn("force_reconcile=manual_check_requested", LAUNCHER)
+        self.assertIn("check_in_progress.json", UPDATER)
+        self.assertIn("state.syncing", APP)
+        self.assertIn("if(result.update_available||!silent)", APP)
+
+    def test_binance_demo_forms_match_backend_key_length_limits_and_labels(self):
+        self.assertIn("Binance Spot Demo Trading", HTML)
+        self.assertIn("Binance USD-M Futures Demo Trading", HTML)
+        self.assertEqual(HTML.count('minlength="1" maxlength="256"'), 4)
+        self.assertNotIn("Binance Spot Testnet", HTML)
+        self.assertNotIn("Binance USD-M Futures Testnet", HTML)
 
     def test_updater_still_pins_and_validates_the_github_archive(self):
         self.assertIn("codeload.github.com/{REPO}/zip/{sha}", UPDATER)

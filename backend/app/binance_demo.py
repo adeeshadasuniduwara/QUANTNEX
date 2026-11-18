@@ -1,8 +1,7 @@
-"""Secure Binance Spot + USD-M Futures testnet connections and demo controls.
+"""Secure Binance Spot + USD-M Futures Demo Trading connections and controls.
 
-This first release is deliberately testnet-only. It verifies credentials against
-Binance test environments, stores them encrypted in the local workspace, and
-persists risk/automation controls. It does not submit live or testnet orders.
+This release verifies Demo Trading credentials, stores them encrypted in the
+local workspace, and persists risk/automation controls. It does not submit orders.
 """
 from __future__ import annotations
 
@@ -13,7 +12,7 @@ from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -97,19 +96,27 @@ def _credential_keys(exchange: str) -> tuple[str, str, str, str]:
         return ("binance_spot_api_key_enc", "binance_spot_api_secret_enc", SPOT_BASE, "/api/v3/account")
     if exchange == "futures":
         return ("binance_futures_api_key_enc", "binance_futures_api_secret_enc", FUTURES_BASE, "/fapi/v3/account")
-    raise ValueError("Unsupported Binance testnet market.")
+    raise ValueError("Unsupported Binance Demo Trading market.")
 
 
 class BinanceConnect(BaseModel):
-    spot_api_key: str = Field(min_length=20, max_length=160)
-    spot_api_secret: str = Field(min_length=20, max_length=160)
-    futures_api_key: str = Field(min_length=20, max_length=160)
-    futures_api_secret: str = Field(min_length=20, max_length=160)
+    spot_api_key: str = Field(min_length=1, max_length=256)
+    spot_api_secret: str = Field(min_length=1, max_length=256)
+    futures_api_key: str = Field(min_length=1, max_length=256)
+    futures_api_secret: str = Field(min_length=1, max_length=256)
 
 
 class BinanceCredentialPair(BaseModel):
     api_key: str = Field(min_length=1, max_length=256)
     api_secret: str = Field(min_length=1, max_length=256)
+
+    @field_validator("api_key", "api_secret")
+    @classmethod
+    def strip_and_require_nonblank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("API key and secret cannot be blank.")
+        return value
 
 
 class BinanceRiskSettings(BaseModel):

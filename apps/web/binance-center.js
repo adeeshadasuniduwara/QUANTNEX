@@ -100,7 +100,7 @@ $("bnSpotAutoToggle").addEventListener("click",async()=>{
  const button=$("bnSpotAutoToggle");busy(button,true);
  try{const d=await request("/spot-auto-trading",{method:"PUT",body:JSON.stringify({enabled})});autoStatus(d.message);await refresh();}
  catch(error){autoStatus("Auto Trading change rejected: "+error.message,true);await refresh();}
- finally{busy(button,false);}
+ finally{busy(button,false);button.textContent=button.dataset.enabled==="true"?"Stop Spot Demo Auto Trading":"Start Spot Demo Auto Trading";}
 });
 $("bnRefresh").addEventListener("click",refresh);
 document.addEventListener("DOMContentLoaded",refresh);

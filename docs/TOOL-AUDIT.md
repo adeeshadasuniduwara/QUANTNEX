@@ -196,3 +196,14 @@ Do not convert static code inspection or CI success into a claim that a real ext
 - Updated view-activity aliases so market refresh, paper ledger/performance polling, and the Paper Autopilot refresh continue to run while their consolidated parent page is active.
 - Kept dedicated destinations for QUANTNEX VIEW, Telegram Bot, Binance Exchange, Order Flow & Liquidity, News Intelligence, Economic Calendar, Price Alerts, Trade History, Strategy Library, Portfolio Monitor, Connections & Integrations, AI Strategy Laboratory, Prop Firm Challenge, System Security, Goals and Support because they serve distinct workflows.
 - Evidence: navigation contract tests cover all retained targets, grouped destinations and background refresh aliases. Actual visual layout and user-device interaction remain subject to browser verification.
+
+
+## Update 031 — Multi-coin Telegram signal performance reports
+
+- Added a quiet background report scanner for BTCUSDT, ETHUSDT, BNBUSDT, SOLUSDT and XRPUSDT. It runs independently of the selected chart and persists qualifying candidates through the existing idempotent SignalTrade lifecycle; it does not send a Telegram message per scan.
+- Added chart-signal performance PDFs sourced from SignalTrade (not the separate manual/automatic PaperTrade ledger). Supported periods: daily, weekly (Monday start), monthly, yearly and all-time; optional per-symbol filtering is available through Telegram /report.
+- Reports show resolved/open counts, wins/losses/breakeven, win rate, realized P&L in R, per-coin breakdown and the latest 100 signal records. Open/pending, expired and superseded records are excluded from resolved-trade win-rate denominators.
+- Automatic signal PDF delivery defaults ON at 21:00 Asia/Colombo for connected Telegram bots; /report_on and /report_off control the schedule. The existing PaperTrade PDF remains a separate report.
+- P&L is intentionally shown in R, not USD: the chart SignalTrade ledger does not contain a reliable account balance, position sizing or broker-fill ledger from which USD P&L could be calculated.
+- Automated coverage added for period filtering, per-symbol breakdown, resolved-only win-rate calculation and PDF generation. External Telegram delivery, live provider availability and Windows auto-update handoff still require runtime verification.
+- Evidence level: source and CI tests only until the PR checks and a connected Telegram runtime are verified.

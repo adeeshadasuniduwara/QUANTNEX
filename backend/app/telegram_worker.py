@@ -265,6 +265,9 @@ BOT_COMMANDS = [
     {"command":"help","description":"Show help and available features"},
     {"command":"status","description":"Check bot and market feed status"},
     {"command":"scan","description":"Scan a market, e.g. /scan BTCUSDT"},
+    {"command":"report","description":"Signal PDF: daily weekly monthly yearly total"},
+    {"command":"report_on","description":"Enable 21:00 signal PDF reports"},
+    {"command":"report_off","description":"Disable scheduled signal PDF reports"},
     {"command":"timeframes","description":"View signal timeframes"},
     {"command":"settf","description":"Set primary timeframe"},
     {"command":"settrend","description":"Set trend timeframe"},
@@ -307,7 +310,8 @@ SUBMENUS = {
         [{"text":"🏠 Main menu","callback_data":"qx:menu:home"}]
     ]},
     "qx:menu:reports": {"inline_keyboard": [
-        [{"text":"📄 Today's PDF report","callback_data":"qx:daily"}],
+        [{"text":"📈 Signal performance PDF","callback_data":"qx:signal_report"}],
+        [{"text":"📄 Today's Paper PDF","callback_data":"qx:daily"}],
         [{"text":"🥇 Gold price image now","callback_data":"qx:gold"}],
         [{"text":"🌙 Enable daily Gold reports","callback_data":"qx:gold_setup"}],
         [{"text":"🕗 Daily PDF 20:00 ON/OFF","callback_data":"qx:daily_toggle"}],
@@ -572,6 +576,20 @@ async def _edit_message(client, token: str, chat_id: str, message_id: int, text:
     payload={"chat_id":chat_id,"message_id":message_id,"text":_format_telegram_message(text),"parse_mode":"HTML"}
     if reply_markup is not None: payload["reply_markup"]=reply_markup
     return await _telegram_post(client,token,"editMessageText",payload)
+
+async def _deliver_signal_performance_pdf(client, db, user_id: int, token: str, chat_id: str, period="daily", symbol=None):
+    from .signal_reporting import build_signal_performance_pdf
+    pdf, stats = build_signal_performance_pdf(db, user_id, period, symbol)
+    label = period.title() + (" · " + symbol.upper() if symbol else "")
+    caption = ("📈 QUANTNEX Signal Performance · " + label + "\\n"
+        + "Resolved: " + str(stats["resolved"]) + " · Win rate: " + format(stats["win_rate"], ".2f") + "%\\n"
+        + "W/L/BE: " + str(stats["wins"]) + "/" + str(stats["losses"]) + "/" + str(stats["breakeven"])
+        + " · P&L: " + format(stats["realized_r"], "+.3f") + " R\\n"
+        + "Open: " + str(stats["open"]) + " · Simulated signals, not broker fills.")
+    filename = "QUANTNEX-Signal-Performance-" + period + ("-" + symbol.upper() if symbol else "") + ".pdf"
+    await _send_pdf(client, token, chat_id, pdf, filename, caption)
+    return stats
+
 
 async def _deliver_daily_pdf(client, db, user_id: int, token: str, chat_id: str, report_day=None):
     from .telegram_reporting import build_daily_paper_pdf
@@ -911,6 +929,25 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
             return "QUANTNEX AI credentials need to be saved again. Check QUANTNEX_SECRET_KEY and reconnect the OpenAI integration."
     if command=="/status":
         return "QUANTNEX bot connected. Crypto feed: Binance Spot public candles with Coinbase fallback for BTC/ETH/SOL. Gold feed: "+(gold_feed_provider() or "not configured")+". Broker execution: disabled."
+    if command == "/report":
+        period = parts[1].lower() if len(parts) > 1 else "daily"
+        symbol = parts[2].upper() if len(parts) > 2 else None
+        if period not in {"daily","weekly","monthly","yearly","total"}:
+            return "Use /report daily|weekly|monthly|yearly|total [BTCUSDT]."
+        if symbol and (not symbol.isalnum() or len(symbol) < 5 or len(symbol) > 30):
+            return "Use a valid symbol, e.g. /report weekly BTCUSDT."
+        try:
+            stats = await _deliver_signal_performance_pdf(client,db,user_id,token,chat_id,period,symbol)
+            return "Signal report sent · "+str(stats["resolved"])+" resolved · "+format(stats["win_rate"],".2f")+"% win rate · "+format(stats["realized_r"],"+.3f")+" R."
+        except Exception as exc:
+            logger.warning("Signal report failed for local user %s: %s",user_id,type(exc).__name__)
+            return "Could not generate the signal report. Check the signal ledger and backend logs."
+    if command == "/report_on":
+        _set(db,user_id,"telegram_signal_report_enabled","true");db.commit()
+        return "Automatic signal PDF reports enabled for 21:00 Asia/Colombo. Use /report_off to stop."
+    if command == "/report_off":
+        _set(db,user_id,"telegram_signal_report_enabled","false");db.commit()
+        return "Automatic signal PDF reports are OFF. Use /report_on to enable."
     if command=="/scan":
         market=parts[1].upper() if len(parts)>1 else "BTCUSDT"
         if market != "XAUUSD" and (not market.isalnum() or len(market) < 5 or len(market) > 30):
@@ -1200,6 +1237,13 @@ async def telegram_worker() -> None:
                                                 except Exception as exc:
                                                     logger.warning("Gold report setup button failed for local user %s: %s",user_id,type(exc).__name__)
                                                     answer="Daily Gold reports enabled, but first image failed. Use /gold to retry."
+                                            elif action=="qx:signal_report":
+                                                try:
+                                                    stats=await _deliver_signal_performance_pdf(client,db,user_id,token,chat_id,"daily")
+                                                    answer="Signal report sent · "+str(stats["resolved"])+" resolved · "+format(stats["win_rate"],".2f")+"% win rate · "+format(stats["realized_r"],"+.3f")+" R"
+                                                except Exception as exc:
+                                                    logger.warning("Signal PDF button failed for local user %s: %s",user_id,type(exc).__name__)
+                                                    answer="Could not generate the signal performance PDF."
                                             elif action=="qx:daily":
                                                 try:
                                                     stats=await _deliver_daily_pdf(client,db,user_id,token,chat_id)
@@ -1368,6 +1412,27 @@ async def telegram_worker() -> None:
                                     user_id,
                                 )
                             last_monitor[auto_key] = now
+                        # Quiet five-coin background scan, independent of the active chart tab.
+                        report_scan_key = (user_id, "report_universe")
+                        if now - last_monitor.get(report_scan_key, 0) >= 180:
+                            raw_watchlist = _get(db,user_id,"signal_report_watchlist","BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT,XRPUSDT")
+                            watchlist = list(dict.fromkeys(x.strip().upper() for x in raw_watchlist.split(",")
+                                if x.strip().isalnum() and 5 <= len(x.strip()) <= 30))[:5]
+                            scan_raw = _get(db,user_id,"signal_settings",'{"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":8}')
+                            scan_settings = _normalise_signal_settings(scan_raw)
+                            db.commit()
+                            for report_symbol in watchlist:
+                                try:
+                                    scan_result = await build_signal(scan_settings,report_symbol)
+                                    candidate = scan_result.get("signal")
+                                    if candidate:
+                                        from .signal_lifecycle import record_signal
+                                        record_signal(db,user_id,candidate,"BACKGROUND_REPORT_SCAN")
+                                        db.commit()
+                                except (MarketDataError,httpx.HTTPError,ValueError,TypeError,KeyError) as scan_error:
+                                    logger.warning("Background report scan unavailable for %s: %s",report_symbol,type(scan_error).__name__)
+                                await asyncio.sleep(0.05)
+                            last_monitor[report_scan_key] = now
                         # Scheduled Gold images: two user-local snapshots per Colombo day.
                         if _get(db,user_id,"telegram_gold_report_enabled","false")=="true":
                             local_now=datetime.now(ZoneInfo("Asia/Colombo"))
@@ -1394,6 +1459,19 @@ async def telegram_worker() -> None:
                                     db.commit()
                                 except Exception as exc:
                                     logger.warning("Scheduled Telegram PDF failed for local user %s: %s",user_id,type(exc).__name__)
+                        # Send the chart-signal PDF once per Colombo day at/after 21:00.
+                        if _get(db,user_id,"telegram_signal_report_enabled","true") == "true":
+                            local_now = datetime.now(ZoneInfo("Asia/Colombo"))
+                            sent_day = _get(db,user_id,"telegram_signal_report_sent_date","")
+                            if (local_now.hour >= 21 and sent_day != local_now.date().isoformat()
+                                    and now - last_daily_attempt.get((user_id, "signal_report"), 0) >= 300):
+                                last_daily_attempt[(user_id, "signal_report")] = now
+                                try:
+                                    stats = await _deliver_signal_performance_pdf(client,db,user_id,token,chat_id,"daily")
+                                    _set(db,user_id,"telegram_signal_report_sent_date",local_now.date().isoformat())
+                                    db.commit()
+                                except Exception as report_error:
+                                    logger.warning("Scheduled signal PDF failed for local user %s: %s",user_id,type(report_error).__name__)
                         last_monitor[user_id]=now
             except asyncio.CancelledError:
                 raise

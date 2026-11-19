@@ -228,36 +228,57 @@ Important capacity boundary:
 - Eight simultaneous active symbol streams per application process; this is not simultaneous order-flow coverage of all eligible pairs.
 - The manager uses LRU eviction. The automatic scanner must revisit a bootstrapping candidate before admitting too many new candidates, otherwise a stream could be evicted before it becomes ready. The next phase below adds that scheduling discipline.
 
-## Phase C2.2 — full-universe automatic signal scanning (current PR branch)
+## Phase C2.2 — full-universe automatic signal scanning (merged PR #220)
 
-Branch: `feat/dynamic-auto-signal-universe`, created from main `33f11ec3e3ad57adae3913cab47f39b03ee4fd4e`.
+Branch: `feat/dynamic-auto-signal-universe`. PR [#220](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/220) merged to main as `bb1b27b480d5a715429c5087db99ebc044a45cdf` on 2026-11-19.
 
-Problem found in the live application path:
-- `get_binance_spot_symbols()` already discovered the full eligible Spot universe, but Telegram Auto Signals still defaulted to a fixed BTCUSDT/ETHUSDT/SOLUSDT list and capped custom settings at 50 pairs.
-- The Auto Signal loop scanned every selected pair in one cycle. With the eight-stream manager, a batch of many bootstrapping candidates could evict earlier streams before the next scan cycle and keep returning WAIT.
+- Telegram Auto Signals now defaults to the authoritative eligible Binance Spot universe rather than a fixed BTC/ETH/SOL shortlist.
+- It scans a configurable bounded batch of up to 20 pairs per cycle and persists a fair rotation cursor across cycles.
+- It retries order-flow stream warm-up candidates before moving on, respecting the manager's eight-stream cap.
+- This is full-universe *rotation over time*, not simultaneous candle+order-flow coverage of every pair in one pass.
+- PR checks passed: Backend CI, Backend/Web CI (Python 3.12 and 3.14), and Web CI. Post-merge main Backend CI, Backend/Web CI and Web CI passed on the merge commit.
+- The latest scheduled live smoke run is still the 2026-11-18 run on the prior core commit: it discovered 1,373 eligible Spot pairs, scanned a rotating 20-pair sample, and returned 20 WAIT results with zero provider errors and zero insufficient-history skips. This is provider/scan-health evidence only; it is not proof of valid signal generation or profitability.
 
-Implementation on this branch:
-- Add `universe_mode=ALL_BINANCE_SPOT` (default) and `SELECTED` (explicit custom watchlist). Legacy default BTC/ETH/SOL settings migrate to all Spot; genuine legacy custom lists remain selected.
-- Full-universe mode reads the current authoritative eligible Binance Spot symbols from `exchangeInfo`, not a static shortlist. Optional XAUUSD remains a separate feed add-on only when configured.
-- Scan a configurable bounded batch (1–20, default 20) per cycle, persist the last processed symbol, and rotate fairly through the dynamic universe across cycles. With the last observed 1,373-pair universe, 20 pairs every three minutes gives a nominal full rotation of about 3h26m; actual duration varies with universe size, provider latency, and stream retries.
-- Retry up to eight bootstrapping/reconnecting stream candidates before admitting new candidates; retry at most three cycles, then release a repeatedly unhealthy candidate so the universe scan can continue.
-- Keep stream count bounded at eight; this is on-demand candidate confirmation, not a subscription to every pair.
-- Add API/UI controls for all eligible Spot pairs vs custom watchlist and batch size; add tests for legacy migration, fairness, exclusions, pending queue bounds, and API defaults.
+## Latest core checkpoint — 2026-11-19 07:35 UTC
 
-Validation gates before merge:
-- Run Backend CI (Python 3.12 and 3.14), Backend/Web CI and Web CI.
-- Review the complete diff for only intended signal-scanner/settings/UI/docs changes and no secrets.
-- Verify the PR is based on latest main and mergeable; do not merge if any relevant check fails.
-- After merge, verify main and post-merge checks. Then capture synchronized trade/depth replay for order-flow-aware walk-forward and ablation tests.
+- Main: `bb1b27b480d5a715429c5087db99ebc044a45cdf`.
+- The latest main push-triggered Backend CI, Backend/Web CI (Python 3.12 and 3.14) and Web CI all passed. The optional Telegram Update Notifications workflow failed in its single `announce` step; this is a notification-secret/chat-target configuration issue, not a signal-engine check.
+- PR #220's dynamic all-eligible-Spot rotation is merged and verified.
+- Binance Spot is the only verified crypto signal market. USDⓈ-M Futures and COIN-M Futures are not connected to the signal engine. XAUUSD is a separate MT5/Twelve Data feed, not Binance order flow.
+- Live Spot candidates require a sequence-validated public WebSocket AggTrade + diff-depth stream. Trade-side delta is inferred from Binance buyer-is-maker semantics; depth is sequence checked; no candle-volume-derived bid/ask delta is used.
+- Persistent full-history CVD and full UTC-session delta are not claimed: current stream state is bounded to the bootstrap/backfill window, and session delta is only complete when a session-start anchor is proven.
+- The current strategy rules are still a compact rule-based engine: EMA/RSI/ATR/ADX/MACD, multi-timeframe bias, confirmed swing BOS/MSS, sweep, FVG/IFVG, order block, breaker, support/resistance and premium/discount. VWAP, volume profile, Fibonacci, explicit supply/demand, mitigation blocks and a general strategy registry are not yet integrated. The displayed score is a confluence count, not a calibrated probability.
+- Historical replay remains candle-only. It cannot test whether order flow improves expectancy because synchronized historical aggressor trades and depth are not retained. Walk-forward cost assumptions are estimates; no profitability or accuracy uplift is established.
+- The latest scheduled live smoke run (2026-11-18 08:32 UTC) scanned 20/1,373 eligible Spot pairs: 20 WAIT, 0 provider errors, 0 insufficient-history skips. It ran before PR #220 and is not a full-universe scan.
+- No open PR at this checkpoint is dedicated to the core signal engine; the current work branch below addresses a confirmed entry-zone selection bug.
 
-## Latest core checkpoint — 2026-11-19 07:00 UTC
+## Phase C3 — nearest valid directional retracement zone (PR validation pending)
 
-- Main is `33f11ec3e3ad57adae3913cab47f39b03ee4fd4e`. Latest push-triggered Backend CI, Backend/Web CI and Web CI all passed on that commit; the optional Telegram Update Notifications workflow failed because its configured chat target is invalid/self-directed.
-- PR #204 is merged: live Binance Spot signal generation now requires the sequence-validated WebSocket trade/depth manager after the candidate passes candle/execution gates.
-- PR #204's manager is bounded to eight active symbol streams. It does not imply every eligible Spot pair is subscribed simultaneously.
-- The last scheduled `QUANTNEX Live Crypto Signal Smoke` run recorded in this audit is 2026-11-17 09:12:45 UTC: 1,373 eligible Spot pairs discovered, a rotating 20-pair sample scanned, 0 provider errors and 0 insufficient-history skips; all 20 were WAIT (confluence 3–6/10). No newer Live Crypto Signal Smoke run appeared among the latest Actions runs inspected on 2026-11-19. This verifies public scan execution only, not signal profitability or long/short fixture coverage.
-- Current crypto signal market remains Binance Spot only. USDⓈ-M Futures and COIN-M Futures are not wired or verified. XAUUSD remains a separate MT5/Twelve Data path.
-- Historical walk-forward is still candle-only with assumed execution costs; no synchronized historical aggressor trades or L2 replay. CVD is in-memory and scoped to the bounded bootstrap seed; full UTC-session delta requires a proven session-start anchor. No order-flow uplift, profitability or calibrated win probability is claimed.
-- Current branch `feat/dynamic-auto-signal-universe` removes the fixed BTC/ETH/SOL Auto Signal default and adds a fair persisted rotating scan across all eligible Spot pairs, plus bounded stream warm-up retries. PR and CI status must be checked before merge.
-- Next: validate the all-pair scheduler with backend/API/UI CI and a live read-only smoke run; then build synchronized historical trade/depth replay and compare candle baseline vs order-flow/method ablations out of sample.
+Branch: `fix/select-nearest-valid-retracement-zone`, created from main `bb1b27b480d5a715429c5087db99ebc044a45cdf`.
 
+### Finding
+
+The signal engine previously selected the first non-empty zone in a fixed order (FVG, order block, breaker, inverse FVG). If that first zone was too far away or on the wrong side of price, it prevented a nearer valid order-block/breaker zone from being considered. The same first-zone shortcut could also hide a current-price confluence in another available zone.
+
+### Changes
+
+- Validate structure-zone bounds and finite positive prices before scoring or entry use.
+- Score current-price zone confluence against every valid directional zone, rather than only the first populated zone.
+- Evaluate every favorable directional FVG/order-block/breaker/inverse-FVG candidate and choose the nearest valid midpoint within the configured ATR distance and actual Binance PRICE_FILTER.
+- Preserve the existing distance, spread, depth, order-type and exchange-filter gates; no thresholds are loosened.
+- Include the selected zone source in the LIMIT-entry rationale.
+- Add deterministic BUY and SELL fixtures where a distant first FVG must not hide a nearer valid order block, plus invalid/wrong-side zone rejection.
+
+### Validation status
+
+- Implementation is on the feature branch; CI and full-diff review are pending.
+- No performance uplift is claimed. This is an entry-selection correctness fix.
+- Do not merge until Backend CI (Python 3.12 and 3.14), Backend/Web CI, Web CI and the full diff review pass.
+
+### Next exact steps
+
+1. Run all relevant PR checks and inspect the full diff.
+2. Merge only if all checks pass and the PR is based on current main; verify post-merge main and checks.
+3. Add strategy-registry and evidence attribution without counting correlated EMA/RSI/MACD/ADX observations as independent confirmations.
+4. Build synchronized historical trade/depth capture and replay before claiming order-flow incremental value.
+5. Keep Futures unsupported until separate USDⓈ-M/COIN-M adapters, metadata, execution filters and deterministic fixtures are verified.

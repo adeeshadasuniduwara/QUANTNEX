@@ -1,6 +1,6 @@
 # QUANTNEX Telegram Release Notifications
 
-QUANTNEX can announce every published GitHub Release in an official Telegram channel. The GitHub Actions workflow is present at `.github/workflows/telegram-release-notify.yml`.
+QUANTNEX can announce merged source updates and published GitHub Releases in the configured official Telegram destination. Each connected personal Telegram bot in a running local workspace also receives a one-time notice after that workspace successfully installs a new source commit. The GitHub Actions workflow is present at `.github/workflows/telegram-release-notify.yml`.
 
 ## 1. Create the official channel
 

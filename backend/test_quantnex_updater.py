@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from quantnex_updater import UpdateError, _safe_destination, _safe_relative, _valid_sha
+from quantnex_updater import UpdateError, _safe_destination, _safe_relative, _valid_sha, _save_state
 
 
 def test_sha_validation():
@@ -91,3 +91,18 @@ def test_web_archive_path_validation_rejects_windows_traversal(monkeypatch, tmp_
         pytest.skip("Symlink creation is unavailable in this test environment.")
     with pytest.raises(RuntimeError, match="escapes"):
         module._safe_web_destination(PurePosixPath("assets/evil.js"))
+
+
+
+def test_saved_update_state_includes_previous_sha_and_compare_url(tmp_path):
+    previous = "a" * 40
+    current = "b" * 40
+    _save_state(tmp_path, current, previous_commit_sha=previous)
+    import json
+    state = json.loads((tmp_path / "data" / "quantnex_update_state.json").read_text(encoding="utf-8"))
+    assert state["commit_sha"] == current
+    assert state["previous_commit_sha"] == previous
+    assert state["compare_url"] == (
+        "https://github.com/adeeshadasuniduwara/QUANTNEX/compare/"
+        + previous + "..." + current
+    )

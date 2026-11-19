@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   announce:
@@ -22,6 +23,8 @@ jobs:
           RELEASE_URL: ${{ github.event.release.html_url }}
           REPO: ${{ github.repository }}
           COMMIT_SHA: ${{ github.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          GITHUB_TOKEN: ${{ github.token }}
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
@@ -33,6 +36,7 @@ jobs:
           import json
           import os
           import urllib.error
+          import urllib.parse
           import urllib.request
 
           token = os.environ["TELEGRAM_BOT_TOKEN"]
@@ -106,6 +110,8 @@ jobs:
               raise SystemExit("Choose a private chat, group, supergroup or channel as TELEGRAM_CHAT_ID.")
 
           repo = os.environ["REPO"]
+          compare_url = ""
+          pull_url = ""
           if os.environ["EVENT_NAME"] == "workflow_dispatch":
               title = "Telegram notification test"
               tag = "Configuration test"
@@ -118,6 +124,26 @@ jobs:
               tag = "main@" + sha[:7]
               target_url = "https://github.com/" + repo + "/commit/" + sha
               link_label = "View source update"
+              before = os.environ.get("BEFORE_SHA", "")
+              if len(before) == 40 and before != "0" * 40 and len(sha) == 40:
+                  compare_url = "https://github.com/" + repo + "/compare/" + before + "..." + sha
+              token_value = os.environ.get("GITHUB_TOKEN", "")
+              if len(sha) == 40:
+                  api_url = "https://api.github.com/repos/" + repo + "/commits/" + sha + "/pulls?per_page=10"
+                  headers = {"Accept": "application/vnd.github+json", "User-Agent": "QUANTNEX-Release-Notifier"}
+                  if token_value:
+                      headers["Authorization"] = "Bearer " + token_value
+                  request = urllib.request.Request(api_url, headers=headers)
+                  try:
+                      with urllib.request.urlopen(request, timeout=15) as response:
+                          associated = json.loads(response.read().decode("utf-8"))
+                      if isinstance(associated, list):
+                          merged = [item for item in associated if item.get("merged_at") and item.get("html_url")]
+                          candidates = merged or [item for item in associated if item.get("html_url")]
+                          if candidates:
+                              pull_url = str(candidates[0]["html_url"])
+                  except (urllib.error.URLError, ValueError, TimeoutError):
+                      print("Associated pull request lookup unavailable; announcement will include the PR list.")
               intro = (
                   "A new QUANTNEX update has been merged into the official main branch.\n"
                   "The running source-based workspace can download and apply the update automatically.\n"
@@ -135,8 +161,16 @@ jobs:
               + "<b>" + title + "</b>\n"
               + "Version: <code>" + tag + "</code>\n\n"
               + intro + "\n\n"
-              + '<a href="' + target_url + '">' + link_label + '</a>\n'
-              + '<a href="https://github.com/' + repo + '">QUANTNEX GitHub</a>\n\n'
+              + '<a href="' + html.escape(target_url, quote=True) + '">' + link_label + '</a>\n'
+          )
+          if compare_url:
+              message += '<a href="' + html.escape(compare_url, quote=True) + '">Compare changes</a>\n'
+          if pull_url:
+              message += '<a href="' + html.escape(pull_url, quote=True) + '">View Pull Request</a>\n'
+          else:
+              message += '<a href="https://github.com/' + repo + '/pulls">Open Pull Requests</a>\n'
+          message += (
+              '<a href="https://github.com/' + repo + '">QUANTNEX GitHub</a>\n\n'
               + "<i>Official automated update notification</i>"
           )
 

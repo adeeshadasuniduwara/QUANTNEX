@@ -108,15 +108,19 @@ def _load_state(root: Path) -> dict:
     return {}
 
 
-def _save_state(root: Path, sha: str) -> None:
+def _save_state(root: Path, sha: str, previous_commit_sha: str | None = None) -> None:
     path = root / STATE_RELATIVE
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps({
+    state = {
         "commit_sha": sha,
         "version": "main@" + sha[:7],
         "updated_at": datetime.now(timezone.utc).isoformat(),
-    }, indent=2), encoding="utf-8")
+    }
+    if _valid_sha(previous_commit_sha):
+        state["previous_commit_sha"] = previous_commit_sha
+        state["compare_url"] = f"https://github.com/{REPOSITORY}/compare/{previous_commit_sha}...{sha}"
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(state, indent=2), encoding="utf-8")
     os.replace(temporary, path)
 
 
@@ -488,7 +492,7 @@ def check_and_apply(root: Path, force_reconcile: bool = False) -> dict:
         temporary_rollback.write_text(json.dumps(rollback_data, indent=2), encoding="utf-8")
         os.replace(temporary_rollback, rollback_path)
         _save_managed_paths(root, latest_sha, latest_paths)
-        _save_state(root, latest_sha)
+        _save_state(root, latest_sha, previous_commit_sha=installed_sha)
     except Exception:
         for relative in reversed(touched):
             destination = _safe_destination(root, relative)

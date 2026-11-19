@@ -28,7 +28,7 @@ def test_signal_report_uses_chart_ledger_period_and_resolved_win_rate():
         eth, _ = record_signal(db, user.id, _signal("ETHUSDT", today - timedelta(hours=1)))
         eth.status, eth.realized_r = "STOPPED", -1.0
         sol, _ = record_signal(db, user.id, _signal("SOLUSDT", today))
-        sol.status = "OPEN"
+        sol.status, sol.realized_r = "OPEN", 0.4
         old, _ = record_signal(db, user.id, _signal("XRPUSDT", today - timedelta(days=10)))
         old.status, old.realized_r = "STOPPED", -1.0
         db.commit()
@@ -42,7 +42,7 @@ def test_signal_report_uses_chart_ledger_period_and_resolved_win_rate():
         assert stats["open"] == 1
         assert stats["wins"] == 1 and stats["losses"] == 1
         assert stats["win_rate"] == 50.0
-        assert stats["realized_r"] == 0.9
+        assert stats["realized_r"] == 1.3
         assert set(stats["by_symbol"]) == {"BTCUSDT", "ETHUSDT", "SOLUSDT"}
 
         _, total = build_signal_performance_pdf(
@@ -51,6 +51,7 @@ def test_signal_report_uses_chart_ledger_period_and_resolved_win_rate():
         assert total["signals"] == 4
         assert total["resolved"] == 3
         assert total["win_rate"] == round(1 / 3 * 100, 2)
+        assert total["realized_r"] == 0.3
 
 
 def test_signal_report_symbol_filter_and_period_validation():

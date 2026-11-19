@@ -420,36 +420,44 @@ async def _scan_user(db, user: User) -> None:
             entry = quote_spent / executed
             stop = entry - distance
             target = entry + distance * max(config["min_reward_risk"], 2.0)
-            _validate_geometry(entry, stop, target, config["min_reward_risk"])
-            # Fees are paid in base or quote; use actual free base balance for OCO sizing.
-            refreshed = await _account(api_key, secret)
-            base_asset = info["baseAsset"]
-            base_free = next((float(x["free"]) for x in refreshed.get("balances", []) if x["asset"] == base_asset), 0.0)
-            protected_qty = _floor_step(min(executed, base_free), lot["stepSize"])
-            if protected_qty < min_qty:
-                raise RuntimeError("Filled quantity is below the exchange minimum after fees; manual review required.")
-            oco_id = "QXSO" + stamp
+            protected_qty = _floor_step(executed, lot["stepSize"])
+            oco = None
             try:
-                oco = await _place_oco(symbol, protected_qty,
-                    _round_price(stop, price_filter["tickSize"], ROUND_DOWN),
-                    _round_price(target, price_filter["tickSize"], ROUND_UP),
-                    price_filter["tickSize"], oco_id, api_key, secret)
-                if not isinstance(oco, dict) or not oco.get("orderListId"):
-                    raise RuntimeError("Binance did not confirm the protective OCO order list.")
-            except Exception:
-                # Resolve an uncertain OCO POST before attempting a market exit.
+                _validate_geometry(entry, stop, target, config["min_reward_risk"])
+                # Fees may be deducted in the base asset, so use the actual free
+                # balance when sizing the exchange-native protective OCO.
+                refreshed = await _account(api_key, secret)
+                base_asset = info["baseAsset"]
+                base_free = next((float(x["free"]) for x in refreshed.get("balances", []) if x["asset"] == base_asset), 0.0)
+                protected_qty = _floor_step(min(executed, base_free), lot["stepSize"])
+                if protected_qty < min_qty:
+                    raise RuntimeError("Filled quantity is below the exchange minimum after fees.")
+                oco_id = "QXSO" + stamp
                 try:
+                    oco = await _place_oco(symbol, protected_qty,
+                        _round_price(stop, price_filter["tickSize"], ROUND_DOWN),
+                        _round_price(target, price_filter["tickSize"], ROUND_UP),
+                        price_filter["tickSize"], oco_id, api_key, secret)
+                    if not isinstance(oco, dict) or not oco.get("orderListId"):
+                        raise RuntimeError("Binance did not confirm the protective OCO order list.")
+                except Exception:
+                    # Resolve an uncertain OCO POST before attempting a market exit.
                     oco = await _request("GET", "/v3/orderList", {"origClientOrderId": oco_id}, api_key, secret)
                     if not oco.get("orderListId"):
-                        raise RuntimeError("Protective OCO was not found.")
+                        raise RuntimeError("Protective OCO could not be confirmed.")
+            except Exception:
+                # Any post-fill failure must attempt to flatten the demo position.
+                try:
+                    await _emergency_sell(symbol, protected_qty, api_key, secret)
+                    await _notify(db, user.id, f"🚨 <b>QUANTNEX SPOT DEMO SAFETY EXIT</b>\\n{symbol}: protective OCO setup failed after the BUY fill. Binance accepted an emergency market sell; verify order history.")
                 except Exception:
-                    try:
-                        await _emergency_sell(symbol, protected_qty, api_key, secret)
-                        await _notify(db, user.id, f"🚨 <b>QUANTNEX SPOT DEMO SAFETY EXIT</b>\n{symbol}: OCO was not confirmed; Binance accepted an emergency market sell. Verify Binance order history.")
-                    except Exception:
-                        await _notify(db, user.id, f"🚨 <b>QUANTNEX SPOT DEMO — MANUAL ACTION REQUIRED</b>\n{symbol}: entry may be filled but protective OCO and emergency exit were not confirmed. Stop Auto Trading and inspect Binance immediately.")
-                    raise
-                await _notify(db, user.id, f"⚠️ <b>QUANTNEX SPOT DEMO</b>\n{symbol}: OCO request timed out, but Binance confirms the protective order list exists.")
+                    _set_pref(db, user.id, "binance_auto_trading_enabled", "false")
+                    config["enabled"] = False
+                    _set_pref(db, user.id, "binance_spot_auto_config", json.dumps(config, separators=(",", ":")))
+                    db.commit()
+                    await _notify(db, user.id, f"🚨 <b>QUANTNEX SPOT DEMO — MANUAL ACTION REQUIRED</b>\\n{symbol}: BUY may be filled but neither protective OCO nor emergency sell was confirmed. Auto Trading has been stopped. Inspect Binance immediately.")
+                raise
+            _set_pref(db, user.id, "binance_spot_pending_order", "")
             trade = {"symbol": symbol, "side": "BUY", "quantity": _decimal_text(protected_qty),
                      "entry_price": entry, "stop_loss": stop, "take_profit": target,
                      "entry_quote": quote_spent, "buy_order_id": buy.get("orderId"),

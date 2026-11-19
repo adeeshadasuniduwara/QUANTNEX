@@ -350,7 +350,8 @@ async def _scan_user(db, user: User) -> None:
         try:
             scan = await build_signal(signal_settings, symbol)
             candidate = scan.get("signal")
-            if not candidate or str(candidate.get("side", "")).upper() != "BUY":
+            if (not candidate or str(candidate.get("side", "")).upper() != "BUY"
+                    or str(candidate.get("entry_type", "")).upper() != "MARKET"):
                 continue
             price, spread_bps, volume = await _ticker(symbol)
             if spread_bps > config["max_spread_bps"] or volume < config["min_24h_quote_volume"]:
@@ -362,15 +363,16 @@ async def _scan_user(db, user: User) -> None:
             price_filter = filters.get("PRICE_FILTER")
             if not lot or not market_lot or not price_filter:
                 continue
-            distance = float(candidate.get("risk_distance", 0))
-            if not math.isfinite(distance) or distance <= 0:
-                continue
             signal_entry = float(candidate.get("entry", 0) or 0)
-            if signal_entry <= 0 or abs(price - signal_entry) > distance * 0.5:
+            stop_value = float(candidate.get("stop_loss", 0) or 0)
+            target_value = float(candidate.get("tp3", 0) or 0)
+            signal_distance = float(candidate.get("risk_distance", 0) or 0)
+            if (not all(math.isfinite(x) and x > 0 for x in (signal_entry, stop_value, target_value, signal_distance))
+                    or abs(price - signal_entry) > signal_distance * 0.5
+                    or not stop_value < price < target_value):
                 continue
-            stop_value = price - distance
-            target_value = price + distance * max(config["min_reward_risk"], 2.0)
-            if not 0 < stop_value < price < target_value:
+            distance = price - stop_value
+            if distance <= 0 or (target_value - price) / distance < config["min_reward_risk"]:
                 continue
             risk_cash = free_usdt * config["risk_per_trade_percent"] / 100
             raw_qty = risk_cash / distance
@@ -430,8 +432,8 @@ async def _scan_user(db, user: User) -> None:
             if executed <= 0 or quote_spent <= 0:
                 continue
             entry = quote_spent / executed
-            stop = entry - distance
-            target = entry + distance * max(config["min_reward_risk"], 2.0)
+            stop = stop_value
+            target = target_value
             protected_qty = _floor_step(executed, lot["stepSize"])
             oco = None
             try:

@@ -1130,59 +1130,105 @@ async def telegram_worker() -> None:
                         await _deliver_pending_signal_events(client, db, user_id, token, chat_id)
                         await _notify_new_market_sessions(client, db, user_id, token, chat_id)
                         now=asyncio.get_running_loop().time()
-                        # Automatic signals scan each selected market independently.
-                        auto_raw=_get(db,user_id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}')
+                        # Automatic signals rotate through the complete eligible Spot universe
+                        # by default; a custom watchlist remains an explicit opt-in mode.
+                        auto_raw = _get(
+                            db, user_id, "auto_signal_settings",
+                            '{"enabled":false,"interval_seconds":180,"universe_mode":"ALL_BINANCE_SPOT","scan_batch_size":20,"symbols":[]}',
+                        )
                         db.commit()
-                        auto_settings=_normalise_auto_signal_settings(auto_raw)
-                        interval=auto_settings["interval_seconds"]
-                        auto_key=(user_id,"auto")
-                        selected=auto_settings["symbols"]
-                        if auto_settings["enabled"] and selected and now-last_monitor.get(auto_key,0)>=interval:
-                            signal_raw=_get(db,user_id,"signal_settings",'{"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":8}')
-                            signal_settings=_normalise_signal_settings(signal_raw)
-                            db.commit()
-                            for market_symbol in selected:
-                                if market_symbol=="XAUUSD" and not gold_feed_configured():
-                                    continue
-                                fingerprint_key="auto_signal_last_fingerprint_"+market_symbol.lower()
+                        auto_settings = _normalise_auto_signal_settings(auto_raw)
+                        interval = auto_settings["interval_seconds"]
+                        auto_key = (user_id, "auto")
+                        selected = auto_settings["symbols"]
+                        if auto_settings["enabled"] and now - last_monitor.get(auto_key, 0) >= interval:
+                            if auto_settings["universe_mode"] == "ALL_BINANCE_SPOT":
                                 try:
-                                    scan=await build_signal(signal_settings,market_symbol)
-                                    candidate=scan.get("signal")
-                                    if candidate:
-                                        from .signal_lifecycle import record_signal
-                                        tracked, created = record_signal(db, user_id, candidate, "AUTO_TELEGRAM_SCAN")
-                                        db.commit()
-                                        fingerprint=_auto_signal_fingerprint(market_symbol,candidate)
-                                        previous=_get(db,user_id,fingerprint_key)
-                                        db.commit()
-                                        # Suppress refreshed/alternate-timeframe candidates while this
-                                        # symbol already has an OPEN or PENDING trade.
-                                        if created and _should_send_auto_signal(fingerprint,previous):
-                                            msg=("QUANTNEX · AUTO SIGNAL · "+market_symbol+" "+candidate["side"]+"\n"
-                                                +"Market data: "+str(scan.get("provider","Unknown"))+"\n"
-                                                +"Signal TF: "+str(candidate["timeframe"])+"m · Trend TF: "+str(candidate["trend_timeframe"])+"m\n"
-                                                +"TF alignment: "+", ".join(str(tf)+"m "+str(bias) for tf,bias in (candidate.get("timeframe_alignment") or {}).items())+"\n"
-                                                +"Entry type: "+str(candidate.get("entry_type","REFERENCE"))+"\n"
-                                                +"Entry: "+("MARKET ("+str(candidate["entry"])+")" if candidate.get("entry_type")=="MARKET" else "LIMIT ("+str(candidate.get("limit_price") or candidate["entry"])+")")+
-                                                ("\nLimit price: "+str(candidate["limit_price"]) if candidate.get("entry_type")=="LIMIT" else "")+"\n"
-                                                +("Entry expires: "+str(candidate["entry_expires_at"])+"\n" if candidate.get("entry_expires_at") else "")
-                                                +"Entry logic: "+str(candidate.get("entry_selection_reason",""))+"\n"
-                                                +("Spread: "+str(candidate["execution_quality"]["spread_bps"])+" bps · estimated round-trip cost: "+str(candidate["execution_quality"]["estimated_round_trip_cost_bps"])+" bps\n" if candidate.get("execution_quality") else "")
-                                                +"SL: "+str(candidate["stop_loss"])+"\n"
-                                                +"TP1: "+str(candidate["tp1"])+"\nTP2: "+str(candidate["tp2"])+"\nTP3: "+str(candidate["tp3"])+"\n"
-                                                +"Confluence: "+str(candidate["score"])+"/10 (rule count, not win probability)\n"
-                                                +"Confirmations: "+", ".join(candidate["confirmations"])+"\n"
-                                                +"Signal only; verify spread, fees and execution. No order is placed.")
-                                            delivered=await _deliver_auto_signal(client,token,chat_id,msg,fingerprint,previous,db,user_id,fingerprint_key)
-                                            if delivered:
-                                                db.commit()
-                                    # Keep the last delivered fingerprint when no setup is present.
-                                    # This prevents duplicate alerts if the same candle briefly loses and regains confluence.
-                                except (MarketDataError,httpx.HTTPError,ValueError,KeyError) as exc:
-                                    # Provider exceptions can contain request URLs; never log query strings or API keys.
-                                    logger.warning("Auto-signal scan failed for local user %s market %s: %s",
-                                                   user_id,market_symbol,type(exc).__name__)
-                            last_monitor[auto_key]=now
+                                    scan_universe = await get_binance_spot_symbols()
+                                except MarketDataError as exc:
+                                    logger.warning(
+                                        "Dynamic Binance Spot universe refresh failed for local user %s: %s",
+                                        user_id, type(exc).__name__,
+                                    )
+                                    scan_universe = []
+                                if "XAUUSD" in selected and gold_feed_configured():
+                                    scan_universe = [*scan_universe, "XAUUSD"]
+                            else:
+                                scan_universe = list(selected)
+
+                            if scan_universe:
+                                signal_raw = _get(
+                                    db, user_id, "signal_settings",
+                                    '{"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":8}',
+                                )
+                                signal_settings = _normalise_signal_settings(signal_raw)
+                                db.commit()
+
+                                cursor = _get(db, user_id, "auto_signal_scan_cursor", "")
+                                pending = _normalise_auto_signal_pending(
+                                    _get(db, user_id, "auto_signal_pending_symbols", "[]"),
+                                    scan_universe,
+                                )
+                                next_pending: dict[str, int] = {}
+
+                                # Revisit bootstrapping streams before admitting new candidates.
+                                # This keeps the manager's eight bounded slots from being evicted
+                                # before their first sequence-validated snapshot becomes ready.
+                                for market_symbol, attempts in pending.items():
+                                    if market_symbol == "XAUUSD" and not gold_feed_configured():
+                                        continue
+                                    pending_result = await _scan_and_deliver_auto_signal(
+                                        client, token, chat_id, db, user_id,
+                                        signal_settings, market_symbol,
+                                    )
+                                    if pending_result is not False:
+                                        if attempts < AUTO_SIGNAL_MAX_PENDING_RETRIES:
+                                            next_pending[market_symbol] = attempts + 1
+                                        else:
+                                            logger.warning(
+                                                "Order-flow stream warm-up retries exhausted for local user %s market %s",
+                                                user_id, market_symbol,
+                                            )
+                                    await asyncio.sleep(0.1)
+
+                                batch = _rotating_auto_signal_batch(
+                                    scan_universe,
+                                    cursor,
+                                    auto_settings["scan_batch_size"],
+                                    excluded=set(pending) | set(next_pending),
+                                )
+                                processed_cursor = cursor
+                                if len(next_pending) < AUTO_SIGNAL_MAX_PENDING_STREAMS:
+                                    for market_symbol in batch:
+                                        if market_symbol == "XAUUSD" and not gold_feed_configured():
+                                            processed_cursor = market_symbol
+                                            continue
+                                        pending_result = await _scan_and_deliver_auto_signal(
+                                            client, token, chat_id, db, user_id,
+                                            signal_settings, market_symbol,
+                                        )
+                                        processed_cursor = market_symbol
+                                        if pending_result is True:
+                                            next_pending[market_symbol] = 1
+                                            if len(next_pending) >= AUTO_SIGNAL_MAX_PENDING_STREAMS:
+                                                break
+                                        await asyncio.sleep(0.1)
+
+                                _set(db, user_id, "auto_signal_scan_cursor", processed_cursor)
+                                _set(
+                                    db, user_id, "auto_signal_pending_symbols",
+                                    json.dumps([
+                                        {"symbol": symbol, "attempts": attempts}
+                                        for symbol, attempts in next_pending.items()
+                                    ]),
+                                )
+                                db.commit()
+                            else:
+                                logger.warning(
+                                    "Auto-signal universe is empty for local user %s; no market was scanned",
+                                    user_id,
+                                )
+                            last_monitor[auto_key] = now
                         # Scheduled Gold images: two user-local snapshots per Colombo day.
                         if _get(db,user_id,"telegram_gold_report_enabled","false")=="true":
                             local_now=datetime.now(ZoneInfo("Asia/Colombo"))

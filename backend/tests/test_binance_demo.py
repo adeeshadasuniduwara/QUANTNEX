@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from app.binance_demo import (
     BinanceRiskSettings,
+    BinanceSpotAutoConfig,
     BinanceCredentialPair,
     _signed_params,
     _store_credentials,
@@ -66,8 +67,10 @@ def test_binance_router_exposes_only_demo_connection_and_control_routes():
     assert "/api/v1/exchanges/binance/test" in paths
     assert "/api/v1/exchanges/binance/risk" in paths
     assert "/api/v1/exchanges/binance/auto-trading" in paths
-    # This release deliberately has no order-placement route.
-    assert not any("order" in path or "trade" in path for path in paths)
+    assert "/api/v1/exchanges/binance/spot-auto-config" in paths
+    assert "/api/v1/exchanges/binance/spot-auto-trading" in paths
+    # Order placement remains inside the engine; no raw order endpoint is exposed to browsers.
+    assert not any(path.endswith("/order") or path.endswith("/orders") for path in paths)
 
 
 
@@ -142,3 +145,24 @@ def test_spot_and_futures_demo_account_verification_paths_are_correct():
         "https://demo-fapi.binance.com",
         "/fapi/v3/account",
     )
+
+
+
+def test_spot_auto_config_is_bounded_and_spot_only():
+    config = BinanceSpotAutoConfig(symbols=["btcusdt", "ETHUSDT"], risk_per_trade_percent=0.5)
+    assert config.symbols == ["BTCUSDT", "ETHUSDT"]
+    assert config.max_open_trades == 1
+    assert config.max_daily_loss_percent == 2
+
+
+@pytest.mark.parametrize("symbols", [[], ["BTCBUSD"], ["BTCUSDT", "bad symbol"]])
+def test_spot_auto_config_rejects_invalid_symbol_universe(symbols):
+    with pytest.raises(ValidationError):
+        BinanceSpotAutoConfig(symbols=symbols)
+
+
+def test_spot_auto_config_rejects_unsafe_risk_values():
+    with pytest.raises(ValidationError):
+        BinanceSpotAutoConfig(risk_per_trade_percent=1.01)
+    with pytest.raises(ValidationError):
+        BinanceSpotAutoConfig(max_daily_loss_percent=2.01)

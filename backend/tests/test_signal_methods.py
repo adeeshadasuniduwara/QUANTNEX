@@ -143,7 +143,7 @@ def test_registry_method_ids_are_unique_and_categories_are_explicit():
 
     assert len(method_ids) == len(set(method_ids))
     assert {method.category for method in STRATEGY_METHOD_REGISTRY} == {
-        "TREND", "MOMENTUM", "STRUCTURE", "LIQUIDITY", "LOCATION",
+        "TREND", "MOMENTUM", "STRUCTURE", "LIQUIDITY", "LOCATION", "VALUE",
     }
 
 

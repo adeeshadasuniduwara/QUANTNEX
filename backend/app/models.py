@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, BigInteger, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
@@ -190,4 +190,37 @@ class SignalTradeEvent(Base):
     telegram_attempts: Mapped[int] = mapped_column(Integer, default=0)
     telegram_last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     telegram_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+
+
+class OrderFlowCapture(Base):
+    """Latest validated/quality-state sample for one Binance Spot UTC minute."""
+    __tablename__ = "order_flow_captures"
+    __table_args__ = (
+        UniqueConstraint(
+            "symbol", "market_type", "minute_bucket",
+            name="uq_order_flow_capture_symbol_market_minute",
+        ),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(30), index=True)
+    market_type: Mapped[str] = mapped_column(String(20), default="BINANCE_SPOT")
+    minute_bucket: Mapped[int] = mapped_column(BigInteger)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    signal_ready: Mapped[bool] = mapped_column(Boolean, default=False)
+    quality_status: Mapped[str] = mapped_column(String(40), default="NOT_READY")
+    cvd_status: Mapped[str] = mapped_column(String(40), default="UNKNOWN")
+    session_delta_scope: Mapped[str] = mapped_column(String(40), default="UNKNOWN")
+    depth_sequence_validated: Mapped[bool] = mapped_column(Boolean, default=False)
+    trade_delta: Mapped[float | None] = mapped_column(Float, nullable=True)
+    buy_volume: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sell_volume: Mapped[float | None] = mapped_column(Float, nullable=True)
+    quote_delta: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cvd_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    session_delta: Mapped[float | None] = mapped_column(Float, nullable=True)
+    spread_bps: Mapped[float | None] = mapped_column(Float, nullable=True)
+    depth_imbalance: Mapped[float | None] = mapped_column(Float, nullable=True)
+    microprice: Mapped[float | None] = mapped_column(Float, nullable=True)
+    depth_update_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    payload_json: Mapped[str] = mapped_column(Text, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)

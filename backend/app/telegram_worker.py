@@ -32,13 +32,14 @@ def _set(db, user_id: int, key: str, value: str) -> None:
 
 def _claim_telegram_delivery(db, user_id: int, notification_key: str, lease_seconds: int = 120) -> bool:
     """Atomically claim one outbound notice; a second worker cannot send the same key."""
+    from sqlalchemy.exc import IntegrityError
+
     now = datetime.now(timezone.utc)
     row = db.scalar(select(TelegramDelivery).where(
         TelegramDelivery.user_id == user_id,
         TelegramDelivery.notification_key == notification_key,
     ))
     if row is None:
-        from sqlalchemy.exc import IntegrityError
         try:
             with db.begin_nested():
                 db.add(TelegramDelivery(
@@ -49,26 +50,25 @@ def _claim_telegram_delivery(db, user_id: int, notification_key: str, lease_seco
             db.commit()
             return True
         except IntegrityError:
-            row = db.scalar(select(TelegramDelivery).where(
-                TelegramDelivery.user_id == user_id,
-                TelegramDelivery.notification_key == notification_key,
-            ))
-            if row is None:
-                db.rollback()
-                return False
+            # Another worker inserted the unique key first. Re-read and let the
+            # compare-and-set path below decide whether its lease can be claimed.
+            db.rollback()
+            return _claim_telegram_delivery(db, user_id, notification_key, lease_seconds)
+
     if row.status == "sent":
         return False
-    claimed_at = row.claimed_at
-    if claimed_at is not None and claimed_at.tzinfo is None:
-        claimed_at = claimed_at.replace(tzinfo=timezone.utc)
-    if row.status == "sending" and claimed_at and (now - claimed_at).total_seconds() < lease_seconds:
-        return False
-    row.status = "sending"
-    row.claimed_at = now
-    row.attempts = int(row.attempts or 0) + 1
+    stale_before = now - timedelta(seconds=lease_seconds)
+    claimed = db.execute(sql_update(TelegramDelivery).where(
+        TelegramDelivery.id == row.id,
+        TelegramDelivery.status != "sent",
+        or_(TelegramDelivery.status != "sending",
+            TelegramDelivery.claimed_at <= stale_before),
+    ).values(
+        status="sending", claimed_at=now,
+        attempts=TelegramDelivery.attempts + 1,
+    ))
     db.commit()
-    return True
-
+    return claimed.rowcount == 1
 
 def _finish_telegram_delivery(db, user_id: int, notification_key: str, sent: bool) -> None:
     row = db.scalar(select(TelegramDelivery).where(

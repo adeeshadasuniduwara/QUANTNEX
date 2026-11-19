@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+import textwrap
 
 
 class TelegramReleaseWorkflowTests(unittest.TestCase):
@@ -15,6 +16,10 @@ class TelegramReleaseWorkflowTests(unittest.TestCase):
     def test_push_announcement_uses_real_newlines(self):
         intro = self.workflow.split("intro = (", 1)[1].split(")", 1)[0]
         self.assertNotIn(r"\\n", intro)
+
+    def test_embedded_telegram_workflow_python_compiles(self):
+        script = self.workflow.split("          python - <<'PY'\\n", 1)[1].split("\\n          PY", 1)[0]
+        compile(textwrap.dedent(script), "<telegram-release-workflow>", "exec")
 
     def test_http_errors_report_telegram_description_without_exposing_secrets(self):
         self.assertIn("urllib.error.HTTPError", self.workflow)

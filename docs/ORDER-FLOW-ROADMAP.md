@@ -297,3 +297,35 @@ The signal engine previously selected the first non-empty zone in a fixed order 
 5. Add causal tests for each method and explicit unsupported-data states. Add VWAP/volume profile only with clear candle-volume proxy provenance; do not fabricate aggressor delta.
 6. Add synchronized historical Spot AggTrade/depth capture and chronological replay so order-flow and strategy-method uplift can be measured out of sample.
 7. Keep USDⓈ-M/COIN-M Futures unsupported until independent adapters and fixtures are verified.
+
+
+## Phase C4 — strategy evidence registry and correlated-feature reporting (PR validation pending)
+
+Branch: feat/strategy-evidence-registry, created from main a8c35b15c71a7dc040f3a18e751bcbfe8fd5967f.
+
+### Purpose
+
+The existing engine counts EMA trend observations across 60m/30m/15m, a separately configured trend timeframe, MACD, RSI and ADX as individual confirmations. These observations are correlated and must not be presented as independent proof. This phase adds a transparent evidence registry while preserving the existing live score and decision threshold as the baseline.
+
+### Changes
+
+- Add backend/app/signal_methods.py with a typed MethodEvidence model and an explicit StrategyMethod registry.
+- Register the current candle-derived checks: EMA multi-timeframe trend, MACD momentum, RSI range, ADX trend strength, confirmed BOS/MSS, liquidity sweep, OB/FVG/breaker/premium-discount location, and configured trend-timeframe alignment.
+- Preserve legacy reason order, raw BUY/SELL counts and live threshold behavior; no score or gate is changed in this phase.
+- Emit supporting and conflicting evidence on each signal, including method ID, category, side, timeframe, reason, candle-derived provenance, as-of observation timestamp and unweighted status.
+- Report unique category counts (TREND, MOMENTUM, STRUCTURE, LIQUIDITY, LOCATION) as diagnostic only. These counts are not yet used as live score gates and are not calibrated probabilities.
+- Add deterministic bullish, bearish, contradictory, neutral and registry-uniqueness tests; add end-to-end assertions that generated signals expose registry evidence.
+
+### Validation and merge gates
+
+- Initial PR CI found a test-only expected-value error: the contradictory SELL fixture has both TREND and STRUCTURE categories (expected 2, not 1). The test is corrected and all PR checks must be rerun.
+- PR and post-merge Backend CI on Python 3.12 and 3.14, schema/preflight, and Web CI must pass.
+- Full diff must confirm the registry preserves legacy BUY/SELL reason order and does not alter decision thresholds.
+- Do not merge if baseline parity tests fail or any relevant check is red.
+
+### Next
+
+1. Compare registry raw counts with the legacy baseline using deterministic replay fixtures.
+2. Add causal strategy methods one at a time (VWAP, volume profile, Fibonacci, explicit supply/demand and mitigation-block definitions) only with clear input provenance and ablation tests.
+3. Add synchronized historical Spot trade/depth capture and replay so order-flow and method contribution can be evaluated out of sample.
+4. Keep the diagnostic category count separate from calibrated win probability; no performance uplift is claimed.

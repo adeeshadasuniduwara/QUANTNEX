@@ -191,6 +191,16 @@ def test_real_signal_pipeline_generates_and_delivers_synthetic_setup(monkeypatch
     assert candidate["side"] == expected_side
     assert candidate["score"] >= 8
     assert candidate["signal_candle_time"]
+    assert candidate["strategy_evidence"]["registry_version"] == 1
+    assert candidate["strategy_evidence"]["supporting"]
+    assert all(
+        item["observed_at"] == result["generated_at"]
+        for item in candidate["strategy_evidence"]["supporting"]
+    )
+    assert candidate["strategy_evidence"]["unique_category_count"] <= candidate["score"]
+    assert candidate["strategy_evidence"]["category_score_status"] == (
+        "DIAGNOSTIC_ONLY_NOT_USED_FOR_LIVE_DECISIONS"
+    )
     if symbol != "XAUUSD":
         assert candidate["order_flow"]["status"] == "CONFIRMED"
         assert candidate["order_flow"]["data_mode"] == "PUBLIC_WEBSOCKET_STREAM"

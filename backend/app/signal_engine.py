@@ -17,6 +17,7 @@ from .config import TWELVE_DATA_API_KEY, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD
 from .binance_public import BinancePublicDataError, get_binance_public_json
 from .binance_order_flow_manager import BinanceSpotOrderFlowManagerError, get_binance_spot_order_flow_manager
 from .order_flow import OrderFlowDataError, evaluate_order_flow_confirmation, summarize_order_flow_snapshot
+from .signal_methods import evaluate_strategy_registry
 
 BASE = "https://api.twelvedata.com/time_series"
 INTERVALS = {"1": "1min", "5": "5min", "15": "15min", "30": "30min", "60": "1h", "240": "4h"}
@@ -1191,40 +1192,25 @@ async def build_signal(
     primary=str(settings.get("primary","5")); trend=str(settings.get("trend","60"))
     if primary not in analysis or trend not in analysis: raise MarketDataError("Selected primary/trend timeframe does not have enough candles.")
     p=analysis[primary]; t=analysis[trend]; side=None
-    # Score ten transparent rule checks, rather than claiming a probability of winning.
-    close=p["close"]; st=p["structure"]; buy=[];sell=[]
-    for tf in ["60","30","15"]:
-        if tf in analysis:
-            (buy if analysis[tf]["bias"]=="BULLISH" else sell if analysis[tf]["bias"]=="BEARISH" else []).append(f"{tf}m EMA trend")
-    (buy if p["macd_histogram"]>0 else sell if p["macd_histogram"]<0 else []).append("Primary MACD momentum")
-    if 50<=p["rsi"]<=70: buy.append("RSI bullish range")
-    elif 30<=p["rsi"]<=50: sell.append("RSI bearish range")
-    if p["adx"]>=18: (buy if p["macd_histogram"]>0 else sell if p["macd_histogram"]<0 else []).append("ADX trend strength")
-    if st["bos_mss"]=="BULLISH":buy.append("Bullish BOS / MSS")
-    elif st["bos_mss"]=="BEARISH":sell.append("Bearish BOS / MSS")
-    if st["liquidity_sweep"]=="BULLISH":buy.append("Sell-side liquidity sweep")
-    elif st["liquidity_sweep"]=="BEARISH":sell.append("Buy-side liquidity sweep")
+    # The registry preserves the legacy reason order and raw score while
+    # exposing correlated evidence by category for future replay/ablation.
+    close=p["close"]; st=p["structure"]
     directional_zone_keys = (
         ("bullish_fvg", "bullish_order_block", "bullish_breaker_block", "bullish_ifvg")
         if p["macd_histogram"] > 0 else
         ("bearish_fvg", "bearish_order_block", "bearish_breaker_block", "bearish_ifvg")
     )
-    # A present but distant FVG must not hide a nearer OB/breaker zone.  Score
-    # current-price confluence against every valid zone; entry selection below
-    # independently chooses the nearest favorable retracement zone.
     in_zone = any(
         isinstance(st.get(key), dict)
         and _valid_structure_zone(st[key])
         and st[key]["low"] <= close <= st[key]["high"]
         for key in directional_zone_keys
     )
-    discount_buy=st.get("premium_discount")=="DISCOUNT" and p["macd_histogram"]>0
-    premium_sell=st.get("premium_discount")=="PREMIUM" and p["macd_histogram"]<0
-    if in_zone or discount_buy or premium_sell:
-        (buy if p["macd_histogram"]>0 else sell).append("OB / FVG / breaker or premium-discount zone")
-    # Count directional timeframe alignment as the tenth confluence.
-    if t["bias"]=="BULLISH":buy.append("Trend timeframe aligned")
-    elif t["bias"]=="BEARISH":sell.append("Trend timeframe aligned")
+    strategy_evidence = evaluate_strategy_registry(
+        analysis, primary, trend, in_zone=in_zone, observed_at=as_of.isoformat()
+    )
+    buy = list(strategy_evidence["buy_reasons"])
+    sell = list(strategy_evidence["sell_reasons"])
     bscore=min(10,len(buy));sscore=min(10,len(sell))
     threshold=int(settings.get("min_score",7))
     if bscore>=threshold and bscore>sscore: side="BUY";checks=buy;score=bscore
@@ -1528,6 +1514,19 @@ async def build_signal(
                 "score": score,
                 "out_of": 10,
                 "confirmations": checks,
+                "strategy_evidence": {
+                    "registry_version": strategy_evidence["registry_version"],
+                    "supporting": [
+                        item for item in strategy_evidence["evidence"] if item["side"] == side
+                    ],
+                    "conflicting": [
+                        item for item in strategy_evidence["evidence"] if item["side"] != side
+                    ],
+                    "unique_category_count": strategy_evidence["unique_category_counts"][side],
+                    "categories": strategy_evidence["categories"][side],
+                    "category_methods": strategy_evidence["category_methods"][side],
+                    "category_score_status": strategy_evidence["category_score_status"],
+                },
                 "timeframe_alignment": {
                     tf: analysis[tf]["bias"] for tf in enabled if tf in analysis
                 },
@@ -1562,10 +1561,11 @@ async def build_signal(
     )
     return {"symbol":symbol,"provider":provider_label,"generated_at":generated_at,
             "signal":signal,"execution_quality":execution_quality,
-            "confluence_score":score,"score_out_of":10,"score_note":"Rule-based confluence count, not a measured win probability.",
+            "confluence_score":score,"score_out_of":10,"score_note":"Legacy rule-based confluence count, not a measured win probability; category counts are diagnostic only.",
             "timeframes":{tf:{"bias":v["bias"],"close":round(v["close"],price_precision),"ema20":round(v["ema20"],price_precision),
                 "ema50":round(v["ema50"],price_precision),"ema200":round(v["ema200"],price_precision) if v["ema200"] is not None else None,"macd_histogram":round(v["macd_histogram"],price_precision),
                 "rsi":round(v["rsi"],1),"adx":round(v["adx"],1),"atr":round(v["atr"],price_precision),
                 "structure":v["structure"]} for tf,v in analysis.items()},
             "quality_filters":quality_filters,"order_flow":order_flow_payload,
+            "strategy_evidence": strategy_evidence,
             "status":"SIGNAL" if signal else "WAIT","message":message}

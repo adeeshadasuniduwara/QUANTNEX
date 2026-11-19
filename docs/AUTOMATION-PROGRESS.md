@@ -630,3 +630,39 @@ Branch created from main `bb1b27b480d5a715429c5087db99ebc044a45cdf`.
 - Post-merge main was verified at the merge commit. Backend CI passed 424 tests; Backend/Web CI passed 424 tests on Python 3.12 and 3.14; Web check passed.
 - Optional Telegram Update Notifications failed only in the announce step; it does not affect the code/test checks.
 - Phase C3 is complete. Next core phase: modular strategy evidence registry and correlated-feature control, followed by synchronized historical trade/depth capture and order-flow ablation. See docs/ORDER-FLOW-ROADMAP.md for exact boundaries and steps.
+
+
+## 2026-11-19 — Phase C4: modular strategy evidence registry (implementation on branch)
+
+### Finding
+
+The existing live confluence count treats multiple related observations as separate confirmations: EMA trend across 60m/30m/15m, the separately selected trend timeframe, and MACD/RSI/ADX momentum. This can inflate the displayed raw count and does not make those observations statistically independent. The engine must show method evidence and conflicts transparently without implying a calibrated win probability.
+
+### Changes on branch feat/strategy-evidence-registry
+
+- Added backend/app/signal_methods.py:
+  - Typed MethodEvidence and StrategyMethod models.
+  - Explicit registry for current EMA trend, MACD, RSI, ADX, BOS/MSS, liquidity sweep, zone location and trend-timeframe alignment checks.
+  - Evidence records include method ID, category, side, timeframe, reason, candle-derived provenance, as-of observation timestamp, unweighted strength and calibration status.
+  - Reports unique evidence categories and per-category methods, while preserving legacy BUY/SELL reason order and raw counts.
+- Integrated registry output into backend/app/signal_engine.py:
+  - Existing score and threshold remain unchanged.
+  - Signals expose supporting and conflicting method evidence.
+  - Unique category counts are explicitly diagnostic only, not live gates or win probabilities.
+- Added backend/tests/test_signal_methods.py with bullish, bearish, contradictory, neutral and registry-uniqueness fixtures.
+- Extended backend/tests/test_signal_pipeline_e2e.py to assert registry evidence appears in generated signal payloads.
+- Updated docs/ORDER-FLOW-ROADMAP.md with Phase C4 scope and validation requirements.
+
+### Verification status
+
+- First PR CI run exposed one fixture expectation error: the contradictory SELL case contains both TREND (30m) and STRUCTURE categories, so its unique category count is 2, not 1. The assertion was corrected; rerun CI is pending.
+- The registry is an explainability and architecture step, not a measured performance improvement.
+- No thresholds are loosened, and no new strategy method is treated as independently predictive.
+- Next gate: confirm the corrected fixture passes Backend CI on Python 3.12 and 3.14, Backend/Web CI, Web CI, and legacy reason-order parity. Merge only after full diff review and all relevant checks pass.
+
+### Next exact steps
+
+1. Validate baseline parity with PR CI; fix any drift before merge.
+2. After merge and post-merge checks, add one additional method at a time with precise causal definitions and ablation tests.
+3. Prioritize synchronized historical Spot AggTrade/depth capture and replay so order-flow and method contributions can be tested out of sample.
+4. Keep USDⓈ-M and COIN-M Futures unsupported until independent market adapters and deterministic fixtures are verified.

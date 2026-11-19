@@ -653,7 +653,7 @@ Add a first value-area method to the strategy registry without changing the live
 
 - Add a rolling 50-closed-bar VWAP proxy using typical price (high + low + close) / 3 weighted by total candle volume.
 - Compare the current 50-bar VWAP with the prior shifted 50-bar VWAP; emit diagnostic BUY/SELL evidence only when close position and VWAP slope align.
-- Exclude any candle whose close time is after the signal as-of time; require 51 valid, unique, closed, positive-volume bars.
+- Exclude any candle whose close time is after the signal as-of time; require 51 valid, unique, contiguous, closed bars with non-negative candle volume and positive total volume.
 - Label provenance OHLCV_TYPICAL_PRICE_PROXY and include lookback, current/previous VWAP, close, price basis, volume basis and scope in evidence details.
 - Mark the method DIAGNOSTIC_ONLY and counts_for_baseline=false. It is not added to the legacy confirmation count or live signal threshold.
 - Add bullish/bearish, baseline-score-preservation, incomplete/future-candle and zero-volume fixtures.

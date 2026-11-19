@@ -643,7 +643,7 @@ The existing live confluence count treats multiple related observations as separ
 - Added backend/app/signal_methods.py:
   - Typed MethodEvidence and StrategyMethod models.
   - Explicit registry for current EMA trend, MACD, RSI, ADX, BOS/MSS, liquidity sweep, zone location and trend-timeframe alignment checks.
-  - Evidence records include method ID, category, side, timeframe, reason, candle-derived provenance, unweighted strength and calibration status.
+  - Evidence records include method ID, category, side, timeframe, reason, candle-derived provenance, as-of observation timestamp, unweighted strength and calibration status.
   - Reports unique evidence categories and per-category methods, while preserving legacy BUY/SELL reason order and raw counts.
 - Integrated registry output into backend/app/signal_engine.py:
   - Existing score and threshold remain unchanged.

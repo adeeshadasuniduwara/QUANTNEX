@@ -1,7 +1,8 @@
 """Background Telegram command and TP1 notification worker."""
 from __future__ import annotations
-import asyncio, json, logging, math
+import asyncio, html, json, logging, math
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 from typing import Any
 import httpx
@@ -948,6 +949,72 @@ async def _deliver_pending_signal_events(client, db, user_id: int, token: str, c
                            user_id, type(exc).__name__)
 
 
+async def _deliver_source_update_notice(client, db, user_id: int, token: str, chat_id: str) -> bool:
+    """Send each connected personal bot one notice for each successfully installed source SHA."""
+    state_path = Path(__file__).resolve().parents[2] / "data" / "quantnex_update_state.json"
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return False
+    commit_sha = str(state.get("commit_sha") or "").strip().lower()
+    if len(commit_sha) != 40 or any(ch not in "0123456789abcdef" for ch in commit_sha):
+        return False
+    if _get(db, user_id, "telegram_last_source_update_sha", "") == commit_sha:
+        return False
+
+    repo = "adeeshadasuniduwara/QUANTNEX"
+    commit_url = f"https://github.com/{repo}/commit/{commit_sha}"
+    previous_sha = str(state.get("previous_commit_sha") or "").strip().lower()
+    compare_url = ""
+    if len(previous_sha) == 40 and all(ch in "0123456789abcdef" for ch in previous_sha):
+        compare_url = f"https://github.com/{repo}/compare/{previous_sha}...{commit_sha}"
+
+    pull_url = ""
+    try:
+        response = await client.get(
+            f"https://api.github.com/repos/{repo}/commits/{commit_sha}/pulls",
+            headers={"Accept": "application/vnd.github+json", "User-Agent": "QUANTNEX-Telegram-Notifier"},
+            params={"per_page": 10},
+        )
+        if response.status_code == 200:
+            pull_requests = response.json()
+            if isinstance(pull_requests, list):
+                merged = [item for item in pull_requests if item.get("merged_at") and item.get("html_url")]
+                candidates = merged or [item for item in pull_requests if item.get("html_url")]
+                if candidates:
+                    pull_url = str(candidates[0]["html_url"])
+        elif response.status_code in (403, 429, 500, 502, 503, 504):
+            logger.warning("GitHub PR lookup deferred for local user %s (HTTP %s)", user_id, response.status_code)
+            return False
+    except (httpx.HTTPError, ValueError, TypeError):
+        logger.warning("GitHub PR lookup deferred for local user %s", user_id)
+        return False
+
+    version = str(state.get("version") or ("main@" + commit_sha[:7]))
+    message = (
+        "🚀 <b>QUANTNEX SOURCE UPDATE INSTALLED</b>\\n\\n"
+        + "<b>" + html.escape(version) + "</b>\\n"
+        + "Your local QUANTNEX workspace has restarted with the latest verified source.\\n"
+        + "Your local settings, wallet data and encrypted credentials remain on this computer.\\n\\n"
+        + '<a href="' + commit_url + '">View installed commit</a>'
+    )
+    if compare_url:
+        message += '\\n<a href="' + compare_url + '">Compare changes</a>'
+    if pull_url:
+        message += '\\n<a href="' + pull_url + '">View Pull Request</a>'
+    else:
+        message += '\\n<a href="https://github.com/' + repo + '/pulls">Open Pull Requests</a>'
+    try:
+        await _send(client, token, chat_id, message)
+    except Exception as exc:
+        logger.warning("Source update Telegram notice deferred for local user %s: %s",
+                       user_id, type(exc).__name__)
+        return False
+    _set(db, user_id, "telegram_last_source_update_sha", commit_sha)
+    db.commit()
+    return True
+
+
 async def telegram_worker() -> None:
     """Poll connected user bots, respond to commands and monitor active TP1 levels."""
     last_monitor={}
@@ -963,6 +1030,9 @@ async def telegram_worker() -> None:
                         if not chat_id:continue
                         try:token=decrypt_secret(token_row.value)
                         except ValueError:continue
+                        # This runs after the supervisor restarts the backend on a verified
+                        # source update, so every locally connected personal bot gets its own notice.
+                        await _deliver_source_update_notice(client, db, user_id, token, chat_id)
                         if _get(db,user_id,"telegram_commands_registered","")!="binance-demo-v1":
                             try:
                                 await _telegram_post(client,token,"setMyCommands",{"commands":BOT_COMMANDS})

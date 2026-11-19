@@ -285,8 +285,9 @@ async def _scan_user(db, user: User) -> None:
                         exit_quote += float(details.get("cummulativeQuoteQty", 0) or 0)
                 realized = exit_quote - float(trade.get("entry_quote", 0))
                 trade["realized_pnl"] = round(realized, 8)
+                history = [x for x in history if x.get("oco_client_id") != trade.get("oco_client_id")]
                 history.append(trade)
-                await _notify(db, user.id, f"🛡️ <b>QUANTNEX SPOT DEMO — TRADE CLOSED</b>\n{trade['symbol']} · {trade['exit_reason'] if trade.get('exit_reason') else 'OCO completed'}\nEstimated P&amp;L: {realized:.4f} USDT")
+                await _notify(db, user.id, f"🛡️ <b>QUANTNEX SPOT DEMO — TRADE CLOSED</b>\n{trade['symbol']} · OCO completed\nEstimated P&amp;L: {realized:.4f} USDT")
             else:
                 remaining.append(trade)
         except Exception:
@@ -326,6 +327,9 @@ async def _scan_user(db, user: User) -> None:
                 continue
             distance = float(candidate.get("risk_distance", 0))
             if not math.isfinite(distance) or distance <= 0:
+                continue
+            signal_entry = float(candidate.get("entry", 0) or 0)
+            if signal_entry <= 0 or abs(price - signal_entry) > distance * 0.5:
                 continue
             stop_value = price - distance
             target_value = price + distance * max(config["min_reward_risk"], 2.0)
@@ -384,11 +388,22 @@ async def _scan_user(db, user: User) -> None:
                     _round_price(stop, price_filter["tickSize"], ROUND_DOWN),
                     _round_price(target, price_filter["tickSize"], ROUND_UP),
                     price_filter["tickSize"], oco_id, api_key, secret)
+                if not isinstance(oco, dict) or not oco.get("orderListId"):
+                    raise RuntimeError("Binance did not confirm the protective OCO order list.")
             except Exception:
-                # Never leave an unprotected demo position intentionally open.
-                await _emergency_sell(symbol, protected_qty, api_key, secret)
-                await _notify(db, user.id, f"🚨 <b>QUANTNEX SPOT DEMO SAFETY EXIT</b>\n{symbol}: protective OCO placement failed. An emergency market sell was submitted. Check Binance order history.")
-                raise
+                # Resolve an uncertain OCO POST before attempting a market exit.
+                try:
+                    oco = await _request("GET", "/v3/orderList", {"origClientOrderId": oco_id}, api_key, secret)
+                    if not oco.get("orderListId"):
+                        raise RuntimeError("Protective OCO was not found.")
+                except Exception:
+                    try:
+                        await _emergency_sell(symbol, protected_qty, api_key, secret)
+                        await _notify(db, user.id, f"🚨 <b>QUANTNEX SPOT DEMO SAFETY EXIT</b>\n{symbol}: OCO was not confirmed; Binance accepted an emergency market sell. Verify Binance order history.")
+                    except Exception:
+                        await _notify(db, user.id, f"🚨 <b>QUANTNEX SPOT DEMO — MANUAL ACTION REQUIRED</b>\n{symbol}: entry may be filled but protective OCO and emergency exit were not confirmed. Stop Auto Trading and inspect Binance immediately.")
+                    raise
+                await _notify(db, user.id, f"⚠️ <b>QUANTNEX SPOT DEMO</b>\n{symbol}: OCO request timed out, but Binance confirms the protective order list exists.")
             trade = {"symbol": symbol, "side": "BUY", "quantity": _decimal_text(protected_qty),
                      "entry_price": entry, "stop_loss": stop, "take_profit": target,
                      "entry_quote": quote_spent, "buy_order_id": buy.get("orderId"),

@@ -235,7 +235,7 @@ async def _notify(db, user_id: int, message: str) -> None:
         token = decrypt_secret(token_enc)
         async with httpx.AsyncClient(timeout=8) as client:
             await client.post(f"https://api.telegram.org/bot{token}/sendMessage", json={
-                "chat_id": chat_id, "text": message, "disable_web_page_preview": True,
+                "chat_id": chat_id, "text": message, "parse_mode": "HTML", "disable_web_page_preview": True,
             })
     except Exception as exc:
         logger.warning("Spot trade Telegram notification failed: %s", type(exc).__name__)
@@ -389,7 +389,7 @@ async def _scan_user(db, user: User) -> None:
             active.append(trade)
             daily.append(trade)
             _set_pref(db, user.id, "binance_spot_active_trades", json.dumps(active, separators=(",", ":")))
-            _set_pref(db, user.id, "binance_spot_trade_history", json.dumps((history + daily)[-500:], separators=(",", ":")))
+            _set_pref(db, user.id, "binance_spot_trade_history", json.dumps((history + [trade])[-500:], separators=(",", ":")))
             _set_pref(db, user.id, "binance_spot_last_execution", json.dumps({
                 "symbol": symbol, "side": "BUY", "entry": entry, "quantity": _decimal_text(protected_qty),
                 "stop_loss": stop, "take_profit": target, "order_id": buy.get("orderId"),
@@ -412,11 +412,19 @@ def _validate_geometry(entry: float, stop: float, target: float, minimum_rr: flo
 
 async def binance_spot_auto_worker() -> None:
     WORKER_STATE["running"] = True
+    last_scan: dict[int, float] = {}
     while True:
         try:
             with SessionLocal() as db:
                 users = list(db.scalars(select(User).order_by(User.id)))
                 for user in users:
+                    config = normalize_config(_pref(db, user.id, "binance_spot_auto_config", ""))
+                    if not config["enabled"] or _pref(db, user.id, "binance_auto_trading_enabled") != "true":
+                        continue
+                    now = time.monotonic()
+                    if now - last_scan.get(user.id, 0) < config["interval_seconds"]:
+                        continue
+                    last_scan[user.id] = now
                     try:
                         await _scan_user(db, user)
                     except Exception as exc:

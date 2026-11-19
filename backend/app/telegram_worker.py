@@ -347,6 +347,80 @@ async def _deliver_auto_signal(client, token: str, chat_id: str, message: str,
     return True
 
 
+async def _scan_and_deliver_auto_signal(
+    client,
+    token: str,
+    chat_id: str,
+    db,
+    user_id: int,
+    signal_settings: dict[str, Any],
+    market_symbol: str,
+) -> bool | None:
+    """Scan one market and report whether its order-flow stream needs a retry.
+
+    True means keep this symbol near the front of the next cycle so its
+    sequence-validated stream can finish bootstrapping. False means no stream
+    retry is needed. None means a transient scan error occurred.
+    """
+    try:
+        scan = await build_signal(signal_settings, market_symbol)
+        candidate = scan.get("signal")
+        if candidate:
+            from .signal_lifecycle import record_signal
+            _tracked, created = record_signal(db, user_id, candidate, "AUTO_TELEGRAM_SCAN")
+            db.commit()
+            fingerprint_key = "auto_signal_last_fingerprint_" + market_symbol.lower()
+            fingerprint = _auto_signal_fingerprint(market_symbol, candidate)
+            previous = _get(db, user_id, fingerprint_key)
+            db.commit()
+            # Suppress refreshed/alternate-timeframe candidates while this
+            # symbol already has an OPEN or PENDING trade.
+            if created and _should_send_auto_signal(fingerprint, previous):
+                msg = (
+                    "QUANTNEX · AUTO SIGNAL · " + market_symbol + " " + candidate["side"] + "\n"
+                    + "Market data: " + str(scan.get("provider", "Unknown")) + "\n"
+                    + "Signal TF: " + str(candidate["timeframe"]) + "m · Trend TF: " + str(candidate["trend_timeframe"]) + "m\n"
+                    + "TF alignment: " + ", ".join(
+                        str(tf) + "m " + str(bias)
+                        for tf, bias in (candidate.get("timeframe_alignment") or {}).items()
+                    ) + "\n"
+                    + "Entry type: " + str(candidate.get("entry_type", "REFERENCE")) + "\n"
+                    + "Entry: " + (
+                        "MARKET (" + str(candidate["entry"]) + ")"
+                        if candidate.get("entry_type") == "MARKET"
+                        else "LIMIT (" + str(candidate.get("limit_price") or candidate["entry"]) + ")"
+                    )
+                    + ("\nLimit price: " + str(candidate["limit_price"]) if candidate.get("entry_type") == "LIMIT" else "") + "\n"
+                    + ("Entry expires: " + str(candidate["entry_expires_at"]) + "\n" if candidate.get("entry_expires_at") else "")
+                    + "Entry logic: " + str(candidate.get("entry_selection_reason", "")) + "\n"
+                    + (
+                        "Spread: " + str(candidate["execution_quality"]["spread_bps"])
+                        + " bps · estimated round-trip cost: "
+                        + str(candidate["execution_quality"]["estimated_round_trip_cost_bps"]) + " bps\n"
+                        if candidate.get("execution_quality") else ""
+                    )
+                    + "SL: " + str(candidate["stop_loss"]) + "\n"
+                    + "TP1: " + str(candidate["tp1"]) + "\nTP2: " + str(candidate["tp2"]) + "\nTP3: " + str(candidate["tp3"]) + "\n"
+                    + "Confluence: " + str(candidate["score"]) + "/10 (rule count, not win probability)\n"
+                    + "Confirmations: " + ", ".join(candidate["confirmations"]) + "\n"
+                    + "Signal only; verify spread, fees and execution. No order is placed."
+                )
+                delivered = await _deliver_auto_signal(
+                    client, token, chat_id, msg, fingerprint, previous,
+                    db, user_id, fingerprint_key,
+                )
+                if delivered:
+                    db.commit()
+        return _is_auto_signal_stream_pending(scan)
+    except (MarketDataError, httpx.HTTPError, ValueError, TypeError, KeyError) as exc:
+        # Provider exceptions can contain request URLs; never log query strings or API keys.
+        logger.warning(
+            "Auto-signal scan failed for local user %s market %s: %s",
+            user_id, market_symbol, type(exc).__name__,
+        )
+        return None
+
+
 async def _send(client, token: str, chat_id: str, text: str, reply_markup: dict | None = None):
     # Telegram shows its animated typing indicator while a reply is being prepared.
     try:

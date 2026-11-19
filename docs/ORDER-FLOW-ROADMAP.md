@@ -113,6 +113,7 @@ Only after Spot order-flow is stable:
 | Aggressor-side trade delta | Yes; recent `aggTrades`, buyer-is-maker semantics | Not wired | Not wired | Not available from current Gold candle/quote adapters |
 | UTC session delta | Only when the current response begins at the UTC session's first aggregate-trade ID and every subsequent ID is contiguous; otherwise unavailable/sample only | Not wired | Not wired | Not available |
 | Persistent CVD | In-memory stream-seeded CVD is available from the bounded bootstrap; scope is only since the seed, it is not persisted, and full UTC-session delta remains unavailable without an independent session anchor | Not wired | Not wired | Not available |
+| Observed trade volume profile (POC/VAH/VAL) | Yes: tick-bucketed base-quantity profile over the latest bounded aggTrade input window; not full-session or historical | Not wired | Not wired | Not available |
 | Footprint buckets / imbalance | Recent-window price buckets from observed aggTrades | Not wired | Not wired | Not available |
 | Order-book depth | Sequence-validated Spot WebSocket stream is required by the live signal gate; on-demand manager owns at most eight active symbol streams. Auto scanner rotates across the dynamic pair universe; it does not subscribe to every pair simultaneously | Not wired | Not wired | Not available |
 | Funding / open interest / liquidations | Not applicable to Spot | Not wired | Not wired | Not available |
@@ -336,3 +337,30 @@ Branch: feat/vwap-diagnostic-evidence, created from main 0ee25ab7f259af6f690d258
 1. Add further value methods (session VWAP, volume profile and Fibonacci) only after each has precise causal definitions, data provenance and deterministic fixtures.
 2. Build synchronized historical Spot AggTrade/depth capture and replay to evaluate order-flow and method ablations out of sample.
 3. Keep USDⓈ-M/COIN-M Futures unsupported until separate market adapters and deterministic fixtures are verified.
+
+
+## Phase C6 — observed trade volume profile (implementation PR)
+
+Branch: `feat/observed-trade-volume-profile`, based on main `0473937ca0e649f7ff0d50f3aaf9f169e1c73706`.
+
+### Implementation
+
+- Calculate volume-at-price from Binance Spot aggregate trades already validated by the order-flow pipeline. Each observed execution is assigned to the exact symbol tick-size bucket; OHLCV candle volume is never used.
+- Expose Point of Control (POC), Value Area High (VAH), Value Area Low (VAL), base-asset volume, exact quote notional summed from original execution prices, bucket count and current mid-price location.
+- POC is the bucket with the greatest base-asset quantity; equal-volume POC ties select the lower price.
+- Value area target is 70% of the observed window's base volume. Expand from POC by selecting the larger adjacent bucket; equal adjacent-volume ties expand toward the lower price.
+- The profile is explicitly scoped to `LATEST_AGGTRADE_INPUT_WINDOW` (bounded recent trades, up to the stream/REST input limit). It is not a complete UTC session profile, not a persistent historical profile, and not a cross-venue consolidated profile.
+- Include the profile in the signal-safe order-flow summary so it is visible alongside delta, CVD scope, footprint and L2 evidence. It is diagnostic only and does not add score points, override the order-flow gate, or change BUY/SELL thresholds.
+
+### Deterministic validation
+
+- Hand-computed four-price fixture verifies POC=100, VAL=100, VAH=101, base volume=11, quote volume=1111.2 and 70% value-area coverage.
+- Equal-volume fixture verifies lowest-price POC tie-break and lower-price-first value-area expansion.
+- Summary fixture verifies the observed profile scope/provenance survives into the signal payload.
+
+### Remaining boundary and next phase
+
+- This adds a genuine recent trade-derived volume profile, but not session-anchored or historical profile replay.
+- No performance uplift is claimed; profile location is not yet a live scoring factor.
+- Next priority remains synchronized historical Spot AggTrade + diff-depth capture with bounded retention and chronological order-flow replay/ablation. Keep the current live score as the baseline until out-of-sample evidence justifies any change.
+- USDⓈ-M and COIN-M Futures remain unsupported by the signal engine.

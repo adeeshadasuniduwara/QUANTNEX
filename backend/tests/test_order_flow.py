@@ -209,3 +209,80 @@ def test_live_websocket_confirmation_reports_stream_seed_and_session_limitations
     assert any("sequence-validated" in item.lower() for item in result["limitations"])
     assert any("bootstrap seed" in item.lower() for item in result["limitations"])
     assert any("full utc session delta is unavailable" in item.lower() for item in result["limitations"])
+
+
+def test_observed_trade_volume_profile_calculates_poc_value_area_and_quote_volume():
+    rows = [
+        trade(1, 100, 5, 4, False),
+        trade(2, 101.4, 3, 3, False),
+        trade(3, 102, 2, 2, True),
+        trade(4, 103, 1, 1, True),
+    ]
+    result = calculate_order_flow(
+        rows,
+        [["100.6", "2"]],
+        [["100.8", "2"]],
+        now=NOW,
+        tick_size="1",
+    )
+
+    profile = result["volume_profile"]
+    assert profile["status"] == "AVAILABLE"
+    assert profile["source"] == "BINANCE_SPOT_AGGTRADES"
+    assert profile["scope"] == "LATEST_AGGTRADE_INPUT_WINDOW"
+    assert profile["volume_unit"] == "BASE_ASSET_QUANTITY"
+    assert profile["candle_volume_used"] is False
+    assert profile["full_session"] is False
+    assert profile["historical"] is False
+    assert profile["price_bucket_count"] == 4
+    assert profile["total_base_volume"] == 11
+    assert profile["total_quote_volume"] == pytest.approx(1111.2)
+    assert profile["poc"] == 100
+    assert profile["poc_base_volume"] == 5
+    assert profile["val"] == 100
+    assert profile["vah"] == 101
+    assert profile["value_area_target_fraction"] == 0.70
+    assert profile["value_area_covered_fraction"] == pytest.approx(8 / 11)
+    assert profile["price_location"] == "INSIDE_VALUE_AREA"
+
+
+def test_observed_trade_volume_profile_uses_deterministic_low_price_tie_breaks():
+    rows = [
+        trade(1, 99, 2, 5, False),
+        trade(2, 100, 5, 4, False),
+        trade(3, 101, 2, 3, True),
+        trade(4, 102, 5, 2, False),
+    ]
+    result = calculate_order_flow(
+        rows,
+        [["100.4", "2"]],
+        [["100.6", "2"]],
+        now=NOW,
+        tick_size="1",
+    )
+
+    profile = result["volume_profile"]
+    assert profile["poc"] == 100
+    assert profile["poc_tie_break"] == "LOWEST_PRICE"
+    assert profile["value_area_tie_break"] == "LOWER_PRICE_FIRST"
+    assert profile["val"] == 99
+    assert profile["vah"] == 102
+    assert profile["value_area_covered_fraction"] == 1.0
+
+
+def test_order_flow_signal_summary_preserves_observed_volume_profile_scope():
+    from app.order_flow import summarize_order_flow_snapshot
+
+    snapshot = {
+        "volume_profile": {
+            "source": "BINANCE_SPOT_AGGTRADES",
+            "scope": "LATEST_AGGTRADE_INPUT_WINDOW",
+            "poc": 100.0,
+            "val": 99.0,
+            "vah": 101.0,
+            "candle_volume_used": False,
+        }
+    }
+    result = summarize_order_flow_snapshot(snapshot, {"status": "CONFIRMED", "accepted": True})
+
+    assert result["volume_profile"] == snapshot["volume_profile"]

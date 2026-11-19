@@ -1220,23 +1220,42 @@ async def notify_connected_telegram(payload: dict, user: User = Depends(local_wo
     message=payload.get("message")
     if not isinstance(message,str) or not message.strip() or len(message)>4096:
         raise HTTPException(status_code=422,detail="Message must contain 1–4096 characters.")
+    notification_key=payload.get("notification_key")
+    if notification_key is not None and (
+        not isinstance(notification_key,str) or not notification_key.strip()
+        or len(notification_key)>145
+        or not re.fullmatch(r"[A-Za-z0-9:_-]+",notification_key)
+    ):
+        raise HTTPException(status_code=422,detail="notification_key must be 1–145 safe characters.")
     token_enc=_preference(db,user.id,"telegram_bot_token_enc")
     chat_id=_preference(db,user.id,"telegram_chat_id")
     if not token_enc or not chat_id:
         raise HTTPException(status_code=409,detail="Connect your Telegram bot first.")
     try: token=decrypt_secret(token_enc)
     except ValueError as exc: raise HTTPException(status_code=409,detail=str(exc))
+    delivery_key="client-notice:"+notification_key if notification_key else ""
+    claimed=False
+    if delivery_key:
+        from .telegram_worker import _claim_telegram_delivery, _finish_telegram_delivery
+        claimed=_claim_telegram_delivery(db,user.id,delivery_key)
+        if not claimed:
+            return {"ok":True,"duplicate":True}
     try:
         async with httpx.AsyncClient(timeout=12) as client:
             response=await client.post("https://api.telegram.org/bot"+token+"/sendMessage",
                 json={"chat_id":chat_id,"text":message,"disable_web_page_preview":True})
             data=response.json()
         if response.status_code>=400 or not data.get("ok"):
+            if claimed:
+                _finish_telegram_delivery(db,user.id,delivery_key,False)
             raise HTTPException(status_code=502,detail="Telegram rejected the message. Check bot permissions and chat ID.")
-        return {"ok":True,"message_id":data.get("result",{}).get("message_id")}
+        if claimed:
+            _finish_telegram_delivery(db,user.id,delivery_key,True)
+        return {"ok":True,"duplicate":False,"message_id":data.get("result",{}).get("message_id")}
     except httpx.HTTPError:
+        if claimed:
+            _finish_telegram_delivery(db,user.id,delivery_key,False)
         raise HTTPException(status_code=502,detail="Could not reach Telegram.")
-
 
 async def start_daily_backup_worker():
     app.state.daily_backup_task = asyncio.create_task(daily_backup_worker())

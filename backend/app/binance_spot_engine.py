@@ -386,12 +386,27 @@ async def _scan_user(db, user: User) -> None:
                 continue
             stamp = hashlib.sha256(f"{user.id}|{fingerprint}".encode()).hexdigest()[:18]
             buy_client_id = "QXSB" + stamp
+            # Persist the signal lock before submitting the order so a process
+            # restart cannot re-enter the same candle setup.
+            _set_pref(db, user.id, "binance_spot_signal_" + symbol.lower(), fingerprint)
+            _set_pref(db, user.id, "binance_spot_pending_order", json.dumps({
+                "symbol": symbol, "client_order_id": buy_client_id, "fingerprint": fingerprint,
+                "created_at": datetime.now(timezone.utc).isoformat()}))
+            db.commit()
             try:
                 buy = await _market_buy(symbol, notional, buy_client_id, api_key, secret)
             except RuntimeError:
                 # A timed-out POST may have reached Binance; resolve by client ID.
                 # Never blindly resubmit a market order.
-                buy = await _query_order(symbol, buy_client_id, api_key, secret)
+                try:
+                    buy = await _query_order(symbol, buy_client_id, api_key, secret)
+                except Exception:
+                    _set_pref(db, user.id, "binance_auto_trading_enabled", "false")
+                    config["enabled"] = False
+                    _set_pref(db, user.id, "binance_spot_auto_config", json.dumps(config, separators=(",", ":")))
+                    db.commit()
+                    await _notify(db, user.id, f"🚨 <b>QUANTNEX SPOT DEMO — ORDER STATUS UNKNOWN</b>\\n{symbol}: Binance may have received the BUY order, but QUANTNEX could not confirm it. Auto Trading has been stopped. Check Binance order history before restarting.")
+                    raise RuntimeError("Market order status is unknown; Auto Trading has been stopped.")
             executed = float(buy.get("executedQty", 0) or 0)
             quote_spent = float(buy.get("cummulativeQuoteQty", 0) or 0)
             if executed <= 0 or quote_spent <= 0:
@@ -442,7 +457,7 @@ async def _scan_user(db, user: User) -> None:
                      "created_at": datetime.now(timezone.utc).isoformat(), "status": "OPEN"}
             active.append(trade)
             daily.append(trade)
-            _set_pref(db, user.id, "binance_spot_signal_" + symbol.lower(), fingerprint)
+            _set_pref(db, user.id, "binance_spot_pending_order", "")
             _set_pref(db, user.id, "binance_spot_active_trades", json.dumps(active, separators=(",", ":")))
             _set_pref(db, user.id, "binance_spot_trade_history", json.dumps((history + [trade])[-500:], separators=(",", ":")))
             _set_pref(db, user.id, "binance_spot_last_execution", json.dumps({

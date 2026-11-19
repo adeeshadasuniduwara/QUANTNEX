@@ -268,6 +268,17 @@
           <div class="qx-ledger-actions"><span id="qxSignalLedgerStatus" role="status">Waiting for signal history…</span><button class="secondary-btn compact-btn" id="qxSignalLedgerRefresh" type="button">Refresh</button></div>
         </div>
         <p class="qx-ledger-note" id="qxSignalReplayNote">Historical outcomes are reconstructed only from available provider candles. Ambiguous stop/target candles are never guessed.</p>
+        <div class="qx-overall-performance" aria-label="All-time signal performance across all markets">
+          <div class="qx-overall-performance-head"><div><strong>YOUR OVERALL SIGNAL P&amp;L</strong><small>All symbols · all-time · filled signals only</small></div><span id="qxSignalPerformanceStatus" role="status">CALCULATING…</span></div>
+          <div class="qx-overall-performance-grid" id="qxSignalOverallSummary">
+            <article><span>Net P&amp;L</span><strong id="qxSignalOverallPnl">—</strong></article>
+            <article><span>Realized P&amp;L</span><strong id="qxSignalRealizedPnl">—</strong></article>
+            <article><span>Floating P&amp;L</span><strong id="qxSignalFloatingPnl">—</strong></article>
+            <article><span>Win rate</span><strong id="qxSignalWinRate">—</strong></article>
+            <article><span>Signals taken</span><strong id="qxSignalTotalTrades">—</strong></article>
+          </div>
+          <p class="qx-ledger-note" id="qxSignalOverallNote">P&amp;L is measured in R (multiples of each signal's initial risk), not account currency. Open trades are marked using their latest tracked price.</p>
+        </div>
         <div class="qx-ledger-summary" id="qxSignalLedgerSummary">
           <div><span>Tracked</span><strong>—</strong></div><div><span>TP1</span><strong>—</strong></div><div><span>TP2</span><strong>—</strong></div><div><span>Completed</span><strong>—</strong></div>
         </div>

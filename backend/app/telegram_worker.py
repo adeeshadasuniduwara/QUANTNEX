@@ -958,9 +958,13 @@ async def _deliver_source_update_notice(client, db, user_id: int, token: str, ch
     state_path = Path(__file__).resolve().parents[2] / "data" / "quantnex_update_state.json"
     try:
         state = json.loads(state_path.read_text(encoding="utf-8"))
+        confirmation_path = state_path.parent / "updates" / "source_update_confirmed.json"
+        confirmation = json.loads(confirmation_path.read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError):
         return False
     commit_sha = str(state.get("commit_sha") or "").strip().lower()
+    if confirmation.get("commit_sha") != commit_sha or not state.get("previous_commit_sha"):
+        return False
     if len(commit_sha) != 40 or any(ch not in "0123456789abcdef" for ch in commit_sha):
         return False
     if _get(db, user_id, "telegram_last_source_update_sha", "") == commit_sha:

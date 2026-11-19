@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   announce:
@@ -22,6 +23,8 @@ jobs:
           RELEASE_URL: ${{ github.event.release.html_url }}
           REPO: ${{ github.repository }}
           COMMIT_SHA: ${{ github.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          GITHUB_TOKEN: ${{ github.token }}
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
@@ -33,6 +36,7 @@ jobs:
           import json
           import os
           import urllib.error
+          import urllib.parse
           import urllib.request
 
           token = os.environ["TELEGRAM_BOT_TOKEN"]
@@ -106,6 +110,8 @@ jobs:
               raise SystemExit("Choose a private chat, group, supergroup or channel as TELEGRAM_CHAT_ID.")
 
           repo = os.environ["REPO"]
+          compare_url = ""
+          pull_url = ""
           if os.environ["EVENT_NAME"] == "workflow_dispatch":
               title = "Telegram notification test"
               tag = "Configuration test"

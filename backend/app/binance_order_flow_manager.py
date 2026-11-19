@@ -149,8 +149,12 @@ class BinanceSpotOrderFlowManager:
         stop_event = asyncio.Event()
         changed_event = asyncio.Event()
 
-        async def on_update(_snapshot: dict[str, Any]) -> None:
+        async def on_update(snapshot: dict[str, Any]) -> None:
             changed_event.set()
+            # Persist one coalesced sample per symbol/UTC minute; the store
+            # never writes synchronously on the WebSocket event path.
+            from .order_flow_capture import record_order_flow_snapshot
+            record_order_flow_snapshot(snapshot)
 
         task = asyncio.create_task(
             stream.run(self._client, stop_event, on_update),

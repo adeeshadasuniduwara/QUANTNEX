@@ -168,7 +168,7 @@ Deterministic regression tests cover order-type restrictions, zero-disabled mark
 
 Source references: [Binance Spot filters](https://github.com/binance/binance-spot-api-docs/blob/master/filters.md) and [live BTCUSDT exchangeInfo](https://data-api.binance.vision/api/v3/exchangeInfo?symbol=BTCUSDT).
 
-Next core phase: implement the read-only WebSocket adapter around the existing `AggTradeCvdState` and `BinanceSpotDepthBook` state machines, then feed only sequence-validated stream state into the signal gate.
+Completed by PRs #203 and #204: the read-only WebSocket adapter now bridges those state machines, and the live Spot signal gate consumes only sequence-validated stream state.
 
 ## Phase C1.1 — Binance Spot order-filter-aware entry selection (merged PR #202)
 
@@ -211,7 +211,7 @@ Implemented in `backend/app/binance_order_flow_stream.py`:
 
 PR-head Backend CI and Backend/Web CI passed; post-merge main Backend CI and Backend/Web CI passed on commit `b88f112` (Python 3.12, Python 3.14 and web checks). The optional Telegram update-notification workflow failed because its configured chat target is invalid/self-directed; it is not a signal-engine test.
 
-Current boundary after PR #203: the adapter is a reusable single-symbol component only. On main it is not yet owned by the application lifecycle and `build_signal` still uses the REST order-flow snapshot path. Do not claim sequence-validated streaming already powers automatic user-facing signals.
+PR #204 subsequently resolved this integration gap: FastAPI lifespan owns the bounded stream manager, and live Binance Spot `build_signal` requires sequence-validated WebSocket state. The eight-stream capacity limit still means all-pair simultaneous streaming is not supported.
 
 ## Phase C2.1 — bounded stream manager and signal-pipeline integration (merged PR #204)
 

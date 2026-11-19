@@ -346,9 +346,17 @@ async def _scan_user(db, user: User) -> None:
             # Revalidate risk after exchange precision and available-balance caps.
             if float(qty) * distance > risk_cash * 1.000001:
                 continue
-            stamp = hashlib.sha256(f"{user.id}|{symbol}|{candidate.get('signal_candle_time')}".encode()).hexdigest()[:18]
+            fingerprint = hashlib.sha256(f"{symbol}|{candidate.get('side')}|{candidate.get('timeframe')}|{candidate.get('signal_candle_time')}".encode()).hexdigest()
+            if _pref(db, user.id, "binance_spot_signal_" + symbol.lower()) == fingerprint:
+                continue
+            stamp = hashlib.sha256(f"{user.id}|{fingerprint}".encode()).hexdigest()[:18]
             buy_client_id = "QXSB" + stamp
-            buy = await _market_buy(symbol, notional, buy_client_id, api_key, secret)
+            try:
+                buy = await _market_buy(symbol, notional, buy_client_id, api_key, secret)
+            except RuntimeError:
+                # A timed-out POST may have reached Binance; resolve by client ID.
+                # Never blindly resubmit a market order.
+                buy = await _query_order(symbol, buy_client_id, api_key, secret)
             executed = float(buy.get("executedQty", 0) or 0)
             quote_spent = float(buy.get("cummulativeQuoteQty", 0) or 0)
             if executed <= 0 or quote_spent <= 0:
@@ -388,6 +396,7 @@ async def _scan_user(db, user: User) -> None:
                      "created_at": datetime.now(timezone.utc).isoformat(), "status": "OPEN"}
             active.append(trade)
             daily.append(trade)
+            _set_pref(db, user.id, "binance_spot_signal_" + symbol.lower(), fingerprint)
             _set_pref(db, user.id, "binance_spot_active_trades", json.dumps(active, separators=(",", ":")))
             _set_pref(db, user.id, "binance_spot_trade_history", json.dumps((history + [trade])[-500:], separators=(",", ":")))
             _set_pref(db, user.id, "binance_spot_last_execution", json.dumps({

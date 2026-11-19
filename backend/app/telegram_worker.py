@@ -531,7 +531,7 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
             # End the polling transaction before waiting on the external AI provider.
             db.commit()
             from .ai_assistant import ask_openai
-            answer, _model = await ask_openai(db, user_id, clean_text, channel="telegram")
+            answer, _model = await ask_openai(db, user_id, clean_text)
             return answer[:3900]
         except RuntimeError:
             return "QUANTNEX AI is not configured yet. Add your OpenAI API key in QUANTNEX → Connections & Integrations. Do not send API keys in Telegram."

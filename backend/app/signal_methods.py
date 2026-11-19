@@ -7,7 +7,7 @@ reported without pretending each is an independent confirmation.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import math
 from typing import Any, Callable
 
@@ -20,6 +20,7 @@ class MethodEvidence:
     timeframe: str | None
     reason: str
     source: str = "CANDLE_DERIVED"
+    observed_at: str | None = None
     strength: float = 1.0
     calibration: str = "UNWEIGHTED_RULE_EVIDENCE"
 
@@ -31,6 +32,7 @@ class MethodEvidence:
             "timeframe": self.timeframe,
             "reason": self.reason,
             "source": self.source,
+            "observed_at": self.observed_at,
             "strength": self.strength,
             "calibration": self.calibration,
         }
@@ -190,6 +192,7 @@ def evaluate_strategy_registry(
     trend: str,
     *,
     in_zone: bool,
+    observed_at: str | None = None,
 ) -> dict[str, Any]:
     """Evaluate all registered methods and return baseline + category evidence.
 
@@ -204,7 +207,12 @@ def evaluate_strategy_registry(
     }
     evidence: list[MethodEvidence] = []
     for method in STRATEGY_METHOD_REGISTRY:
-        evidence.extend(method.evaluator(context))
+        for item in method.evaluator(context):
+            if item.method_id != method.method_id or item.category != method.category:
+                raise ValueError(
+                    f"Strategy registry metadata mismatch for method {method.method_id}."
+                )
+            evidence.append(replace(item, observed_at=observed_at))
 
     buy = [item.reason for item in evidence if item.side == "BUY"]
     sell = [item.reason for item in evidence if item.side == "SELL"]

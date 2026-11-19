@@ -158,3 +158,90 @@ def test_registry_attaches_observation_time_and_explicit_candle_provenance():
     assert all(item["source"] == "CANDLE_DERIVED" for item in result["evidence"])
     assert all(item["calibration"] == "UNWEIGHTED_RULE_EVIDENCE"
                for item in result["evidence"])
+
+
+def _vwap_candles(direction: str, now):
+    from datetime import timedelta
+
+    rows = []
+    first_open = now - timedelta(minutes=5 * 52)
+    for index in range(52):
+        if direction == "BUY":
+            close = 100.0 + index * 0.1
+            open_price = close - 0.02
+        else:
+            close = 120.0 - index * 0.1
+            open_price = close + 0.02
+        rows.append({
+            "time": (first_open + timedelta(minutes=5 * index)).isoformat(),
+            "open": open_price,
+            "high": max(open_price, close) + 0.03,
+            "low": min(open_price, close) - 0.03,
+            "close": close,
+            "volume": 10.0 + (index % 3),
+        })
+    return rows
+
+
+def test_rolling_vwap_proxy_is_diagnostic_and_does_not_change_legacy_score():
+    from datetime import datetime, timedelta, timezone
+
+    observed_at = datetime(2026, 11, 19, 8, 0, tzinfo=timezone.utc)
+    result = evaluate_strategy_registry(
+        _analysis("BUY"), "5", "60", in_zone=True,
+        observed_at=observed_at.isoformat(),
+        candles=_vwap_candles("BUY", observed_at),
+        as_of=observed_at + timedelta(seconds=1),
+    )
+
+    assert result["baseline_raw_counts"]["BUY"] == 10
+    assert len(result["buy_reasons"]) == 10
+    assert not any("VWAP" in reason for reason in result["buy_reasons"])
+    assert len(result["diagnostic_only"]) == 1
+    evidence = result["diagnostic_only"][0]
+    assert evidence["method_id"] == "rolling_vwap_proxy"
+    assert evidence["side"] == "BUY"
+    assert evidence["category"] == "VALUE"
+    assert evidence["decision_role"] == "DIAGNOSTIC_ONLY"
+    assert evidence["counts_for_baseline"] is False
+    assert evidence["source"] == "OHLCV_TYPICAL_PRICE_PROXY"
+    assert evidence["observed_at"] == observed_at.isoformat()
+    assert evidence["details"]["scope"] == "ROLLING_50_CLOSED_BARS"
+    assert result["unique_category_counts"]["BUY"] == 6
+
+
+def test_rolling_vwap_proxy_can_emit_bearish_alignment_without_changing_score():
+    from datetime import datetime, timedelta, timezone
+
+    observed_at = datetime(2026, 11, 19, 8, 0, tzinfo=timezone.utc)
+    result = evaluate_strategy_registry(
+        _analysis("SELL"), "5", "60", in_zone=True,
+        observed_at=observed_at.isoformat(),
+        candles=_vwap_candles("SELL", observed_at),
+        as_of=observed_at + timedelta(seconds=1),
+    )
+
+    evidence = result["diagnostic_only"][0]
+    assert evidence["method_id"] == "rolling_vwap_proxy"
+    assert evidence["side"] == "SELL"
+    assert result["baseline_raw_counts"]["SELL"] == 10
+
+
+def test_rolling_vwap_proxy_rejects_incomplete_future_or_zero_volume_inputs():
+    from datetime import datetime, timedelta, timezone
+
+    observed_at = datetime(2026, 11, 19, 8, 0, tzinfo=timezone.utc)
+    rows = _vwap_candles("BUY", observed_at)
+
+    incomplete = evaluate_strategy_registry(
+        _analysis("BUY"), "5", "60", in_zone=True,
+        candles=rows, as_of=observed_at - timedelta(minutes=10),
+    )
+    assert incomplete["diagnostic_only"] == []
+
+    zero_volume = [dict(row, volume=0.0) for row in rows]
+    no_volume = evaluate_strategy_registry(
+        _analysis("BUY"), "5", "60", in_zone=True,
+        candles=zero_volume, as_of=observed_at + timedelta(seconds=1),
+    )
+    assert no_volume["diagnostic_only"] == []

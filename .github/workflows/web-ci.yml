@@ -50,6 +50,7 @@ jobs:
           node --check apps/web/market-sessions.js
           node --check apps/web/workspace-pages.js
           node --check apps/web/binance-center.js
+          node --check apps/web/auto-refresh.js
           node apps/web/workspace-pages.test.cjs
           node apps/web/goals.test.cjs
           node apps/web/journal-export.test.cjs
@@ -58,6 +59,7 @@ jobs:
           node apps/web/live-terminal.test.cjs
           node apps/web/sidebar-scroll.test.cjs
           node apps/web/navigation.test.cjs
+          node apps/web/auto-refresh.test.cjs
       - name: Validate local updater Python syntax
         run: |
           python -m py_compile apps/web/quantnex_local_server.py quantnex_updater.py run_quantnex_services.py
@@ -69,6 +71,7 @@ jobs:
           grep -q 'quantnex-view-intelligence.css' apps/web/index.html
           grep -q 'quantnex-view-chart.js' apps/web/index.html
           grep -q 'quantnex-view-chart.css' apps/web/index.html
+          grep -q 'auto-refresh.js' apps/web/index.html
           grep -q 'id="qxChartIntelSummary"' apps/web/index.html
           grep -q 'id="qxOverlayZones"' apps/web/index.html
           grep -q 'id="account"' apps/web/index.html

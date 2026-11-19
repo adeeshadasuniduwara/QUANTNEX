@@ -10,7 +10,10 @@ from .database import SessionLocal
 from .models import GoalContribution, PaperTrade, PersonalGoal, Preference, SignalTrade, SignalTradeEvent
 from .security import decrypt_secret
 from .config import TWELVE_DATA_API_KEY, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
-from .signal_engine import build_signal, MarketDataError, gold_feed_configured, gold_feed_provider
+from .signal_engine import (
+    build_signal, MarketDataError, get_binance_spot_symbols,
+    gold_feed_configured, gold_feed_provider,
+)
 from .events import event_hub
 
 logger = logging.getLogger("quantnex.telegram")
@@ -24,9 +27,20 @@ def _set(db, user_id: int, key: str, value: str) -> None:
     if row is None: db.add(Preference(user_id=user_id,key=key,value=value))
     else: row.value=value
 
+AUTO_SIGNAL_LEGACY_DEFAULT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+AUTO_SIGNAL_MAX_BATCH_SIZE = 20
+AUTO_SIGNAL_MAX_PENDING_STREAMS = 8
+AUTO_SIGNAL_MAX_PENDING_RETRIES = 3
+
+
 def _normalise_auto_signal_settings(raw: str) -> dict[str, Any]:
-    defaults = {"enabled": False, "interval_seconds": 180,
-                "symbols": ["BTCUSDT", "ETHUSDT", "SOLUSDT"]}
+    defaults = {
+        "enabled": False,
+        "interval_seconds": 180,
+        "universe_mode": "ALL_BINANCE_SPOT",
+        "scan_batch_size": AUTO_SIGNAL_MAX_BATCH_SIZE,
+        "symbols": [],
+    }
     try:
         value = json.loads(raw)
     except (TypeError, ValueError):
@@ -37,7 +51,11 @@ def _normalise_auto_signal_settings(raw: str) -> dict[str, Any]:
         interval = int(value.get("interval_seconds", defaults["interval_seconds"]) or defaults["interval_seconds"])
     except (TypeError, ValueError, OverflowError):
         interval = defaults["interval_seconds"]
-    symbols = value.get("symbols", defaults["symbols"])
+    try:
+        batch_size = int(value.get("scan_batch_size", defaults["scan_batch_size"]) or defaults["scan_batch_size"])
+    except (TypeError, ValueError, OverflowError):
+        batch_size = defaults["scan_batch_size"]
+    symbols = value.get("symbols", [])
     if not isinstance(symbols, (list, tuple)):
         symbols = []
     selected = list(dict.fromkeys(
@@ -45,9 +63,89 @@ def _normalise_auto_signal_settings(raw: str) -> dict[str, Any]:
         if str(item).strip().upper() == "XAUUSD"
         or (str(item).strip().isalnum() and 5 <= len(str(item).strip()) <= 30)
     ))[:50]
-    return {"enabled": value.get("enabled") is True,
-            "interval_seconds": max(60, min(3600, interval)),
-            "symbols": selected}
+
+    requested_mode = value.get("universe_mode")
+    if requested_mode in {"ALL_BINANCE_SPOT", "SELECTED"}:
+        universe_mode = requested_mode
+    elif selected and selected != AUTO_SIGNAL_LEGACY_DEFAULT_SYMBOLS:
+        # Preserve a genuine legacy custom watchlist. The former built-in
+        # BTC/ETH/SOL defaults migrate to full-universe scanning.
+        universe_mode = "SELECTED"
+    else:
+        universe_mode = "ALL_BINANCE_SPOT"
+
+    if universe_mode == "ALL_BINANCE_SPOT":
+        # In full-universe mode only the optional separate Gold feed is an
+        # add-on; old hard-coded Binance defaults are never treated as a cap.
+        selected = [symbol for symbol in selected if symbol == "XAUUSD"]
+
+    return {
+        "enabled": value.get("enabled") is True,
+        "interval_seconds": max(60, min(3600, interval)),
+        "universe_mode": universe_mode,
+        "scan_batch_size": max(1, min(AUTO_SIGNAL_MAX_BATCH_SIZE, batch_size)),
+        "symbols": selected,
+    }
+
+
+def _rotating_auto_signal_batch(
+    symbols: list[str],
+    cursor_symbol: str | None,
+    batch_size: int,
+    *,
+    excluded: set[str] | None = None,
+) -> list[str]:
+    """Return the next fair, deterministic slice after the persisted cursor."""
+    universe = list(dict.fromkeys(
+        str(symbol).strip().upper() for symbol in symbols if str(symbol).strip()
+    ))
+    if not universe or isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size < 1:
+        return []
+    start = 0
+    if cursor_symbol in universe:
+        start = (universe.index(cursor_symbol) + 1) % len(universe)
+    ordered = universe[start:] + universe[:start]
+    omitted = {str(symbol).strip().upper() for symbol in (excluded or set())}
+    return [symbol for symbol in ordered if symbol not in omitted][:batch_size]
+
+
+def _normalise_auto_signal_pending(raw: str, universe: list[str]) -> dict[str, int]:
+    """Keep a small retry queue for symbols whose order-flow stream is bootstrapping."""
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        value = []
+    if not isinstance(value, list):
+        return {}
+    allowed = set(universe)
+    pending: dict[str, int] = {}
+    for item in value:
+        if isinstance(item, str):
+            symbol, attempts = item.strip().upper(), 1
+        elif isinstance(item, dict):
+            symbol = str(item.get("symbol") or "").strip().upper()
+            try:
+                attempts = int(item.get("attempts", 1))
+            except (TypeError, ValueError, OverflowError):
+                attempts = 1
+        else:
+            continue
+        if symbol in allowed and 1 <= attempts <= AUTO_SIGNAL_MAX_PENDING_RETRIES:
+            pending[symbol] = attempts
+        if len(pending) >= AUTO_SIGNAL_MAX_PENDING_STREAMS:
+            break
+    return pending
+
+
+def _is_auto_signal_stream_pending(scan: dict[str, Any] | None) -> bool:
+    if not isinstance(scan, dict) or scan.get("signal"):
+        return False
+    flow = scan.get("order_flow")
+    return (
+        isinstance(flow, dict)
+        and flow.get("data_mode") == "PUBLIC_WEBSOCKET_STREAM"
+        and flow.get("stream_ready") is False
+    )
 
 
 def _auto_signal_fingerprint(symbol: str, candidate: dict[str, Any] | None) -> str:

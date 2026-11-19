@@ -171,7 +171,7 @@ def test_installed_update_endpoint_deduplicates_repeated_client_notices(monkeypa
 
     monkeypatch.setattr(main, "decrypt_secret", lambda _value: "12345:token")
     monkeypatch.setattr(main.httpx, "AsyncClient", FakeClient)
-    payload = {"message": "WEB UPDATE INSTALLED", "notification_key": "web-update-installed:main-abcdef1"}
+    payload = {"message": "WEB UPDATE INSTALLED", "notification_key": "update-installed:main-abcdef1"}
     first = asyncio.run(main.notify_connected_telegram(payload, user, db))
     second = asyncio.run(main.notify_connected_telegram(payload, user, db))
     assert first["ok"] is True and first["duplicate"] is False

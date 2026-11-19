@@ -177,7 +177,7 @@ def _calculate_trade_volume_profile(
         raise OrderFlowDataError("Trade volume profile contains an invalid price bucket.")
     total_base = sum(volumes, Decimal(0))
     total_quote = sum(quote_volumes, Decimal(0))
-    if total_base <= 0 or not total_quote.is_finite():
+    if total_base <= 0 or not total_quote.is_finite() or total_quote <= 0:
         raise OrderFlowDataError("Trade volume profile has invalid total volume.")
 
     maximum = max(volumes)

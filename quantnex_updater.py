@@ -187,7 +187,7 @@ def _bootstrap_snapshot(root: Path, latest_sha: str) -> dict:
             [path.relative_to(staged_root).as_posix()
              for path in staged_root.rglob("*") if path.is_file()],
         )
-        _save_state(root, latest_sha, previous_commit_sha=installed_sha)
+        _save_state(root, latest_sha)
     except Exception:
         for relative in reversed(touched):
             destination, backup = _safe_destination(root, relative), backup_root / relative
@@ -492,7 +492,7 @@ def check_and_apply(root: Path, force_reconcile: bool = False) -> dict:
         temporary_rollback.write_text(json.dumps(rollback_data, indent=2), encoding="utf-8")
         os.replace(temporary_rollback, rollback_path)
         _save_managed_paths(root, latest_sha, latest_paths)
-        _save_state(root, latest_sha)
+        _save_state(root, latest_sha, previous_commit_sha=installed_sha)
     except Exception:
         for relative in reversed(touched):
             destination = _safe_destination(root, relative)

@@ -7,6 +7,8 @@ import os
 import re
 import shutil
 import subprocess
+import time
+import urllib.error
 import urllib.request
 import zipfile
 from datetime import datetime, timezone
@@ -15,6 +17,8 @@ from pathlib import Path, PurePosixPath
 REPOSITORY = "adeeshadasuniduwara/QUANTNEX"
 BRANCH = "main"
 STATE_RELATIVE = Path("data") / "quantnex_update_state.json"
+API_CACHE_RELATIVE = Path("data") / "updates" / "github_api_cache.json"
+API_CACHE_TTL_SECONDS = 600
 ROLLBACK_RELATIVE = Path("data") / "updates" / "last_update.json"
 MAX_FILES = 300
 MAX_FILE_BYTES = 20 * 1024 * 1024
@@ -33,15 +37,50 @@ class UpdateError(RuntimeError):
 
 
 def _request_json(url: str) -> dict:
+    """Use a persistent TTL cache and stale-on-rate-limit fallback for GitHub REST GETs."""
+    cache_path = Path(__file__).resolve().parent / API_CACHE_RELATIVE
+    cache: dict = {}
+    try:
+        payload = json.loads(cache_path.read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            cache = payload
+    except (OSError, ValueError):
+        pass
+
+    now = time.time()
+    cached = cache.get(url)
+    if isinstance(cached, dict) and isinstance(cached.get("data"), dict):
+        age = now - float(cached.get("fetched_at", 0))
+        if 0 <= age < API_CACHE_TTL_SECONDS:
+            return cached["data"]
+
     request = urllib.request.Request(url, headers={
         "Accept": "application/vnd.github+json",
         "User-Agent": "QUANTNEX-Automatic-Updater",
         "X-GitHub-Api-Version": "2022-11-28",
     })
-    with urllib.request.urlopen(request, timeout=30) as response:
-        result = json.loads(response.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        # A rate-limited check must not break the running trading workspace.
+        # Keep the last known response and wait for the next scheduled check.
+        if exc.code in (403, 429) and isinstance(cached, dict) and isinstance(cached.get("data"), dict):
+            return cached["data"]
+        raise
     if not isinstance(result, dict):
         raise UpdateError("GitHub returned an invalid response.")
+
+    cache[url] = {"fetched_at": now, "data": result}
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = cache_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(cache), encoding="utf-8")
+        os.replace(temporary, cache_path)
+    except OSError:
+        # Cache persistence is an optimization; a successful GitHub response
+        # must still be usable when the local disk is temporarily unavailable.
+        pass
     return result
 
 

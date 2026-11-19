@@ -66,7 +66,7 @@ def _claim_telegram_delivery(db, user_id: int, notification_key: str, lease_seco
     ).values(
         status="sending", claimed_at=now,
         attempts=TelegramDelivery.attempts + 1,
-    ))
+    ).execution_options(synchronize_session=False))
     db.commit()
     return claimed.rowcount == 1
 

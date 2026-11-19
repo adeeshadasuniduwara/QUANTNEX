@@ -56,14 +56,14 @@ const connectExchange=async(exchange,formId,buttonId,keyId,secretId)=>{
   const data=await request("/connect/"+exchange,{method:"POST",body:JSON.stringify({
    api_key:$(keyId).value.trim(),api_secret:$(secretId).value.trim()
   })});
-  form.reset();status(data.message);await refresh();
+  form.reset();status(data.message+(exchange==="spot"?(data.can_trade?" · Spot trading permission enabled.":" · Spot trade permission is OFF; enable it in Binance Demo API management before starting."):""));await refresh();
  }catch(error){status("Could not connect "+exchange+": "+error.message,true);}
  finally{busy(button,false,exchange==="spot"?"Verify & save Spot":"Verify & save Futures");}
 };
 $("bnSpotConnectForm").addEventListener("submit",event=>{event.preventDefault();connectExchange("spot","bnSpotConnectForm","bnSpotConnect","bnSpotKey","bnSpotSecret");});
 $("bnFuturesConnectForm").addEventListener("submit",event=>{event.preventDefault();connectExchange("futures","bnFuturesConnectForm","bnFuturesConnect","bnFuturesKey","bnFuturesSecret");});
 const testExchange=async exchange=>{
- try{const data=await request("/test/"+exchange,{method:"POST"});status(exchange.toUpperCase()+": "+(data.connected?"saved credentials verified":"not verified"+(data.reason?" · "+data.reason:"")),!data.connected);await refresh();}
+ try{const data=await request("/test/"+exchange,{method:"POST"});status(exchange.toUpperCase()+": "+(data.connected?(data.can_trade?"credentials verified · trading permission enabled":"credentials verified · trading permission is OFF"):"not verified"+(data.reason?" · "+data.reason:"")),!data.connected||!data.can_trade);await refresh();}
  catch(error){status("Connection test failed: "+error.message,true);}
 };
 $("bnSpotTest").addEventListener("click",()=>testExchange("spot"));

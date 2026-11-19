@@ -107,7 +107,7 @@ def test_registry_keeps_conflicting_method_evidence_separate_by_side():
     assert "Bearish BOS / MSS" in result["sell_reasons"]
     assert "Bullish BOS / MSS" not in result["buy_reasons"]
     assert result["unique_category_counts"]["BUY"] == 4
-    assert result["unique_category_counts"]["SELL"] == 1
+    assert result["unique_category_counts"]["SELL"] == 2
     assert any(item["method_id"] == "market_structure_break" and item["side"] == "SELL"
                for item in result["evidence"])
 

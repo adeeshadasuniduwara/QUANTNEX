@@ -1207,7 +1207,8 @@ async def build_signal(
         for key in directional_zone_keys
     )
     strategy_evidence = evaluate_strategy_registry(
-        analysis, primary, trend, in_zone=in_zone, observed_at=as_of.isoformat()
+        analysis, primary, trend, in_zone=in_zone, observed_at=as_of.isoformat(),
+        candles=candles.get(primary, []), as_of=as_of,
     )
     buy = list(strategy_evidence["buy_reasons"])
     sell = list(strategy_evidence["sell_reasons"])
@@ -1517,11 +1518,14 @@ async def build_signal(
                 "strategy_evidence": {
                     "registry_version": strategy_evidence["registry_version"],
                     "supporting": [
-                        item for item in strategy_evidence["evidence"] if item["side"] == side
+                        item for item in strategy_evidence["evidence"]
+                        if item["side"] == side and item["decision_role"] == "BASELINE_SCORE"
                     ],
                     "conflicting": [
-                        item for item in strategy_evidence["evidence"] if item["side"] != side
+                        item for item in strategy_evidence["evidence"]
+                        if item["side"] != side and item["decision_role"] == "BASELINE_SCORE"
                     ],
+                    "diagnostic_only": strategy_evidence["diagnostic_only"],
                     "unique_category_count": strategy_evidence["unique_category_counts"][side],
                     "categories": strategy_evidence["categories"][side],
                     "category_methods": strategy_evidence["category_methods"][side],
@@ -1561,7 +1565,7 @@ async def build_signal(
     )
     return {"symbol":symbol,"provider":provider_label,"generated_at":generated_at,
             "signal":signal,"execution_quality":execution_quality,
-            "confluence_score":score,"score_out_of":10,"score_note":"Legacy rule-based confluence count, not a measured win probability; category counts are diagnostic only.",
+            "confluence_score":score,"score_out_of":10,"score_note":"Legacy rule-based confluence count, not a measured win probability; diagnostic methods such as OHLCV VWAP do not change the score.",
             "timeframes":{tf:{"bias":v["bias"],"close":round(v["close"],price_precision),"ema20":round(v["ema20"],price_precision),
                 "ema50":round(v["ema50"],price_precision),"ema200":round(v["ema200"],price_precision) if v["ema200"] is not None else None,"macd_histogram":round(v["macd_histogram"],price_precision),
                 "rsi":round(v["rsi"],1),"adx":round(v["adx"],1),"atr":round(v["atr"],price_precision),

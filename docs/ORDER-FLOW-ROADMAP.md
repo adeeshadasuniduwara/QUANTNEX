@@ -299,33 +299,40 @@ The signal engine previously selected the first non-empty zone in a fixed order 
 7. Keep USDⓈ-M/COIN-M Futures unsupported until independent adapters and fixtures are verified.
 
 
-## Phase C4 — strategy evidence registry and correlated-feature reporting (PR validation pending)
+## Phase C4 — strategy evidence registry and correlated-feature reporting (merged PR #223)
 
-Branch: feat/strategy-evidence-registry, created from main a8c35b15c71a7dc040f3a18e751bcbfe8fd5967f.
+Branch: feat/strategy-evidence-registry. PR [#223](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/223) merged to main as 0ee25ab7f259af6f690d2583f083d994aae76636 on 2026-11-19.
 
-### Purpose
+- Existing EMA trend, MACD, RSI, ADX, BOS/MSS, liquidity sweep, zone location and trend-timeframe checks now emit typed evidence through a modular registry.
+- Evidence contains method ID, category, side, timeframe, reason, candle-derived source, as-of observation timestamp and unweighted calibration status.
+- Supporting and conflicting baseline evidence are exposed in signal payloads.
+- Unique category counts are diagnostic only. They do not mean methods are statistically independent and do not alter live decisions.
+- Legacy BUY/SELL reason order, raw confluence counts and min_score threshold are preserved.
+- PR CI and post-merge main passed 430 backend tests on Python 3.12 and 3.14; schema/preflight and Web CI passed.
+- No accuracy, win-rate or profitability improvement is claimed.
 
-The existing engine counts EMA trend observations across 60m/30m/15m, a separately configured trend timeframe, MACD, RSI and ADX as individual confirmations. These observations are correlated and must not be presented as independent proof. This phase adds a transparent evidence registry while preserving the existing live score and decision threshold as the baseline.
+## Phase C5 — rolling VWAP proxy as diagnostic-only registry evidence (PR validation pending)
 
-### Changes
+Branch: feat/vwap-diagnostic-evidence, created from main 0ee25ab7f259af6f690d2583f083d994aae76636.
 
-- Add backend/app/signal_methods.py with a typed MethodEvidence model and an explicit StrategyMethod registry.
-- Register the current candle-derived checks: EMA multi-timeframe trend, MACD momentum, RSI range, ADX trend strength, confirmed BOS/MSS, liquidity sweep, OB/FVG/breaker/premium-discount location, and configured trend-timeframe alignment.
-- Preserve legacy reason order, raw BUY/SELL counts and live threshold behavior; no score or gate is changed in this phase.
-- Emit supporting and conflicting evidence on each signal, including method ID, category, side, timeframe, reason, candle-derived provenance, as-of observation timestamp and unweighted status.
-- Report unique category counts (TREND, MOMENTUM, STRUCTURE, LIQUIDITY, LOCATION) as diagnostic only. These counts are not yet used as live score gates and are not calibrated probabilities.
-- Add deterministic bullish, bearish, contradictory, neutral and registry-uniqueness tests; add end-to-end assertions that generated signals expose registry evidence.
+### Method definition and provenance
 
-### Validation and merge gates
+- Calculate a rolling 50-closed-bar VWAP proxy using each bar's typical price (H + L + C) / 3 weighted by total OHLCV candle volume.
+- Compare the latest 50-bar value with the previous shifted 50-bar value. Emit bullish diagnostic evidence only when close is above the current value and current VWAP is rising; emit bearish evidence only when close is below current VWAP and current VWAP is falling.
+- Require at least 51 unique, contiguous, valid closed bars; per-bar volume may be zero but must be non-negative, and each 50-bar window must have positive total volume. A bar is eligible only when its open timestamp plus the primary timeframe duration is no later than the signal as-of timestamp.
+- Provenance is explicitly OHLCV_TYPICAL_PRICE_PROXY. The volume is total candle volume, not bid/ask volume, aggressor delta or a true transaction-level volume-at-price profile.
+- This is rolling 50-bar VWAP, not session VWAP or anchored VWAP.
+- The method is marked DIAGNOSTIC_ONLY and counts_for_baseline=false. It is exposed separately from supporting/conflicting baseline evidence and cannot alter the legacy signal score or thresholds.
 
-- Initial PR CI found a test-only expected-value error: the contradictory SELL fixture has both TREND and STRUCTURE categories (expected 2, not 1). The test is corrected and all PR checks must be rerun.
-- PR and post-merge Backend CI on Python 3.12 and 3.14, schema/preflight, and Web CI must pass.
-- Full diff must confirm the registry preserves legacy BUY/SELL reason order and does not alter decision thresholds.
-- Do not merge if baseline parity tests fail or any relevant check is red.
+### Tests and validation gates
+
+- Deterministic rising and falling candle fixtures verify bullish and bearish diagnostic evidence.
+- Tests verify that the legacy baseline raw count remains unchanged, and that incomplete/future candles, timestamp gaps and all-zero-volume inputs produce no VWAP evidence.
+- PR and post-merge Backend CI on Python 3.12 and 3.14, schema/preflight and Web CI must pass.
+- Review the complete diff to confirm no diagnostic-only method changes the live score or threshold. Do not merge if any relevant check fails.
 
 ### Next
 
-1. Compare registry raw counts with the legacy baseline using deterministic replay fixtures.
-2. Add causal strategy methods one at a time (VWAP, volume profile, Fibonacci, explicit supply/demand and mitigation-block definitions) only with clear input provenance and ablation tests.
-3. Add synchronized historical Spot trade/depth capture and replay so order-flow and method contribution can be evaluated out of sample.
-4. Keep the diagnostic category count separate from calibrated win probability; no performance uplift is claimed.
+1. Add further value methods (session VWAP, volume profile and Fibonacci) only after each has precise causal definitions, data provenance and deterministic fixtures.
+2. Build synchronized historical Spot AggTrade/depth capture and replay to evaluate order-flow and method ablations out of sample.
+3. Keep USDⓈ-M/COIN-M Futures unsupported until separate market adapters and deterministic fixtures are verified.

@@ -7,8 +7,9 @@ reported without pretending each is an independent confirmation.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import math
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 
@@ -23,6 +24,8 @@ class MethodEvidence:
     observed_at: str | None = None
     strength: float = 1.0
     calibration: str = "UNWEIGHTED_RULE_EVIDENCE"
+    counts_for_baseline: bool = True
+    details: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -35,6 +38,9 @@ class MethodEvidence:
             "observed_at": self.observed_at,
             "strength": self.strength,
             "calibration": self.calibration,
+            "decision_role": "BASELINE_SCORE" if self.counts_for_baseline else "DIAGNOSTIC_ONLY",
+            "counts_for_baseline": self.counts_for_baseline,
+            "details": dict(self.details),
         }
 
 
@@ -163,6 +169,99 @@ def _zone_location(context: dict[str, Any]) -> list[MethodEvidence]:
     )]
 
 
+def _parse_candle_timestamp(value: Any) -> datetime | None:
+    try:
+        stamp = value if isinstance(value, datetime) else datetime.fromisoformat(
+            str(value).replace("Z", "+00:00")
+        )
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if stamp.tzinfo is None:
+        return None
+    return stamp.astimezone(timezone.utc)
+
+
+def _weighted_typical_price_vwap(rows: list[dict[str, float]]) -> float | None:
+    total_volume = sum(row["volume"] for row in rows)
+    if not math.isfinite(total_volume) or total_volume <= 0:
+        return None
+    total_value = sum(
+        ((row["high"] + row["low"] + row["close"]) / 3) * row["volume"]
+        for row in rows
+    )
+    value = total_value / total_volume
+    return value if math.isfinite(value) and value > 0 else None
+
+
+def _rolling_vwap_proxy(context: dict[str, Any]) -> list[MethodEvidence]:
+    """Emit a diagnostic rolling VWAP from closed OHLCV bars, never aggressor flow."""
+    timeframe = str(context["primary"])
+    seconds = {"1": 60, "5": 300, "15": 900, "30": 1800,
+               "50": 3000, "60": 3600, "240": 14400}.get(timeframe)
+    as_of = context.get("as_of")
+    if seconds is None or not isinstance(as_of, datetime) or as_of.tzinfo is None:
+        return []
+    as_of = as_of.astimezone(timezone.utc)
+    closed: list[tuple[datetime, dict[str, float]]] = []
+    for row in context.get("candles") or []:
+        if not isinstance(row, dict):
+            continue
+        stamp = _parse_candle_timestamp(row.get("time"))
+        if stamp is None or stamp + timedelta(seconds=seconds) > as_of:
+            continue
+        high = _finite(row.get("high"), float("nan"))
+        low = _finite(row.get("low"), float("nan"))
+        close = _finite(row.get("close"), float("nan"))
+        volume = _finite(row.get("volume"), float("nan"))
+        if not all(math.isfinite(value) for value in (high, low, close, volume)):
+            continue
+        if low <= 0 or high < low or not low <= close <= high or volume < 0:
+            continue
+        closed.append((stamp, {
+            "high": high, "low": low, "close": close, "volume": volume,
+        }))
+    closed.sort(key=lambda item: item[0])
+    if len(closed) < 51 or len({stamp for stamp, _row in closed}) != len(closed):
+        return []
+    if any(
+        (current_stamp - previous_stamp).total_seconds() != seconds
+        for (previous_stamp, _previous_row), (current_stamp, _current_row)
+        in zip(closed, closed[1:])
+    ):
+        return []
+
+    previous_rows = [row for _stamp, row in closed[-51:-1]]
+    current_rows = [row for _stamp, row in closed[-50:]]
+    previous_vwap = _weighted_typical_price_vwap(previous_rows)
+    current_vwap = _weighted_typical_price_vwap(current_rows)
+    if previous_vwap is None or current_vwap is None:
+        return []
+    last_close = current_rows[-1]["close"]
+    if last_close > current_vwap and current_vwap > previous_vwap:
+        side, direction = "BUY", "bullish"
+    elif last_close < current_vwap and current_vwap < previous_vwap:
+        side, direction = "SELL", "bearish"
+    else:
+        return []
+
+    return [MethodEvidence(
+        "rolling_vwap_proxy", "VALUE", side, timeframe,
+        f"50-bar OHLCV typical-price VWAP proxy {direction} alignment",
+        source="OHLCV_TYPICAL_PRICE_PROXY",
+        calibration="UNWEIGHTED_DIAGNOSTIC_ONLY",
+        counts_for_baseline=False,
+        details={
+            "lookback_bars": 50,
+            "current_vwap": round(current_vwap, 12),
+            "previous_vwap": round(previous_vwap, 12),
+            "last_close": round(last_close, 12),
+            "price_basis": "OHLCV typical price (high + low + close) / 3",
+            "volume_basis": "total candle volume; no bid/ask or aggressor-side inference",
+            "scope": "ROLLING_50_CLOSED_BARS",
+        },
+    )]
+
+
 def _trend_timeframe_alignment(context: dict[str, Any]) -> list[MethodEvidence]:
     snapshot = context["analysis"].get(context["trend"], {})
     side = _side_for_bias(snapshot.get("bias"))
@@ -183,6 +282,7 @@ STRATEGY_METHOD_REGISTRY: tuple[StrategyMethod, ...] = (
     StrategyMethod("liquidity_sweep", "LIQUIDITY", _liquidity_sweep),
     StrategyMethod("zone_location", "LOCATION", _zone_location),
     StrategyMethod("trend_timeframe_alignment", "TREND", _trend_timeframe_alignment),
+    StrategyMethod("rolling_vwap_proxy", "VALUE", _rolling_vwap_proxy),
 )
 
 
@@ -193,6 +293,8 @@ def evaluate_strategy_registry(
     *,
     in_zone: bool,
     observed_at: str | None = None,
+    candles: list[dict[str, Any]] | None = None,
+    as_of: datetime | None = None,
 ) -> dict[str, Any]:
     """Evaluate all registered methods and return baseline + category evidence.
 
@@ -204,6 +306,8 @@ def evaluate_strategy_registry(
         "primary": str(primary),
         "trend": str(trend),
         "in_zone": bool(in_zone),
+        "candles": candles or [],
+        "as_of": as_of,
     }
     evidence: list[MethodEvidence] = []
     for method in STRATEGY_METHOD_REGISTRY:
@@ -214,8 +318,14 @@ def evaluate_strategy_registry(
                 )
             evidence.append(replace(item, observed_at=observed_at))
 
-    buy = [item.reason for item in evidence if item.side == "BUY"]
-    sell = [item.reason for item in evidence if item.side == "SELL"]
+    buy = [
+        item.reason for item in evidence
+        if item.side == "BUY" and item.counts_for_baseline
+    ]
+    sell = [
+        item.reason for item in evidence
+        if item.side == "SELL" and item.counts_for_baseline
+    ]
     categories = {
         side: sorted({item.category for item in evidence if item.side == side})
         for side in ("BUY", "SELL")
@@ -233,6 +343,9 @@ def evaluate_strategy_registry(
     return {
         "registry_version": 1,
         "evidence": [item.as_dict() for item in evidence],
+        "diagnostic_only": [
+            item.as_dict() for item in evidence if not item.counts_for_baseline
+        ],
         "buy_reasons": buy,
         "sell_reasons": sell,
         "baseline_raw_counts": {"BUY": len(buy), "SELL": len(sell)},

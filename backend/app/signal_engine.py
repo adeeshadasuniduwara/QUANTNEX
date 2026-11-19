@@ -1207,7 +1207,7 @@ async def build_signal(
         for key in directional_zone_keys
     )
     strategy_evidence = evaluate_strategy_registry(
-        analysis, primary, trend, in_zone=in_zone
+        analysis, primary, trend, in_zone=in_zone, observed_at=as_of.isoformat()
     )
     buy = list(strategy_evidence["buy_reasons"])
     sell = list(strategy_evidence["sell_reasons"])

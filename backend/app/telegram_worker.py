@@ -310,7 +310,7 @@ def _format_telegram_message(message: str) -> str:
         return "".join(
             part.lower() if safe_tag.fullmatch(part) else html.escape(part, quote=False)
             for part in re.split(
-                r"(</?(?:b|i)>|<a href=\"https://github\\.com/[^\\\"<>\\s]+\">|</a>)",
+                r"(</?(?:b|i)>|<a href=\"https://github\.com/[^\"<>\s]+\">|</a>)",
                 value, flags=re.IGNORECASE,
             )
         )

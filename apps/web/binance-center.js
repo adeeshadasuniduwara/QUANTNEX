@@ -8,36 +8,47 @@ const request=async(path,options={})=>{
  if(!response.ok)throw new Error(body?.detail||"Request failed ("+response.status+").");
  return body;
 };
-const status=(message,bad=false)=>{const node=$("bnStatus");node.textContent=message;node.className=bad?"p7-note p7-status-error":"p7-note";};
-const busy=(button,on,label)=>{button.disabled=on;if(on)button.dataset.oldLabel=button.textContent;button.textContent=on?"Connecting…":(label||button.dataset.oldLabel||"");};
+const status=(message,bad=false)=>{
+ const node=$("bnStatus");if(node){node.textContent=message;node.className=bad?"p7-note p7-status-error":"p7-note";}
+};
+const autoStatus=(message,bad=false)=>{
+ const node=$("bnSpotAutoStatus");if(node){node.textContent=message;node.className=bad?"p7-note p7-status-error":"p7-note";}
+};
+const busy=(button,on,label)=>{if(!button)return;button.disabled=on;if(on)button.dataset.oldLabel=button.textContent;button.textContent=on?"Working…":(label||button.dataset.oldLabel||"");};
+const setConfigForm=cfg=>{
+ $("bnSpotSymbols").value=(cfg.symbols||["BTCUSDT","ETHUSDT","SOLUSDT"]).join(", ");
+ $("bnSpotInterval").value=cfg.interval_seconds??30;
+ $("bnSpotMinScore").value=cfg.min_score??8;
+ $("bnSpotRisk").value=cfg.risk_per_trade_percent??0.5;
+ $("bnSpotMaxOpen").value=cfg.max_open_trades??1;
+ $("bnSpotMaxDaily").value=cfg.max_trades_per_day??3;
+ $("bnSpotDailyLoss").value=cfg.max_daily_loss_percent??2;
+ $("bnSpotSpread").value=cfg.max_spread_bps??12;
+ $("bnSpotVolume").value=cfg.min_24h_quote_volume??10000000;
+ $("bnSpotRR").value=cfg.min_reward_risk??1.5;
+};
 async function refresh(){
  try{
-  const data=await request("/status");
+  const [data,spotConfig]=await Promise.all([request("/status"),request("/spot-auto-config")]);
   $("bnSpotState").textContent=data.spot_connected?"CONNECTED":"NOT CONNECTED";
   $("bnFuturesState").textContent=data.futures_connected?"CONNECTED":"NOT CONNECTED";
   $("bnSpotCredentialState").textContent=data.spot_connected?"Saved · encrypted":"Not connected";
   $("bnFuturesCredentialState").textContent=data.futures_connected?"Saved · encrypted":"Not connected";
-  $("bnAutoState").textContent=data.auto_trading_enabled?"ON":"OFF";
+  $("bnAutoState").textContent=data.auto_trading_enabled?"ON · SPOT DEMO":"OFF";
+  $("bnExecutionState").textContent="SPOT DEMO · OCO";
+  const worker=data.spot_worker||{};
+  $("bnReadiness").textContent="Spot worker: "+(worker.running?"RUNNING":"STOPPED")+" · Open demo positions: "+(data.spot_open_trades??0)+" · Last cycle: "+(worker.last_cycle||"waiting")+(worker.last_error?" · Last error: "+worker.last_error:"");
+  setConfigForm(spotConfig.config||{});
+  $("bnSpotAutoToggle").textContent=data.auto_trading_enabled?"Stop Spot Demo Auto Trading":"Start Spot Demo Auto Trading";
+  $("bnSpotAutoToggle").dataset.enabled=data.auto_trading_enabled?"true":"false";
   const r=data.risk||{};
   $("bnDailyTrades").value=r.max_trades_per_day??1;
   $("bnOpenTrades").value=r.max_open_trades??1;
   $("bnRiskPercent").value=r.risk_per_trade_percent??0.5;
   $("bnDailyLoss").value=r.max_daily_loss_percent??2;
-  const cfg=data.auto_config||{};
-  const setMulti=(id,values)=>{const el=$(id);if(el)Array.from(el.options).forEach(o=>o.selected=(values||[]).includes(o.value));};
-  setMulti("bnMarketModes",cfg.market_modes||["SPOT","USD_M_FUTURES"]);
-  setMulti("bnStrategies",cfg.strategies||["SCALPING","SWING"]);
-  $("bnAutoDaily").value=cfg.max_trades_per_day??5;
-  $("bnAutoOpen").value=cfg.max_open_positions??2;
-  $("bnAutoLeverage").value=cfg.futures_leverage_cap??3;
-  $("bnAutoDrawdown").value=cfg.max_total_drawdown_percent??5;
-  $("bnAutoVolume").value=cfg.min_24h_quote_volume??10000000;
-  $("bnAutoSpread").value=cfg.max_spread_bps??12;
-  $("bnAutoDca").checked=cfg.dca_enabled===true;
-  const checks=data.readiness?.checks||{};
-  $("bnReadiness").textContent="Readiness · "+Object.entries(checks).map(([k,v])=>k.replaceAll("_"," ")+": "+(v?"PASS":"WAIT")).join(" · ");
-  status("Binance DEMO Trading · "+(data.spot_connected&&data.futures_connected?"Both connections verified.":"Connect both demo environments to continue.")+" Auto Trading is "+(data.auto_trading_enabled?"ON":"OFF")+".");
- }catch(error){status("Local API unavailable: "+error.message,true);}
+  status("Binance Demo · Spot "+(data.spot_connected?"connected":"not connected")+" · Futures "+(data.futures_connected?"connected":"not connected")+" · Spot Auto Trading "+(data.auto_trading_enabled?"ON":"OFF")+".");
+  autoStatus(data.auto_trading_enabled?"Auto Trading is ON. New entries are Spot BUY-only; exchange OCO protection remains active for existing positions.":"Auto Trading is OFF. Saving settings does not place orders.");
+ }catch(error){status("Local API unavailable: "+error.message,true);autoStatus("Could not load Spot Auto Trading status: "+error.message,true);}
 }
 const connectExchange=async(exchange,formId,buttonId,keyId,secretId)=>{
  const form=$(formId),button=$(buttonId);busy(button,true);
@@ -45,14 +56,14 @@ const connectExchange=async(exchange,formId,buttonId,keyId,secretId)=>{
   const data=await request("/connect/"+exchange,{method:"POST",body:JSON.stringify({
    api_key:$(keyId).value.trim(),api_secret:$(secretId).value.trim()
   })});
-  form.reset();status(data.message);await refresh();
+  form.reset();status(data.message+(exchange==="spot"?(data.can_trade?" · Spot trading permission enabled.":" · Spot trade permission is OFF; enable it in Binance Demo API management before starting."):""));await refresh();
  }catch(error){status("Could not connect "+exchange+": "+error.message,true);}
  finally{busy(button,false,exchange==="spot"?"Verify & save Spot":"Verify & save Futures");}
 };
 $("bnSpotConnectForm").addEventListener("submit",event=>{event.preventDefault();connectExchange("spot","bnSpotConnectForm","bnSpotConnect","bnSpotKey","bnSpotSecret");});
 $("bnFuturesConnectForm").addEventListener("submit",event=>{event.preventDefault();connectExchange("futures","bnFuturesConnectForm","bnFuturesConnect","bnFuturesKey","bnFuturesSecret");});
 const testExchange=async exchange=>{
- try{const data=await request("/test/"+exchange,{method:"POST"});status(exchange.toUpperCase()+": "+(data.connected?"saved credentials verified":"not verified"+(data.reason? " · "+data.reason:"")),!data.connected);await refresh();}
+ try{const data=await request("/test/"+exchange,{method:"POST"});status(exchange.toUpperCase()+": "+(data.connected?(data.can_trade?"credentials verified · trading permission enabled":"credentials verified · trading permission is OFF"):"not verified"+(data.reason?" · "+data.reason:"")),!data.connected||!data.can_trade);await refresh();}
  catch(error){status("Connection test failed: "+error.message,true);}
 };
 $("bnSpotTest").addEventListener("click",()=>testExchange("spot"));
@@ -64,35 +75,33 @@ const disconnectExchange=async exchange=>{
 };
 $("bnSpotDisconnect").addEventListener("click",()=>disconnectExchange("spot"));
 $("bnFuturesDisconnect").addEventListener("click",()=>disconnectExchange("futures"));
-$("bnAutoOff").addEventListener("click",async()=>{
- try{await request("/auto-trading",{method:"PUT",body:JSON.stringify({enabled:false})});status("Emergency stop confirmed · Auto Trading OFF.");await refresh();}
- catch(error){status("Could not confirm Auto OFF: "+error.message,true);}
-});
-
-$("bnAutoConfigForm").addEventListener("submit",async event=>{
- event.preventDefault();
- const selected=id=>Array.from($(id).selectedOptions).map(option=>option.value);
+const stopAuto=async()=>{
+ try{const d=await request("/spot-auto-trading",{method:"PUT",body:JSON.stringify({enabled:false})});autoStatus(d.message);await refresh();}
+ catch(error){autoStatus("Could not confirm emergency stop: "+error.message,true);}
+};
+$("bnAutoOff").addEventListener("click",stopAuto);
+$("bnSpotAutoConfigForm").addEventListener("submit",async event=>{
+ event.preventDefault();const button=$("bnSpotAutoSave");busy(button,true);
  try{
-  const dca=$("bnAutoDca").checked;
-  const payload={
-   enabled:false,environment:"BINANCE_DEMO",
-   market_modes:selected("bnMarketModes"),strategies:selected("bnStrategies"),
-   max_trades_per_day:Number($("bnAutoDaily").value),
-   max_open_positions:Number($("bnAutoOpen").value),
-   risk_per_trade_percent:0.5,max_daily_loss_percent:2,
-   max_total_drawdown_percent:Number($("bnAutoDrawdown").value),
-   futures_leverage_cap:Number($("bnAutoLeverage").value),futures_margin_type:"ISOLATED",
-   dca_enabled:dca,dca_max_addons:dca?1:0,
-   min_24h_quote_volume:Number($("bnAutoVolume").value),
-   max_spread_bps:Number($("bnAutoSpread").value),
-   min_reward_risk:1.5,max_signal_age_seconds:90
-  };
-  const saved=await request("/auto-config",{method:"PUT",body:JSON.stringify(payload)});
-  status(saved.message);
-  await refresh();
- }catch(error){status("Could not save autonomous policy: "+error.message,true);}
+  const symbols=$("bnSpotSymbols").value.split(",").map(x=>x.trim().toUpperCase()).filter(Boolean);
+  const payload={symbols,interval_seconds:Number($("bnSpotInterval").value),min_score:Number($("bnSpotMinScore").value),
+   risk_per_trade_percent:Number($("bnSpotRisk").value),max_open_trades:Number($("bnSpotMaxOpen").value),
+   max_trades_per_day:Number($("bnSpotMaxDaily").value),max_daily_loss_percent:Number($("bnSpotDailyLoss").value),
+   max_spread_bps:Number($("bnSpotSpread").value),min_24h_quote_volume:Number($("bnSpotVolume").value),
+   min_reward_risk:Number($("bnSpotRR").value)};
+  const d=await request("/spot-auto-config",{method:"PUT",body:JSON.stringify(payload)});
+  autoStatus(d.message);await refresh();
+ }catch(error){autoStatus("Could not save Spot Auto settings: "+error.message,true);}
+ finally{busy(button,false,"Save Spot Auto settings");}
 });
-
+$("bnSpotAutoToggle").addEventListener("click",async()=>{
+ const enabled=$("bnSpotAutoToggle").dataset.enabled!=="true";
+ if(enabled&&!window.confirm("Start Binance Spot DEMO Auto Trading? This can place BUY orders in your demo wallet and attach OCO exits."))return;
+ const button=$("bnSpotAutoToggle");busy(button,true);
+ try{const d=await request("/spot-auto-trading",{method:"PUT",body:JSON.stringify({enabled})});autoStatus(d.message);await refresh();}
+ catch(error){autoStatus("Auto Trading change rejected: "+error.message,true);await refresh();}
+ finally{busy(button,false);button.textContent=button.dataset.enabled==="true"?"Stop Spot Demo Auto Trading":"Start Spot Demo Auto Trading";}
+});
 $("bnRefresh").addEventListener("click",refresh);
 document.addEventListener("DOMContentLoaded",refresh);
 refresh();

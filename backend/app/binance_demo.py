@@ -20,6 +20,7 @@ from .database import get_db
 from .models import Preference, User
 from .security import decrypt_secret, encrypt_secret
 from .binance_auto_config import AutoTradingConfig, safe_auto_status
+from .binance_spot_engine import WORKER_STATE, normalize_config as normalize_spot_config, _account as spot_account, _credentials as spot_credentials, _symbol_info as spot_symbol_info
 
 router = APIRouter(prefix="/api/v1/exchanges/binance", tags=["Binance demo"])
 
@@ -130,6 +131,27 @@ class BinanceAutoTrading(BaseModel):
     enabled: bool = False
 
 
+class BinanceSpotAutoConfig(BaseModel):
+    symbols: list[str] = Field(default_factory=lambda: ["BTCUSDT", "ETHUSDT", "SOLUSDT"])
+    interval_seconds: int = Field(default=30, ge=15, le=300)
+    min_score: int = Field(default=8, ge=4, le=20)
+    risk_per_trade_percent: float = Field(default=0.5, gt=0, le=1, allow_inf_nan=False)
+    max_open_trades: int = Field(default=1, ge=1, le=3)
+    max_trades_per_day: int = Field(default=3, ge=1, le=10)
+    max_daily_loss_percent: float = Field(default=2, gt=0, le=2, allow_inf_nan=False)
+    max_spread_bps: float = Field(default=12, gt=0, le=50, allow_inf_nan=False)
+    min_24h_quote_volume: float = Field(default=10000000, ge=100000, allow_inf_nan=False)
+    min_reward_risk: float = Field(default=1.5, ge=1.5, le=5, allow_inf_nan=False)
+
+    @field_validator("symbols")
+    @classmethod
+    def validate_symbols(cls, values):
+        cleaned = list(dict.fromkeys(str(x).strip().upper() for x in values if str(x).strip()))
+        if not cleaned or len(cleaned) > 30 or any(not x.isalnum() or not x.endswith("USDT") for x in cleaned):
+            raise ValueError("Choose 1–30 valid Binance Spot USDT symbols.")
+        return cleaned
+
+
 @router.post("/connect")
 async def connect_binance(payload: BinanceConnect, db: Session = Depends(get_db)):
     user = _workspace(db)
@@ -178,7 +200,12 @@ async def connect_binance_futures(payload: BinanceCredentialPair, db: Session = 
 
 @router.delete("/connect/spot")
 def disconnect_binance_spot(db: Session = Depends(get_db)):
+    import json
     user = _workspace(db)
+    config = normalize_spot_config(_get(db, user.id, "binance_spot_auto_config", ""))
+    config["enabled"] = False
+    _set(db, user.id, "binance_spot_auto_config", json.dumps(config, separators=(",", ":")))
+    _set(db, user.id, "binance_auto_trading_enabled", "false")
     for key in ("binance_spot_api_key_enc", "binance_spot_api_secret_enc"):
         row = db.scalar(select(Preference).where(Preference.user_id == user.id, Preference.key == key))
         if row:
@@ -235,10 +262,19 @@ def binance_status(db: Session = Depends(get_db)):
         auto_config = AutoTradingConfig()
     readiness = safe_auto_status(auto_config, spot_verified=spot, futures_verified=futures,
                                   worker_ready=False, protection_ready=False)
+    spot_auto = normalize_spot_config(_get(db, user.id, "binance_spot_auto_config", ""))
+    active = []
+    try:
+        active = json.loads(_get(db, user.id, "binance_spot_active_trades", "[]"))
+    except (TypeError, ValueError):
+        active = []
+    spot_enabled = _get(db, user.id, "binance_auto_trading_enabled") == "true"
     return {"mode": "binance_demo", "spot_connected": spot, "futures_connected": futures,
             "credential_storage": "encrypted_local_database",
-            "auto_trading_enabled": _get(db, user.id, "binance_auto_trading_enabled") == "true",
-            "execution": "disabled_until_worker_and_protection_validation",
+            "auto_trading_enabled": spot_enabled,
+            "execution": "spot_demo_market_buy_with_exchange_oco_exits",
+            "spot_auto_config": spot_auto, "spot_worker": dict(WORKER_STATE),
+            "spot_open_trades": len(active) if isinstance(active, list) else 0,
             "auto_config": auto_config.model_dump(), "readiness": readiness, "risk": settings}
 
 
@@ -329,3 +365,54 @@ async def test_binance_connection(db: Session = Depends(get_db)):
         except (ValueError, HTTPException) as exc:
             results[name] = {"connected": False, "reason": exc.detail if isinstance(exc, HTTPException) else "Stored credentials could not be decrypted"}
     return {"mode": "binance_demo", "results": results}
+
+
+@router.get("/spot-auto-config")
+def get_spot_auto_config(db: Session = Depends(get_db)):
+    user = _workspace(db)
+    config = normalize_spot_config(_get(db, user.id, "binance_spot_auto_config", ""))
+    config["enabled"] = _get(db, user.id, "binance_auto_trading_enabled") == "true"
+    return {"config": config, "mode": "BINANCE_DEMO_SPOT_ONLY"}
+
+
+@router.put("/spot-auto-config")
+def save_spot_auto_config(payload: BinanceSpotAutoConfig, db: Session = Depends(get_db)):
+    import json
+    user = _workspace(db)
+    config = normalize_spot_config(payload.model_dump())
+    config["enabled"] = False
+    _set(db, user.id, "binance_spot_auto_config", json.dumps(config, separators=(",", ":")))
+    _set(db, user.id, "binance_auto_trading_enabled", "false")
+    db.commit()
+    return {"saved": True, "enabled": False, "config": config,
+            "message": "Spot Demo automation settings saved. Trading remains OFF until explicitly started."}
+
+
+@router.put("/spot-auto-trading")
+async def set_spot_auto_trading(payload: BinanceAutoTrading, db: Session = Depends(get_db)):
+    import json
+    user = _workspace(db)
+    config = normalize_spot_config(_get(db, user.id, "binance_spot_auto_config", ""))
+    if not payload.enabled:
+        config["enabled"] = False
+        _set(db, user.id, "binance_spot_auto_config", json.dumps(config, separators=(",", ":")))
+        _set(db, user.id, "binance_auto_trading_enabled", "false")
+        db.commit()
+        return {"enabled": False, "message": "New Spot Demo entries stopped. Existing Binance OCO protective orders remain active at Binance."}
+    if not (_get(db, user.id, "binance_spot_api_key_enc") and _get(db, user.id, "binance_spot_api_secret_enc")):
+        raise HTTPException(status_code=409, detail="Connect Binance Spot Demo credentials first.")
+    if not WORKER_STATE.get("running"):
+        raise HTTPException(status_code=503, detail="Spot Demo execution worker is not running. Restart QUANTNEX and retry.")
+    try:
+        api_key, secret = spot_credentials(db, user.id)
+        account = await spot_account(api_key, secret)
+        for symbol in config["symbols"]:
+            await spot_symbol_info(symbol)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    config["enabled"] = True
+    _set(db, user.id, "binance_spot_auto_config", json.dumps(config, separators=(",", ":")))
+    _set(db, user.id, "binance_auto_trading_enabled", "true")
+    db.commit()
+    return {"enabled": True, "can_trade": bool(account.get("canTrade")),
+            "message": "Spot Demo Auto Trading enabled. BUY entries only; every filled entry must receive exchange-native OCO take-profit and stop-loss protection."}

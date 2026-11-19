@@ -79,3 +79,8 @@ Telegram release announcements are optional. Configure `TELEGRAM_BOT_TOKEN` and 
 - The laptop/host must remain powered on, connected to the internet and running the QUANTNEX API for local Telegram Auto Signals.
 - No broker order placement or verified win-rate calculation is implemented.
 - QUANTNEX is designed for local single-computer use, not public Backend deployment. Do not expose the loopback API.
+
+
+## Binance Spot Demo Auto Trading
+
+The opt-in Binance Spot Demo execution worker, OCO protection, risk limits, Telegram notifications and setup instructions are documented in [docs/BINANCE_SPOT_DEMO_AUTO_TRADING.md](docs/BINANCE_SPOT_DEMO_AUTO_TRADING.md). Spot execution is long-only and Demo-only; Futures automation is not enabled by this engine.

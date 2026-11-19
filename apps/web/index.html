@@ -790,7 +790,7 @@
           <article class="workspace-page-card"><span>Spot Demo</span><strong id="bnSpotState">—</strong></article>
           <article class="workspace-page-card"><span>USD-M Futures Demo</span><strong id="bnFuturesState">—</strong></article>
           <article class="workspace-page-card"><span>Auto Trading</span><strong id="bnAutoState">OFF</strong></article>
-          <article class="workspace-page-card"><span>Execution</span><strong>Not enabled</strong><small>Signal-to-order execution is intentionally disabled in this release.</small></article>
+          <article class="workspace-page-card"><span>Execution</span><strong id="bnExecutionState">Checking</strong><small>Binance Spot Demo market orders with exchange-native OCO exits.</small></article>
         </div>
         <div class="bn-security-note"><strong>Security first</strong><p>Use Binance Spot Demo Trading and USD-M Futures Demo Trading keys only. Never paste live API keys here. Disable withdrawals; restrict keys to the QUANTNEX host where possible. Secrets are encrypted in the local backend and never displayed again. API keys must not be sent through Telegram chat.</p></div>
         <div class="bn-credential-grid">
@@ -809,32 +809,23 @@
         </div>
         <p class="p7-note">You can connect either market independently. Saving or replacing one credential pair never changes the other pair. Secrets are encrypted in the local database; the updater preserves the database and backend/.env.</p>
         <div class="bn-risk-block">
-          <div class="workspace-page-toolbar"><div><strong>Risk &amp; daily limits</strong><p>Saved locally and defaulted conservatively.</p></div></div>
-          <form id="bnRiskForm" class="workspace-page-form">
-            <label>Maximum trades per day<input id="bnDailyTrades" type="number" min="1" max="50" value="1" required></label>
-            <label>Maximum open trades<input id="bnOpenTrades" type="number" min="1" max="20" value="1" required></label>
-            <label>Risk per trade (%)<input id="bnRiskPercent" type="number" min="0.01" max="2" step="0.01" value="0.5" required></label>
-            <label>Maximum daily loss (%)<input id="bnDailyLoss" type="number" min="0.01" max="5" step="0.01" value="2" required></label>
-            <div class="bn-actions"><button class="primary-btn" type="submit">Save risk limits</button><button class="secondary-btn" type="button" id="bnAutoOff">Emergency stop · Auto OFF</button></div>
+          <div class="workspace-page-toolbar"><div><strong>Spot Demo Auto Trading</strong><p>Only Binance Spot Demo is supported by this execution engine. Spot is BUY-only, unleveraged, and DCA is disabled.</p></div><span class="pill">SPOT DEMO ONLY</span></div>
+          <form id="bnSpotAutoConfigForm" class="workspace-page-form">
+            <label>USDT symbols (comma separated)<input id="bnSpotSymbols" value="BTCUSDT, ETHUSDT, SOLUSDT" maxlength="500" required></label>
+            <label>Scan interval (seconds)<input id="bnSpotInterval" type="number" min="15" max="300" value="30" required></label>
+            <label>Minimum signal score<input id="bnSpotMinScore" type="number" min="4" max="20" value="8" required></label>
+            <label>Risk per trade (%)<input id="bnSpotRisk" type="number" min="0.05" max="1" step="0.05" value="0.5" required></label>
+            <label>Maximum open positions<input id="bnSpotMaxOpen" type="number" min="1" max="3" value="1" required></label>
+            <label>Maximum trades per day<input id="bnSpotMaxDaily" type="number" min="1" max="10" value="3" required></label>
+            <label>Maximum daily loss (%)<input id="bnSpotDailyLoss" type="number" min="0.25" max="2" step="0.25" value="2" required></label>
+            <label>Maximum spread (bps)<input id="bnSpotSpread" type="number" min="1" max="50" value="12" required></label>
+            <label>Minimum 24h volume (USDT)<input id="bnSpotVolume" type="number" min="100000" step="100000" value="10000000" required></label>
+            <label>Minimum reward/risk<input id="bnSpotRR" type="number" min="1.5" max="5" step="0.1" value="1.5" required></label>
+            <div class="bn-actions"><button class="primary-btn" type="submit" id="bnSpotAutoSave">Save Spot Auto settings</button><button class="secondary-btn" type="button" id="bnSpotAutoToggle">Start Spot Demo Auto Trading</button><button class="secondary-btn" type="button" id="bnAutoOff">Emergency stop · Stop new entries</button></div>
           </form>
+          <p class="p7-note" id="bnSpotAutoStatus" role="status">Spot Demo Auto Trading is OFF. Save settings, verify the Spot key has trading permission, then start explicitly.</p>
+          <p class="p7-note" id="bnReadiness">Worker and protective-order status will appear here.</p>
         </div>
-        <div class="bn-risk-block">
-          <div class="workspace-page-toolbar"><div><strong>Autonomous trading policy</strong><p>Prepare the strategy and execution limits. These settings do not start trading.</p></div><span class="pill">DEMO POLICY</span></div>
-          <form id="bnAutoConfigForm" class="workspace-page-form">
-            <label>Markets<select id="bnMarketModes" multiple><option value="SPOT" selected>Spot · long only</option><option value="USD_M_FUTURES" selected>USD-M Futures · long / short</option></select></label>
-            <label>Trading styles<select id="bnStrategies" multiple><option value="SCALPING" selected>Scalping</option><option value="SWING" selected>Swing</option></select></label>
-            <label>Max trades per day<input id="bnAutoDaily" type="number" min="1" max="30" value="5" required></label>
-            <label>Max simultaneous positions<input id="bnAutoOpen" type="number" min="1" max="5" value="2" required></label>
-            <label>Max Futures leverage<input id="bnAutoLeverage" type="number" min="1" max="3" value="3" required></label>
-            <label>Max total drawdown (%)<input id="bnAutoDrawdown" type="number" min="0.1" max="10" step="0.1" value="5" required></label>
-            <label>Minimum 24h quote volume (USDT)<input id="bnAutoVolume" type="number" min="1000000" step="1000000" value="10000000" required></label>
-            <label>Maximum spread (bps)<input id="bnAutoSpread" type="number" min="1" max="100" value="12" required></label>
-            <label class="bn-toggle-label">Enable DCA add-on<input id="bnAutoDca" type="checkbox"></label>
-            <div class="bn-actions"><button class="primary-btn" type="submit">Save autonomous policy</button></div>
-          </form>
-          <p class="p7-note" id="bnReadiness">Execution readiness checks will appear here.</p>
-        </div>
-        <div class="bn-security-note bn-warning"><strong>Automation status: safely disabled</strong><p>Policy settings can be prepared now. Automatic order execution remains OFF until the dedicated execution worker, exchange-specific protective orders, durable trade recovery and end-to-end Demo Trading tests are implemented and verified. No orders are placed by connecting, testing or saving this policy.</p></div>
       </section>
       <section class="section-heading" id="integrations-center"><div><div class="overline">WORKSPACE SETTINGS · CONNECTION HEALTH</div><h2>Connections &amp; Integrations</h2><p>Check which optional local providers and integrations are configured without exposing any API keys or bot tokens.</p></div><span class="pill">SECRET SAFE</span></section>
       <section class="panel workspace-page-panel">
@@ -931,7 +922,7 @@
   <script src="welcome-whats-new.js?v=20261113-1"></script>
   <script src="prop-challenge.js"></script>
   <script src="donation.js?v=20261113-bep20"></script>
-  <script src="binance-center.js?v=20261118-demo-credentials2"></script>
+  <script src="binance-center.js?v=20261120-spot-auto1"></script>
   <script src="ai-assistant.js?v=20261119-openai-settings1"></script>
   <script src="navigation.js"></script>
 </body>

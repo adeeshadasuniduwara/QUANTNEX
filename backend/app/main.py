@@ -45,8 +45,10 @@ async def lifespan(app: FastAPI):
         await start_prop_challenge_guardian()
         await start_daily_backup_worker()
         await start_paper_autopilot_worker()
+        await start_binance_spot_auto_worker()
         yield
     finally:
+        await stop_binance_spot_auto_worker()
         await stop_paper_autopilot_worker()
         await stop_daily_backup_worker()
         await stop_prop_challenge_guardian()
@@ -2268,3 +2270,19 @@ async def mt5_market_candles(symbol: str = QUANTNEX_MT5_GOLD_SYMBOL, interval: s
                 "orders_enabled": False, "timestamp": datetime.now(timezone.utc).isoformat()}
     except MT5FeedError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
+
+
+
+async def start_binance_spot_auto_worker():
+    from .binance_spot_engine import binance_spot_auto_worker
+    app.state.binance_spot_auto_task = asyncio.create_task(binance_spot_auto_worker())
+
+
+async def stop_binance_spot_auto_worker():
+    task = getattr(app.state, "binance_spot_auto_task", None)
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass

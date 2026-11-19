@@ -528,6 +528,8 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
         if len(clean_text) > 3500:
             return "Please keep your question under 3,500 characters."
         try:
+            # End the polling transaction before waiting on the external AI provider.
+            db.commit()
             from .ai_assistant import ask_openai
             answer, _model = await ask_openai(db, user_id, clean_text, channel="telegram")
             return answer[:3900]

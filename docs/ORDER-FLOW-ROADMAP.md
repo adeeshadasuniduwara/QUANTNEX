@@ -370,12 +370,12 @@ Merged 2026-11-19 as `50b5c0cc8cb324fb9e24b71d95a0c8e86511de48` (PR #225), based
 ## Phase C7 — replay exchange-filter enforcement (fix PR in progress)
 
 ### Bug found
-The candle-only walk-forward replay used a generic \`0.00000001\` tick-size fallback when symbol metadata was missing. Its simulated execution context also omitted the normalized \`PRICE_FILTER\` object. The signal engine's price-filter helper therefore had no exchange bounds/tick to enforce in replay, so replay could accept prices that would not be valid for that Binance Spot symbol. This could contaminate backtest results.
+The candle-only walk-forward replay used a generic `0.00000001` tick-size fallback when symbol metadata was missing. Its simulated execution context also omitted the normalized `PRICE_FILTER` object. The signal engine's price-filter helper therefore had no exchange bounds/tick to enforce in replay, so replay could accept prices that would not be valid for that Binance Spot symbol. This could contaminate backtest results.
 
 ### Fix
-- Require the authoritative Binance Spot \`PRICE_FILTER\` from symbol metadata; fail closed for missing, malformed, zero/negative tick size, invalid bounds or non-finite values.
-- Pass exact \`tickSize\`, \`minPrice\` and \`maxPrice\` into the replay execution context in the normalized form used by the live entry validator.
-- Mark the source as \`BINANCE_EXCHANGEINFO_PRICE_FILTER\`.
+- Require the authoritative Binance Spot `PRICE_FILTER` from symbol metadata; fail closed for missing, malformed, zero/negative tick size, invalid bounds or non-finite values.
+- Pass exact `tickSize`, `minPrice` and `maxPrice` into the replay execution context in the normalized form used by the live entry validator.
+- Mark the source as `BINANCE_EXCHANGEINFO_PRICE_FILTER`.
 - Add tests proving missing, zero and non-finite tick metadata prevents signal evaluation and valid exchange filters are passed into the signal engine.
 
 ### Boundary

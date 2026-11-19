@@ -367,29 +367,55 @@
   renderPosition();
 
   // QUANTNEX VIEW is the first-party chart workspace.
+  function updateAutoSignalUniverseControls(){
+    const mode=$("autoSignalUniverseMode")?.value||"ALL_BINANCE_SPOT";
+    const all=mode==="ALL_BINANCE_SPOT";
+    const input=$("autoSignalSymbolsInput");
+    const hint=$("autoSignalUniverseHint");
+    if(input)input.disabled=all;
+    if(hint)hint.textContent=all
+      ?"All eligible Binance Spot pairs are discovered dynamically and scanned in rotating batches. This is not a simultaneous scan of every pair."
+      :"Enter up to 50 currently tradable Binance Spot pairs, separated by commas. Add XAUUSD only when a Gold feed is configured.";
+  }
+  $("autoSignalUniverseMode")?.addEventListener("change",updateAutoSignalUniverseControls);
+
   async function loadAutoSignalSettings(){
     try{
       const [settings,bot,reports]=await Promise.all([apiRequest("/api/v1/telegram/auto-signals"),apiRequest("/api/v1/telegram/status"),apiRequest("/api/v1/telegram/reports")]);
-      if(bot.connected){$("tgBotDisplayName").value=bot.display_name||"";$("telegramStatus").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username))+" · "+bot.chat_id;$("telegramMonitorTitle").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username));$("telegramMonitorDescription").textContent="Your personal Telegram bot is connected. Turn on Auto Signals here to receive fresh setups from selected Binance Spot pairs and optional Gold. Signal analysis is available in QUANTNEX VIEW.";$("telegramMonitorPill").textContent=settings.enabled?"AUTO ON":"CONNECTED";}
+      if(bot.connected){$("tgBotDisplayName").value=bot.display_name||"";$("telegramStatus").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username))+" · "+bot.chat_id;$("telegramMonitorTitle").textContent="Connected: "+(bot.display_name||("@"+bot.bot_username));$("telegramMonitorDescription").textContent="Your personal Telegram bot is connected. Auto Signals can rotate through every eligible Binance Spot pair or use a custom watchlist. Signal analysis is available in QUANTNEX VIEW.";$("telegramMonitorPill").textContent=settings.enabled?"AUTO ON":"CONNECTED";}
       else {$("telegramStatus").textContent="No Telegram bot connected yet. Create one with @BotFather and connect it here.";$("telegramMonitorTitle").textContent="Telegram bot not connected";$("telegramMonitorDescription").textContent="Connect your BotFather bot here. Manual signal plans from QUANTNEX VIEW and enabled Auto Signals are delivered while the local QUANTNEX API is active.";$("telegramMonitorPill").textContent="OFFLINE";}
       $("autoSignalsEnabled").checked=!!settings.enabled;
       $("autoSignalInterval").value=String(settings.interval_seconds||180);
-      $("autoSignalSymbolsInput").value=(settings.symbols||["BTCUSDT","ETHUSDT","SOLUSDT"]).join(", ");
-      $("autoSignalStatus").textContent=settings.enabled?"Auto Signals ON · selected markets scan while the QUANTNEX API is running.":"Auto Signals OFF.";
+      $("autoSignalUniverseMode").value=settings.universe_mode||"ALL_BINANCE_SPOT";
+      $("autoSignalScanBatchSize").value=String(settings.scan_batch_size||20);
+      $("autoSignalSymbolsInput").value=(settings.symbols||[]).join(", ");
+      updateAutoSignalUniverseControls();
+      const universeStatus=(settings.universe_mode||"ALL_BINANCE_SPOT")==="ALL_BINANCE_SPOT"
+        ?"all eligible Binance Spot pairs · rotating "+(settings.scan_batch_size||20)+" per cycle"
+        :"custom watchlist · "+(settings.symbols||[]).length+" market(s)";
+      $("autoSignalStatus").textContent=settings.enabled?"Auto Signals ON · "+universeStatus+" · every "+((settings.interval_seconds||180)/60)+" minute(s). Keep this computer and QUANTNEX API running.":"Auto Signals OFF.";
       $("tgDailyReportEnabled").checked=!!reports.enabled;
       $("tgDailyReportStatus").textContent=reports.enabled?"Daily PDF ON · 20:00 Asia/Colombo · Paper ledger only.":"Daily PDF OFF.";
-
     }catch(error){$("autoSignalStatus").textContent=error.message;}
   }
   $("saveAutoSignals")?.addEventListener("click",async()=>{
     const enabled=$("autoSignalsEnabled").checked;
     const interval_seconds=Number($("autoSignalInterval").value||180);
-    const symbols=[...new Set(($("autoSignalSymbolsInput").value||"").split(",").map(value=>value.trim().toUpperCase()).filter(Boolean))].slice(0,50);
-    if(!symbols.length){$("autoSignalStatus").textContent="Enter at least one Binance pair, for example BTCUSDT.";return;}
+    const universe_mode=$("autoSignalUniverseMode").value||"ALL_BINANCE_SPOT";
+    const scan_batch_size=Number($("autoSignalScanBatchSize").value||20);
+    const entered=[...new Set(($("autoSignalSymbolsInput").value||"").split(",").map(value=>value.trim().toUpperCase()).filter(Boolean))].slice(0,50);
+    const symbols=universe_mode==="SELECTED"?entered:entered.filter(value=>value==="XAUUSD");
+    if(universe_mode==="SELECTED"&&!symbols.length){$("autoSignalStatus").textContent="Enter at least one Binance pair for a custom watchlist.";return;}
     const button=$("saveAutoSignals");button.disabled=true;button.textContent="Saving…";
     try{
-      const result=await apiRequest("/api/v1/telegram/auto-signals",{method:"PUT",body:JSON.stringify({enabled,interval_seconds,symbols})});
-      $("autoSignalStatus").textContent=result.enabled?"Auto Signals ON · "+symbols.join(", ")+" · strict 8/10 minimum · every "+(interval_seconds/60)+" minute(s). Keep this computer and QUANTNEX API running.":"Auto Signals OFF. No automatic Telegram signals will be sent.";$("telegramMonitorPill").textContent=result.enabled?"AUTO ON":"CONNECTED";
+      const result=await apiRequest("/api/v1/telegram/auto-signals",{method:"PUT",body:JSON.stringify({enabled,interval_seconds,universe_mode,scan_batch_size,symbols})});
+      const description=universe_mode==="ALL_BINANCE_SPOT"
+        ?"all eligible Binance Spot pairs · rotating "+scan_batch_size+" per cycle"
+        :"custom watchlist · "+symbols.join(", ");
+      $("autoSignalStatus").textContent=result.enabled?"Auto Signals ON · "+description+" · strict 8/10 minimum · every "+(interval_seconds/60)+" minute(s). Keep this computer and QUANTNEX API running.":"Auto Signals OFF. No automatic Telegram signals will be sent.";
+      $("telegramMonitorPill").textContent=result.enabled?"AUTO ON":"CONNECTED";
+      $("autoSignalSymbolsInput").value=symbols.join(", ");
+      updateAutoSignalUniverseControls();
     }catch(error){
       $("autoSignalsEnabled").checked=false;
       $("autoSignalStatus").textContent=error.message;

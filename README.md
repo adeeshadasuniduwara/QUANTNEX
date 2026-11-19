@@ -49,6 +49,10 @@ The Overview displays BTC/USD and XAU/USD spot estimates with provider fallbacks
 
 The rule-based 0–10 confluence score is not a win probability. EMA, MACD, RSI, ADX, ATR, swing structure, liquidity sweep and heuristic OB / Breaker / FVG / iFVG / premium-discount zones are included. Reaper is not active because its exact formula/source has not been confirmed. Telegram commands and approximate once-per-minute TP/SL price-level alerts require a connected bot, a configured market-data key and the local API to remain running. These alerts do not modify broker orders. Broker connections and automated order execution are not enabled.
 
+### OpenAI assistant (optional)
+
+The Connections & Integrations page can store an OpenAI API key encrypted in the local preferences database. The key is sent only from the loopback Backend to the OpenAI Responses API; it is never returned to the browser or sent through Telegram. Choose a model available to your OpenAI API project, save the key, then use **Test connection**. The connected Telegram bot can answer ordinary text questions using QUANTNEX product and safety context; use `/ai_status` to check configuration. The optional web-search tool can be enabled in the same settings panel. API usage is billed by OpenAI and is subject to your project's limits. Never commit or share API keys. Removing the saved key does not revoke it at OpenAI; revoke compromised keys in the OpenAI platform.
+
 The local API can optionally read MT5 DEMO data on a supported Windows host when explicitly configured. This is a Backend data integration, not a Windows desktop application. MT5 DEMO monitoring is best-effort and does not guarantee broker-side loss limits.
 
 ## Source updates

@@ -145,3 +145,16 @@ def test_registry_method_ids_are_unique_and_categories_are_explicit():
     assert {method.category for method in STRATEGY_METHOD_REGISTRY} == {
         "TREND", "MOMENTUM", "STRUCTURE", "LIQUIDITY", "LOCATION",
     }
+
+
+def test_registry_attaches_observation_time_and_explicit_candle_provenance():
+    observed_at = "2026-11-19T07:45:00+00:00"
+    result = evaluate_strategy_registry(
+        _analysis("BUY"), "5", "60", in_zone=True, observed_at=observed_at
+    )
+
+    assert result["evidence"]
+    assert all(item["observed_at"] == observed_at for item in result["evidence"])
+    assert all(item["source"] == "CANDLE_DERIVED" for item in result["evidence"])
+    assert all(item["calibration"] == "UNWEIGHTED_RULE_EVIDENCE"
+               for item in result["evidence"])

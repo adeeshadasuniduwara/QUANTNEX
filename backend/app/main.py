@@ -1223,10 +1223,10 @@ async def notify_connected_telegram(payload: dict, user: User = Depends(local_wo
     notification_key=payload.get("notification_key")
     if notification_key is not None and (
         not isinstance(notification_key,str) or not notification_key.strip()
-        or len(notification_key)>160
+        or len(notification_key)>145
         or not re.fullmatch(r"[A-Za-z0-9:_-]+",notification_key)
     ):
-        raise HTTPException(status_code=422,detail="notification_key must be 1–160 safe characters.")
+        raise HTTPException(status_code=422,detail="notification_key must be 1–145 safe characters.")
     token_enc=_preference(db,user.id,"telegram_bot_token_enc")
     chat_id=_preference(db,user.id,"telegram_chat_id")
     if not token_enc or not chat_id:

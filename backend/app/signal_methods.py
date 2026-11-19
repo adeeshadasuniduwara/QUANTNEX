@@ -228,7 +228,7 @@ def evaluate_strategy_registry(
         "buy_reasons": buy,
         "sell_reasons": sell,
         "baseline_raw_counts": {"BUY": len(buy), "SELL": len(sell)},
-        "independent_category_counts": {
+        "unique_category_counts": {
             "BUY": len(categories["BUY"]),
             "SELL": len(categories["SELL"]),
         },

@@ -34,7 +34,7 @@ Defaults are 0.5% risk per trade, one open position, three entries per UTC day, 
 
 If a personal Telegram bot is connected in QUANTNEX, the Spot engine sends trade-open, trade-close and safety notifications to that bot. API keys and secrets are never included in Telegram messages.
 
-The existing local updater checks GitHub for new `main` commits while QUANTNEX is open, applies updates with backup/rollback, and notifies the connected personal Telegram bot after a successful local update. GitHub's repository-wide Telegram announcement is a separate workflow and requires valid repository Actions secrets.
+When QUANTNEX is started through the full `run_quantnex_services.py` supervisor, the existing updater checks GitHub every five minutes and automatically installs new `main` commits with backup/health-check/rollback; no user click is required. After the workspace refreshes, it notifies the connected personal Telegram bot. Standalone Web-server mode keeps its manual approval flow. GitHub's repository-wide Telegram announcement is a separate workflow and requires valid repository Actions secrets.
 
 ## Important limitations
 

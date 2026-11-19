@@ -42,6 +42,13 @@ class TelegramReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('link_label = "View source update"', self.workflow)
         self.assertIn('link_label = "Open release &amp; downloads"', self.workflow)
 
+    def test_push_announcement_includes_compare_and_pull_request_links(self):
+        self.assertIn('"/compare/" + before + "..." + sha', self.workflow)
+        self.assertIn('"/commits/" + sha + "/pulls?per_page=10', self.workflow)
+        self.assertIn('">Compare changes</a>', self.workflow)
+        self.assertIn('">View Pull Request</a>', self.workflow)
+        self.assertIn('pull-requests: read', self.workflow)
+
 
 if __name__ == "__main__":
     unittest.main()

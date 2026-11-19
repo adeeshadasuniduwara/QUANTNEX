@@ -239,6 +239,13 @@ def test_rolling_vwap_proxy_rejects_incomplete_future_or_zero_volume_inputs():
     )
     assert incomplete["diagnostic_only"] == []
 
+    gapped_rows = rows[:20] + rows[21:]
+    gapped = evaluate_strategy_registry(
+        _analysis("BUY"), "5", "60", in_zone=True,
+        candles=gapped_rows, as_of=observed_at + timedelta(seconds=1),
+    )
+    assert gapped["diagnostic_only"] == []
+
     zero_volume = [dict(row, volume=0.0) for row in rows]
     no_volume = evaluate_strategy_registry(
         _analysis("BUY"), "5", "60", in_zone=True,

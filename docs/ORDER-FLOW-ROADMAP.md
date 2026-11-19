@@ -319,7 +319,7 @@ Branch: feat/vwap-diagnostic-evidence, created from main 0ee25ab7f259af6f690d258
 
 - Calculate a rolling 50-closed-bar VWAP proxy using each bar's typical price (H + L + C) / 3 weighted by total OHLCV candle volume.
 - Compare the latest 50-bar value with the previous shifted 50-bar value. Emit bullish diagnostic evidence only when close is above the current value and current VWAP is rising; emit bearish evidence only when close is below current VWAP and current VWAP is falling.
-- Require at least 51 unique, valid, positive-volume closed bars. A bar is eligible only when its open timestamp plus the primary timeframe duration is no later than the signal as-of timestamp.
+- Require at least 51 unique, contiguous, valid closed bars; per-bar volume may be zero but must be non-negative, and each 50-bar window must have positive total volume. A bar is eligible only when its open timestamp plus the primary timeframe duration is no later than the signal as-of timestamp.
 - Provenance is explicitly OHLCV_TYPICAL_PRICE_PROXY. The volume is total candle volume, not bid/ask volume, aggressor delta or a true transaction-level volume-at-price profile.
 - This is rolling 50-bar VWAP, not session VWAP or anchored VWAP.
 - The method is marked DIAGNOSTIC_ONLY and counts_for_baseline=false. It is exposed separately from supporting/conflicting baseline evidence and cannot alter the legacy signal score or thresholds.

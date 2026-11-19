@@ -833,6 +833,16 @@
       <section class="panel workspace-page-panel">
         <div class="workspace-page-toolbar"><div><strong>Integration status</strong><p id="integrationStatus" role="status">Checking local integrations…</p></div><div class="system-security-actions"><button class="secondary-btn" id="integrationConnectBot">Open Telegram Bot</button><button class="secondary-btn" id="integrationRefresh">Refresh status</button></div></div>
         <div class="workspace-page-cards" id="integrationCards"><article class="workspace-page-card">Checking provider configuration…</article></div>
+        <div class="bn-risk-block qx-ai-config">
+          <div class="workspace-page-toolbar"><div><strong>QUANTNEX AI · OpenAI connection</strong><p id="qxAiStatus" role="status">Checking OpenAI configuration…</p></div><span class="pill">ENCRYPTED LOCAL KEY</span></div>
+          <form id="qxAiConfigForm" class="workspace-page-form">
+            <label>OpenAI API key<input id="qxOpenAiKey" type="password" maxlength="512" autocomplete="new-password" placeholder="sk-…"><small>Key stays on the local backend. It is never sent to Telegram or returned to the browser.</small></label>
+            <label>Model ID<input id="qxOpenAiModel" type="text" maxlength="120" value="gpt-5.5" autocomplete="off" placeholder="gpt-5.5"></label>
+            <label class="bn-toggle-label">Enable OpenAI web search tool<input id="qxAiWebSearch" type="checkbox"></label>
+            <div class="bn-actions"><button class="primary-btn" type="submit" id="qxAiSave">Save AI settings</button><button class="secondary-btn" type="button" id="qxAiTest">Test connection</button><button class="secondary-btn" type="button" id="qxAiRemove">Remove saved key</button></div>
+          </form>
+          <p class="p7-note" id="qxAiHelp">After connecting, ask QUANTNEX AI questions here through the Telegram bot's normal chat, or use the AI chat endpoint in the workspace.</p>
+        </div>
         <p class="p7-note">Credentials remain in the local backend configuration or encrypted local preferences. This page never requests or displays secret values. QUANTNEX remains login-free and loopback-only.</p>
       </section>
       <section class="section-heading" id="prop-challenge"><div><div class="overline">WORKSPACE TOOL · PROP FIRM TRAINING</div><h2>Prop Firm Challenge Simulator</h2><p>Practice evaluation rules with a virtual account or connect an MT5 DEMO account for local risk monitoring.</p></div><span class="pill">DEMO / PRACTICE ONLY</span></section>
@@ -915,6 +925,7 @@
   <script src="prop-challenge.js"></script>
   <script src="donation.js?v=20261113-bep20"></script>
   <script src="binance-center.js?v=20261118-demo-credentials2"></script>
+  <script src="ai-assistant.js?v=20261119-openai-settings1"></script>
   <script src="navigation.js"></script>
 </body>
 </html>

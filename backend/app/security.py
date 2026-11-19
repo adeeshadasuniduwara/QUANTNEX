@@ -18,4 +18,4 @@ def decrypt_secret(value: str) -> str:
     try:
         return _secret_box().decrypt(value.encode("ascii")).decode("utf-8")
     except (InvalidToken, ValueError, UnicodeError) as exc:
-        raise ValueError("Stored Telegram token cannot be decrypted. Reconnect the bot after checking QUANTNEX_SECRET_KEY.") from exc
+        raise ValueError("Stored secret cannot be decrypted. Check QUANTNEX_SECRET_KEY and reconnect the affected integration.") from exc

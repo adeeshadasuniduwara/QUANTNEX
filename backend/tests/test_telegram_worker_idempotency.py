@@ -159,6 +159,8 @@ def test_installed_update_endpoint_deduplicates_repeated_client_notices(monkeypa
             return {"ok": True, "result": {"message_id": 77}}
 
     class FakeClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
         async def __aenter__(self):
             return self
         async def __aexit__(self, *_args):

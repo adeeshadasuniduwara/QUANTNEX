@@ -170,7 +170,7 @@ jobs:
           else:
               message += '<a href="https://github.com/' + repo + '/pulls">Open Pull Requests</a>\\n'
           message += (
-              + '<a href="https://github.com/' + repo + '">QUANTNEX GitHub</a>\\n\\n'
+              '<a href="https://github.com/' + repo + '">QUANTNEX GitHub</a>\\n\\n'
               + "<i>Official automated update notification</i>"
           )
 

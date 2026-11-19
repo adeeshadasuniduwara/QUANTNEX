@@ -670,11 +670,11 @@ Add a first value-area method to the strategy registry without changing the live
 ## 2026-11-19 — Phase C5 merged and Phase C6 observed trade volume profile
 
 ### Repository audit at run start
-- Main was \`0473937ca0e649f7ff0d50f3aaf9f169e1c73706\`.
-- PR #223 strategy evidence registry was merged; PR #224 rolling OHLCV VWAP diagnostic was merged as \`0473937ca0e649f7ff0d50f3aaf9f169e1c73706\`.
+- Main was `0473937ca0e649f7ff0d50f3aaf9f169e1c73706`.
+- PR #223 strategy evidence registry was merged; PR #224 rolling OHLCV VWAP diagnostic was merged as `0473937ca0e649f7ff0d50f3aaf9f169e1c73706`.
 - Main Backend CI and Backend/Web CI passed on that exact commit. Backend tests: 433 passed on Python 3.12 and 433 passed on Python 3.14; Web check passed.
 - Optional Telegram Update Notifications failed only in its announce job. It is separate from backend/web signal-engine checks.
-- Latest scheduled Live Crypto Signal Smoke run found: 2026-11-18 08:32 UTC, commit \`cf29930a1759d92122fd390818643bfb3a24d851\`. It discovered 1,373 eligible Spot pairs, scanned a rotating 20-pair sample, returned 20 WAIT, 0 provider errors and 0 insufficient-history skips. This is live provider/scan-health evidence only; it does not prove signal generation quality or profitability.
+- Latest scheduled Live Crypto Signal Smoke run found: 2026-11-18 08:32 UTC, commit `cf29930a1759d92122fd390818643bfb3a24d851`. It discovered 1,373 eligible Spot pairs, scanned a rotating 20-pair sample, returned 20 WAIT, 0 provider errors and 0 insufficient-history skips. This is live provider/scan-health evidence only; it does not prove signal generation quality or profitability.
 - Open issues search returned none. Remaining open PRs were reviewed; none was a pending core signal-engine PR.
 
 ### Phase C5 — merged PR #224
@@ -684,7 +684,7 @@ Add a first value-area method to the strategy registry without changing the live
 - PR and post-merge main checks passed; main has 433 backend tests passing on Python 3.12 and 3.14.
 - It does not alter the live score or threshold.
 
-### Phase C6 — implementation on branch \`feat/observed-trade-volume-profile\`
+### Phase C6 — implementation on branch `feat/observed-trade-volume-profile`
 - Add POC/VAH/VAL from actual validated Binance Spot aggTrades, tick-bucketed using the exchange symbol's tick size; quote notional is summed from each original execution price, not the rounded bucket price.
 - Define 70% value area with deterministic lower-price tie-breaks; expose base quantity and quote notional.
 - Explicitly scope to the bounded latest aggTrade input window, not a full UTC session or historical profile.

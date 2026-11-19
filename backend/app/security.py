@@ -6,7 +6,7 @@ from .config import SECRET_KEY
 
 
 def _secret_box() -> Fernet:
-    key = base64.urlsafe_b64encode(hashlib.sha256(("QUANTNEX-TELEGRAM:" + SECRET_KEY).encode()).digest())
+    key = base64.urlsafe_b64encode(hashlib.sha256(("QUANTNEX-SECRET:" + SECRET_KEY).encode()).digest())
     return Fernet(key)
 
 
@@ -18,4 +18,4 @@ def decrypt_secret(value: str) -> str:
     try:
         return _secret_box().decrypt(value.encode("ascii")).decode("utf-8")
     except (InvalidToken, ValueError, UnicodeError) as exc:
-        raise ValueError("Stored Telegram token cannot be decrypted. Reconnect the bot after checking QUANTNEX_SECRET_KEY.") from exc
+        raise ValueError("Stored secret cannot be decrypted. Check QUANTNEX_SECRET_KEY and reconnect the affected integration.") from exc

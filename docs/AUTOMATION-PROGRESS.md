@@ -643,25 +643,35 @@ Branch created from main `bb1b27b480d5a715429c5087db99ebc044a45cdf`.
 - Initial CI exposed one incorrect test expectation in the contradictory SELL fixture (TREND plus STRUCTURE means two categories); the fixture was corrected and the final PR/post-merge runs passed.
 - No profitability or accuracy improvement is claimed. This phase establishes explainable method architecture and baseline parity.
 
-## 2026-11-19 — Phase C5: rolling VWAP diagnostic method (implementation on branch)
+## 2026-11-19 — Phase C5: rolling VWAP diagnostic method (merged PR #224)
 
-### Purpose and data boundary
+- PR [#224](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/224) merged to main as 0473937ca0e649f7ff0d50f3aaf9f169e1c73706.
+- Added rolling 50-closed-bar OHLCV typical-price VWAP proxy as VALUE-category evidence.
+- The proxy compares the current 50-bar VWAP with the prior shifted 50-bar VWAP; it emits diagnostic BUY/SELL evidence only when close position and slope align.
+- Provenance is OHLCV_TYPICAL_PRICE_PROXY; total candle volume is used, not bid/ask volume or aggressor delta. This is rolling VWAP, not session/anchored VWAP.
+- It requires 51 unique contiguous closed bars, non-negative bar volume and positive total volume in each 50-bar window. Future/incomplete bars, gaps and all-zero-volume windows are rejected.
+- The method is DIAGNOSTIC_ONLY and counts_for_baseline=false; it is excluded from the legacy score and confirmations.
+- PR and post-merge checks passed: 433 backend tests on Python 3.12 and 433 on Python 3.14, schema/preflight and Web CI passed. Main was verified at the merge commit.
+- No win-rate, expectancy or profitability uplift is claimed.
 
-Add a first value-area method to the strategy registry without changing the live score. The data source is candle OHLCV only, so this is explicitly a proxy, not trade-level VWAP or bid/ask order flow.
+## 2026-11-19 — Phase C6: bounded minute-sampled Spot order-flow capture (implementation on branch)
 
-### Changes on branch feat/vwap-diagnostic-evidence
+### Purpose
 
-- Add a rolling 50-closed-bar VWAP proxy using typical price (high + low + close) / 3 weighted by total candle volume.
-- Compare the current 50-bar VWAP with the prior shifted 50-bar VWAP; emit diagnostic BUY/SELL evidence only when close position and VWAP slope align.
-- Exclude any candle whose close time is after the signal as-of time; require 51 valid, unique, contiguous, closed bars with non-negative candle volume and positive total volume.
-- Label provenance OHLCV_TYPICAL_PRICE_PROXY and include lookback, current/previous VWAP, close, price basis, volume basis and scope in evidence details.
-- Mark the method DIAGNOSTIC_ONLY and counts_for_baseline=false. It is not added to the legacy confirmation count or live signal threshold.
-- Add bullish/bearish, baseline-score-preservation, incomplete/future-candle and zero-volume fixtures.
-- CI and full diff review are pending. No VWAP performance uplift is claimed.
+The live stream currently maintains bounded in-memory AggTrade CVD and sequence-validated depth state, but there is no durable synchronized historical order-flow series for replay/ablation. Add a small, bounded, provenance-preserving capture store as the first step toward out-of-sample order-flow testing.
 
-### Next exact steps
+### Planned design on branch feat/orderflow-minute-capture
 
-1. Validate the new VWAP proxy and ensure diagnostic-only evidence never changes BUY/SELL score or thresholds.
-2. After merge and post-merge checks, add further methods only with explicit data provenance and causal tests.
-3. Prioritize synchronized historical Spot AggTrade/depth capture and replay so order-flow evidence can be evaluated out of sample.
-4. Keep USDⓈ-M and COIN-M Futures unsupported until separate adapters, metadata, execution constraints and deterministic fixtures are verified.
+- Capture at most one latest sample per Binance Spot symbol per UTC minute, coalescing frequent stream callbacks rather than writing on every trade/depth event.
+- Store observed AggTrade-derived delta/CVD/session completeness, footprint/order-flow metrics, spread/depth imbalance/microprice, depth sequence validity/update ID, provider provenance and capture timestamp.
+- Persist quality/not-ready states as well as ready samples so reconnects/gaps are visible; never turn invalid samples into valid replay evidence.
+- Apply a bounded retention policy (initial target 7 days) and bounded pending buffer; flush asynchronously in batches.
+- No API keys, order placement or live trading. Binance Spot only.
+- These are minute-sampled validated snapshots, not a raw full-resolution trade/depth event archive and not enough by themselves to claim full sequence replay.
+
+### Validation gates
+
+- Unit tests for timestamp bucketing, per-symbol coalescing, provenance, invalid/not-ready state, market-type filtering, bounded queue and retention.
+- Integration tests for stream callback → capture store and graceful shutdown flush.
+- Backend CI on Python 3.12/3.14, schema/preflight and Web CI; post-merge verification.
+- Next phase will align captured samples to closed candles and add chronological order-flow replay/ablation. Until then, no order-flow performance uplift is claimed.

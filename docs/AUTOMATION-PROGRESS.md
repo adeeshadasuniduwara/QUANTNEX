@@ -648,7 +648,7 @@ The existing live confluence count treats multiple related observations as separ
 - Integrated registry output into backend/app/signal_engine.py:
   - Existing score and threshold remain unchanged.
   - Signals expose supporting and conflicting method evidence.
-  - Independent category counts are explicitly diagnostic only, not live gates or win probabilities.
+  - Unique category counts are explicitly diagnostic only, not live gates or win probabilities.
 - Added backend/tests/test_signal_methods.py with bullish, bearish, contradictory, neutral and registry-uniqueness fixtures.
 - Extended backend/tests/test_signal_pipeline_e2e.py to assert registry evidence appears in generated signal payloads.
 - Updated docs/ORDER-FLOW-ROADMAP.md with Phase C4 scope and validation requirements.

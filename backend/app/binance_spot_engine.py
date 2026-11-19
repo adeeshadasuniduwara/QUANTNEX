@@ -259,6 +259,16 @@ async def _scan_user(db, user: User) -> None:
         active, history = [], []
     if not isinstance(active, list): active = []
     if not isinstance(history, list): history = []
+    pending_order = _pref(db, user.id, "binance_spot_pending_order", "")
+    if pending_order:
+        # A restart occurred during the non-atomic BUY -> OCO hand-off. Fail
+        # closed and require a human to inspect Binance before automation resumes.
+        _set_pref(db, user.id, "binance_auto_trading_enabled", "false")
+        config["enabled"] = False
+        _set_pref(db, user.id, "binance_spot_auto_config", json.dumps(config, separators=(",", ":")))
+        db.commit()
+        await _notify(db, user.id, "🚨 <b>QUANTNEX SPOT DEMO — RESTART RECOVERY REQUIRED</b>\\nAn order hand-off was interrupted. Auto Trading has been stopped. Inspect Binance Spot Demo open orders and balances before restarting.")
+        return
     today = datetime.now(timezone.utc).date().isoformat()
     daily = [x for x in history if str(x.get("created_at", "")).startswith(today)]
     if len(daily) >= config["max_trades_per_day"]:
@@ -449,6 +459,8 @@ async def _scan_user(db, user: User) -> None:
                 # Any post-fill failure must attempt to flatten the demo position.
                 try:
                     await _emergency_sell(symbol, protected_qty, api_key, secret)
+                    _set_pref(db, user.id, "binance_spot_pending_order", "")
+                    db.commit()
                     await _notify(db, user.id, f"🚨 <b>QUANTNEX SPOT DEMO SAFETY EXIT</b>\\n{symbol}: protective OCO setup failed after the BUY fill. Binance accepted an emergency market sell; verify order history.")
                 except Exception:
                     _set_pref(db, user.id, "binance_auto_trading_enabled", "false")

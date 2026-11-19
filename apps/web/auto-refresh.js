@@ -41,7 +41,7 @@
     });
   }
 
-  function runRefresh(id) {
+  function runRefresh(id, interval) {
     if (document.visibilityState !== "visible") return;
     const button = document.getElementById(id);
     if (!button || button.disabled || button.dataset.autoRefreshBusy === "true") return;
@@ -51,14 +51,14 @@
     } finally {
       // Refresh handlers may start async work; let their own disabled/busy
       // guards prevent overlap and clear this lightweight dispatch lock soon.
-      window.setTimeout(() => { delete button.dataset.autoRefreshBusy; }, 5000);
+      window.setTimeout(() => { delete button.dataset.autoRefreshBusy; }, Math.max(10000, Math.min(60000, interval - 1000)));
     }
   }
 
   function start() {
     hideRefreshControls();
     Object.entries(schedules).forEach(([id, interval]) => {
-      window.setInterval(() => runRefresh(id), interval);
+      window.setInterval(() => runRefresh(id, interval), interval);
     });
     // Re-hide controls if a page re-renders its toolbar.
     const observer = new MutationObserver(hideRefreshControls);

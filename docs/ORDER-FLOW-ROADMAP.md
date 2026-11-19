@@ -339,9 +339,9 @@ Branch: feat/vwap-diagnostic-evidence, created from main 0ee25ab7f259af6f690d258
 3. Keep USDⓈ-M/COIN-M Futures unsupported until separate market adapters and deterministic fixtures are verified.
 
 
-## Phase C6 — observed trade volume profile (implementation PR)
+## Phase C6 — observed trade volume profile (merged PR #225)
 
-Branch: `feat/observed-trade-volume-profile`, based on main `0473937ca0e649f7ff0d50f3aaf9f169e1c73706`.
+Merged 2026-11-19 as `50b5c0cc8cb324fb9e24b71d95a0c8e86511de48` (PR #225), based on main `0473937ca0e649f7ff0d50f3aaf9f169e1c73706`.
 
 ### Implementation
 
@@ -354,9 +354,10 @@ Branch: `feat/observed-trade-volume-profile`, based on main `0473937ca0e649f7ff0
 
 ### Deterministic validation
 
-- Hand-computed four-price fixture verifies POC=100, VAL=100, VAH=101, base volume=11, quote volume=1111.2 and 70% value-area coverage.
+- Hand-computed four-price fixture verifies POC=100, VAL=100, VAH=101, base volume=11, exact quote volume=1111.2 and 70% value-area coverage.
 - Equal-volume fixture verifies lowest-price POC tie-break and lower-price-first value-area expansion.
 - Summary fixture verifies the observed profile scope/provenance survives into the signal payload.
+- PR CI passed: 436 backend tests on Python 3.12 and 436 on Python 3.14; backend schema CI and Web checks passed. Post-merge main checks passed with the same 436-test counts.
 
 ### Remaining boundary and next phase
 
@@ -364,3 +365,19 @@ Branch: `feat/observed-trade-volume-profile`, based on main `0473937ca0e649f7ff0
 - No performance uplift is claimed; profile location is not yet a live scoring factor.
 - Next priority remains synchronized historical Spot AggTrade + diff-depth capture with bounded retention and chronological order-flow replay/ablation. Keep the current live score as the baseline until out-of-sample evidence justifies any change.
 - USDⓈ-M and COIN-M Futures remain unsupported by the signal engine.
+
+
+## Phase C7 — replay exchange-filter enforcement (fix PR in progress)
+
+### Bug found
+The candle-only walk-forward replay used a generic \`0.00000001\` tick-size fallback when symbol metadata was missing. Its simulated execution context also omitted the normalized \`PRICE_FILTER\` object. The signal engine's price-filter helper therefore had no exchange bounds/tick to enforce in replay, so replay could accept prices that would not be valid for that Binance Spot symbol. This could contaminate backtest results.
+
+### Fix
+- Require the authoritative Binance Spot \`PRICE_FILTER\` from symbol metadata; fail closed for missing, malformed, zero/negative tick size, invalid bounds or non-finite values.
+- Pass exact \`tickSize\`, \`minPrice\` and \`maxPrice\` into the replay execution context in the normalized form used by the live entry validator.
+- Mark the source as \`BINANCE_EXCHANGEINFO_PRICE_FILTER\`.
+- Add tests proving missing metadata prevents signal evaluation and valid exchange filters are passed into the signal engine.
+
+### Boundary
+- This fixes exchange price-grid validity in the existing candle-only replay. It does not add historical AggTrade/depth data or prove strategy profitability.
+- Next priority remains synchronized, bounded Spot AggTrade + diff-depth capture and chronological order-flow replay/ablation.

@@ -1,5 +1,3 @@
-import asyncio
-
 from app import ai_assistant
 from app.security import encrypt_secret
 
@@ -15,10 +13,8 @@ class FakeDB:
         self.values = values
 
     def scalar(self, query):
-        params = query.compile().params
-        key = params.get("key_1")
+        key = query.compile().params.get("key_1")
         return FakePreference(key, self.values[key]) if key in self.values else None
-
 
 
 def test_get_openai_config_decrypts_local_key_and_uses_saved_model():

@@ -376,7 +376,7 @@ The candle-only walk-forward replay used a generic \`0.00000001\` tick-size fall
 - Require the authoritative Binance Spot \`PRICE_FILTER\` from symbol metadata; fail closed for missing, malformed, zero/negative tick size, invalid bounds or non-finite values.
 - Pass exact \`tickSize\`, \`minPrice\` and \`maxPrice\` into the replay execution context in the normalized form used by the live entry validator.
 - Mark the source as \`BINANCE_EXCHANGEINFO_PRICE_FILTER\`.
-- Add tests proving missing metadata prevents signal evaluation and valid exchange filters are passed into the signal engine.
+- Add tests proving missing, zero and non-finite tick metadata prevents signal evaluation and valid exchange filters are passed into the signal engine.
 
 ### Boundary
 - This fixes exchange price-grid validity in the existing candle-only replay. It does not add historical AggTrade/depth data or prove strategy profitability.

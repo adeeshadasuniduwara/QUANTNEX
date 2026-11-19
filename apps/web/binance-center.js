@@ -102,14 +102,6 @@ $("bnSpotAutoToggle").addEventListener("click",async()=>{
  catch(error){autoStatus("Auto Trading change rejected: "+error.message,true);await refresh();}
  finally{busy(button,false);}
 });
-$("bnRiskForm").addEventListener("submit",async event=>{
- event.preventDefault();
- try{
-  const risk={max_trades_per_day:Number($("bnDailyTrades").value),max_open_trades:Number($("bnOpenTrades").value),
-   risk_per_trade_percent:Number($("bnRiskPercent").value),max_daily_loss_percent:Number($("bnDailyLoss").value)};
-  await request("/risk",{method:"PUT",body:JSON.stringify(risk)});status("Risk limits saved.");
- }catch(error){status("Could not save risk limits: "+error.message,true);}
-});
 $("bnRefresh").addEventListener("click",refresh);
 document.addEventListener("DOMContentLoaded",refresh);
 refresh();

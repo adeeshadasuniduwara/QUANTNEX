@@ -736,7 +736,7 @@ async def test_ai_config(user: User = Depends(local_workspace), db: Session = De
 async def ai_chat(payload: AIChatRequest, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     from .ai_assistant import ask_openai
     try:
-        reply, model = await ask_openai(db, user.id, payload.message, channel="web")
+        reply, model = await ask_openai(db, user.id, payload.message)
         return AIChatResponse(reply=reply, model=model)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))

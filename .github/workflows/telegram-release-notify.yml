@@ -145,8 +145,8 @@ jobs:
                   except (urllib.error.URLError, ValueError, TimeoutError):
                       print("Associated pull request lookup unavailable; announcement will include the PR list.")
               intro = (
-                  "A new QUANTNEX update has been merged into the official main branch.\\n"
-                  "The running source-based workspace can download and apply the update automatically.\\n"
+                  "A new QUANTNEX update has been merged into the official main branch.\n"
+                  "The running source-based workspace can download and apply the update automatically.\n"
                   "🔒 Local wallet, journal, settings and credentials remain on this computer."
               )
           else:
@@ -157,20 +157,20 @@ jobs:
               intro = "A new QUANTNEX version has been published."
 
           message = (
-              "🚀 <b>QUANTNEX — NEW UPDATE AVAILABLE!</b>\\n\\n"
-              + "<b>" + title + "</b>\\n"
-              + "Version: <code>" + tag + "</code>\\n\\n"
-              + intro + "\\n\\n"
-              + '<a href="' + html.escape(target_url, quote=True) + '">' + link_label + '</a>\\n'
+              "🚀 <b>QUANTNEX — NEW UPDATE AVAILABLE!</b>\n\n"
+              + "<b>" + title + "</b>\n"
+              + "Version: <code>" + tag + "</code>\n\n"
+              + intro + "\n\n"
+              + '<a href="' + html.escape(target_url, quote=True) + '">' + link_label + '</a>\n'
           )
           if compare_url:
-              message += '<a href="' + html.escape(compare_url, quote=True) + '">Compare changes</a>\\n'
+              message += '<a href="' + html.escape(compare_url, quote=True) + '">Compare changes</a>\n'
           if pull_url:
-              message += '<a href="' + html.escape(pull_url, quote=True) + '">View Pull Request</a>\\n'
+              message += '<a href="' + html.escape(pull_url, quote=True) + '">View Pull Request</a>\n'
           else:
-              message += '<a href="https://github.com/' + repo + '/pulls">Open Pull Requests</a>\\n'
+              message += '<a href="https://github.com/' + repo + '/pulls">Open Pull Requests</a>\n'
           message += (
-              '<a href="https://github.com/' + repo + '">QUANTNEX GitHub</a>\\n\\n'
+              '<a href="https://github.com/' + repo + '">QUANTNEX GitHub</a>\n\n'
               + "<i>Official automated update notification</i>"
           )
 

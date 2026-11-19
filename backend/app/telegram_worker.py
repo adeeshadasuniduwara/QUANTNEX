@@ -1084,7 +1084,7 @@ async def _deliver_source_update_notice(client, db, user_id: int, token: str, ch
         message += '\\n<a href="' + pull_url + '">View Pull Request</a>'
     else:
         message += '\\n<a href="https://github.com/' + repo + '/pulls">Open Pull Requests</a>'
-    delivery_key = "source-update:" + commit_sha
+    delivery_key = "client-notice:update-installed:main-" + commit_sha[:7]
     if not _claim_telegram_delivery(db, user_id, delivery_key):
         return False
     try:

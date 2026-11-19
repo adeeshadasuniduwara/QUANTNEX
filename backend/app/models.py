@@ -191,3 +191,16 @@ class SignalTradeEvent(Base):
     telegram_last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     telegram_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+
+
+class TelegramDelivery(Base):
+    """Persistent idempotency ledger for outbound Telegram notifications."""
+    __tablename__ = "telegram_deliveries"
+    __table_args__ = (UniqueConstraint("user_id", "notification_key", name="uq_telegram_delivery_user_key"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    notification_key: Mapped[str] = mapped_column(String(160))
+    status: Mapped[str] = mapped_column(String(16), default="sending", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=1)
+    claimed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

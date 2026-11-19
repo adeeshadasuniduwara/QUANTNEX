@@ -1,6 +1,8 @@
 (()=>{
 "use strict";
 const $=id=>document.getElementById(id);
+let spotConfigDirty=false;
+$("bnSpotAutoConfigForm")?.addEventListener("input",()=>{spotConfigDirty=true;});
 const base="http://127.0.0.1:8000/api/v1/exchanges/binance";
 const request=async(path,options={})=>{
  const response=await fetch(base+path,{...options,headers:{"Content-Type":"application/json",...(options.headers||{})},cache:"no-store"});
@@ -90,7 +92,7 @@ $("bnSpotAutoConfigForm").addEventListener("submit",async event=>{
    max_spread_bps:Number($("bnSpotSpread").value),min_24h_quote_volume:Number($("bnSpotVolume").value),
    min_reward_risk:Number($("bnSpotRR").value)};
   const d=await request("/spot-auto-config",{method:"PUT",body:JSON.stringify(payload)});
-  autoStatus(d.message);await refresh();
+  spotConfigDirty=false;autoStatus(d.message);await refresh();
  }catch(error){autoStatus("Could not save Spot Auto settings: "+error.message,true);}
  finally{busy(button,false,"Save Spot Auto settings");}
 });

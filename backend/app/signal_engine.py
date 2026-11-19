@@ -1522,7 +1522,7 @@ async def build_signal(
                     "conflicting": [
                         item for item in strategy_evidence["evidence"] if item["side"] != side
                     ],
-                    "independent_category_count": strategy_evidence["independent_category_counts"][side],
+                    "unique_category_count": strategy_evidence["unique_category_counts"][side],
                     "categories": strategy_evidence["categories"][side],
                     "category_methods": strategy_evidence["category_methods"][side],
                     "category_score_status": strategy_evidence["category_score_status"],

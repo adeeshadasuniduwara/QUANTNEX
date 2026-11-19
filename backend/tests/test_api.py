@@ -532,6 +532,9 @@ def test_auto_signal_settings_are_opt_in_without_login():
     assert saved.status_code == 200
     assert saved.json()["enabled"] is False
     assert saved.json()["interval_seconds"] == 300
+    assert saved.json()["universe_mode"] == "ALL_BINANCE_SPOT"
+    assert saved.json()["scan_batch_size"] == 20
+    assert saved.json()["symbols"] == []
 
 
 
@@ -1148,6 +1151,38 @@ def test_signal_market_endpoint_returns_live_binance_spot_universe(monkeypatch):
     assert response.status_code == 200
     assert response.json()["market_type"] == "BINANCE_SPOT"
     assert response.json()["symbols"] == ["1000PEPEUSDT", "BTCUSDT"]
+
+
+def test_auto_signals_default_to_all_dynamic_binance_spot_pairs(monkeypatch):
+    from app import signal_engine
+
+    async def fake_symbols():
+        return ["1000PEPEUSDT", "BTCUSDT", "ETHUSDT"]
+
+    monkeypatch.setattr(signal_engine, "get_binance_spot_symbols", fake_symbols)
+    monkeypatch.setattr(
+        main_module, "_preference",
+        lambda _db, _user_id, key, default=None: "encrypted-token" if key == "telegram_bot_token_enc" else "123456" if key == "telegram_chat_id" else default,
+    )
+    response = TestClient(app).put("/api/v1/telegram/auto-signals", json={
+        "enabled": True, "interval_seconds": 180, "scan_batch_size": 20
+    })
+
+    assert response.status_code == 200
+    assert response.json()["universe_mode"] == "ALL_BINANCE_SPOT"
+    assert response.json()["symbols"] == []
+    assert response.json()["scan_batch_size"] == 20
+
+
+def test_all_spot_universe_mode_rejects_a_hidden_static_pair_cap():
+    response = TestClient(app).put("/api/v1/telegram/auto-signals", json={
+        "enabled": False,
+        "universe_mode": "ALL_BINANCE_SPOT",
+        "symbols": ["BTCUSDT", "ETHUSDT"],
+    })
+
+    assert response.status_code == 422
+    assert "Custom watchlist" in response.json()["detail"]
 
 
 def test_auto_signals_can_select_a_dynamic_binance_spot_pair(monkeypatch):

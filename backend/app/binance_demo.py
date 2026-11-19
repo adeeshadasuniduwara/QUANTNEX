@@ -200,7 +200,12 @@ async def connect_binance_futures(payload: BinanceCredentialPair, db: Session = 
 
 @router.delete("/connect/spot")
 def disconnect_binance_spot(db: Session = Depends(get_db)):
+    import json
     user = _workspace(db)
+    config = normalize_spot_config(_get(db, user.id, "binance_spot_auto_config", ""))
+    config["enabled"] = False
+    _set(db, user.id, "binance_spot_auto_config", json.dumps(config, separators=(",", ":")))
+    _set(db, user.id, "binance_auto_trading_enabled", "false")
     for key in ("binance_spot_api_key_enc", "binance_spot_api_secret_enc"):
         row = db.scalar(select(Preference).where(Preference.user_id == user.id, Preference.key == key))
         if row:

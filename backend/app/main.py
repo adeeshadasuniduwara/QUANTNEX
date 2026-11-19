@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, DATABASE_URL, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
 from .database import Base, engine, get_db, SessionLocal
-from .models import AuditEvent, GoalContribution, JournalImport, PaperTrade, PaperTradeEvent, PersonalGoal, Preference, SignalTrade, SignalTradeEvent, StrategyLabRun, Trade, User, WalletTransaction
+from .models import AuditEvent, GoalContribution, JournalImport, OrderFlowCapture, PaperTrade, PaperTradeEvent, PersonalGoal, Preference, SignalTrade, SignalTradeEvent, StrategyLabRun, Trade, User, WalletTransaction
 from .schemas import AIChatRequest, AIChatResponse, LegacyJournalImportRequest, LegacyJournalImportResponse, PreferenceResponse, PreferenceWrite, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TradeCreate, TradeResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
 from .security import decrypt_secret, encrypt_secret
 from .maintenance import daily_backup_worker, record_audit_event
@@ -37,8 +37,13 @@ async def lifespan(app: FastAPI):
         start_binance_spot_order_flow_manager,
         stop_binance_spot_order_flow_manager,
     )
+    from .order_flow_capture import (
+        start_order_flow_capture_worker,
+        stop_order_flow_capture_worker,
+    )
     await prepare_local_workspace()
     try:
+        await start_order_flow_capture_worker()
         await start_binance_spot_order_flow_manager()
         await start_signal_lifecycle_worker()
         await start_telegram_background_worker()
@@ -52,6 +57,7 @@ async def lifespan(app: FastAPI):
         await stop_prop_challenge_guardian()
         await stop_telegram_background_worker()
         await stop_binance_spot_order_flow_manager()
+        await stop_order_flow_capture_worker()
         await stop_signal_lifecycle_worker()
 
 

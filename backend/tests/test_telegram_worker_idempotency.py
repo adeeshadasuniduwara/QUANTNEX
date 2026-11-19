@@ -116,3 +116,27 @@ def test_telegram_formatter_escapes_untrusted_html():
     rendered = telegram_worker._format_telegram_message("QUANTNEX <alert>\\nPrice: < 100")
     assert "&lt;alert&gt;" in rendered
     assert "&lt; 100" in rendered
+
+
+def test_telegram_delivery_claim_is_unique_and_persists_sent_state():
+    engine, _factory, db, user_id = _memory_session()
+    key = "source-update:" + "a" * 40
+    assert telegram_worker._claim_telegram_delivery(db, user_id, key) is True
+    # A concurrent/restarted worker sees the active lease and cannot send again.
+    assert telegram_worker._claim_telegram_delivery(db, user_id, key) is False
+    telegram_worker._finish_telegram_delivery(db, user_id, key, True)
+    assert telegram_worker._claim_telegram_delivery(db, user_id, key) is False
+    db.close()
+    Base.metadata.drop_all(engine)
+    engine.dispose()
+
+
+def test_failed_telegram_delivery_claim_can_be_retried():
+    engine, _factory, db, user_id = _memory_session()
+    key = "signal-event:123"
+    assert telegram_worker._claim_telegram_delivery(db, user_id, key) is True
+    telegram_worker._finish_telegram_delivery(db, user_id, key, False)
+    assert telegram_worker._claim_telegram_delivery(db, user_id, key) is True
+    db.close()
+    Base.metadata.drop_all(engine)
+    engine.dispose()

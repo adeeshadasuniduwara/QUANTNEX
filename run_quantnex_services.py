@@ -196,7 +196,8 @@ def check_for_automatic_update(force_reconcile: bool = False) -> bool:
                 print("[AUTO UPDATE] " + path, flush=True)
             restart_required = bool(result.get("restart_required"))
             if not restart_required:
-                mark_source_update_confirmed()
+                if any(process.poll() is None for _, process in PROCESSES):
+                    mark_source_update_confirmed()
                 UPDATE_PROGRESS_FILE.unlink(missing_ok=True)
             UPDATE_ERROR_FILE.unlink(missing_ok=True)
             if restart_required:
@@ -327,11 +328,13 @@ def main() -> int:
             from quantnex_updater import confirm_update
             if confirm_update(ROOT):
                 print("[AUTO UPDATE] Startup health checks passed; rollback checkpoint confirmed.", flush=True)
-                mark_source_update_confirmed()
                 UPDATE_PROGRESS_FILE.unlink(missing_ok=True)
                 UPDATE_ERROR_FILE.unlink(missing_ok=True)
         except Exception as confirm_error:
             print(f"[AUTO UPDATE] Startup confirmation deferred: {confirm_error}", flush=True)
+
+        # Publish confirmation only after both the API and web health checks pass.
+        mark_source_update_confirmed()
 
         if suppress_browser_open:
             print("[BROWSER] Update restart detected; keeping the existing browser tab open.", flush=True)

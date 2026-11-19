@@ -306,10 +306,23 @@ async def _scan_user(db, user: User) -> None:
         except Exception:
             remaining.append(trade)
     active = remaining
+    # Recover the symbol lock from Binance itself if local state was restored or
+    # interrupted after an OCO was accepted but before the local ledger commit.
+    exchange_open_symbols = set()
+    try:
+        open_lists = await _request("GET", "/v3/openOrderList", {}, api_key, secret)
+        if isinstance(open_lists, list):
+            exchange_open_symbols = {
+                str(x.get("symbol", "")).upper() for x in open_lists
+                if str(x.get("listClientOrderId", "")).startswith("QXSO")
+            }
+    except Exception:
+        # Fail closed: do not create new entries when exchange recovery is unavailable.
+        return
     _set_pref(db, user.id, "binance_spot_active_trades", json.dumps(active, separators=(",", ":")))
     _set_pref(db, user.id, "binance_spot_trade_history", json.dumps(history[-500:], separators=(",", ":")))
     db.commit()
-    if len(active) >= config["max_open_trades"]:
+    if len(set(x.get("symbol") for x in active) | exchange_open_symbols) >= config["max_open_trades"]:
         return
     signal_raw = _pref(db, user.id, "signal_settings",
         '{"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":8}')
@@ -322,7 +335,7 @@ async def _scan_user(db, user: User) -> None:
     for symbol in config["symbols"]:
         if len(active) >= config["max_open_trades"] or len(daily) >= config["max_trades_per_day"]:
             break
-        if any(x.get("symbol") == symbol for x in active):
+        if any(x.get("symbol") == symbol for x in active) or symbol in exchange_open_symbols:
             continue
         try:
             scan = await build_signal(signal_settings, symbol)

@@ -318,6 +318,7 @@ The existing engine counts EMA trend observations across 60m/30m/15m, a separate
 
 ### Validation and merge gates
 
+- Initial PR CI found a test-only expected-value error: the contradictory SELL fixture has both TREND and STRUCTURE categories (expected 2, not 1). The test is corrected and all PR checks must be rerun.
 - PR and post-merge Backend CI on Python 3.12 and 3.14, schema/preflight, and Web CI must pass.
 - Full diff must confirm the registry preserves legacy BUY/SELL reason order and does not alter decision thresholds.
 - Do not merge if baseline parity tests fail or any relevant check is red.

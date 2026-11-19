@@ -34,7 +34,7 @@ def get_openai_config(db: Session, user_id: int) -> tuple[str, str]:
     model = _get(db, user_id, "openai_model", "") or AI_MODEL or "gpt-5.5"
     return key, model
 
-async def ask_openai(db: Session, user_id: int, message: str, *, channel: str = "web") -> tuple[str, str]:
+async def ask_openai(db: Session, user_id: int, message: str) -> tuple[str, str]:
     key, model = get_openai_config(db, user_id)
     if not key:
         raise RuntimeError("OpenAI is not configured. Add an API key in QUANTNEX → Connections & Integrations.")
@@ -42,7 +42,7 @@ async def ask_openai(db: Session, user_id: int, message: str, *, channel: str = 
     payload = {
         "model": model,
         "instructions": SYSTEM_INSTRUCTIONS + (
-            "\\nWeb search is enabled. Use it only when current external information is needed."
+            "\nWeb search is enabled. Use it only when current external information is needed."
             if enabled else ""
         ),
         "input": message,
@@ -67,7 +67,7 @@ async def ask_openai(db: Session, user_id: int, message: str, *, channel: str = 
                 for part in item.get("content", []):
                     if part.get("type") == "output_text" and isinstance(part.get("text"), str):
                         pieces.append(part["text"])
-        answer = "\\n".join(pieces)
+        answer = "\n".join(pieces)
     if not isinstance(answer, str) or not answer.strip():
         raise ValueError("OpenAI returned an empty response.")
     return answer.strip(), model

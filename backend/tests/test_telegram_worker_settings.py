@@ -8,6 +8,7 @@ from app.telegram_worker import (
     _normalise_auto_signal_pending,
     _rotating_auto_signal_batch,
     _is_auto_signal_stream_pending,
+    _format_telegram_message,
 )
 
 
@@ -169,3 +170,17 @@ def test_auto_signal_stream_pending_requires_explicit_not_ready_websocket_state(
         "signal": {"side": "BUY"},
         "order_flow": {"data_mode": "PUBLIC_WEBSOCKET_STREAM", "stream_ready": False},
     }) is False
+
+
+
+def test_telegram_source_update_links_preserve_only_github_anchors():
+    message = (
+        'Update <a href="https://github.com/adeeshadasuniduwara/QUANTNEX/compare/'
+        + 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa...bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb">'
+        + 'Compare changes</a> <a href="https://evil.example/phish">bad link</a>'
+    )
+    rendered = _format_telegram_message(message)
+    assert '<a href="https://github.com/adeeshadasuniduwara/QUANTNEX/compare/' in rendered
+    assert "Compare changes</a>" in rendered
+    assert "&lt;a href=" in rendered
+    assert "evil.example" in rendered

@@ -6,9 +6,9 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 from typing import Any
 import httpx
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, update as sql_update
 from .database import SessionLocal
-from .models import GoalContribution, PaperTrade, PersonalGoal, Preference, SignalTrade, SignalTradeEvent
+from .models import GoalContribution, PaperTrade, PersonalGoal, Preference, SignalTrade, SignalTradeEvent, TelegramDelivery
 from .security import decrypt_secret
 from .config import TWELVE_DATA_API_KEY, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
 from .signal_engine import (
@@ -28,6 +28,61 @@ def _set(db, user_id: int, key: str, value: str) -> None:
     row=db.scalar(select(Preference).where(Preference.user_id==user_id,Preference.key==key))
     if row is None: db.add(Preference(user_id=user_id,key=key,value=value))
     else: row.value=value
+
+
+def _claim_telegram_delivery(db, user_id: int, notification_key: str, lease_seconds: int = 120) -> bool:
+    """Atomically claim one outbound notice; a second worker cannot send the same key."""
+    now = datetime.now(timezone.utc)
+    row = db.scalar(select(TelegramDelivery).where(
+        TelegramDelivery.user_id == user_id,
+        TelegramDelivery.notification_key == notification_key,
+    ))
+    if row is None:
+        from sqlalchemy.exc import IntegrityError
+        try:
+            with db.begin_nested():
+                db.add(TelegramDelivery(
+                    user_id=user_id, notification_key=notification_key,
+                    status="sending", attempts=1, claimed_at=now,
+                ))
+                db.flush()
+            db.commit()
+            return True
+        except IntegrityError:
+            row = db.scalar(select(TelegramDelivery).where(
+                TelegramDelivery.user_id == user_id,
+                TelegramDelivery.notification_key == notification_key,
+            ))
+            if row is None:
+                db.rollback()
+                return False
+    if row.status == "sent":
+        return False
+    claimed_at = row.claimed_at
+    if claimed_at is not None and claimed_at.tzinfo is None:
+        claimed_at = claimed_at.replace(tzinfo=timezone.utc)
+    if row.status == "sending" and claimed_at and (now - claimed_at).total_seconds() < lease_seconds:
+        return False
+    row.status = "sending"
+    row.claimed_at = now
+    row.attempts = int(row.attempts or 0) + 1
+    db.commit()
+    return True
+
+
+def _finish_telegram_delivery(db, user_id: int, notification_key: str, sent: bool) -> None:
+    row = db.scalar(select(TelegramDelivery).where(
+        TelegramDelivery.user_id == user_id,
+        TelegramDelivery.notification_key == notification_key,
+    ))
+    if row is None:
+        return
+    row.status = "sent" if sent else "failed"
+    row.sent_at = datetime.now(timezone.utc) if sent else None
+    if not sent:
+        # Release the claim immediately so the next poll can retry a failed send.
+        row.claimed_at = datetime.now(timezone.utc) - timedelta(seconds=121)
+    db.commit()
 
 AUTO_SIGNAL_LEGACY_DEFAULT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
 AUTO_SIGNAL_MAX_BATCH_SIZE = 20
@@ -924,12 +979,11 @@ async def _deliver_pending_signal_events(client, db, user_id: int, token: str, c
         SignalTradeEvent.user_id == user_id, SignalTradeEvent.telegram_sent_at.is_(None),
         or_(SignalTradeEvent.telegram_last_attempt_at.is_(None),
             SignalTradeEvent.telegram_last_attempt_at <= cutoff),
-    ).order_by(SignalTradeEvent.created_at).limit(10)))
+    ).order_by(SignalTradeEvent.created_at).limit(20)))
     latest_by_trade = {}
     for queued in pending:
         latest_by_trade[queued.trade_id] = queued
     for event in pending:
-        # Collapse a backlog of target/exit updates into one latest-state alert per trade.
         if latest_by_trade.get(event.trade_id) is not event:
             event.telegram_sent_at = datetime.now(timezone.utc)
             db.commit()
@@ -943,6 +997,13 @@ async def _deliver_pending_signal_events(client, db, user_id: int, token: str, c
             event.telegram_sent_at = datetime.now(timezone.utc)
             db.commit()
             continue
+        delivery_key = "signal-event:" + str(event.id)
+        if not _claim_telegram_delivery(db, user_id, delivery_key):
+            continue
+        event = db.get(SignalTradeEvent, event.id)
+        if event is None or event.telegram_sent_at is not None:
+            _finish_telegram_delivery(db, user_id, delivery_key, True)
+            continue
         event.telegram_attempts = int(event.telegram_attempts or 0) + 1
         event.telegram_last_attempt_at = datetime.now(timezone.utc)
         db.commit()
@@ -950,8 +1011,10 @@ async def _deliver_pending_signal_events(client, db, user_id: int, token: str, c
             await _send(client, token, chat_id, message)
             event.telegram_sent_at = datetime.now(timezone.utc)
             db.commit()
+            _finish_telegram_delivery(db, user_id, delivery_key, True)
         except Exception as exc:
             db.rollback()
+            _finish_telegram_delivery(db, user_id, delivery_key, False)
             logger.warning("Signal outcome Telegram delivery deferred for local user %s: %s",
                            user_id, type(exc).__name__)
 
@@ -1021,14 +1084,19 @@ async def _deliver_source_update_notice(client, db, user_id: int, token: str, ch
         message += '\\n<a href="' + pull_url + '">View Pull Request</a>'
     else:
         message += '\\n<a href="https://github.com/' + repo + '/pulls">Open Pull Requests</a>'
+    delivery_key = "source-update:" + commit_sha
+    if not _claim_telegram_delivery(db, user_id, delivery_key):
+        return False
     try:
         await _send(client, token, chat_id, message)
     except Exception as exc:
+        _finish_telegram_delivery(db, user_id, delivery_key, False)
         logger.warning("Source update Telegram notice deferred for local user %s: %s",
                        user_id, type(exc).__name__)
         return False
     _set(db, user_id, "telegram_last_source_update_sha", commit_sha)
     db.commit()
+    _finish_telegram_delivery(db, user_id, delivery_key, True)
     return True
 
 

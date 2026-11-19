@@ -665,3 +665,36 @@ Add a first value-area method to the strategy registry without changing the live
 2. After merge and post-merge checks, add further methods only with explicit data provenance and causal tests.
 3. Prioritize synchronized historical Spot AggTrade/depth capture and replay so order-flow evidence can be evaluated out of sample.
 4. Keep USDⓈ-M and COIN-M Futures unsupported until separate adapters, metadata, execution constraints and deterministic fixtures are verified.
+
+
+## 2026-11-19 — Phase C5 merged and Phase C6 observed trade volume profile
+
+### Repository audit at run start
+- Main was \`0473937ca0e649f7ff0d50f3aaf9f169e1c73706\`.
+- PR #223 strategy evidence registry was merged; PR #224 rolling OHLCV VWAP diagnostic was merged as \`0473937ca0e649f7ff0d50f3aaf9f169e1c73706\`.
+- Main Backend CI and Backend/Web CI passed on that exact commit. Backend tests: 433 passed on Python 3.12 and 433 passed on Python 3.14; Web check passed.
+- Optional Telegram Update Notifications failed only in its announce job. It is separate from backend/web signal-engine checks.
+- Latest scheduled Live Crypto Signal Smoke run found: 2026-11-18 08:32 UTC, commit \`cf29930a1759d92122fd390818643bfb3a24d851\`. It discovered 1,373 eligible Spot pairs, scanned a rotating 20-pair sample, returned 20 WAIT, 0 provider errors and 0 insufficient-history skips. This is live provider/scan-health evidence only; it does not prove signal generation quality or profitability.
+- Open issues search returned none. Remaining open PRs were reviewed; none was a pending core signal-engine PR.
+
+### Phase C5 — merged PR #224
+- Added rolling 50-closed-bar OHLCV typical-price VWAP proxy to the strategy evidence registry as diagnostic-only evidence.
+- Explicit provenance: total candle volume weighted by typical price; not observed aggressor delta, not transaction-level VWAP and not volume-at-price.
+- Added bullish/bearish fixtures and incomplete/future/gapped/zero-volume rejection tests.
+- PR and post-merge main checks passed; main has 433 backend tests passing on Python 3.12 and 3.14.
+- It does not alter the live score or threshold.
+
+### Phase C6 — implementation on branch \`feat/observed-trade-volume-profile\`
+- Add POC/VAH/VAL from actual validated Binance Spot aggTrades, tick-bucketed using the exchange symbol's tick size.
+- Define 70% value area with deterministic lower-price tie-breaks; expose base quantity and quote notional.
+- Explicitly scope to the bounded latest aggTrade input window, not a full UTC session or historical profile.
+- Surface profile metrics in the signal-safe order-flow summary without changing score/gates.
+- Add deterministic hand-calculated POC/value-area/tie-break/summary tests.
+- No performance uplift claimed. PR checks and full diff review are pending.
+
+### Next exact steps
+1. Run Backend CI (Python 3.12/3.14), Backend/Web CI and Web CI for Phase C6; inspect full diff and merge only after all relevant checks pass.
+2. After merge, verify main and post-merge checks.
+3. Prioritize synchronized historical Spot AggTrade/depth capture with bounded retention and chronological replay/ablation. Current historical replay remains candle-only and cannot measure order-flow uplift.
+4. Keep strategy additions diagnostic until replay demonstrates incremental out-of-sample value; do not inflate the current legacy confluence score with correlated methods.
+5. Keep USDⓈ-M/COIN-M Futures unsupported until independent market adapters, metadata, filters, data feeds and deterministic signal tests are implemented.

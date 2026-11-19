@@ -377,6 +377,7 @@ The candle-only walk-forward replay used a generic `0.00000001` tick-size fallba
 - Pass exact `tickSize`, `minPrice` and `maxPrice` into the replay execution context in the normalized form used by the live entry validator.
 - Mark the source as `BINANCE_EXCHANGEINFO_PRICE_FILTER`.
 - Add tests proving missing, zero and non-finite tick metadata prevents signal evaluation and valid exchange filters are passed into the signal engine.
+- PR CI passed: 439 backend tests on Python 3.12 and 439 on Python 3.14; backend schema CI and Web checks passed.
 
 ### Boundary
 - This fixes exchange price-grid validity in the existing candle-only replay. It does not add historical AggTrade/depth data or prove strategy profitability.

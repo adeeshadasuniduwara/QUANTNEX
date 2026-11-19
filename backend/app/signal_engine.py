@@ -1565,7 +1565,7 @@ async def build_signal(
     )
     return {"symbol":symbol,"provider":provider_label,"generated_at":generated_at,
             "signal":signal,"execution_quality":execution_quality,
-            "confluence_score":score,"score_out_of":10,"score_note":"Legacy rule-based confluence count, not a measured win probability; category counts are diagnostic only.",
+            "confluence_score":score,"score_out_of":10,"score_note":"Legacy rule-based confluence count, not a measured win probability; diagnostic methods such as OHLCV VWAP do not change the score.",
             "timeframes":{tf:{"bias":v["bias"],"close":round(v["close"],price_precision),"ema20":round(v["ema20"],price_precision),
                 "ema50":round(v["ema50"],price_precision),"ema200":round(v["ema200"],price_precision) if v["ema200"] is not None else None,"macd_histogram":round(v["macd_histogram"],price_precision),
                 "rsi":round(v["rsi"],1),"adx":round(v["adx"],1),"atr":round(v["atr"],price_precision),

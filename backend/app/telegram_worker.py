@@ -301,7 +301,7 @@ def _format_telegram_message(message: str) -> str:
     content = (str(message or "").replace("\r\n", "\n").replace("\r", "\n")
                .replace("\\\\n", "\n").replace("\\n", "\n").strip() or "No message content.")
     safe_tag = re.compile(
-        r"</?(?:b|i)>|<a href=\"https://github\\.com/[^\\\"<>\\s]+\">|</a>",
+        r"</?(?:b|i)>|<a href=\"https://github\.com/[^\"<>\s]+\">|</a>",
         re.IGNORECASE,
     )
 

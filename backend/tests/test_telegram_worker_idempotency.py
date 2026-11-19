@@ -142,3 +142,39 @@ def test_failed_telegram_delivery_claim_can_be_retried():
     db.close()
     Base.metadata.drop_all(engine)
     engine.dispose()
+
+
+def test_installed_update_endpoint_deduplicates_repeated_client_notices(monkeypatch):
+    engine, _factory, db, user_id = _memory_session()
+    from app import main
+    user = db.get(User, user_id)
+    db.add(telegram_worker.Preference(user_id=user_id, key="telegram_bot_token_enc", value="encrypted"))
+    db.add(telegram_worker.Preference(user_id=user_id, key="telegram_chat_id", value="123456"))
+    db.commit()
+    calls = []
+
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return {"ok": True, "result": {"message_id": 77}}
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return False
+        async def post(self, _url, json=None):
+            calls.append(json)
+            return FakeResponse()
+
+    monkeypatch.setattr(main, "decrypt_secret", lambda _value: "12345:token")
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeClient)
+    payload = {"message": "WEB UPDATE INSTALLED", "notification_key": "web-update-installed:main@abcdef1"}
+    first = asyncio.run(main.notify_connected_telegram(payload, user, db))
+    second = asyncio.run(main.notify_connected_telegram(payload, user, db))
+    assert first["ok"] is True and first["duplicate"] is False
+    assert second["ok"] is True and second["duplicate"] is True
+    assert len(calls) == 1
+    db.close()
+    Base.metadata.drop_all(engine)
+    engine.dispose()

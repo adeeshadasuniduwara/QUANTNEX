@@ -452,6 +452,8 @@ async def _scan_user(db, user: User) -> None:
                 protected_qty = _floor_step(min(executed, base_free), lot["stepSize"])
                 if protected_qty < min_qty:
                     raise RuntimeError("Filled quantity is below the exchange minimum after fees.")
+                if float(protected_qty) * (entry - stop) > risk_cash * 1.000001:
+                    raise RuntimeError("Actual market fill exceeded the configured stop-risk budget.")
                 oco_id = "QXSO" + stamp
                 try:
                     oco = await _place_oco(symbol, protected_qty, stop_price, target_price,

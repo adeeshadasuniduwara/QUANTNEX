@@ -134,6 +134,104 @@ def calculate_order_book_metrics(bids: list[list[Any]], asks: list[list[Any]], *
     }
 
 
+
+
+def _calculate_trade_volume_profile(
+    footprint: dict[Decimal, dict[str, Decimal]],
+    *,
+    mid_price: Decimal,
+    tick_size: Decimal,
+    value_area_fraction: float = 0.70,
+) -> dict[str, Any]:
+    """Build a bounded, observed aggTrade volume profile for the input window.
+
+    POC is the price bucket with the largest base-asset quantity. Value area
+    expands contiguously from POC, selecting the larger adjacent bucket first;
+    ties expand toward the lower price. This is a recent input-window profile,
+    not a full-session or historical profile.
+    """
+    if isinstance(value_area_fraction, bool):
+        raise OrderFlowDataError("value_area_fraction must be a number in (0, 1].")
+    try:
+        fraction = Decimal(str(value_area_fraction))
+    except (InvalidOperation, TypeError, ValueError):
+        raise OrderFlowDataError("value_area_fraction must be a number in (0, 1].") from None
+    if not fraction.is_finite() or fraction <= 0 or fraction > 1:
+        raise OrderFlowDataError("value_area_fraction must be a number in (0, 1].")
+    if not footprint:
+        raise OrderFlowDataError("Cannot build a volume profile from an empty trade window.")
+
+    prices = sorted(footprint)
+    volumes = [
+        footprint[price]["buy_volume"] + footprint[price]["sell_volume"]
+        for price in prices
+    ]
+    if any(not volume.is_finite() or volume <= 0 for volume in volumes):
+        raise OrderFlowDataError("Trade volume profile contains an invalid price bucket.")
+    total_base = sum(volumes, Decimal(0))
+    total_quote = sum(
+        (price * volume for price, volume in zip(prices, volumes)),
+        Decimal(0),
+    )
+    if total_base <= 0 or not total_quote.is_finite():
+        raise OrderFlowDataError("Trade volume profile has invalid total volume.")
+
+    maximum = max(volumes)
+    # Deterministic tie-break: the lowest price wins an equal-volume POC.
+    poc_index = next(index for index, volume in enumerate(volumes) if volume == maximum)
+    left = right = poc_index
+    included = volumes[poc_index]
+    target = total_base * fraction
+
+    while included < target and (left > 0 or right < len(prices) - 1):
+        lower_volume = volumes[left - 1] if left > 0 else Decimal("-1")
+        upper_volume = volumes[right + 1] if right < len(prices) - 1 else Decimal("-1")
+        # Deterministic tie-break: include the lower adjacent price first.
+        if lower_volume >= upper_volume:
+            left -= 1
+            included += lower_volume
+        else:
+            right += 1
+            included += upper_volume
+
+    poc_price = prices[poc_index]
+    value_low = prices[left]
+    value_high = prices[right]
+    if mid_price > value_high:
+        location = "ABOVE_VALUE_AREA"
+    elif mid_price < value_low:
+        location = "BELOW_VALUE_AREA"
+    elif abs(mid_price - poc_price) <= tick_size / Decimal(2):
+        location = "AT_POC"
+    else:
+        location = "INSIDE_VALUE_AREA"
+
+    return {
+        "status": "AVAILABLE",
+        "source": "BINANCE_SPOT_AGGTRADES",
+        "scope": "LATEST_AGGTRADE_INPUT_WINDOW",
+        "volume_unit": "BASE_ASSET_QUANTITY",
+        "price_basis": "AGGTRADE_EXECUTION_PRICE_BUCKETED_BY_SYMBOL_TICK_SIZE",
+        "candle_volume_used": False,
+        "full_session": False,
+        "historical": False,
+        "price_bucket_count": len(prices),
+        "total_base_volume": float(total_base),
+        "total_quote_volume": float(total_quote),
+        "poc": float(poc_price),
+        "poc_base_volume": float(volumes[poc_index]),
+        "poc_quote_volume": float(poc_price * volumes[poc_index]),
+        "val": float(value_low),
+        "vah": float(value_high),
+        "value_area_target_fraction": float(fraction),
+        "value_area_covered_fraction": float(included / total_base),
+        "location_reference_price": float(mid_price),
+        "price_location": location,
+        "poc_tie_break": "LOWEST_PRICE",
+        "value_area_tie_break": "LOWER_PRICE_FIRST",
+    }
+
+
 def calculate_order_flow(agg_trades: list[dict[str, Any]], bids: list[list[Any]],
                          asks: list[list[Any]], *, now: datetime | None = None,
                          max_trade_age_seconds: float = 15.0,
@@ -193,6 +291,9 @@ def calculate_order_flow(agg_trades: list[dict[str, Any]], bids: list[list[Any]]
             "imbalance_ratio": ratio if math.isfinite(ratio) else None,
             "is_imbalanced": ratio >= footprint_imbalance_ratio,
         })
+    volume_profile = _calculate_trade_volume_profile(
+        footprint, mid_price=Decimal(str(book["mid_price"])), tick_size=tick
+    )
     age = max(0.0, (clock - trades[-1]["timestamp"]).total_seconds())
     return {
         "market_type": "BINANCE_SPOT",
@@ -217,6 +318,7 @@ def calculate_order_flow(agg_trades: list[dict[str, Any]], bids: list[list[Any]]
         "session_delta_scope": "FULL_UTC_SESSION" if session_coverage_complete else "RECENT_WINDOW_SAMPLE_ONLY",
         "session_start_trade_id": session_start_trade_id,
         "footprint": footprint_rows,
+        "volume_profile": volume_profile,
         "order_book": book, "quality": "OBSERVED_AGGRESSOR_DELTA_AND_L2_SNAPSHOT",
     }
 
@@ -407,6 +509,7 @@ def summarize_order_flow_snapshot(
             "microprice_displacement_bps": book.get("microprice_displacement_bps"),
             "source": book.get("source"),
         },
+        "volume_profile": snapshot.get("volume_profile"),
         "footprint_summary": {
             "price_bucket_count": len(footprint),
             "imbalanced_bucket_count": sum(bool(row.get("is_imbalanced")) for row in footprint if isinstance(row, dict)),

@@ -425,7 +425,14 @@
             <div class="signal-actions"><button class="primary-btn" id="connectTelegram">Connect bot &amp; enable commands</button><button class="secondary-btn" id="testTelegram">Test Telegram message</button><button class="secondary-btn" id="clearTelegram">Clear credentials</button></div>
             <div class="auto-signal-controls">
               <label class="auto-signal-toggle"><input type="checkbox" id="autoSignalsEnabled"><span><strong>Enable Auto Signals</strong><small>Only send a Telegram alert when a fresh setup passes the strict confirmation rules.</small></span></label>
-              <div class="qx-auto-markets"><span>Markets to scan</span><label><input id="autoSignalSymbolsInput" list="autoSignalSymbolOptions" value="BTCUSDT, ETHUSDT, SOLUSDT" autocomplete="off" placeholder="BTCUSDT, ETHUSDT, 1000PEPEUSDT"></label><datalist id="autoSignalSymbolOptions"></datalist><small>Enter up to 50 Binance Spot pairs, separated by commas. Add XAUUSD when Gold feed is configured.</small></div>
+              <div class="qx-auto-markets">
+                <span>Market universe</span>
+                <label><select id="autoSignalUniverseMode"><option value="ALL_BINANCE_SPOT" selected>All eligible Binance Spot pairs</option><option value="SELECTED">Custom watchlist</option></select></label>
+                <label>Custom markets<input id="autoSignalSymbolsInput" list="autoSignalSymbolOptions" value="" autocomplete="off" placeholder="BTCUSDT, ETHUSDT, 1000PEPEUSDT" disabled></label>
+                <datalist id="autoSignalSymbolOptions"></datalist>
+                <small id="autoSignalUniverseHint">All currently eligible Binance Spot pairs are discovered dynamically and scanned in rotating batches. No static BTC/ETH/SOL-only limit.</small>
+              </div>
+              <label>Pairs per scan cycle<select id="autoSignalScanBatchSize"><option value="5">5 pairs</option><option value="10">10 pairs</option><option value="20" selected>20 pairs</option></select></label>
               <label>Scan interval<select id="autoSignalInterval"><option value="60">Every 1 minute</option><option value="180" selected>Every 3 minutes</option><option value="300">Every 5 minutes</option><option value="900">Every 15 minutes</option></select></label>
               <button class="primary-btn" id="saveAutoSignals">Save Auto Signal settings</button>
               <p class="telegram-status" id="autoSignalStatus">Auto signals are OFF until you explicitly enable them.</p>

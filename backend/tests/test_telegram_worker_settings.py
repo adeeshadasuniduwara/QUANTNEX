@@ -5,6 +5,9 @@ from app.telegram_worker import (
     _market_session_snapshot,
     _normalise_auto_signal_settings,
     _normalise_signal_settings,
+    _normalise_auto_signal_pending,
+    _rotating_auto_signal_batch,
+    _is_auto_signal_stream_pending,
 )
 
 
@@ -12,7 +15,9 @@ def test_auto_signal_settings_use_safe_defaults_for_json_null_and_invalid_types(
     expected = {
         "enabled": False,
         "interval_seconds": 180,
-        "symbols": ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+        "universe_mode": "ALL_BINANCE_SPOT",
+        "scan_batch_size": 20,
+        "symbols": [],
     }
     assert _normalise_auto_signal_settings("null") == expected
     assert _normalise_auto_signal_settings("[]") == expected
@@ -21,11 +26,13 @@ def test_auto_signal_settings_use_safe_defaults_for_json_null_and_invalid_types(
 
 def test_auto_signal_settings_clamp_interval_and_filter_duplicate_symbols():
     result = _normalise_auto_signal_settings(
-        '{"enabled":true,"interval_seconds":"99999","symbols":["btcusdt","XAUUSD","BTCUSDT","BAD"]}'
+        '{"enabled":true,"interval_seconds":"99999","universe_mode":"SELECTED","symbols":["btcusdt","XAUUSD","BTCUSDT","BAD"]}'
     )
     assert result == {
         "enabled": True,
         "interval_seconds": 3600,
+        "universe_mode": "SELECTED",
+        "scan_batch_size": 20,
         "symbols": ["BTCUSDT", "XAUUSD"],
     }
 
@@ -37,6 +44,8 @@ def test_auto_signal_settings_recover_from_invalid_interval_and_symbols():
     assert result == {
         "enabled": True,
         "interval_seconds": 180,
+        "universe_mode": "ALL_BINANCE_SPOT",
+        "scan_batch_size": 20,
         "symbols": [],
     }
 
@@ -80,3 +89,83 @@ def test_market_session_snapshot_respects_weekends_and_dst():
     assert set(winter) == {"london", "new-york"}
     assert summer["new-york"]["close_utc"].hour == 21
     assert winter["new-york"]["close_utc"].hour == 22
+
+
+def test_legacy_default_btc_eth_sol_watchlist_migrates_to_full_spot_universe():
+    from app.telegram_worker import _normalise_auto_signal_settings
+
+    result = _normalise_auto_signal_settings(
+        '{"enabled":true,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}'
+    )
+    assert result["universe_mode"] == "ALL_BINANCE_SPOT"
+    assert result["symbols"] == []
+
+
+def test_legacy_custom_watchlist_is_preserved_as_selected_mode():
+    from app.telegram_worker import _normalise_auto_signal_settings
+
+    result = _normalise_auto_signal_settings(
+        '{"enabled":true,"symbols":["BTCUSDT","1000PEPEUSDT"]}'
+    )
+    assert result["universe_mode"] == "SELECTED"
+    assert result["symbols"] == ["BTCUSDT", "1000PEPEUSDT"]
+
+
+def test_full_universe_mode_keeps_only_optional_gold_addon_not_legacy_pairs():
+    from app.telegram_worker import _normalise_auto_signal_settings
+
+    result = _normalise_auto_signal_settings(
+        '{"universe_mode":"ALL_BINANCE_SPOT","symbols":["BTCUSDT","XAUUSD"]}'
+    )
+    assert result["universe_mode"] == "ALL_BINANCE_SPOT"
+    assert result["symbols"] == ["XAUUSD"]
+
+
+def test_rotating_auto_scan_batch_covers_universe_without_duplicates():
+    from app.telegram_worker import _rotating_auto_signal_batch
+
+    universe = ["ADAUSDT", "BNBUSDT", "BTCUSDT", "ETHUSDT", "SOLUSDT"]
+    first = _rotating_auto_signal_batch(universe, None, 2)
+    second = _rotating_auto_signal_batch(universe, first[-1], 2)
+    third = _rotating_auto_signal_batch(universe, second[-1], 2)
+
+    assert first == ["ADAUSDT", "BNBUSDT"]
+    assert second == ["BTCUSDT", "ETHUSDT"]
+    assert third == ["SOLUSDT", "ADAUSDT"]
+    assert len(set(first + second[:1] + second[1:] + third[:1])) == 5
+
+
+def test_rotating_auto_scan_batch_skips_pending_symbols_and_handles_removed_cursor():
+    from app.telegram_worker import _rotating_auto_signal_batch
+
+    assert _rotating_auto_signal_batch(
+        ["ADAUSDT", "BNBUSDT", "BTCUSDT", "ETHUSDT"],
+        "REMOVEDUSDT",
+        3,
+        excluded={"ADAUSDT"},
+    ) == ["BNBUSDT", "BTCUSDT", "ETHUSDT"]
+
+
+def test_pending_stream_queue_is_bounded_and_discards_delisted_symbols():
+    from app.telegram_worker import _normalise_auto_signal_pending
+
+    raw = '[{"symbol":"BTCUSDT","attempts":2},{"symbol":"OLDUSDT","attempts":1},"ETHUSDT",{"symbol":"SOLUSDT","attempts":99}]'
+    result = _normalise_auto_signal_pending(raw, ["BTCUSDT", "ETHUSDT"])
+    assert result == {"BTCUSDT": 2, "ETHUSDT": 1}
+
+
+def test_auto_signal_stream_pending_requires_explicit_not_ready_websocket_state():
+    from app.telegram_worker import _is_auto_signal_stream_pending
+
+    assert _is_auto_signal_stream_pending({
+        "signal": None,
+        "order_flow": {"data_mode": "PUBLIC_WEBSOCKET_STREAM", "stream_ready": False},
+    }) is True
+    assert _is_auto_signal_stream_pending({
+        "signal": None,
+        "order_flow": {"data_mode": "PUBLIC_REST_SNAPSHOT", "stream_ready": False},
+    }) is False
+    assert _is_auto_signal_stream_pending({
+        "signal": {"side": "BUY"},
+        "order_flow": {"data_mode": "PUBLIC_WEBSOCKET_STREAM", "stream_ready": False},
+    }) is False

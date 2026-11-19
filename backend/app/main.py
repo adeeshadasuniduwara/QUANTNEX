@@ -1119,10 +1119,12 @@ async def stop_prop_challenge_guardian():
 
 @app.get("/api/v1/telegram/auto-signals")
 def get_auto_signal_settings(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
-    raw=_preference(db,user.id,"auto_signal_settings",'{"enabled":false,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}')
-    try: settings=json.loads(raw)
-    except ValueError: settings={"enabled":False,"interval_seconds":180,"symbols":["BTCUSDT","ETHUSDT","SOLUSDT"]}
-    settings.setdefault("symbols",["BTCUSDT","ETHUSDT","SOLUSDT"])
+    raw=_preference(
+        db,user.id,"auto_signal_settings",
+        '{"enabled":false,"interval_seconds":180,"universe_mode":"ALL_BINANCE_SPOT","scan_batch_size":20,"symbols":[]}',
+    )
+    from .telegram_worker import _normalise_auto_signal_settings
+    settings=_normalise_auto_signal_settings(raw)
     settings["telegram_connected"]=bool(_preference(db,user.id,"telegram_bot_token_enc") and _preference(db,user.id,"telegram_chat_id"))
     from .signal_engine import gold_feed_configured
     settings["crypto_feed_configured"]=True
@@ -1134,10 +1136,31 @@ async def set_auto_signal_settings(payload: AutoSignalSettingsRequest, user: Use
     connected=bool(_preference(db,user.id,"telegram_bot_token_enc") and _preference(db,user.id,"telegram_chat_id"))
     if payload.enabled and not connected:
         raise HTTPException(status_code=409,detail="Connect and test your personal Telegram bot before enabling Auto Signals.")
-    from .signal_engine import gold_feed_configured, is_binance_spot_symbol, MarketDataError
+    from .signal_engine import (
+        gold_feed_configured, get_binance_spot_symbols, is_binance_spot_symbol, MarketDataError,
+    )
+    universe_mode = payload.universe_mode or (
+        "SELECTED" if payload.symbols else "ALL_BINANCE_SPOT"
+    )
+    if universe_mode == "SELECTED" and not payload.symbols:
+        raise HTTPException(status_code=422, detail="Select at least one market for a custom watchlist.")
+    if universe_mode == "ALL_BINANCE_SPOT":
+        unsupported_additions = [symbol for symbol in payload.symbols if symbol != "XAUUSD"]
+        if unsupported_additions:
+            raise HTTPException(
+                status_code=422,
+                detail="All Binance Spot mode discovers pairs automatically. Use Custom watchlist for selected Binance pairs.",
+            )
     if payload.enabled and "XAUUSD" in payload.symbols and not gold_feed_configured():
         raise HTTPException(status_code=503,detail="XAUUSD is selected but no historical Gold feed is configured. Enable the local MT5 feed or add TWELVE_DATA_API_KEY to backend/.env.")
-    if payload.enabled:
+    if payload.enabled and universe_mode == "ALL_BINANCE_SPOT":
+        try:
+            universe = await get_binance_spot_symbols()
+        except MarketDataError as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+        if not universe:
+            raise HTTPException(status_code=503, detail="Binance returned no eligible Spot pairs for automatic scanning.")
+    if payload.enabled and universe_mode == "SELECTED":
         try:
             invalid = [symbol for symbol in payload.symbols
                        if symbol != "XAUUSD" and not await is_binance_spot_symbol(symbol)]
@@ -1146,11 +1169,22 @@ async def set_auto_signal_settings(payload: AutoSignalSettingsRequest, user: Use
         if invalid:
             raise HTTPException(status_code=422, detail="These symbols are not currently tradable Binance Spot pairs: " + ", ".join(invalid))
     settings=payload.model_dump()
+    settings["universe_mode"]=universe_mode
     _save_preference(db,user.id,"auto_signal_settings",json.dumps(settings))
-    record_audit_event(db, "signals.auto_settings_updated", {"enabled": settings["enabled"], "interval_seconds": settings["interval_seconds"], "symbols": settings["symbols"]})
+    record_audit_event(db, "signals.auto_settings_updated", {
+        "enabled": settings["enabled"], "interval_seconds": settings["interval_seconds"],
+        "universe_mode": settings["universe_mode"], "scan_batch_size": settings["scan_batch_size"],
+        "symbols": settings["symbols"],
+    })
     db.commit()
-    event_hub.publish("preferences.changed", "signals", "auto_settings_updated", {"key": "auto_signal_settings", "enabled": settings["enabled"], "symbols": settings["symbols"]})
-    return {**settings,"telegram_connected":connected,"gold_feed_configured":gold_feed_configured(),"note":"Automatic signal alerts run while this computer's QUANTNEX API and Telegram worker are running."}
+    event_hub.publish("preferences.changed", "signals", "auto_settings_updated", {
+        "key": "auto_signal_settings", "enabled": settings["enabled"],
+        "universe_mode": settings["universe_mode"], "symbols": settings["symbols"],
+    })
+    return {
+        **settings, "telegram_connected": connected, "gold_feed_configured": gold_feed_configured(),
+        "note": "Auto Signals rotates through the full eligible Binance Spot universe in bounded batches while the local QUANTNEX API and Telegram worker are running. No live orders are placed.",
+    }
 
 @app.get("/api/v1/telegram/reports")
 def get_telegram_report_settings(user: User = Depends(local_workspace), db: Session = Depends(get_db)):

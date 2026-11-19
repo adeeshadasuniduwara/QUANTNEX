@@ -82,7 +82,7 @@ function init(){
  $("paperWalkForwardRun")?.addEventListener("click",runWalkForward);
  if(!$("paperEngineToggle"))return;
  loadState();loadPerformance();loadMonitor();loadEvents();
- window.setInterval(()=>{if(document.visibilityState==="visible"&&location.hash==="#paper-autopilot"){loadState();loadMonitor();loadEvents();}},60000);
+ window.setInterval(()=>{const active=document.querySelector(".workspace-view:not([hidden])")?.dataset.workspaceView;if(document.visibilityState==="visible"&&active==="paper-trading"){loadState();loadMonitor();loadEvents();}},60000);
 }
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init,{once:true});else init();
 })();

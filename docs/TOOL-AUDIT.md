@@ -184,3 +184,15 @@ Do not convert static code inspection or CI success into a claim that a real ext
 - Native chart now reserves a 12-bar right-side gutter so the latest candle is not pinned to the chart edge. The viewport stays stable while live candles append.
 - Mouse/touch chart gestures now support horizontal history pan (including limited future space), vertical price pan, independent price-axis scaling and time zoom; pointer geometry uses the same responsive price-axis width as rendering.
 - Evidence: lifecycle and chart contract tests added/updated. Real browser interaction, provider-driven live tick speed and visual verification on desktop/mobile remain device-level checks.
+
+
+## Workspace navigation cleanup — 2026-11-20
+
+- Consolidated the sidebar into focused work areas instead of exposing every sub-panel as a separate top-level tab.
+- Market Intelligence now contains the Market Data Reliability panel; its controls and diagnostics remain available without a separate navigation destination.
+- Trading Desk now contains Paper Trading, Autonomous Paper Desk, Performance Lab and Risk Management panels. Paper execution remains simulated and no broker order path is enabled by this navigation change.
+- Market Desks now contains the unified Live Watchlist plus the dedicated Forex, Crypto and Gold panels.
+- Removed only redundant top-level navigation entries; the underlying section IDs, controls, API routes, local records and settings are retained.
+- Updated view-activity aliases so market refresh, paper ledger/performance polling, and the Paper Autopilot refresh continue to run while their consolidated parent page is active.
+- Kept dedicated destinations for QUANTNEX VIEW, Telegram Bot, Binance Exchange, Order Flow & Liquidity, News Intelligence, Economic Calendar, Price Alerts, Trade History, Strategy Library, Portfolio Monitor, Connections & Integrations, AI Strategy Laboratory, Prop Firm Challenge, System Security, Goals and Support because they serve distinct workflows.
+- Evidence: navigation contract tests cover all retained targets, grouped destinations and background refresh aliases. Actual visual layout and user-device interaction remain subject to browser verification.

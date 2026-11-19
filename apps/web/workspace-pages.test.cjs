@@ -10,14 +10,27 @@ assert.equal(new Set(sectionIds).size, sectionIds.length, "Section IDs must be u
 const missingTargets = navTargets.filter(target => target !== "overview" && !sectionIds.includes(target));
 assert.deepEqual(missingTargets, [], "Every sidebar link must point to an existing section");
 
-const requiredPages = [
+const requiredSections = [
   "watchlist-desk", "forex-desk", "crypto-desk", "gold-desk", "price-alerts",
   "economic-calendar", "trade-history", "strategy-library", "portfolio-monitor",
-  "integrations-center", "telegram-bot"
+  "integrations-center", "telegram-bot", "paper-autopilot", "data-reliability",
+  "performance-lab", "risk-management"
 ];
-for (const page of requiredPages) {
-  assert.ok(sectionIds.includes(page), "Missing page section: " + page);
-  assert.ok(navTargets.includes(page), "Missing sidebar link: " + page);
+for (const page of requiredSections) {
+  assert.ok(sectionIds.includes(page), "Missing retained workspace section: " + page);
+}
+const requiredNavPages = [
+  "watchlist-desk", "price-alerts", "economic-calendar", "trade-history",
+  "strategy-library", "portfolio-monitor", "integrations-center", "telegram-bot"
+];
+for (const page of requiredNavPages) {
+  assert.ok(navTargets.includes(page), "Missing dedicated sidebar destination: " + page);
+}
+for (const groupedPage of [
+  "data-reliability", "paper-autopilot", "performance-lab", "risk-management",
+  "forex-desk", "crypto-desk", "gold-desk"
+]) {
+  assert.ok(!navTargets.includes(groupedPage), "Grouped panel must not create a duplicate top-level tab: " + groupedPage);
 }
 for (const asset of ["apps/web/workspace-pages.js", "apps/web/workspace-pages.css", "apps/web/realtime-events.js", "apps/web/prop-challenge.js"]) {
   assert.ok(fs.existsSync(asset), "Missing workspace page asset: " + asset);
@@ -159,3 +172,9 @@ console.log("Paper Trading UI checks passed: closed results and close-error reco
 
 assert.ok(/function syncWorkspaceView\(\)[\s\S]*?connectCryptoTicker\(\);/.test(fs.readFileSync("apps/web/app.js","utf8")), "Shared crypto live feed must stay connected across visible workspace views.");
 assert.ok(fs.readFileSync("apps/web/app.js","utf8").includes("syncWorkspaceView();"), "Shared market feed must start on workspace launch, not only after opening Market Intelligence.");
+
+
+assert.ok(fs.readFileSync("apps/web/app.js", "utf8").includes("workspaceViewGroups"), "Consolidated parent views must retain their activity aliases.");
+assert.ok(html.includes('href="#paper-trading">Trading Desk</a>'), "Paper-related panels must share the Trading Desk navigation destination.");
+assert.ok(html.includes('href="#watchlist-desk">Market Desks</a>'), "Forex, Crypto and Gold panels must share the Market Desks navigation destination.");
+console.log("Consolidated workspace destination checks passed.");

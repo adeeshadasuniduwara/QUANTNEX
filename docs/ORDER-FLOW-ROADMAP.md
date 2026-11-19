@@ -113,7 +113,8 @@ Only after Spot order-flow is stable:
 | Aggressor-side trade delta | Yes; recent `aggTrades`, buyer-is-maker semantics | Not wired | Not wired | Not available from current Gold candle/quote adapters |
 | UTC session delta | Only when the current response begins at the UTC session's first aggregate-trade ID and every subsequent ID is contiguous; otherwise unavailable/sample only | Not wired | Not wired | Not available |
 | Persistent CVD | In-memory stream-seeded CVD is available from the bounded bootstrap; scope is only since the seed, it is not persisted, and full UTC-session delta remains unavailable without an independent session anchor | Not wired | Not wired | Not available |
-| Observed trade volume profile (POC/VAH/VAL) | Yes: tick-bucketed base-quantity profile over the latest bounded aggTrade input window; not full-session or historical | Not wired | Not wired | Not available |\n| Footprint buckets / imbalance | Recent-window price buckets from observed aggTrades | Not wired | Not wired | Not available |
+| Observed trade volume profile (POC/VAH/VAL) | Yes: tick-bucketed base-quantity profile over the latest bounded aggTrade input window; not full-session or historical | Not wired | Not wired | Not available |
+| Footprint buckets / imbalance | Recent-window price buckets from observed aggTrades | Not wired | Not wired | Not available |
 | Order-book depth | Sequence-validated Spot WebSocket stream is required by the live signal gate; on-demand manager owns at most eight active symbol streams. Auto scanner rotates across the dynamic pair universe; it does not subscribe to every pair simultaneously | Not wired | Not wired | Not available |
 | Funding / open interest / liquidations | Not applicable to Spot | Not wired | Not wired | Not available |
 | Historical trade/depth replay | Not yet; current walk-forward uses candles and assumed execution costs | Not wired | Not wired | Not available |
@@ -340,7 +341,7 @@ Branch: feat/vwap-diagnostic-evidence, created from main 0ee25ab7f259af6f690d258
 
 ## Phase C6 — observed trade volume profile (implementation PR)
 
-Branch: \`feat/observed-trade-volume-profile\`, based on main \`0473937ca0e649f7ff0d50f3aaf9f169e1c73706\`.
+Branch: `feat/observed-trade-volume-profile`, based on main `0473937ca0e649f7ff0d50f3aaf9f169e1c73706`.
 
 ### Implementation
 
@@ -348,12 +349,12 @@ Branch: \`feat/observed-trade-volume-profile\`, based on main \`0473937ca0e649f7
 - Expose Point of Control (POC), Value Area High (VAH), Value Area Low (VAL), base-asset volume, exact quote notional summed from original execution prices, bucket count and current mid-price location.
 - POC is the bucket with the greatest base-asset quantity; equal-volume POC ties select the lower price.
 - Value area target is 70% of the observed window's base volume. Expand from POC by selecting the larger adjacent bucket; equal adjacent-volume ties expand toward the lower price.
-- The profile is explicitly scoped to \`LATEST_AGGTRADE_INPUT_WINDOW\` (bounded recent trades, up to the stream/REST input limit). It is not a complete UTC session profile, not a persistent historical profile, and not a cross-venue consolidated profile.
+- The profile is explicitly scoped to `LATEST_AGGTRADE_INPUT_WINDOW` (bounded recent trades, up to the stream/REST input limit). It is not a complete UTC session profile, not a persistent historical profile, and not a cross-venue consolidated profile.
 - Include the profile in the signal-safe order-flow summary so it is visible alongside delta, CVD scope, footprint and L2 evidence. It is diagnostic only and does not add score points, override the order-flow gate, or change BUY/SELL thresholds.
 
 ### Deterministic validation
 
-- Hand-computed four-price fixture verifies POC=100, VAL=100, VAH=101, base volume=11, quote volume=1110 and 70% value-area coverage.
+- Hand-computed four-price fixture verifies POC=100, VAL=100, VAH=101, base volume=11, quote volume=1111.2 and 70% value-area coverage.
 - Equal-volume fixture verifies lowest-price POC tie-break and lower-price-first value-area expansion.
 - Summary fixture verifies the observed profile scope/provenance survives into the signal payload.
 

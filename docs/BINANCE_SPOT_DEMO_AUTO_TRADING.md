@@ -18,7 +18,7 @@ QUANTNEX Spot Auto Trading is an opt-in execution worker for Binance **Demo Trad
 4. Explicitly choose **Start Spot Demo Auto Trading** after reviewing the settings.
 5. Keep QUANTNEX running. The background worker scans while the local API is active.
 
-Defaults are 0.5% risk per trade, one open position, three entries per UTC day, 2% daily loss limit, 12 bps maximum spread, and a $10m minimum 24-hour quote volume. The signal engine must return a fresh BUY setup; SELL signals are ignored in Spot mode.
+Defaults are 0.5% risk per trade, one open position, three entries per UTC day, 2% daily loss limit, 12 bps maximum spread, and a $10m minimum 24-hour quote volume. The signal engine must return a fresh BUY setup with a MARKET entry type; pending LIMIT setups are skipped by this first execution version, and SELL signals are ignored in Spot mode. The engine uses the signal's own stop-loss and TP3 levels, then rechecks stop risk against the actual average fill.
 
 ## Execution and protection
 

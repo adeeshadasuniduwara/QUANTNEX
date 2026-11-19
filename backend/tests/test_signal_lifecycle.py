@@ -232,3 +232,55 @@ def test_legacy_duplicate_active_plans_are_consolidated_to_newest_symbol_plan():
     assert newer.status == "OPEN"
     db.close()
 
+
+
+
+def test_signal_performance_summary_aggregates_all_symbols_and_open_floating_r():
+    from app.signal_lifecycle import signal_performance_summary
+
+    db, user = _session()
+    now = datetime(2026, 11, 20, 4, 0, tzinfo=timezone.utc)
+    winner_signal = _signal(now)
+    winner_signal["symbol"] = "BTCUSDT"
+    winner, _ = record_signal(db, user.id, winner_signal)
+    winner.status = "TARGETS_COMPLETE"
+    winner.realized_r = 1.9
+
+    loser_signal = _signal(now + timedelta(minutes=1))
+    loser_signal["symbol"] = "ETHUSDT"
+    loser, _ = record_signal(db, user.id, loser_signal)
+    loser.status = "STOPPED"
+    loser.realized_r = -1.0
+
+    open_signal = _signal(now + timedelta(minutes=2))
+    open_signal["symbol"] = "SOLUSDT"
+    opened, _ = record_signal(db, user.id, open_signal)
+    opened.last_price = 102.5  # +0.5R unrealized on the remaining full position.
+
+    pending_signal = {**_signal(now + timedelta(minutes=3)), "symbol": "XRPUSDT", "entry_type": "LIMIT"}
+    pending, _ = record_signal(db, user.id, pending_signal)
+    assert pending.status == "PENDING" and pending.filled_at is None
+
+    summary = signal_performance_summary(list(db.query(type(winner)).filter_by(user_id=user.id)))
+    assert summary["total_signals"] == 3
+    assert summary["closed_trades"] == 2
+    assert summary["open_trades"] == 1
+    assert summary["wins"] == 1 and summary["losses"] == 1
+    assert summary["win_rate"] == 50.0
+    assert summary["realized_r"] == 0.9
+    assert summary["floating_r"] == 0.5
+    assert summary["net_r"] == 1.4
+    assert summary["is_complete"] is True
+    db.close()
+
+
+def test_signal_performance_marks_open_trades_without_prices_as_incomplete():
+    from app.signal_lifecycle import signal_performance_summary
+
+    db, user = _session()
+    trade, _ = record_signal(db, user.id, _signal(datetime(2026, 11, 20, 4, 0, tzinfo=timezone.utc)))
+    summary = signal_performance_summary([trade])
+    assert summary["open_trades"] == 1
+    assert summary["unpriced_open_trades"] == 1
+    assert summary["is_complete"] is False
+    db.close()

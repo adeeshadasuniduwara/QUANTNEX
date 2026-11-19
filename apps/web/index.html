@@ -809,16 +809,6 @@
         </div>
         <p class="p7-note">You can connect either market independently. Saving or replacing one credential pair never changes the other pair. Secrets are encrypted in the local database; the updater preserves the database and backend/.env.</p>
         <div class="bn-risk-block">
-          <div class="workspace-page-toolbar"><div><strong>Risk &amp; daily limits</strong><p>Saved locally and defaulted conservatively.</p></div></div>
-          <form id="bnRiskForm" class="workspace-page-form">
-            <label>Maximum trades per day<input id="bnDailyTrades" type="number" min="1" max="50" value="1" required></label>
-            <label>Maximum open trades<input id="bnOpenTrades" type="number" min="1" max="20" value="1" required></label>
-            <label>Risk per trade (%)<input id="bnRiskPercent" type="number" min="0.01" max="2" step="0.01" value="0.5" required></label>
-            <label>Maximum daily loss (%)<input id="bnDailyLoss" type="number" min="0.01" max="5" step="0.01" value="2" required></label>
-            <div class="bn-actions"><button class="primary-btn" type="submit">Save risk limits</button><button class="secondary-btn" type="button" id="bnAutoOff">Emergency stop · Auto OFF</button></div>
-          </form>
-        </div>
-        <div class="bn-risk-block">
           <div class="workspace-page-toolbar"><div><strong>Spot Demo Auto Trading</strong><p>Only Binance Spot Demo is supported by this execution engine. Spot is BUY-only, unleveraged, and DCA is disabled.</p></div><span class="pill">SPOT DEMO ONLY</span></div>
           <form id="bnSpotAutoConfigForm" class="workspace-page-form">
             <label>USDT symbols (comma separated)<input id="bnSpotSymbols" value="BTCUSDT, ETHUSDT, SOLUSDT" maxlength="500" required></label>

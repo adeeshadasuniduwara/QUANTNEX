@@ -312,7 +312,7 @@ The existing engine counts EMA trend observations across 60m/30m/15m, a separate
 - Add backend/app/signal_methods.py with a typed MethodEvidence model and an explicit StrategyMethod registry.
 - Register the current candle-derived checks: EMA multi-timeframe trend, MACD momentum, RSI range, ADX trend strength, confirmed BOS/MSS, liquidity sweep, OB/FVG/breaker/premium-discount location, and configured trend-timeframe alignment.
 - Preserve legacy reason order, raw BUY/SELL counts and live threshold behavior; no score or gate is changed in this phase.
-- Emit supporting and conflicting evidence on each signal, including method ID, category, side, timeframe, reason, candle-derived provenance and unweighted status.
+- Emit supporting and conflicting evidence on each signal, including method ID, category, side, timeframe, reason, candle-derived provenance, as-of observation timestamp and unweighted status.
 - Report unique category counts (TREND, MOMENTUM, STRUCTURE, LIQUIDITY, LOCATION) as diagnostic only. These counts are not yet used as live score gates and are not calibrated probabilities.
 - Add deterministic bullish, bearish, contradictory, neutral and registry-uniqueness tests; add end-to-end assertions that generated signals expose registry evidence.
 

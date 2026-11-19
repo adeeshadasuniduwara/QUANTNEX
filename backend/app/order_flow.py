@@ -166,13 +166,17 @@ def _calculate_trade_volume_profile(
         footprint[price]["buy_volume"] + footprint[price]["sell_volume"]
         for price in prices
     ]
-    if any(not volume.is_finite() or volume <= 0 for volume in volumes):
+    quote_volumes = [
+        footprint[price]["buy_quote_volume"] + footprint[price]["sell_quote_volume"]
+        for price in prices
+    ]
+    if (
+        any(not volume.is_finite() or volume <= 0 for volume in volumes)
+        or any(not volume.is_finite() or volume < 0 for volume in quote_volumes)
+    ):
         raise OrderFlowDataError("Trade volume profile contains an invalid price bucket.")
     total_base = sum(volumes, Decimal(0))
-    total_quote = sum(
-        (price * volume for price, volume in zip(prices, volumes)),
-        Decimal(0),
-    )
+    total_quote = sum(quote_volumes, Decimal(0))
     if total_base <= 0 or not total_quote.is_finite():
         raise OrderFlowDataError("Trade volume profile has invalid total volume.")
 
@@ -220,7 +224,7 @@ def _calculate_trade_volume_profile(
         "total_quote_volume": float(total_quote),
         "poc": float(poc_price),
         "poc_base_volume": float(volumes[poc_index]),
-        "poc_quote_volume": float(poc_price * volumes[poc_index]),
+        "poc_quote_volume": float(quote_volumes[poc_index]),
         "val": float(value_low),
         "vah": float(value_high),
         "value_area_target_fraction": float(fraction),
@@ -273,11 +277,18 @@ def calculate_order_flow(agg_trades: list[dict[str, Any]], bids: list[list[Any]]
     )
     session_delta = session_delta_sample if session_coverage_complete else None
     footprint: dict[Decimal, dict[str, Decimal]] = defaultdict(
-        lambda: {"buy_volume": Decimal(0), "sell_volume": Decimal(0)}
+        lambda: {
+            "buy_volume": Decimal(0),
+            "sell_volume": Decimal(0),
+            "buy_quote_volume": Decimal(0),
+            "sell_quote_volume": Decimal(0),
+        }
     )
     for item in trades:
         bucket = (item["price"] / tick).to_integral_value(rounding=ROUND_FLOOR) * tick
-        footprint[bucket]["buy_volume" if item["aggressor_side"] == "BUY" else "sell_volume"] += item["quantity"]
+        prefix = "buy" if item["aggressor_side"] == "BUY" else "sell"
+        footprint[bucket][f"{prefix}_volume"] += item["quantity"]
+        footprint[bucket][f"{prefix}_quote_volume"] += item["price"] * item["quantity"]
     footprint_rows = []
     for price in sorted(footprint):
         buy, sell = footprint[price]["buy_volume"], footprint[price]["sell_volume"]
@@ -286,6 +297,8 @@ def calculate_order_flow(agg_trades: list[dict[str, Any]], bids: list[list[Any]]
         )
         footprint_rows.append({
             "price": float(price), "buy_volume": float(buy), "sell_volume": float(sell),
+            "buy_quote_volume": float(footprint[price]["buy_quote_volume"]),
+            "sell_quote_volume": float(footprint[price]["sell_quote_volume"]),
             "delta": float(buy - sell),
             "dominant_side": "BUY" if buy > sell else "SELL" if sell > buy else "BALANCED",
             "imbalance_ratio": ratio if math.isfinite(ratio) else None,

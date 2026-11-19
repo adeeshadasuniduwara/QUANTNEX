@@ -735,7 +735,16 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   const node=(tag,text,className)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;if(className)el.className=className;return el;};
   const setMessage=(id,message,error=false)=>{const el=$(id);if(!el)return;el.textContent=message;el.className=error?"p7-note p7-status-error":"p7-note p7-status-ok";};
   const activeWorkspaceView=()=>document.querySelector(".workspace-view:not([hidden])")?.dataset.workspaceView||"overview";
-  const isWorkspaceViewActive=(...views)=>!document.hidden&&views.includes(activeWorkspaceView());
+  const workspaceViewGroups={
+    "market-intelligence":new Set(["market-intelligence","data-reliability"]),
+    "paper-trading":new Set(["paper-trading","paper-autopilot","performance-lab","risk-management"]),
+    "watchlist-desk":new Set(["watchlist-desk","forex-desk","crypto-desk","gold-desk"])
+  };
+  const isWorkspaceViewActive=(...views)=>{
+    if(document.hidden)return false;
+    const active=activeWorkspaceView();
+    return views.includes(active)||views.some(view=>workspaceViewGroups[active]?.has(view));
+  };
   const addCell=(row,text)=>row.append(node("td",text));
   let lastSignal=null;
   const marketCards=new Map();

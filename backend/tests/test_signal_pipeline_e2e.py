@@ -110,6 +110,7 @@ def _synthetic_setup(direction: str, interval: str, now: datetime):
             "high": max(open_price, close) + 0.08,
             "low": min(open_price, close) - 0.08,
             "close": close,
+            "volume": 10.0,
         })
 
     pivots = signal_engine.structure(rows)
@@ -201,6 +202,15 @@ def test_real_signal_pipeline_generates_and_delivers_synthetic_setup(monkeypatch
     assert candidate["strategy_evidence"]["category_score_status"] == (
         "DIAGNOSTIC_ONLY_NOT_USED_FOR_LIVE_DECISIONS"
     )
+    assert any(
+        item["method_id"] == "rolling_vwap_proxy"
+        for item in candidate["strategy_evidence"]["diagnostic_only"]
+    )
+    assert all(
+        item["counts_for_baseline"] is False
+        for item in candidate["strategy_evidence"]["diagnostic_only"]
+    )
+    assert not any("VWAP" in reason for reason in candidate["confirmations"])
     if symbol != "XAUUSD":
         assert candidate["order_flow"]["status"] == "CONFIRMED"
         assert candidate["order_flow"]["data_mode"] == "PUBLIC_WEBSOCKET_STREAM"

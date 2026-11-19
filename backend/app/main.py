@@ -344,6 +344,14 @@ def list_signal_trades(symbol: str | None = None, limit: int = 100,
     return result
 
 
+@app.get("/api/v1/signals/performance")
+def signal_performance(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    """Return all-time performance across every symbol for the current local workspace."""
+    from .signal_lifecycle import signal_performance_summary
+    trades = list(db.scalars(select(SignalTrade).where(SignalTrade.user_id == user.id)))
+    return signal_performance_summary(trades)
+
+
 @app.post("/api/v1/quantnex-view/replay")
 async def replay_quantnex_view_signals(payload: dict, user: User = Depends(local_workspace),
                                        db: Session = Depends(get_db)):

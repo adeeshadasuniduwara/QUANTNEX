@@ -103,3 +103,12 @@ assert.match(js, /view\.priceShift=view\.drag\.priceShift\+\(e\.clientY-view\.dr
 assert.match(js, /right=r\.width-priceAxisWidth\(r\.width\)/, "Pointer gestures must use the same responsive price-axis boundary as drawing.");
 assert.match(css, /touch-action:none/, "Touch gestures must be routed to chart pan/zoom instead of browser page scrolling.");
 console.log("QUANTNEX VIEW free pan, future-bar gutter and touch gesture checks passed.");
+
+
+for (const id of ["qxSignalOverallSummary", "qxSignalOverallPnl", "qxSignalRealizedPnl", "qxSignalFloatingPnl", "qxSignalWinRate", "qxSignalTotalTrades", "qxSignalPerformanceStatus", "qxSignalOverallNote"]) {
+  assert.ok(html.includes(`id="${id}"`), `Missing all-market signal performance element: ${id}`);
+}
+assert.match(intel, /\/api\/v1\/signals\/performance/, "QUANTNEX VIEW must load the all-market overall signal P&L.");
+assert.match(intel, /refreshOverallPerformance\(\)/, "Overall signal P&L must refresh with the lifecycle ledger.");
+assert.match(intel, /unpriced_open_trades/, "Missing current prices must be disclosed instead of reporting a false complete P&L.");
+console.log("QUANTNEX VIEW all-market overall signal P&L checks passed.");

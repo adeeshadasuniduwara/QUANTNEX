@@ -685,7 +685,7 @@ Add a first value-area method to the strategy registry without changing the live
 - It does not alter the live score or threshold.
 
 ### Phase C6 — implementation on branch \`feat/observed-trade-volume-profile\`
-- Add POC/VAH/VAL from actual validated Binance Spot aggTrades, tick-bucketed using the exchange symbol's tick size.
+- Add POC/VAH/VAL from actual validated Binance Spot aggTrades, tick-bucketed using the exchange symbol's tick size; quote notional is summed from each original execution price, not the rounded bucket price.
 - Define 70% value area with deterministic lower-price tie-breaks; expose base quantity and quote notional.
 - Explicitly scope to the bounded latest aggTrade input window, not a full UTC session or historical profile.
 - Surface profile metrics in the signal-safe order-flow summary without changing score/gates.

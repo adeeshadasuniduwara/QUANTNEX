@@ -252,9 +252,9 @@ Branch: `feat/dynamic-auto-signal-universe`. PR [#220](https://github.com/adeesh
 - The latest scheduled live smoke run (2026-11-18 08:32 UTC) scanned 20/1,373 eligible Spot pairs: 20 WAIT, 0 provider errors, 0 insufficient-history skips. It ran before PR #220 and is not a full-universe scan.
 - No open PR at this checkpoint is dedicated to the core signal engine; the current work branch below addresses a confirmed entry-zone selection bug.
 
-## Phase C3 — nearest valid directional retracement zone (PR validation pending)
+## Phase C3 — nearest valid directional retracement zone (merged PR #221)
 
-Branch: `fix/select-nearest-valid-retracement-zone`, created from main `bb1b27b480d5a715429c5087db99ebc044a45cdf`.
+Branch: fix/select-nearest-valid-retracement-zone, based on main bb1b27b480d5a715429c5087db99ebc044a45cdf. PR #221 merged to main as 5c911554325b3c91f2b727fbfba0d1a7450d8a9c on 2026-11-19.
 
 ### Finding
 
@@ -269,16 +269,31 @@ The signal engine previously selected the first non-empty zone in a fixed order 
 - Include the selected zone source in the LIMIT-entry rationale.
 - Add deterministic BUY and SELL fixtures where a distant first FVG must not hide a nearer valid order block, plus invalid/wrong-side zone rejection.
 
-### Validation status
+### Verification
 
-- Implementation is on the feature branch; CI and full-diff review are pending.
-- No performance uplift is claimed. This is an entry-selection correctness fix.
-- Do not merge until Backend CI (Python 3.12 and 3.14), Backend/Web CI, Web CI and the full diff review pass.
+- PR #221 full diff reviewed: four intended files only (signal_engine.py, test_signal_engine.py, AUTOMATION-PROGRESS.md, ORDER-FLOW-ROADMAP.md); no secrets or unrelated changes.
+- PR checks passed: 424 backend tests on Python 3.12 and 424 on Python 3.14; schema/preflight job passed; Web CI passed.
+- PR mergeability was clean, base was latest main, and PR was squash-merged with expected head SHA.
+- Post-merge main was verified at 5c911554325b3c91f2b727fbfba0d1a7450d8a9c. Post-merge Backend CI passed 424 tests, Backend/Web CI passed 424 tests on Python 3.12 and 3.14, and Web check passed.
+- The optional Telegram Update Notifications workflow again failed in its announce step. It is a notification configuration issue and not a code/test failure.
+- This change fixes zone selection correctness only; no win-rate, expectancy or profitability uplift is claimed.
 
-### Next exact steps
+## Latest verified checkpoint — 2026-11-19 07:41 UTC
 
-1. Run all relevant PR checks and inspect the full diff.
-2. Merge only if all checks pass and the PR is based on current main; verify post-merge main and checks.
-3. Add strategy-registry and evidence attribution without counting correlated EMA/RSI/MACD/ADX observations as independent confirmations.
-4. Build synchronized historical trade/depth capture and replay before claiming order-flow incremental value.
-5. Keep Futures unsupported until separate USDⓈ-M/COIN-M adapters, metadata, execution filters and deterministic fixtures are verified.
+- Main: 5c911554325b3c91f2b727fbfba0d1a7450d8a9c; PR #221 is merged and post-merge checks pass.
+- Dynamic all-eligible Binance Spot Auto Signals rotation from PR #220 is merged; the eight-stream cap still means coverage is rotated/on-demand, not simultaneous for all symbols.
+- Latest available scheduled live smoke run remains 2026-11-18 08:32 UTC on the pre-PR-220 main commit: 1,373 eligible Spot symbols discovered, 20 scanned, 20 WAIT, zero provider errors and zero insufficient-history skips. A newer post-PR-220 live scan was not available in this run.
+- Verified crypto signal market: Binance Spot only. USDⓈ-M Futures and COIN-M Futures are not integrated. XAUUSD is separate MT5/Twelve Data.
+- Live Spot candidate gate requires sequence-validated WebSocket AggTrade and depth. Trade-side delta is aggressor-side inferred, not a consolidated quoted bid/ask footprint. CVD is bounded to the bootstrap/backfill seed; full UTC-session delta only when anchored. Historical replay remains candle-only.
+- Existing methods: EMA/RSI/ATR/ADX/MACD, multi-timeframe bias, BOS/MSS, liquidity sweep, FVG/IFVG, order block, breaker, support/resistance, premium/discount. Still not integrated: general strategy registry, VWAP, volume profile, Fibonacci, explicit supply/demand and mitigation-block methods. Confluence is a rule count, not a calibrated probability.
+- No independent out-of-sample evidence yet shows that the live order-flow gate or additional methods improve expectancy. Do not claim performance gains until synchronized historical trade/depth replay and ablation tests exist.
+
+## Next core phase — strategy evidence registry and correlated-feature control
+
+1. Extract existing rules into a modular registry without changing their semantics initially.
+2. Emit typed evidence with method, category, side, timeframe, source/provenance, observation time, strength and conflicts.
+3. Group correlated observations (EMA trend across timeframes; MACD/RSI/ADX momentum) so they cannot inflate confluence as independent evidence.
+4. Preserve current score/decision as a baseline; introduce category-capped alternatives behind replay/ablation evaluation.
+5. Add causal tests for each method and explicit unsupported-data states. Add VWAP/volume profile only with clear candle-volume proxy provenance; do not fabricate aggressor delta.
+6. Add synchronized historical Spot AggTrade/depth capture and chronological replay so order-flow and strategy-method uplift can be measured out of sample.
+7. Keep USDⓈ-M/COIN-M Futures unsupported until independent adapters and fixtures are verified.

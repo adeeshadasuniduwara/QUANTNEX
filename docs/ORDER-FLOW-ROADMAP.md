@@ -311,28 +311,46 @@ Branch: feat/strategy-evidence-registry. PR [#223](https://github.com/adeeshadas
 - PR CI and post-merge main passed 430 backend tests on Python 3.12 and 3.14; schema/preflight and Web CI passed.
 - No accuracy, win-rate or profitability improvement is claimed.
 
-## Phase C5 — rolling VWAP proxy as diagnostic-only registry evidence (PR validation pending)
+## Phase C5 — rolling VWAP proxy as diagnostic-only registry evidence (merged PR #224)
 
-Branch: feat/vwap-diagnostic-evidence, created from main 0ee25ab7f259af6f690d2583f083d994aae76636.
+Branch: feat/vwap-diagnostic-evidence. PR [#224](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/224) merged to main as 0473937ca0e649f7ff0d50f3aaf9f169e1c73706 on 2026-11-19.
 
-### Method definition and provenance
+- A rolling 50-closed-bar VWAP proxy uses typical price (H + L + C) / 3 weighted by total OHLCV candle volume.
+- It compares the latest 50-bar value with the previous shifted 50-bar value and emits diagnostic evidence only when close position and VWAP slope align.
+- Requires 51 unique, contiguous, valid closed bars; per-bar volume may be zero but must be non-negative, and each 50-bar window must have positive total volume.
+- Candles are included only when open timestamp + timeframe duration is no later than signal as-of time.
+- Provenance is OHLCV_TYPICAL_PRICE_PROXY. It is not trade-level VWAP, session VWAP, anchored VWAP, bid/ask volume, aggressor delta or a true transaction-level volume-at-price profile.
+- The method is DIAGNOSTIC_ONLY and counts_for_baseline=false; it is not included in legacy confirmations or the live score.
+- PR and post-merge Backend CI passed 433 tests on Python 3.12 and 433 on Python 3.14; schema/preflight and Web CI passed.
+- No performance improvement is claimed.
 
-- Calculate a rolling 50-closed-bar VWAP proxy using each bar's typical price (H + L + C) / 3 weighted by total OHLCV candle volume.
-- Compare the latest 50-bar value with the previous shifted 50-bar value. Emit bullish diagnostic evidence only when close is above the current value and current VWAP is rising; emit bearish evidence only when close is below current VWAP and current VWAP is falling.
-- Require at least 51 unique, contiguous, valid closed bars; per-bar volume may be zero but must be non-negative, and each 50-bar window must have positive total volume. A bar is eligible only when its open timestamp plus the primary timeframe duration is no later than the signal as-of timestamp.
-- Provenance is explicitly OHLCV_TYPICAL_PRICE_PROXY. The volume is total candle volume, not bid/ask volume, aggressor delta or a true transaction-level volume-at-price profile.
-- This is rolling 50-bar VWAP, not session VWAP or anchored VWAP.
-- The method is marked DIAGNOSTIC_ONLY and counts_for_baseline=false. It is exposed separately from supporting/conflicting baseline evidence and cannot alter the legacy signal score or thresholds.
+## Phase C6 — bounded minute-sampled Binance Spot order-flow capture (implementation on branch)
 
-### Tests and validation gates
+Branch: feat/orderflow-minute-capture, created from main 0473937ca0e649f7ff0d50f3aaf9f169e1c73706.
 
-- Deterministic rising and falling candle fixtures verify bullish and bearish diagnostic evidence.
-- Tests verify that the legacy baseline raw count remains unchanged, and that incomplete/future candles, timestamp gaps and all-zero-volume inputs produce no VWAP evidence.
-- PR and post-merge Backend CI on Python 3.12 and 3.14, schema/preflight and Web CI must pass.
-- Review the complete diff to confirm no diagnostic-only method changes the live score or threshold. Do not merge if any relevant check fails.
+### Purpose
+
+The live stream maintains bounded in-memory AggTrade CVD and sequence-validated depth, but the repository has no durable synchronized historical order-flow series for chronological replay/ablation. This phase adds a bounded capture layer, not a raw tick archive.
+
+### Design
+
+- Coalesce frequent stream callbacks into at most one latest snapshot per symbol per UTC minute.
+- Persist both ready and not-ready quality states so trade gaps, stale depth, reconnects and sequence invalidation remain visible.
+- Store timestamp, symbol/market type, observed aggressor-side delta and CVD/session completeness, footprint/order-flow metrics, spread/depth imbalance/microprice, depth sequence validity/update ID and source provenance.
+- Keep the persisted payload compact; do not store full depth levels or claim raw event reconstruction.
+- Use a bounded asynchronous writer and a 7-day initial retention target; cap pending memory and flush safely on shutdown.
+- Binance Spot public data only; no API key, real order or live-money path.
+
+### Validation
+
+- Deterministic tests for timestamp bucketing, coalescing, ready/not-ready provenance, non-Spot rejection, queue bounds and retention.
+- Integration tests for stream callback capture and graceful flush.
+- Backend CI on Python 3.12/3.14, schema/preflight and Web CI; post-merge verification.
+- Minute samples can support later candle-aligned order-flow feature replay, but cannot reconstruct all intraminute depth sequence events. Full raw trade/depth replay requires a separate retention/volume design.
 
 ### Next
 
-1. Add further value methods (session VWAP, volume profile and Fibonacci) only after each has precise causal definitions, data provenance and deterministic fixtures.
-2. Build synchronized historical Spot AggTrade/depth capture and replay to evaluate order-flow and method ablations out of sample.
-3. Keep USDⓈ-M/COIN-M Futures unsupported until separate market adapters and deterministic fixtures are verified.
+1. Implement and test the capture store and stream-manager callback integration.
+2. Add a read-only query interface for time-bounded samples and candle alignment.
+3. Build chronological walk-forward replay using only samples available at each signal timestamp; compare candle-only baseline with order-flow variants and ablations.
+4. Keep USDⓈ-M/COIN-M Futures unsupported until independent adapters and deterministic fixtures are verified.

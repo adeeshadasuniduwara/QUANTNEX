@@ -1463,7 +1463,9 @@ async def telegram_worker() -> None:
                         if _get(db,user_id,"telegram_signal_report_enabled","true") == "true":
                             local_now = datetime.now(ZoneInfo("Asia/Colombo"))
                             sent_day = _get(db,user_id,"telegram_signal_report_sent_date","")
-                            if local_now.hour >= 21 and sent_day != local_now.date().isoformat():
+                            if (local_now.hour >= 21 and sent_day != local_now.date().isoformat()
+                                    and now - last_daily_attempt.get((user_id, "signal_report"), 0) >= 300):
+                                last_daily_attempt[(user_id, "signal_report")] = now
                                 try:
                                     stats = await _deliver_signal_performance_pdf(client,db,user_id,token,chat_id,"daily")
                                     _set(db,user_id,"telegram_signal_report_sent_date",local_now.date().isoformat())

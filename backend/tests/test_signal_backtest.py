@@ -248,3 +248,75 @@ def test_limit_order_can_fill_and_exit_using_one_minute_execution_data(monkeypat
     assert result["limit_expired"] == 0
     assert result["trade_count"] == 1
     assert result["trades"][0]["exit_reason"] == "TAKE_PROFIT_1"
+
+
+def test_signal_replay_rejects_missing_authoritative_price_filter(monkeypatch):
+    from app import signal_backtest
+
+    calls = {"count": 0}
+
+    async def fake_build_signal(*_args, **_kwargs):
+        calls["count"] += 1
+        return {"status": "WAIT", "signal": None}
+
+    monkeypatch.setattr(signal_backtest, "build_signal", fake_build_signal)
+    candles_by_tf = {
+        "1": _candles(13_200, 1),
+        "60": _candles(220, 60),
+    }
+
+    try:
+        asyncio.run(signal_backtest._simulate_slice(
+            "BTCUSDT", candles_by_tf,
+            {"quote_asset": "USDT", "filters": {}},
+            {"primary": "60", "trend": "60", "enabled": ["60"]},
+            5.0, 10_000.0, 210, 211,
+        ))
+    except ValueError as exc:
+        assert "authoritative PRICE_FILTER" in str(exc)
+    else:
+        raise AssertionError("Replay must reject missing PRICE_FILTER metadata.")
+
+    assert calls["count"] == 0
+
+
+def test_signal_replay_passes_exchange_price_filter_into_entry_validation(monkeypatch):
+    from app import signal_backtest
+
+    captured = []
+
+    async def fake_build_signal(*_args, **kwargs):
+        captured.append(kwargs["execution_context_override"])
+        return {"status": "WAIT", "signal": None}
+
+    monkeypatch.setattr(signal_backtest, "build_signal", fake_build_signal)
+    candles_by_tf = {
+        "1": _candles(13_200, 1),
+        "60": _candles(220, 60),
+    }
+    symbol_info = {
+        "quote_asset": "USDT",
+        "filters": {
+            "PRICE_FILTER": {
+                "tickSize": "0.01000000",
+                "minPrice": "0.01000000",
+                "maxPrice": "1000000.00000000",
+            },
+            "LOT_SIZE": {"stepSize": "0.00100000", "minQty": "0.00100000"},
+        },
+    }
+
+    asyncio.run(signal_backtest._simulate_slice(
+        "BTCUSDT", candles_by_tf, symbol_info,
+        {"primary": "60", "trend": "60", "enabled": ["60"]},
+        5.0, 10_000.0, 210, 211,
+    ))
+
+    assert len(captured) == 1
+    assert captured[0]["tick_size"] == "0.01000000"
+    assert captured[0]["tick_size_source"] == "BINANCE_EXCHANGEINFO_PRICE_FILTER"
+    assert captured[0]["price_filter"] == {
+        "tick_size": "0.01000000",
+        "min_price": "0.01000000",
+        "max_price": "1000000.00000000",
+    }

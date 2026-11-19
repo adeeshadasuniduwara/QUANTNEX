@@ -320,3 +320,37 @@ def test_signal_replay_passes_exchange_price_filter_into_entry_validation(monkey
         "min_price": "0.01000000",
         "max_price": "1000000.00000000",
     }
+
+
+def test_signal_replay_rejects_zero_or_non_finite_exchange_tick_size(monkeypatch):
+    from app import signal_backtest
+
+    async def fake_build_signal(*_args, **_kwargs):
+        raise AssertionError("Signal evaluation must not run with an invalid exchange tick.")
+
+    monkeypatch.setattr(signal_backtest, "build_signal", fake_build_signal)
+    candles_by_tf = {
+        "1": _candles(13_200, 1),
+        "60": _candles(220, 60),
+    }
+    for tick_size in ("0", "NaN", "Infinity"):
+        try:
+            asyncio.run(signal_backtest._simulate_slice(
+                "BTCUSDT", candles_by_tf,
+                {
+                    "quote_asset": "USDT",
+                    "filters": {
+                        "PRICE_FILTER": {
+                            "tickSize": tick_size,
+                            "minPrice": "0",
+                            "maxPrice": "0",
+                        }
+                    },
+                },
+                {"primary": "60", "trend": "60", "enabled": ["60"]},
+                5.0, 10_000.0, 210, 211,
+            ))
+        except ValueError as exc:
+            assert "PRICE_FILTER" in str(exc)
+        else:
+            raise AssertionError(f"Replay must reject invalid tick size {tick_size}.")

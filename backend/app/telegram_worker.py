@@ -667,6 +667,13 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
     if command=="/binance_off":
         _set(db,user_id,"binance_auto_trading_enabled","false");db.commit()
         return "🛑 Binance Auto Trading: OFF.\\n🇱🇰 Binance ස්වයංක්‍රීය ගනුදෙනු අක්‍රිය කර ඇත. No orders are submitted."
+    if command=="/ai_status":
+        try:
+            from .ai_assistant import get_openai_config
+            api_key, model = get_openai_config(db, user_id)
+            return "🧠 QUANTNEX AI: "+("CONNECTED" if api_key else "NOT CONFIGURED")+"\\nModel: "+model+"\\nWeb search: "+("ON" if _get(db,user_id,"openai_web_search_enabled","false")=="true" else "OFF")+"\\nAsk me any question by sending a normal text message. Add keys only in the local QUANTNEX Integrations page."
+        except ValueError:
+            return "QUANTNEX AI credentials need to be saved again. Check QUANTNEX_SECRET_KEY and reconnect the OpenAI integration."
     if command=="/status":
         return "QUANTNEX bot connected. Crypto feed: Binance Spot public candles with Coinbase fallback for BTC/ETH/SOL. Gold feed: "+(gold_feed_provider() or "not configured")+". Broker execution: disabled."
     if command=="/scan":

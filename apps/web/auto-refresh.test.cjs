@@ -19,5 +19,5 @@ for (const id of [...scheduled, ...alreadyAutomatic]) {
   assert.ok(source.includes('"' + id + '"') || source.includes(id + ":"), "refresh control is not managed: " + id);
 }
 assert.match(source, /button\.hidden = true/);
-assert.match(source, /window\.setInterval\(\(\) => runRefresh\(id\), interval\)/);
+assert.match(source, /window\\.setInterval\\(\\(\\) => runRefresh\\(id, interval\\), interval\\)/);
 console.log("Automatic refresh controller checks passed.");

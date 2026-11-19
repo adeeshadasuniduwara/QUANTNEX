@@ -572,3 +572,51 @@ The merged PR #189 adds a conservative live REST order-flow gate. The next criti
 - The latest visible GitHub Live Crypto Signal Smoke run remains the 2026-11-16 pre-failover failure; no post-PR #188 scheduled smoke success is visible yet.
 - Code audit found a remaining core gap: the Spot symbol cache stores only symbol/base/quote/filter data, and the execution context uses PRICE_FILTER, LOT_SIZE and NOTIONAL but not orderTypes, MARKET_LOT_SIZE, base/quote precision or market-specific min/max quantity. The entry selector therefore does not yet verify that MARKET or LIMIT is allowed for the selected pair.
 - Next phase must fix exchange metadata/order-type/filter handling before WebSocket integration. Keep all trading read-only/paper-only.
+
+## 2026-11-19 — Automation run 4: dynamic Spot rotation merged; retracement-zone correctness fix in review
+
+### Latest repository audit
+
+- Repository: `adeeshadasuniduwara/QUANTNEX`; default branch: `main`.
+- Main head at start of this run: `bb1b27b480d5a715429c5087db99ebc044a45cdf`.
+- PR [#220](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/220) merged on 2026-11-19. Auto Signals now rotates through the full authoritative eligible Binance Spot universe in bounded batches instead of using a BTC/ETH/SOL default.
+- PR #220 checks passed: Backend CI, Backend/Web CI on Python 3.12 and 3.14, and Web CI. Post-merge main Backend CI, Backend/Web CI (Python 3.12/3.14) and Web CI passed.
+- Latest scheduled `QUANTNEX Live Crypto Signal Smoke` run found in Actions: 2026-11-18 08:32 UTC on commit `cf29930a1759d92122fd390818643bfb3a24d851`. It discovered 1,373 eligible Spot pairs, scanned 20 rotating symbols, returned 20 WAIT results, and recorded 0 provider errors / 0 insufficient-history skips. This run predates PR #220 and is only a 20-pair read-only sample; it does not prove a qualifying live signal or profitability.
+- Latest main Backend CI, Backend/Web CI and Web CI on `bb1b27b` passed. The optional Telegram Update Notifications workflow failed in its `announce` step; no signal code test failed. The known Telegram chat-target/secret configuration issue is not changed here.
+- Open PRs were audited; none was a pending core signal-engine PR. Binance Spot remains the only verified crypto signal market; USDⓈ-M and COIN-M Futures are not integrated into the signal engine.
+
+### Confirmed entry-selection defect
+
+The signal engine selected the first non-empty FVG/order-block/breaker/inverse-FVG zone. A distant or wrong-side FVG could therefore hide a nearer valid order block or breaker and cause an otherwise valid LIMIT retracement candidate to be rejected. The same shortcut could hide a current-price confluence in another valid zone.
+
+### Changes on branch `fix/select-nearest-valid-retracement-zone`
+
+Branch created from main `bb1b27b480d5a715429c5087db99ebc044a45cdf`.
+
+- `backend/app/signal_engine.py`:
+  - Added finite, positive, ordered zone validation.
+  - Current-price confluence now checks every valid zone in the directional family.
+  - Entry selection evaluates all favorable FVG, order-block, breaker and inverse-FVG candidates, then chooses the nearest valid midpoint within the configured ATR distance and actual Binance PRICE_FILTER.
+  - Existing spread, depth, order-type, distance and execution-cost gates remain unchanged.
+  - LIMIT rationale identifies the chosen zone source.
+- `backend/tests/test_signal_engine.py`:
+  - Added BUY and SELL fixtures where a distant first FVG must not hide a nearer valid order block.
+  - Added malformed, non-finite, reversed and wrong-side zone rejection coverage.
+- `docs/ORDER-FLOW-ROADMAP.md`:
+  - Replaced the stale pre-PR-220 checkpoint with the current main state and exact Spot/Futures, order-flow, strategy and historical-replay limitations.
+  - Added Phase C3 status and next steps.
+
+### Verification and merge status
+
+- Feature branch code commits: `89fbbc36add0cd1c5226542985559b3aef9a34f6`, `b962835994650d2f4fdcfb4d9fd8192fb359f76d`, `69e501a0e4d4f7fb854acaf2cb81a418960afef0`; roadmap update: `b9ee0e5ce7fdce52e9821f55aa1a91d65f1d800c`.
+- Deterministic tests were added but have not yet run in this environment. PR CI is the next verification gate.
+- No merge has been attempted. Do not merge unless all Backend/Web CI checks pass and the complete diff is reviewed for scope and regressions.
+
+### Exact next steps
+
+1. Create PR against main and wait for Backend CI (Python 3.12/3.14), Backend/Web CI and Web CI.
+2. Review the full diff and merge only if all relevant checks pass; then verify post-merge main and checks.
+3. Add a modular strategy registry and evidence attribution. Avoid double-counting correlated EMA/RSI/MACD/ADX features as independent confluence.
+4. Capture synchronized historical Spot AggTrade/depth data with provenance and bounded retention, then implement chronological replay/ablation before claiming order-flow improves expectancy.
+5. Expand live smoke evidence after PR #220; a rotating 20-pair smoke sample is not proof of same-cycle all-pair coverage.
+6. Keep USDⓈ-M/COIN-M Futures marked unsupported until independent metadata, market data, execution filters and deterministic signal tests exist.

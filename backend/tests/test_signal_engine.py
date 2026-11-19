@@ -1147,3 +1147,63 @@ def test_binance_price_filter_checks_bounds_and_tick_alignment():
     assert _price_within_exchange_filter(0.99, rules) is False
     assert _price_within_exchange_filter(100.01, rules) is False
     assert _price_within_exchange_filter(10.001, rules) is False
+
+
+def test_directional_entry_zone_skips_distant_first_fvg_and_selects_nearest_bullish_ob():
+    from app.signal_engine import select_directional_entry_zone
+
+    structure_data = {
+        "bullish_fvg": {"low": 90.0, "high": 91.0},
+        "bullish_order_block": {"low": 99.2, "high": 99.6},
+        "bullish_breaker_block": {"low": 98.6, "high": 99.0},
+        "bullish_ifvg": None,
+    }
+    execution = {
+        "price_filter": {"tick_size": "0.01", "min_price": "0", "max_price": "100000"},
+    }
+
+    zone = select_directional_entry_zone(
+        "BUY", 100.0, 2.0, structure_data, execution
+    )
+
+    assert zone == {"low": 99.2, "high": 99.6, "source": "ORDER_BLOCK"}
+
+
+def test_directional_entry_zone_selects_nearest_bearish_retracement_zone():
+    from app.signal_engine import select_directional_entry_zone
+
+    structure_data = {
+        "bearish_fvg": {"low": 110.5, "high": 111.0},
+        "bearish_order_block": {"low": 100.4, "high": 100.8},
+        "bearish_breaker_block": {"low": 101.0, "high": 101.4},
+        "bearish_ifvg": None,
+    }
+    execution = {
+        "price_filter": {"tick_size": "0.01", "min_price": "0", "max_price": "100000"},
+    }
+
+    zone = select_directional_entry_zone(
+        "SELL", 100.0, 2.0, structure_data, execution
+    )
+
+    assert zone == {"low": 100.4, "high": 100.8, "source": "ORDER_BLOCK"}
+
+
+def test_directional_entry_zone_ignores_invalid_or_wrong_side_zones():
+    from app.signal_engine import select_directional_entry_zone
+
+    structure_data = {
+        "bullish_fvg": {"low": float("nan"), "high": 101.0},
+        "bullish_order_block": {"low": 100.2, "high": 100.4},
+        "bullish_breaker_block": {"low": -2.0, "high": -1.0},
+        "bullish_ifvg": {"low": 99.0, "high": 98.0},
+    }
+    execution = {
+        "price_filter": {"tick_size": "0.01", "min_price": "0", "max_price": "100000"},
+    }
+
+    zone = select_directional_entry_zone(
+        "BUY", 100.0, 2.0, structure_data, execution
+    )
+
+    assert zone is None

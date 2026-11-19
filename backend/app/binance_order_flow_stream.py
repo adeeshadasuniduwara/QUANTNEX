@@ -374,6 +374,7 @@ class BinanceSpotOrderFlowStream:
         return {
             "symbol": self.symbol,
             "market_type": "BINANCE_SPOT",
+            "captured_at": clock.astimezone(timezone.utc).isoformat(),
             "status": self.status,
             "signal_ready": signal_ready,
             "trade_state": trade_state,

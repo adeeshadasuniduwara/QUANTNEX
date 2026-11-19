@@ -386,7 +386,9 @@ async def _scan_user(db, user: User) -> None:
             notional = float(qty) * price
             notional_filter = filters.get("NOTIONAL") or filters.get("MIN_NOTIONAL")
             minimum_notional = float((notional_filter or {}).get("minNotional", 0))
-            if notional < minimum_notional or notional > free_usdt * 0.90:
+            maximum_notional = float((notional_filter or {}).get("maxNotional", 0) or 0)
+            if (notional < minimum_notional or notional > free_usdt * 0.90
+                    or (maximum_notional > 0 and notional > maximum_notional)):
                 continue
             # Revalidate risk after exchange precision and available-balance caps.
             if float(qty) * distance > risk_cash * 1.000001:
@@ -434,6 +436,12 @@ async def _scan_user(db, user: User) -> None:
             oco = None
             try:
                 _validate_geometry(entry, stop, target, config["min_reward_risk"])
+                stop_price = _round_price(stop, price_filter["tickSize"], ROUND_DOWN)
+                target_price = _round_price(target, price_filter["tickSize"], ROUND_UP)
+                min_price = Decimal(str(price_filter.get("minPrice", "0")))
+                max_price = Decimal(str(price_filter.get("maxPrice", "0")))
+                if stop_price < min_price or (max_price > 0 and target_price > max_price):
+                    raise RuntimeError("Protective prices fall outside Binance PRICE_FILTER bounds.")
                 # Fees may be deducted in the base asset, so use the actual free
                 # balance when sizing the exchange-native protective OCO.
                 refreshed = await _account(api_key, secret)
@@ -444,9 +452,7 @@ async def _scan_user(db, user: User) -> None:
                     raise RuntimeError("Filled quantity is below the exchange minimum after fees.")
                 oco_id = "QXSO" + stamp
                 try:
-                    oco = await _place_oco(symbol, protected_qty,
-                        _round_price(stop, price_filter["tickSize"], ROUND_DOWN),
-                        _round_price(target, price_filter["tickSize"], ROUND_UP),
+                    oco = await _place_oco(symbol, protected_qty, stop_price, target_price,
                         price_filter["tickSize"], oco_id, api_key, secret)
                     if not isinstance(oco, dict) or not oco.get("orderListId"):
                         raise RuntimeError("Binance did not confirm the protective OCO order list.")

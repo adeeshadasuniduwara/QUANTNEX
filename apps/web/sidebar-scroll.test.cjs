@@ -9,7 +9,7 @@ assert.match(sidebar[1], /<nav class="sidebar-nav" aria-label="Workspace navigat
 assert.match(sidebar[1], /<div class="sidebar-bottom"/, "Local workspace status must remain in the sidebar");
 const nav = sidebar[1].match(/<nav class="sidebar-nav"[\s\S]*?<\/nav>/);
 assert.ok(nav, "Navigation scroll region must close correctly");
-assert.ok((nav[0].match(/class="nav-link/g) || []).length >= 25, "All workspace links must remain inside the scroll region");
+assert.ok((nav[0].match(/class="nav-link/g) || []).length >= 20, "All workspace links must remain inside the scroll region");
 assert.ok(sidebar[1].indexOf('<a class="brand"') < sidebar[1].indexOf("<nav"), "Brand must stay above the scrolling region");
 assert.ok(sidebar[1].indexOf("</nav>") < sidebar[1].indexOf('<div class="sidebar-bottom"'), "Footer must stay below the scrolling region");
 

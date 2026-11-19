@@ -684,17 +684,26 @@ Add a first value-area method to the strategy registry without changing the live
 - PR and post-merge main checks passed; main has 433 backend tests passing on Python 3.12 and 3.14.
 - It does not alter the live score or threshold.
 
-### Phase C6 — implementation on branch `feat/observed-trade-volume-profile`
+### Phase C6 — merged PR #225
 - Add POC/VAH/VAL from actual validated Binance Spot aggTrades, tick-bucketed using the exchange symbol's tick size; quote notional is summed from each original execution price, not the rounded bucket price.
 - Define 70% value area with deterministic lower-price tie-breaks; expose base quantity and quote notional.
 - Explicitly scope to the bounded latest aggTrade input window, not a full UTC session or historical profile.
 - Surface profile metrics in the signal-safe order-flow summary without changing score/gates.
 - Add deterministic hand-calculated POC/value-area/tie-break/summary tests.
-- No performance uplift claimed. PR checks and full diff review are pending.
+- PR #225 merged as `50b5c0cc8cb324fb9e24b71d95a0c8e86511de48` after complete diff review and passing checks.
+- CI: 436 backend tests passed on Python 3.12 and 436 on Python 3.14; backend schema CI and Web checks passed. Post-merge main checks also passed.
+- No performance uplift claimed; profile remains diagnostic only.
 
 ### Next exact steps
-1. Run Backend CI (Python 3.12/3.14), Backend/Web CI and Web CI for Phase C6; inspect full diff and merge only after all relevant checks pass.
-2. After merge, verify main and post-merge checks.
-3. Prioritize synchronized historical Spot AggTrade/depth capture with bounded retention and chronological replay/ablation. Current historical replay remains candle-only and cannot measure order-flow uplift.
+1. Phase C6 PR #225 is merged and post-merge checks passed.
+2. Phase C7 now fixes a replay safety gap: historical replay must enforce the same authoritative Binance PRICE_FILTER tick and bounds as the live entry validator.
+3. Next priority after C7 is synchronized historical Spot AggTrade/depth capture with bounded retention and chronological order-flow replay/ablation. Current historical replay remains candle-only and cannot measure order-flow uplift.
 4. Keep strategy additions diagnostic until replay demonstrates incremental out-of-sample value; do not inflate the current legacy confluence score with correlated methods.
 5. Keep USDⓈ-M/COIN-M Futures unsupported until independent market adapters, metadata, filters, data feeds and deterministic signal tests are implemented.
+
+
+### Phase C7 — fix branch `fix/replay-enforces-binance-price-filter`
+- Audit found that candle-only replay defaulted missing symbol tick size to `0.00000001` and did not pass the symbol's `PRICE_FILTER` into the simulated execution context. As a result, the price-filter validator could accept a replay price without checking the actual exchange tick/min/max.
+- Changed replay to require finite, positive authoritative `PRICE_FILTER.tickSize`, validate min/max bounds, and pass normalized `price_filter` metadata into `build_signal`.
+- Added deterministic tests for missing/zero/non-finite tick fail-closed behavior and correct propagation of authoritative tick/min/max.
+- PR #226 code/test checks passed: 439 backend tests on Python 3.12 and 439 on Python 3.14; backend schema CI and Web checks passed. Full diff review and mergeability verification remain before merge.

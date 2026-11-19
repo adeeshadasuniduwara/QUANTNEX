@@ -4,6 +4,7 @@ from __future__ import annotations
 import math
 from bisect import bisect_left, bisect_right
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from .signal_engine import build_signal
@@ -134,7 +135,31 @@ async def _simulate_slice(
         raise ValueError("One-minute execution history is required for historical fill simulation.")
     slice_end_epoch = timestamps[primary_tf][end_index + 1]
     minute_end_index = bisect_left(minute_times, slice_end_epoch)
-    tick_size = str(symbol_info.get("filters", {}).get("PRICE_FILTER", {}).get("tickSize") or "0.00000001")
+    raw_filters = symbol_info.get("filters")
+    raw_price_filter = raw_filters.get("PRICE_FILTER") if isinstance(raw_filters, dict) else None
+    if not isinstance(raw_price_filter, dict):
+        raise ValueError(
+            "Binance Spot replay requires authoritative PRICE_FILTER metadata; no fallback tick size is allowed."
+        )
+    try:
+        tick_value = Decimal(str(raw_price_filter.get("tickSize")))
+        min_price_value = Decimal(str(raw_price_filter.get("minPrice") or "0"))
+        max_price_value = Decimal(str(raw_price_filter.get("maxPrice") or "0"))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValueError("Binance Spot replay received invalid PRICE_FILTER metadata.") from None
+    if (
+        not tick_value.is_finite() or tick_value <= 0
+        or not min_price_value.is_finite() or min_price_value < 0
+        or not max_price_value.is_finite() or max_price_value < 0
+        or (min_price_value > 0 and max_price_value > 0 and max_price_value < min_price_value)
+    ):
+        raise ValueError("Binance Spot replay received invalid PRICE_FILTER bounds or tick size.")
+    tick_size = str(tick_value)
+    price_filter = {
+        "tick_size": tick_size,
+        "min_price": str(min_price_value),
+        "max_price": str(max_price_value),
+    }
     quote_asset = str(symbol_info.get("quote_asset") or "")
     stable_quotes = {"USDT", "USDC", "FDUSD", "BUSD", "TUSD", "USDP", "DAI", "USDE"}
 
@@ -183,6 +208,8 @@ async def _simulate_slice(
             "quote_asset_usd_rate": 1.0 if quote_asset in stable_quotes else None,
             "quote_asset_usd_rate_source": "stablecoin_parity_assumption" if quote_asset in stable_quotes else "assumed_depth_usd",
             "tick_size": tick_size,
+            "price_filter": price_filter,
+            "tick_size_source": "BINANCE_EXCHANGEINFO_PRICE_FILTER",
             "step_size": str(symbol_info.get("filters", {}).get("LOT_SIZE", {}).get("stepSize") or ""),
             "min_quantity": str(symbol_info.get("filters", {}).get("LOT_SIZE", {}).get("minQty") or ""),
             "min_notional": str((symbol_info.get("filters", {}).get("NOTIONAL") or symbol_info.get("filters", {}).get("MIN_NOTIONAL") or {}).get("minNotional") or ""),

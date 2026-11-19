@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -25,6 +26,7 @@ UPDATE_REQUEST_FILE = ROOT / "data" / "updates" / "check_requested.json"
 UPDATE_PROGRESS_FILE = ROOT / "data" / "updates" / "check_in_progress.json"
 UPDATE_ERROR_FILE = ROOT / "data" / "updates" / "check_error.json"
 UPDATE_ROLLBACK_MARKER = ROOT / "data" / "updates" / "last_update.json"
+UPDATE_CONFIRMED_MARKER = ROOT / "data" / "updates" / "source_update_confirmed.json"
 
 
 class Tee:
@@ -166,6 +168,23 @@ def stop_all() -> None:
     PROCESSES.clear()
 
 
+def mark_source_update_confirmed() -> None:
+    """Publish the installed SHA only after source reconciliation/startup health succeeds."""
+    try:
+        state_path = ROOT / "data" / "quantnex_update_state.json"
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        sha = str(state.get("commit_sha", "")).lower()
+        if len(sha) != 40 or any(char not in "0123456789abcdef" for char in sha):
+            return
+        UPDATE_CONFIRMED_MARKER.parent.mkdir(parents=True, exist_ok=True)
+        temporary = UPDATE_CONFIRMED_MARKER.with_suffix(".tmp")
+        temporary.write_text(json.dumps({"commit_sha": sha}), encoding="utf-8")
+        os.replace(temporary, UPDATE_CONFIRMED_MARKER)
+        print("[AUTO UPDATE] Source SHA confirmed for personal Telegram notifications: " + sha[:7], flush=True)
+    except (OSError, ValueError, TypeError) as exc:
+        print("[AUTO UPDATE] Could not publish Telegram update confirmation: " + str(exc), flush=True)
+
+
 def check_for_automatic_update(force_reconcile: bool = False) -> bool:
     try:
         from quantnex_updater import check_and_apply
@@ -177,6 +196,7 @@ def check_for_automatic_update(force_reconcile: bool = False) -> bool:
                 print("[AUTO UPDATE] " + path, flush=True)
             restart_required = bool(result.get("restart_required"))
             if not restart_required:
+                mark_source_update_confirmed()
                 UPDATE_PROGRESS_FILE.unlink(missing_ok=True)
             UPDATE_ERROR_FILE.unlink(missing_ok=True)
             if restart_required:
@@ -307,6 +327,7 @@ def main() -> int:
             from quantnex_updater import confirm_update
             if confirm_update(ROOT):
                 print("[AUTO UPDATE] Startup health checks passed; rollback checkpoint confirmed.", flush=True)
+                mark_source_update_confirmed()
                 UPDATE_PROGRESS_FILE.unlink(missing_ok=True)
                 UPDATE_ERROR_FILE.unlink(missing_ok=True)
         except Exception as confirm_error:

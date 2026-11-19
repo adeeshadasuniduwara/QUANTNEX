@@ -215,13 +215,19 @@ def _rolling_vwap_proxy(context: dict[str, Any]) -> list[MethodEvidence]:
         volume = _finite(row.get("volume"), float("nan"))
         if not all(math.isfinite(value) for value in (high, low, close, volume)):
             continue
-        if low <= 0 or high < low or not low <= close <= high or volume <= 0:
+        if low <= 0 or high < low or not low <= close <= high or volume < 0:
             continue
         closed.append((stamp, {
             "high": high, "low": low, "close": close, "volume": volume,
         }))
     closed.sort(key=lambda item: item[0])
     if len(closed) < 51 or len({stamp for stamp, _row in closed}) != len(closed):
+        return []
+    if any(
+        (current_stamp - previous_stamp).total_seconds() != seconds
+        for (previous_stamp, _previous_row), (current_stamp, _current_row)
+        in zip(closed, closed[1:])
+    ):
         return []
 
     previous_rows = [row for _stamp, row in closed[-51:-1]]

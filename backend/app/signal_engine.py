@@ -449,7 +449,7 @@ def _price_within_exchange_filter(value: float, price_filter: Any) -> bool:
 
 
 def select_binance_entry(
-    side: str, close: float, atr_value: float, zone: dict[str, float] | None,
+    side: str, close: float, atr_value: float, zone: dict[str, Any] | None,
     execution: dict[str, Any], settings: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Choose a marketable entry or a technically justified resting limit."""

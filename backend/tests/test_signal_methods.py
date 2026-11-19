@@ -56,7 +56,7 @@ def test_registry_preserves_legacy_bullish_confirmation_order_and_raw_count():
     ]
     assert result["sell_reasons"] == []
     assert result["baseline_raw_counts"] == {"BUY": 10, "SELL": 0}
-    assert result["independent_category_counts"] == {"BUY": 5, "SELL": 0}
+    assert result["unique_category_counts"] == {"BUY": 5, "SELL": 0}
     assert result["category_score_status"] == "DIAGNOSTIC_ONLY_NOT_USED_FOR_LIVE_DECISIONS"
 
 
@@ -79,7 +79,7 @@ def test_registry_preserves_legacy_bearish_confirmation_order_and_raw_count():
     ]
     assert result["buy_reasons"] == []
     assert result["baseline_raw_counts"] == {"BUY": 0, "SELL": 10}
-    assert result["independent_category_counts"] == {"BUY": 0, "SELL": 5}
+    assert result["unique_category_counts"] == {"BUY": 0, "SELL": 5}
 
 
 def test_registry_keeps_conflicting_method_evidence_separate_by_side():
@@ -106,8 +106,8 @@ def test_registry_keeps_conflicting_method_evidence_separate_by_side():
     assert evidence_sides == {"BUY", "SELL"}
     assert "Bearish BOS / MSS" in result["sell_reasons"]
     assert "Bullish BOS / MSS" not in result["buy_reasons"]
-    assert result["independent_category_counts"]["BUY"] == 4
-    assert result["independent_category_counts"]["SELL"] == 1
+    assert result["unique_category_counts"]["BUY"] == 4
+    assert result["unique_category_counts"]["SELL"] == 1
     assert any(item["method_id"] == "market_structure_break" and item["side"] == "SELL"
                for item in result["evidence"])
 
@@ -135,7 +135,7 @@ def test_registry_emits_no_directional_evidence_for_neutral_context():
     assert result["evidence"] == []
     assert result["buy_reasons"] == []
     assert result["sell_reasons"] == []
-    assert result["independent_category_counts"] == {"BUY": 0, "SELL": 0}
+    assert result["unique_category_counts"] == {"BUY": 0, "SELL": 0}
 
 
 def test_registry_method_ids_are_unique_and_categories_are_explicit():

@@ -525,12 +525,85 @@ def select_binance_entry(
                 "entry_type": "LIMIT",
                 "entry_price": candidate,
                 "reason": (
-                    "Historical replay model: assumed spread/depth pass; resting LIMIT is placed at the OB/FVG zone midpoint."
+                    "Historical replay model: assumed spread/depth pass; resting LIMIT is placed at the nearest favorable " + str(zone.get("source") or "OB/FVG") + " zone midpoint."
                     if execution.get("is_replay") else
-                    "Price has moved away from the signal close; a resting limit is placed at the confirmed OB/FVG zone midpoint."
+                    "Price has moved away from the signal close; a resting limit is placed at the nearest favorable " + str(zone.get("source") or "OB/FVG") + " zone midpoint."
                 ),
             }
     return None
+
+
+def _valid_structure_zone(zone: Any) -> bool:
+    """Validate a causal price zone before it can affect scoring or entry selection."""
+    if not isinstance(zone, dict):
+        return False
+    try:
+        low = float(zone["low"])
+        high = float(zone["high"])
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return False
+    return math.isfinite(low) and math.isfinite(high) and 0 < low <= high
+
+
+def select_directional_entry_zone(
+    side: str,
+    mid_price: float,
+    atr_value: float,
+    structure_data: dict[str, Any],
+    execution: dict[str, Any],
+    settings: dict[str, Any] | None = None,
+) -> dict[str, float | str] | None:
+    """Select the nearest valid, favorable OB/FVG retracement zone.
+
+    Every available zone is evaluated.  The first populated zone is not
+    automatically preferred because it may be distant, invalid or on the
+    wrong side of the market.  The selected midpoint must be on the retracement
+    side of the current mid-price, within the configured ATR distance and
+    aligned to the symbol's actual PRICE_FILTER.
+    """
+    settings = settings or {}
+    direction = str(side or "").upper()
+    if direction not in {"BUY", "SELL"} or not isinstance(structure_data, dict):
+        return None
+    try:
+        mid = float(mid_price)
+        atr = float(atr_value)
+        max_distance = float(settings.get("max_limit_entry_distance_atr", 0.75))
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not all(math.isfinite(value) for value in (mid, atr, max_distance)):
+        return None
+    if mid <= 0 or atr <= 0 or max_distance <= 0:
+        return None
+
+    keys = (
+        (("FVG", "bullish_fvg"), ("ORDER_BLOCK", "bullish_order_block"),
+         ("BREAKER_BLOCK", "bullish_breaker_block"), ("INVERSE_FVG", "bullish_ifvg"))
+        if direction == "BUY" else
+        (("FVG", "bearish_fvg"), ("ORDER_BLOCK", "bearish_order_block"),
+         ("BREAKER_BLOCK", "bearish_breaker_block"), ("INVERSE_FVG", "bearish_ifvg"))
+    )
+    candidates: list[tuple[float, int, dict[str, float | str]]] = []
+    price_filter = execution.get("price_filter")
+    for priority, (source, key) in enumerate(keys):
+        zone = structure_data.get(key)
+        if not _valid_structure_zone(zone):
+            continue
+        low = float(zone["low"])
+        high = float(zone["high"])
+        midpoint = (low + high) / 2
+        favorable = midpoint < mid if direction == "BUY" else midpoint > mid
+        distance = abs(midpoint - mid) / atr
+        if not favorable or distance > max_distance:
+            continue
+        if not _price_within_exchange_filter(midpoint, price_filter):
+            continue
+        candidates.append((distance, priority, {
+            "low": low, "high": high, "source": source,
+        }))
+    if not candidates:
+        return None
+    return min(candidates, key=lambda item: (item[0], item[1]))[2]
 
 
 BINANCE_INTERVALS = {"1min":"1m", "5min":"5m", "15min":"15m", "30min":"30m", "1h":"1h", "4h":"4h"}
@@ -1131,8 +1204,20 @@ async def build_signal(
     elif st["bos_mss"]=="BEARISH":sell.append("Bearish BOS / MSS")
     if st["liquidity_sweep"]=="BULLISH":buy.append("Sell-side liquidity sweep")
     elif st["liquidity_sweep"]=="BEARISH":sell.append("Buy-side liquidity sweep")
-    zone=(st["bullish_fvg"] or st["bullish_order_block"] or st["bullish_breaker_block"] or st["bullish_ifvg"]) if p["macd_histogram"]>0 else (st["bearish_fvg"] or st["bearish_order_block"] or st["bearish_breaker_block"] or st["bearish_ifvg"])
-    in_zone=bool(zone and zone["low"]<=close<=zone["high"])
+    directional_zone_keys = (
+        ("bullish_fvg", "bullish_order_block", "bullish_breaker_block", "bullish_ifvg")
+        if p["macd_histogram"] > 0 else
+        ("bearish_fvg", "bearish_order_block", "bearish_breaker_block", "bearish_ifvg")
+    )
+    # A present but distant FVG must not hide a nearer OB/breaker zone.  Score
+    # current-price confluence against every valid zone; entry selection below
+    # independently chooses the nearest favorable retracement zone.
+    in_zone = any(
+        isinstance(st.get(key), dict)
+        and _valid_structure_zone(st[key])
+        and st[key]["low"] <= close <= st[key]["high"]
+        for key in directional_zone_keys
+    )
     discount_buy=st.get("premium_discount")=="DISCOUNT" and p["macd_histogram"]>0
     premium_sell=st.get("premium_discount")=="PREMIUM" and p["macd_histogram"]<0
     if in_zone or discount_buy or premium_sell:
@@ -1178,7 +1263,10 @@ async def build_signal(
         }
     elif side:
         execution = execution_context_override or await get_binance_spot_execution_context(symbol)
-        entry_choice = select_binance_entry(side, close, p["atr"], zone, execution, settings)
+        entry_zone = select_directional_entry_zone(
+            side, execution["mid_price"], p["atr"], st, execution, settings
+        )
+        entry_choice = select_binance_entry(side, close, p["atr"], entry_zone, execution, settings)
         if not entry_choice:
             side = None
             quality_filters["execution_quality"] = False

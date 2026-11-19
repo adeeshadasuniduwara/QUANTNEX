@@ -119,14 +119,16 @@ def test_telegram_formatter_escapes_untrusted_html():
 
 
 def test_telegram_delivery_claim_is_unique_and_persists_sent_state():
-    engine, _factory, db, user_id = _memory_session()
+    engine, factory, db, user_id = _memory_session()
     key = "source-update:" + "a" * 40
     assert telegram_worker._claim_telegram_delivery(db, user_id, key) is True
-    # A concurrent/restarted worker sees the active lease and cannot send again.
-    assert telegram_worker._claim_telegram_delivery(db, user_id, key) is False
-    telegram_worker._finish_telegram_delivery(db, user_id, key, True)
-    assert telegram_worker._claim_telegram_delivery(db, user_id, key) is False
+    # A reopened database session (as used after a worker restart) sees the lease.
     db.close()
+    reopened = factory()
+    assert telegram_worker._claim_telegram_delivery(reopened, user_id, key) is False
+    telegram_worker._finish_telegram_delivery(reopened, user_id, key, True)
+    assert telegram_worker._claim_telegram_delivery(reopened, user_id, key) is False
+    reopened.close()
     Base.metadata.drop_all(engine)
     engine.dispose()
 

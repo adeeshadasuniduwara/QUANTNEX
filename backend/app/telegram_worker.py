@@ -18,6 +18,7 @@ from .signal_engine import (
 from .events import event_hub
 
 logger = logging.getLogger("quantnex.telegram")
+_SOURCE_UPDATE_PR_CACHE: dict[str, str] = {}
 
 def _get(db, user_id: int, key: str, default: str="") -> str:
     row=db.scalar(select(Preference).where(Preference.user_id==user_id,Preference.key==key))
@@ -972,26 +973,32 @@ async def _deliver_source_update_notice(client, db, user_id: int, token: str, ch
     if len(previous_sha) == 40 and all(ch in "0123456789abcdef" for ch in previous_sha):
         compare_url = f"https://github.com/{repo}/compare/{previous_sha}...{commit_sha}"
 
-    pull_url = ""
-    try:
-        response = await client.get(
-            f"https://api.github.com/repos/{repo}/commits/{commit_sha}/pulls",
-            headers={"Accept": "application/vnd.github+json", "User-Agent": "QUANTNEX-Telegram-Notifier"},
-            params={"per_page": 10},
-        )
-        if response.status_code == 200:
-            pull_requests = response.json()
-            if isinstance(pull_requests, list):
-                merged = [item for item in pull_requests if item.get("merged_at") and item.get("html_url")]
-                candidates = merged or [item for item in pull_requests if item.get("html_url")]
-                if candidates:
-                    pull_url = str(candidates[0]["html_url"])
-        elif response.status_code in (403, 429, 500, 502, 503, 504):
-            logger.warning("GitHub PR lookup deferred for local user %s (HTTP %s)", user_id, response.status_code)
+    if commit_sha in _SOURCE_UPDATE_PR_CACHE:
+        pull_url = _SOURCE_UPDATE_PR_CACHE[commit_sha]
+    else:
+        pull_url = ""
+        try:
+            response = await client.get(
+                f"https://api.github.com/repos/{repo}/commits/{commit_sha}/pulls",
+                headers={"Accept": "application/vnd.github+json", "User-Agent": "QUANTNEX-Telegram-Notifier"},
+                params={"per_page": 10},
+            )
+            if response.status_code == 200:
+                pull_requests = response.json()
+                if isinstance(pull_requests, list):
+                    merged = [item for item in pull_requests if item.get("merged_at") and item.get("html_url")]
+                    candidates = merged or [item for item in pull_requests if item.get("html_url")]
+                    if candidates:
+                        pull_url = str(candidates[0]["html_url"])
+                _SOURCE_UPDATE_PR_CACHE[commit_sha] = pull_url
+            elif response.status_code in (403, 429, 500, 502, 503, 504):
+                logger.warning("GitHub PR lookup deferred for local user %s (HTTP %s)", user_id, response.status_code)
+                return False
+            else:
+                _SOURCE_UPDATE_PR_CACHE[commit_sha] = ""
+        except (httpx.HTTPError, ValueError, TypeError):
+            logger.warning("GitHub PR lookup deferred for local user %s", user_id)
             return False
-    except (httpx.HTTPError, ValueError, TypeError):
-        logger.warning("GitHub PR lookup deferred for local user %s", user_id)
-        return False
 
     version = str(state.get("version") or ("main@" + commit_sha[:7]))
     message = (

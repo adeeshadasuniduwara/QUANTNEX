@@ -265,7 +265,20 @@ async def _scan_user(db, user: User) -> None:
         return
     daily_pnl = sum(float(x.get("realized_pnl", 0) or 0) for x in history
                     if str(x.get("closed_at", "")).startswith(today))
-    if daily_pnl <= -(free_usdt * config["max_daily_loss_percent"] / 100):
+    try:
+        daily_guard = json.loads(_pref(db, user.id, "binance_spot_daily_guard", "{}"))
+    except (TypeError, ValueError):
+        daily_guard = {}
+    if daily_guard.get("date") != today:
+        daily_guard = {"date": today, "starting_equity": free_usdt + sum(
+            float(x.get("entry_quote", 0) or 0) for x in active)}
+        _set_pref(db, user.id, "binance_spot_daily_guard", json.dumps(daily_guard, separators=(",", ":")))
+        db.commit()
+    starting_equity = max(0.0, float(daily_guard.get("starting_equity", free_usdt) or free_usdt))
+    daily_loss_limit = starting_equity * config["max_daily_loss_percent"] / 100
+    open_stop_risk = sum(max(0.0, float(x.get("entry_price", 0)) - float(x.get("stop_loss", 0)))
+                         * float(x.get("quantity", 0)) for x in active)
+    if daily_pnl - open_stop_risk <= -daily_loss_limit:
         return
 
     # Reconcile exchange-native OCO lists before considering any new entry.

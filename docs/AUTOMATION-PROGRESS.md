@@ -706,4 +706,4 @@ Add a first value-area method to the strategy registry without changing the live
 - Audit found that candle-only replay defaulted missing symbol tick size to `0.00000001` and did not pass the symbol's `PRICE_FILTER` into the simulated execution context. As a result, the price-filter validator could accept a replay price without checking the actual exchange tick/min/max.
 - Changed replay to require finite, positive authoritative `PRICE_FILTER.tickSize`, validate min/max bounds, and pass normalized `price_filter` metadata into `build_signal`.
 - Added deterministic tests for missing/zero/non-finite tick fail-closed behavior and correct propagation of authoritative tick/min/max.
-- PR checks and review are pending; no merge until they pass.
+- PR #226 code/test checks passed: 439 backend tests on Python 3.12 and 439 on Python 3.14; backend schema CI and Web checks passed. Full diff review and mergeability verification remain before merge.

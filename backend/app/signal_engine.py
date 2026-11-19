@@ -1207,7 +1207,8 @@ async def build_signal(
         for key in directional_zone_keys
     )
     strategy_evidence = evaluate_strategy_registry(
-        analysis, primary, trend, in_zone=in_zone, observed_at=as_of.isoformat()
+        analysis, primary, trend, in_zone=in_zone, observed_at=as_of.isoformat(),
+        candles=candles.get(primary, []), as_of=as_of,
     )
     buy = list(strategy_evidence["buy_reasons"])
     sell = list(strategy_evidence["sell_reasons"])
@@ -1517,11 +1518,14 @@ async def build_signal(
                 "strategy_evidence": {
                     "registry_version": strategy_evidence["registry_version"],
                     "supporting": [
-                        item for item in strategy_evidence["evidence"] if item["side"] == side
+                        item for item in strategy_evidence["evidence"]
+                        if item["side"] == side and item["decision_role"] == "BASELINE_SCORE"
                     ],
                     "conflicting": [
-                        item for item in strategy_evidence["evidence"] if item["side"] != side
+                        item for item in strategy_evidence["evidence"]
+                        if item["side"] != side and item["decision_role"] == "BASELINE_SCORE"
                     ],
+                    "diagnostic_only": strategy_evidence["diagnostic_only"],
                     "unique_category_count": strategy_evidence["unique_category_counts"][side],
                     "categories": strategy_evidence["categories"][side],
                     "category_methods": strategy_evidence["category_methods"][side],

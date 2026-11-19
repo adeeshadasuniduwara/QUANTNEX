@@ -252,7 +252,7 @@ if(sessionStorage.getItem("quantnex.webUpdateComplete")==="1"){
     // A version-scoped idempotency key prevents multiple tabs/reloads from
     // sending the same installed-update confirmation to the connected bot.
     const notificationKey=/^main@[0-9a-f]{7,40}$/i.test(safeVersion)
-      ? "web-update-installed:"+safeVersion : "";
+      ? "web-update-installed:"+safeVersion.replace("@","-") : "";
     const notification={message};
     if(notificationKey)notification.notification_key=notificationKey;
     // The local API uses the user's existing encrypted bot credentials. A missing

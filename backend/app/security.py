@@ -6,7 +6,7 @@ from .config import SECRET_KEY
 
 
 def _secret_box() -> Fernet:
-    key = base64.urlsafe_b64encode(hashlib.sha256(("QUANTNEX-SECRET:" + SECRET_KEY).encode()).digest())
+    key = base64.urlsafe_b64encode(hashlib.sha256(("QUANTNEX-TELEGRAM:" + SECRET_KEY).encode()).digest())
     return Fernet(key)
 
 

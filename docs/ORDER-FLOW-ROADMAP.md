@@ -345,7 +345,7 @@ Branch: \`feat/observed-trade-volume-profile\`, based on main \`0473937ca0e649f7
 ### Implementation
 
 - Calculate volume-at-price from Binance Spot aggregate trades already validated by the order-flow pipeline. Each observed execution is assigned to the exact symbol tick-size bucket; OHLCV candle volume is never used.
-- Expose Point of Control (POC), Value Area High (VAH), Value Area Low (VAL), base-asset volume, quote notional, bucket count and current mid-price location.
+- Expose Point of Control (POC), Value Area High (VAH), Value Area Low (VAL), base-asset volume, exact quote notional summed from original execution prices, bucket count and current mid-price location.
 - POC is the bucket with the greatest base-asset quantity; equal-volume POC ties select the lower price.
 - Value area target is 70% of the observed window's base volume. Expand from POC by selecting the larger adjacent bucket; equal adjacent-volume ties expand toward the lower price.
 - The profile is explicitly scoped to \`LATEST_AGGTRADE_INPUT_WINDOW\` (bounded recent trades, up to the stream/REST input limit). It is not a complete UTC session profile, not a persistent historical profile, and not a cross-venue consolidated profile.

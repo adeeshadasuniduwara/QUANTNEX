@@ -334,9 +334,10 @@ async def _scan_user(db, user: User) -> None:
                 continue
             info = await _symbol_info(symbol)
             filters = _filters(info)
-            lot = filters.get("LOT_SIZE") or filters.get("MARKET_LOT_SIZE")
+            lot = filters.get("LOT_SIZE")
+            market_lot = filters.get("MARKET_LOT_SIZE") or lot
             price_filter = filters.get("PRICE_FILTER")
-            if not lot or not price_filter:
+            if not lot or not market_lot or not price_filter:
                 continue
             distance = float(candidate.get("risk_distance", 0))
             if not math.isfinite(distance) or distance <= 0:
@@ -350,10 +351,14 @@ async def _scan_user(db, user: User) -> None:
                 continue
             risk_cash = free_usdt * config["risk_per_trade_percent"] / 100
             raw_qty = risk_cash / distance
-            qty = _floor_step(min(raw_qty, free_usdt * 0.90 / price), lot["stepSize"])
-            min_qty = Decimal(str(lot["minQty"]))
-            max_qty = Decimal(str(lot["maxQty"]))
-            if qty < min_qty or qty > max_qty:
+            qty = _floor_step(min(raw_qty, free_usdt * 0.90 / price), market_lot["stepSize"])
+            # The BUY market order and SELL OCO legs have separate exchange filters.
+            qty = _floor_step(float(qty), lot["stepSize"])
+            min_qty = max(Decimal(str(lot["minQty"])), Decimal(str(market_lot["minQty"])))
+            max_qty = min(Decimal(str(lot["maxQty"])), Decimal(str(market_lot["maxQty"])))
+            if (qty < min_qty or qty > max_qty
+                    or qty % Decimal(str(lot["stepSize"])) != 0
+                    or qty % Decimal(str(market_lot["stepSize"])) != 0):
                 continue
             notional = float(qty) * price
             notional_filter = filters.get("NOTIONAL") or filters.get("MIN_NOTIONAL")

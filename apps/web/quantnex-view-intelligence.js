@@ -56,6 +56,38 @@
     });
     setText("qxBacktestStatus","COMPLETED · "+data.interval);
   }
+  let performanceBusy=false;
+  const formatR=value=>{const n=Number(value)||0;return (n>0?"+":"")+n.toFixed(2)+"R";};
+  function renderOverallPerformance(data){
+    const set=(id,value)=>{const el=$(id);if(el)el.textContent=value;};
+    const direction=(id,value)=>{const el=$(id);if(el)el.dataset.direction=Number(value)>0?"positive":Number(value)<0?"negative":"neutral";};
+    set("qxSignalOverallPnl",formatR(data.net_r)+(data.is_complete?"":"*"));
+    set("qxSignalRealizedPnl",formatR(data.realized_r));
+    set("qxSignalFloatingPnl",formatR(data.floating_r));
+    set("qxSignalWinRate",Number(data.win_rate||0).toFixed(1)+"%");
+    set("qxSignalTotalTrades",String(data.total_signals||0));
+    direction("qxSignalOverallPnl",data.net_r);
+    direction("qxSignalRealizedPnl",data.realized_r);
+    direction("qxSignalFloatingPnl",data.floating_r);
+    const status=$("qxSignalPerformanceStatus");
+    if(status){status.textContent=data.is_complete?"ALL MARKETS · SYNCED":"PARTIAL · OPEN PRICE MISSING";status.dataset.state=data.is_complete?"ok":"warning";}
+    const note=$("qxSignalOverallNote");
+    if(note)note.textContent=data.is_complete
+      ?"Includes realized outcomes plus floating P&L on open positions across all symbols. Values are in R (multiples of each signal's initial risk), not account currency."
+      :"Net P&L includes all realized results and available floating marks. "+Number(data.unpriced_open_trades||0)+" open trade(s) have no current price, so the floating and net totals are incomplete.";
+  }
+  async function refreshOverallPerformance(){
+    if(performanceBusy||!$("qxSignalOverallSummary"))return;
+    performanceBusy=true;
+    try{
+      const data=await apiRequest("/api/v1/signals/performance");
+      renderOverallPerformance(data);
+    }catch(error){
+      const status=$("qxSignalPerformanceStatus");
+      if(status){status.textContent="PERFORMANCE UNAVAILABLE";status.dataset.state="error";}
+      const note=$("qxSignalOverallNote");if(note)note.textContent="Could not calculate all-market P&L: "+error.message;
+    }finally{performanceBusy=false;}
+  }
   function renderLifecycleTrades(trades){
     const rows=$("qxSignalLedgerRows"),summary=$("qxSignalLedgerSummary");
     if(!rows||!summary)return;
@@ -83,6 +115,7 @@
     });
   }
   async function refreshLifecycle(symbol=selected().symbol){
+    refreshOverallPerformance();
     if(ledgerBusy||!$("qxSignalLedgerRows"))return;ledgerBusy=true;
     try{
       const rows=await apiRequest("/api/v1/signals/trades?symbol="+encodeURIComponent(symbol)+"&limit=100");

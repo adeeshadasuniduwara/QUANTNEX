@@ -523,6 +523,22 @@ async def _price(_client: httpx.AsyncClient | None = None) -> float | None:
         return None
 
 async def _handle_command(client, db, user_id: int, token: str, chat_id: str, text: str) -> str | None:
+    clean_text = text.strip()
+    if clean_text and not clean_text.startswith("/"):
+        if len(clean_text) > 3500:
+            return "Please keep your question under 3,500 characters."
+        try:
+            from .ai_assistant import ask_openai
+            answer, _model = await ask_openai(db, user_id, clean_text, channel="telegram")
+            return answer[:3900]
+        except RuntimeError:
+            return "QUANTNEX AI is not configured yet. Add your OpenAI API key in QUANTNEX → Connections & Integrations. Do not send API keys in Telegram."
+        except httpx.HTTPStatusError as exc:
+            logger.warning("Telegram AI request rejected for local user %s: HTTP %s", user_id, exc.response.status_code)
+            return "QUANTNEX AI could not complete that request. Check the OpenAI key, model access and API billing in Connections & Integrations."
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            logger.warning("Telegram AI request failed for local user %s", user_id)
+            return "QUANTNEX AI is temporarily unavailable. Please try again in a moment."
     parts=text.strip().split()
     command=parts[0].split("@")[0].lower() if parts else ""
     raw=_get(db,user_id,"signal_settings",'{"primary":"5","trend":"60","enabled":["60","30","15","5","1"],"risk_percent":1,"min_score":7}')

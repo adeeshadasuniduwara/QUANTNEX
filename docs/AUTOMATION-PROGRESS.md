@@ -655,10 +655,10 @@ The existing live confluence count treats multiple related observations as separ
 
 ### Verification status
 
-- Feature branch implementation is complete; PR checks have not yet run.
+- First PR CI run exposed one fixture expectation error: the contradictory SELL case contains both TREND (30m) and STRUCTURE categories, so its unique category count is 2, not 1. The assertion was corrected; rerun CI is pending.
 - The registry is an explainability and architecture step, not a measured performance improvement.
 - No thresholds are loosened, and no new strategy method is treated as independently predictive.
-- Next gate: run Backend CI on Python 3.12 and 3.14, Backend/Web CI, Web CI, then compare registry BUY/SELL reason order against legacy fixtures. Merge only after full diff review and all relevant checks pass.
+- Next gate: confirm the corrected fixture passes Backend CI on Python 3.12 and 3.14, Backend/Web CI, Web CI, and legacy reason-order parity. Merge only after full diff review and all relevant checks pass.
 
 ### Next exact steps
 

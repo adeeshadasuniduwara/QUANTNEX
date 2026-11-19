@@ -673,32 +673,79 @@ def set_preference(key: str, payload: PreferenceWrite, user: User = Depends(loca
     return item
 
 @app.get("/api/v1/ai/status")
-def ai_status(user: User = Depends(local_workspace)):
-    return {"configured": bool(AI_BASE_URL and AI_API_KEY and AI_MODEL),
-            "provider": "OpenAI-compatible" if AI_BASE_URL else None,
-            "model": AI_MODEL or None,
-            "note": "AI is disabled until server-side provider settings are configured."}
+def ai_status(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .ai_assistant import get_openai_config
+    try:
+        key, model = get_openai_config(db, user.id)
+    except ValueError:
+        key, model = "", "gpt-5.5"
+    return {"configured": bool(key), "provider": "OpenAI" if key else None,
+            "model": model, "api_key_saved": bool(_preference(db, user.id, "openai_api_key_enc")),
+            "web_search_enabled": _preference(db, user.id, "openai_web_search_enabled", "false") == "true",
+            "note": "API key is stored encrypted on the local backend and is never returned."}
+
+@app.post("/api/v1/ai/config")
+def save_ai_config(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    api_key = str(payload.get("api_key") or "").strip()
+    model = str(payload.get("model") or "gpt-5.5").strip()
+    if len(model) > 120 or not re.fullmatch(r"[A-Za-z0-9._:-]+", model):
+        raise HTTPException(status_code=422, detail="Enter a valid OpenAI model identifier.")
+    if api_key:
+        if not api_key.startswith("sk-") or len(api_key) < 20 or len(api_key) > 512:
+            raise HTTPException(status_code=422, detail="OpenAI API key format is invalid.")
+        _save_preference(db, user.id, "openai_api_key_enc", encrypt_secret(api_key))
+    _save_preference(db, user.id, "openai_model", model)
+    _save_preference(db, user.id, "openai_web_search_enabled",
+                     "true" if payload.get("web_search_enabled") is True else "false")
+    record_audit_event(db, "ai.configuration_updated", {"api_key_replaced": bool(api_key), "model": model})
+    db.commit()
+    return {"ok": True, "api_key_saved": bool(_preference(db, user.id, "openai_api_key_enc")),
+            "model": model, "web_search_enabled": _preference(db, user.id, "openai_web_search_enabled") == "true"}
+
+@app.delete("/api/v1/ai/config")
+def delete_ai_config(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    row = db.scalar(select(Preference).where(Preference.user_id == user.id, Preference.key == "openai_api_key_enc"))
+    if row:
+        db.delete(row)
+    record_audit_event(db, "ai.configuration_deleted", {})
+    db.commit()
+    return {"ok": True, "api_key_saved": False}
+
+@app.post("/api/v1/ai/test")
+async def test_ai_config(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .ai_assistant import get_openai_config
+    try:
+        key, model = get_openai_config(db, user.id)
+        if not key:
+            raise HTTPException(status_code=409, detail="Add an OpenAI API key first.")
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get("https://api.openai.com/v1/models/" + model,
+                headers={"Authorization": f"Bearer {key}"})
+        if response.status_code == 401:
+            raise HTTPException(status_code=401, detail="OpenAI rejected this API key.")
+        if response.status_code == 404:
+            raise HTTPException(status_code=422, detail="This model is not available to the configured API project.")
+        response.raise_for_status()
+        return {"ok": True, "model": model, "message": "OpenAI API key and model access verified."}
+    except HTTPException:
+        raise
+    except (httpx.HTTPError, ValueError):
+        raise HTTPException(status_code=502, detail="Could not verify OpenAI. Check internet access, API key and project billing.")
 
 @app.post("/api/v1/ai/chat", response_model=AIChatResponse)
-async def ai_chat(payload: AIChatRequest, user: User = Depends(local_workspace)):
-    if not (AI_BASE_URL and AI_API_KEY and AI_MODEL):
-        raise HTTPException(status_code=503, detail="AI provider is not configured on the server.")
-    url = AI_BASE_URL if AI_BASE_URL.endswith("/chat/completions") else AI_BASE_URL + "/chat/completions"
-    body = {"model": AI_MODEL, "messages": [
-        {"role": "system", "content": "You are QUANTNEX, a cautious trading education assistant. Explain risk clearly. Never promise profits or place trades."},
-        {"role": "user", "content": payload.message}
-    ], "temperature": 0.2}
+async def ai_chat(payload: AIChatRequest, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    from .ai_assistant import ask_openai
     try:
-        async with httpx.AsyncClient(timeout=35) as client:
-            response = await client.post(url, headers={"Authorization": f"Bearer {AI_API_KEY}"}, json=body)
-            response.raise_for_status()
-            data = response.json()
-        reply = data["choices"][0]["message"]["content"]
-        if not isinstance(reply, str) or not reply.strip():
-            raise ValueError("Empty AI response")
-        return AIChatResponse(reply=reply.strip(), model=AI_MODEL)
+        reply, model = await ask_openai(db, user.id, payload.message, channel="web")
+        return AIChatResponse(reply=reply, model=model)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 401:
+            raise HTTPException(status_code=401, detail="OpenAI rejected the saved API key.")
+        raise HTTPException(status_code=502, detail="OpenAI request failed. Check model access and API billing.")
     except (httpx.HTTPError, KeyError, IndexError, ValueError):
-        raise HTTPException(status_code=502, detail="AI provider request failed. Check server configuration.")
+        raise HTTPException(status_code=502, detail="OpenAI assistant request failed.")
 
 
 @app.post("/api/v1/telegram/send")

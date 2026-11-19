@@ -269,6 +269,58 @@ def trade_payload(trade: SignalTrade, events: list[SignalTradeEvent] | None = No
     }
 
 
+
+def signal_performance_summary(trades: list[SignalTrade]) -> dict[str, Any]:
+    """Aggregate this user's executed signal plans into realized and marked-to-market R."""
+    included = [trade for trade in trades if trade.status not in {"SUPERSEDED", "EXPIRED", "PENDING"}]
+    realized_r = 0.0
+    floating_r = 0.0
+    wins = losses = breakeven = open_trades = unpriced_open = 0
+    closed_trades = 0
+    for trade in included:
+        realized = float(trade.realized_r or 0.0)
+        if math.isfinite(realized):
+            realized_r += realized
+        if trade.status in ACTIVE_STATES:
+            if trade.status == "OPEN":
+                open_trades += 1
+                price = trade.last_price
+                entry = float(trade.entry_price or 0.0)
+                risk = float(trade.risk_distance or 0.0)
+                if price is None or not math.isfinite(float(price)) or risk <= 0:
+                    unpriced_open += 1
+                    continue
+                remaining = 0.3 if trade.tp2_hit else 0.6 if trade.tp1_hit else 1.0
+                direction = 1.0 if trade.side == "BUY" else -1.0
+                floating_r += ((float(price) - entry) * direction / risk) * remaining
+            continue
+        if trade.filled_at is None:
+            continue
+        closed_trades += 1
+        if realized > 1e-9:
+            wins += 1
+        elif realized < -1e-9:
+            losses += 1
+        else:
+            breakeven += 1
+    realized_r = round(realized_r, 6)
+    floating_r = round(floating_r, 6)
+    return {
+        "total_signals": len(included),
+        "closed_trades": closed_trades,
+        "open_trades": open_trades,
+        "wins": wins,
+        "losses": losses,
+        "breakeven": breakeven,
+        "win_rate": round(wins / closed_trades * 100, 2) if closed_trades else 0.0,
+        "realized_r": realized_r,
+        "floating_r": floating_r,
+        "net_r": round(realized_r + floating_r, 6),
+        "unpriced_open_trades": unpriced_open,
+        "is_complete": unpriced_open == 0,
+        "unit": "R",
+    }
+
 def enforce_single_active_trade_per_symbol(db) -> int:
     """Keep the newest live plan per user/symbol and retire legacy duplicates."""
     active = list(db.scalars(select(SignalTrade).where(

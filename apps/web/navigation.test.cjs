@@ -32,3 +32,16 @@ assert.match(html, /workspace-polish\.js\?v=20261114-single-icon2/, "Single-icon
 assert.match(polishCss, /\.qx-nav-label\{width:auto;text-align:left;/, "Navigation labels must not inherit the legacy fixed-width icon styling.");
 assert.match(html, /workspace-polish\.css\?v=20261116-sidebar-compact1/, "Sidebar stylesheet cache must refresh for the corrected label sizing.");
 console.log("Sidebar regression checks passed: no legacy glyphs, one generated SVG icon and refreshed assets.");
+
+
+const app = fs.readFileSync("apps/web/app.js", "utf8");
+const phase = fs.readFileSync("apps/web/phase12-20.js", "utf8");
+for (const retired of ["data-reliability", "paper-autopilot", "performance-lab", "risk-management", "forex-desk", "crypto-desk", "gold-desk"]) {
+  assert.ok(!targets.includes(retired), `Duplicate workspace page must be grouped, not shown as a separate tab: ${retired}`);
+}
+assert.ok(targets.length < 25, "Sidebar should remain focused rather than exposing every sub-panel as a top-level tab.");
+assert.match(html, /href="#paper-trading">Trading Desk<\/a>/, "Paper execution and its supporting controls must share one Trading Desk tab.");
+assert.match(html, /href="#watchlist-desk">Market Desks<\/a>/, "Forex, Crypto and Gold must share the Market Desks tab.");
+assert.match(app, /workspaceViewGroups/, "Grouped pages must preserve their view-activity aliases.");
+assert.match(phase, /active==="paper-trading"/, "Paper Autopilot refresh must follow the consolidated Trading Desk view.");
+console.log("Workspace cleanup checks passed: duplicate tabs grouped and view-specific refresh preserved.");

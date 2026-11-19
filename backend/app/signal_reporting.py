@@ -32,7 +32,7 @@ def _stats(rows):
     return {"signals":len(rows),"resolved":len(done),"open":sum(t.status in ACTIVE for t in rows),
       "wins":win,"losses":loss,"breakeven":len(done)-win-loss,
       "win_rate":round(win/len(done)*100,2) if done else 0.0,
-      "realized_r":round(sum(float(t.realized_r or 0) for t in done),3)}
+      "realized_r":round(sum(float(t.realized_r or 0) for t in rows),3)}
 def build_signal_performance_pdf(db,user_id,period="daily",symbol=None,now=None):
     from sqlalchemy import select
     from .models import SignalTrade

@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+from decimal import Decimal
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -47,8 +48,8 @@ def test_config_forces_demo_spot_safe_defaults_and_disables_dca():
 
 
 def test_quantity_and_price_are_rounded_down_to_exchange_steps():
-    assert _floor_step(0.01239, "0.001") == 0.012
-    assert _round_price(12.349, "0.01") == 12.34
+    assert _floor_step(0.01239, "0.001") == Decimal("0.012")
+    assert _round_price(12.349, "0.01") == Decimal("12.34")
 
 
 def test_spot_buy_requires_valid_stop_target_and_reward_risk():

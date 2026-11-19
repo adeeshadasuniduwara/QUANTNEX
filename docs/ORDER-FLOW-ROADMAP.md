@@ -327,7 +327,7 @@ Branch: feat/vwap-diagnostic-evidence, created from main 0ee25ab7f259af6f690d258
 ### Tests and validation gates
 
 - Deterministic rising and falling candle fixtures verify bullish and bearish diagnostic evidence.
-- Tests verify that the legacy baseline raw count remains unchanged, and that incomplete/future candles and zero-volume inputs produce no VWAP evidence.
+- Tests verify that the legacy baseline raw count remains unchanged, and that incomplete/future candles, timestamp gaps and all-zero-volume inputs produce no VWAP evidence.
 - PR and post-merge Backend CI on Python 3.12 and 3.14, schema/preflight and Web CI must pass.
 - Review the complete diff to confirm no diagnostic-only method changes the live score or threshold. Do not merge if any relevant check fails.
 

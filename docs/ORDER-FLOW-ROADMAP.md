@@ -376,7 +376,7 @@ PR [#226](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/226) merged to `m
 - PR-head Backend CI and Backend/Web CI passed; the recorded suite count was 439 tests on Python 3.12 and 439 on Python 3.14.
 - The scheduled read-only live smoke run on the merge commit succeeded (see the 2026-11-20 automation checkpoint below). It is provider/scan-health evidence, not strategy-performance evidence.
 
-## Phase C8 — bounded live order-flow feature snapshot capture (this PR)
+## Phase C8 — bounded live order-flow feature snapshot capture (merged PR #240)
 
 ### Purpose
 
@@ -403,3 +403,35 @@ The live Spot stream already maintains contiguous aggregate-trade state and a se
 - New deterministic tests cover provenance/sequence/freshness rejection, future-dated source rejection, one-per-minute idempotency, strict no-look-ahead time filtering, retention pruning and manager off-loop capture scheduling.
 - Implementation/test head `120c7508ddcf1b9824a497e106d306d19c0f160f` passed 464 tests on Python 3.12 and 464 on Python 3.14; backend schema test, automatic startup preflight, compile and Web CI passed. The full diff contains only the eight intended files and no credential/private-key patterns.
 - Final PR head `4420ee5ec42ea896eee86adf5256378234277034` passed Backend CI (464 tests), Backend/Web CI (464 tests on Python 3.12 and 464 on Python 3.14), startup preflight, compile, schema test and Web CI. The PR is mergeable against latest main; post-merge verification is still required.
+
+
+## Phase C9 — causal historical replay of captured Spot order-flow snapshots (PR in progress)
+
+### Purpose
+
+Phase C8 now persists bounded, sequence-validated feature snapshots, but the historical walk-forward endpoint still evaluated a candle-only baseline. This phase adds a separate order-flow-gated replay without changing the live strategy score or the candle-only baseline.
+
+### Implementation on branch `feat/historical-orderflow-replay`
+
+- Upgrade the compact capture payload to version 2 and persist explicit `coverage_complete` and `gap_detected` trade-state flags. The recorder now refuses to store a snapshot unless the trade stream explicitly reports complete coverage and no known gap.
+- Load stored observations for the same symbol and requested historical candle window from the local database. The API enables this replay by default and accepts `include_order_flow_replay=false` to disable the additional comparison.
+- For each historical decision timestamp, select only the latest observation captured at or before the decision. Recompute trade age from `last_trade_at` and depth age from `depth_observed_at` against the historical decision time; never trust the age measured at capture time.
+- Require capture version 2, exact symbol/Spot market, explicit no-gap trade coverage, sequence-validated L2, matching depth update IDs, complete-since-seed CVD, public WebSocket provenance and no candle-volume substitution.
+- Missing, stale, future-dated, malformed or non-sequenced snapshots pass an empty override to the existing order-flow gate so a technical candidate becomes WAIT. No candle-only fallback is allowed inside the order-flow-gated variant, and no older snapshot is carried forward across a stale interval.
+- Keep the existing `training` and `out_of_sample` fields as the candle-only baseline. Add separate order-flow-gated training/OOS metrics, snapshot coverage counters and descriptive OOS deltas for trade count, expectancy, win rate and drawdown.
+
+### Validation and limitations
+
+- Add deterministic tests for latest-prior selection, source-age recomputation, future exclusion, stale depth, gapped streams, unordered snapshots, historical mode provenance and fail-closed behavior when no snapshot exists.
+- Add recorder coverage for version-2 continuity flags and rejection when gap state is unknown.
+- This is a descriptive ablation, not a calibrated causal estimate. Snapshots are sparse/non-random because only active managed streams are sampled; at most one is stored per symbol per minute and the manager has an eight-stream cap.
+- The seven-day recorder retains compact feature snapshots, not raw AggTrades/depth diffs. CVD remains bounded since the stream seed; full UTC-session delta may be unavailable. Historical execution spread/depth, fees and slippage remain assumed values, not reconstructed from the stored book.
+- No win-rate, expectancy, profit-factor or profitability uplift is claimed. Keep the live gate and legacy score unchanged until adequate independent out-of-sample evidence exists.
+
+### Next steps
+
+1. Run Backend CI on Python 3.12/3.14, Backend/Web CI and Web CI; review the complete diff and security surface before merge.
+2. After merge, verify the endpoint reports real observation counts and coverage for a symbol with active streams; a zero-count result is a data-coverage limitation, not an engine success.
+3. Collect sufficient time-aligned snapshots over several sessions before interpreting the order-flow ablation.
+4. Add explicit method-level and baseline-vs-ablation reports only after the synchronized replay has enough samples to be meaningful.
+5. Keep USDⓈ-M and COIN-M Futures unsupported until their market metadata, feed adapters, filters and deterministic tests are independently implemented.

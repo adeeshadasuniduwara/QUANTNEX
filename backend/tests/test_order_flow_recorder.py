@@ -136,6 +136,10 @@ def test_recorder_accepts_only_fresh_sequence_validated_spot_streams():
     assert is_recordable_order_flow_snapshot(snapshot) is False
 
     snapshot = _snapshot()
+    snapshot["trade_state"].pop("gap_detected")
+    assert is_recordable_order_flow_snapshot(snapshot) is False
+
+    snapshot = _snapshot()
     snapshot["order_flow"]["data_provenance"]["candle_volume_used"] = True
     assert is_recordable_order_flow_snapshot(snapshot) is False
 

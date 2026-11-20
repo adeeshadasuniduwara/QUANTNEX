@@ -636,6 +636,14 @@ async def run_signal_walk_forward(
                     if isinstance(flow_win_rate, (int, float)) and isinstance(baseline_win_rate, (int, float))
                     else None
                 ),
+                "out_of_sample_profit_factor_baseline": out_of_sample["profit_factor"],
+                "out_of_sample_profit_factor_order_flow": order_flow_out_of_sample["profit_factor"],
+                "out_of_sample_net_pnl_quote_delta": round(
+                    order_flow_out_of_sample["net_pnl_quote"] - out_of_sample["net_pnl_quote"], 8
+                ),
+                "out_of_sample_estimated_cost_quote_delta": round(
+                    order_flow_out_of_sample["estimated_cost_quote"] - out_of_sample["estimated_cost_quote"], 8
+                ),
                 "out_of_sample_max_drawdown_r_delta": round(
                     order_flow_out_of_sample["max_drawdown_r"] - out_of_sample["max_drawdown_r"], 3
                 ),

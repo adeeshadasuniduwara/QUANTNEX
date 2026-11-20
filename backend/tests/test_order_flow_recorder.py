@@ -180,6 +180,9 @@ def test_recorder_deduplicates_utc_minute_and_loads_chronologically_without_look
     assert loaded[0]["depth_book"]["sequence_validated"] is True
     assert loaded[0]["order_flow"]["data_provenance"]["candle_volume_used"] is False
     assert loaded[0]["storage"]["last_agg_trade_id"] == 1002
+    assert loaded[0]["trade_state"]["coverage_complete"] is True
+    assert loaded[0]["trade_state"]["gap_detected"] is False
+    assert loaded[0]["capture_version"] == 2
 
 
 def test_recorder_prunes_old_rows_only_when_a_retention_cutoff_is_supplied(db):

@@ -751,13 +751,65 @@ Add a first value-area method to the strategy registry without changing the live
 
 - Branch created from main `70c3700cc7564167befa874f56e918c8eae67b24`.
 - GitHub Actions verified implementation/test head `120c7508ddcf1b9824a497e106d306d19c0f160f`: Backend CI passed 464 tests; Backend/Web CI passed 464 tests on Python 3.12 and 464 on Python 3.14; automatic startup preflight, backend compile, schema test and Web CI all passed.
-- Full PR diff reviewed: exactly the eight intended files listed above, no unrelated changes, and no credential/private-key patterns in added lines. Final PR head `4420ee5ec42ea896eee86adf5256378234277034` also passed Backend CI (464 tests), Backend/Web CI (464 tests on Python 3.12 and 464 on Python 3.14), startup preflight, compile, schema test and Web CI. PR #240 is mergeable and based on latest main `70c3700cc7564167befa874f56e918c8eae67b24` with zero commits behind.
-- No real orders, API keys or live-money execution are introduced.
+- Full PR diff reviewed: exactly the eight intended files listed above, no unrelated changes, and no credential/private-key patterns in added lines. Final PR head `4420ee5ec42ea896eee86adf5256378234277034` passed Backend CI (464 tests), Backend/Web CI (464 tests on Python 3.12 and 464 on Python 3.14), startup preflight, compile, schema test and Web CI. PR #240 merged to `main` as `1b9d14ced78209cfe74de56f779ae2d3210043eb` on 2026-11-20 07:06:58 UTC.
+- Post-merge main Backend CI, Backend/Web CI on Python 3.12/3.14 and Web check passed on that exact commit. The optional Telegram Update Notifications workflow failed only in its announce job because of the configured self-directed/invalid chat target; this is separate from signal-engine tests.
+- Main contains the new `order_flow_observations` model, bounded recorder, and off-event-loop manager capture. No API keys or live-money execution were introduced.
 
 ### Exact next steps
 
-1. Verify PR CI and review the full diff/security surface; fix failures before merge.
-2. After merge, verify the new table is created by app startup and confirm manager capture diagnostics do not affect signal generation.
-3. Add replay alignment that selects only the latest feature snapshot captured at or before each 1m decision timestamp; never forward-fill across stale/gapped stream intervals.
-4. Compare candle-only baseline, existing order-flow hard gate and ablation variants on chronological training/holdout data with fees, spread, slippage and conservative LIMIT fill assumptions.
-5. Report sample size, coverage, trades, win rate, expectancy, profit factor, max drawdown and limitations; keep any unproven methods diagnostic-only.
+1. Add chronological replay alignment that selects only the latest feature snapshot captured at or before each signal decision timestamp.
+2. Recompute trade/depth age at the historical decision time; stale, missing, future, gapped or unsequenced snapshots must fail closed.
+3. Compare the candle-only baseline with the existing order-flow gate on the same chronological training/holdout windows, while reporting sparse snapshot coverage.
+4. Collect enough aligned sessions before making any claim about order-flow's incremental value.
+5. Keep Futures unsupported until separate market adapters, metadata, filters and deterministic tests exist.
+
+
+## 2026-11-20 — Automation run 5 continued: Phase C9 historical order-flow replay (PR in progress)
+
+### Start-of-phase repository audit
+
+- Latest `main`: `1b9d14ced78209cfe74de56f779ae2d3210043eb`, containing merged PR #240.
+- PR #240 was verified merged on 2026-11-20 07:06:58 UTC. Backend CI, Backend/Web CI (Python 3.12 and 3.14) and Web check passed on the exact main commit. The optional Telegram announce job failed independently due the configured chat target.
+- Open PRs at audit: #239 updater API rate-limit cache, #206 Telegram Gold reports, #201 mobile cloud gateway, #185 signal ledger/reporting, #172 layout, #170 MT5 Gold, #110 workspace polling, #76 Android parity and #57 Telegram UI polish. No open core Binance signal-engine PR or open repository issue was found.
+- PR #169 public Spot REST collector is merged; live Spot signal eligibility uses the sequence-validated public WebSocket stream. REST depth snapshots are not treated as continuous books.
+- Binance Spot remains the only verified crypto signal market. USDⓈ-M and COIN-M Futures are unsupported. The live strategy score remains an uncalibrated confluence count; VWAP and volume profile remain diagnostic; no profitability uplift is established.
+- Latest main push CI on 2026-11-20: Backend CI and Backend/Web CI passed. Optional Telegram Update Notifications failed in the announce job.
+
+### Confirmed Phase C8 checkpoint
+
+- PR #240 merged to main as `1b9d14ced78209cfe74de56f779ae2d3210043eb`.
+- It adds the bounded version-1 compact feature snapshot recorder, one sample per active symbol per UTC minute, seven-day retention, and a strict `[start,end)` loader.
+- It does not archive raw AggTrades or every depth diff. Only symbols with active manager streams (maximum eight at once) are captured.
+- The latest visible live smoke evidence remains a rotating 20-pair sample from 1,380 eligible Spot symbols; no new live smoke run was confirmed in this phase. Do not describe it as full-universe same-cycle coverage.
+
+### Phase C9 implementation on branch `feat/historical-orderflow-replay`
+
+- Upgrade recorder payload to capture version 2 and persist explicit `coverage_complete` and `gap_detected` flags. Recorder rejects snapshots unless coverage is explicitly complete and the gap flag is explicitly false.
+- Add strict snapshot alignment helpers in `backend/app/signal_backtest.py`: validate matching symbol/Spot market and strictly increasing capture times; select the latest observation at or before each decision; recompute trade age from `last_trade_at` and book age from `depth_observed_at` against the historical decision time.
+- Require capture version 2, no-gap trade state, sequence-validated depth, matching depth update IDs, complete-since-seed CVD, public WebSocket provenance and no candle-volume substitution.
+- Missing/stale/future/invalid observations pass an empty override into the existing gate and therefore reject candidate setups; no stale forward-fill or candle-only fallback is allowed within the order-flow-gated replay.
+- Preserve top-level `training` and `out_of_sample` as candle-only baseline metrics. Add a separate order-flow-gated train/OOS replay with snapshot coverage counts and descriptive OOS deltas for trade count, expectancy, win rate and drawdown.
+- Integrate the saved-snapshot loader into `POST /api/v1/signals/backtest`; it is enabled by default and can be disabled with `include_order_flow_replay=false`. Empty capture windows are reported explicitly instead of inventing performance data.
+
+### Changed files
+
+- `backend/app/order_flow_recorder.py`: version-2 capture payload and strict explicit no-gap recording gate.
+- `backend/app/signal_engine.py`: allow an explicit historical replay data-mode label for supplied order-flow observations.
+- `backend/app/signal_backtest.py`: causal snapshot selection, freshness recomputation, fail-closed gating, coverage counters and separate baseline/Order Flow ablation output.
+- `backend/app/main.py`: load same-symbol persisted observations for the requested candle window; guard empty candle responses; expose capture status/count.
+- `backend/tests/test_order_flow_recorder.py` and `backend/tests/test_signal_backtest.py`: deterministic continuity, no-lookahead, stale/future/gap, order and mode-provenance tests.
+- `docs/ORDER-FLOW-ROADMAP.md` and this file: update the durable continuation checkpoint.
+
+### Verification status
+
+- PR [#241](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/241) was created against `main` at base `1b9d14ced78209cfe74de56f779ae2d3210043eb`. The PR head has been updated during review; current-head Backend CI, Backend/Web CI and Web CI are the verification gate. No passing result is claimed until the final head completes.
+- No live scan, trade signal, performance uplift or profitability result is claimed by this code change.
+- No live orders or private Binance API credentials are introduced.
+
+### Exact next steps
+
+1. Review the full PR #241 diff, especially the API path and the historical snapshot alignment/freshness logic.
+2. Wait for Backend CI (Python 3.12/3.14), Backend/Web CI and Web CI on the final PR head; fix failures and re-run.
+3. Merge only after all relevant checks pass, full diff/security review is clean and mergeability/base are current.
+4. Verify post-merge main and exercise the backtest endpoint against real persisted rows for a symbol with active streams; report actual snapshot count and coverage.
+5. Keep order-flow results descriptive until enough chronological out-of-sample samples exist; do not alter live thresholds or claim improved accuracy from the gate alone.

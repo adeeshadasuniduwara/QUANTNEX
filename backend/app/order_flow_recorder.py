@@ -67,7 +67,7 @@ def is_recordable_order_flow_snapshot(snapshot: dict[str, Any]) -> bool:
         order_flow = snapshot.get("order_flow")
         if not all(isinstance(item, dict) for item in (trade_state, depth_book, order_flow)):
             return False
-        if trade_state.get("coverage_complete") is not True or trade_state.get("gap_detected") is True:
+        if trade_state.get("coverage_complete") is not True or trade_state.get("gap_detected") is not False:
             return False
         if depth_book.get("valid") is not True or depth_book.get("sequence_validated") is not True:
             return False
@@ -165,14 +165,15 @@ def _compact_snapshot(snapshot: dict[str, Any], captured_at: datetime) -> str:
     compact_order_flow["footprint_buckets_stored"] = len(top_footprint)
 
     payload = {
-        "capture_version": 1,
+        "capture_version": 2,
         "capture_scope": "ONE_UTC_MINUTE_FEATURE_SNAPSHOT",
         "captured_at": captured_at.isoformat(),
         "symbol": snapshot["symbol"],
         "market_type": "BINANCE_SPOT",
         "trade_state": {
             key: trade_state.get(key) for key in (
-                "last_agg_trade_id", "cumulative_delta_observed", "cumulative_quote_delta_observed",
+                "last_agg_trade_id", "coverage_complete", "gap_detected",
+                "cumulative_delta_observed", "cumulative_quote_delta_observed",
                 "cvd_value", "cvd_status", "cvd_scope", "session_date_utc", "session_delta",
                 "session_delta_coverage_complete", "last_trade_time_ms", "applied_trade_count",
                 "duplicate_count", "out_of_order_count",

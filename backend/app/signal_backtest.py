@@ -19,6 +19,136 @@ def _epoch(value: str) -> float:
     return stamp.timestamp()
 
 
+def _snapshot_epoch(value: Any, label: str) -> float:
+    """Parse a persisted observation timestamp without accepting naive local time."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{label} must be a timezone-aware ISO timestamp.")
+    try:
+        stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise ValueError(f"{label} must be a timezone-aware ISO timestamp.") from None
+    if stamp.tzinfo is None or stamp.utcoffset() is None:
+        raise ValueError(f"{label} must be timezone-aware.")
+    return stamp.astimezone(timezone.utc).timestamp()
+
+
+def _validate_order_flow_observations(
+    observations: list[dict[str, Any]], symbol: str
+) -> list[float]:
+    """Validate the persisted Spot snapshot sequence before chronological replay."""
+    if not isinstance(observations, list):
+        raise ValueError("Order-flow replay observations must be a list.")
+    epochs: list[float] = []
+    previous = float("-inf")
+    for index, record in enumerate(observations):
+        if not isinstance(record, dict):
+            raise ValueError(f"Order-flow observation {index} must be an object.")
+        if record.get("market_type") != "BINANCE_SPOT" or record.get("symbol") != symbol:
+            raise ValueError("Order-flow replay observations must match the requested Binance Spot symbol.")
+        captured = _snapshot_epoch(record.get("captured_at"), "captured_at")
+        if captured <= previous:
+            raise ValueError("Order-flow observations must have unique, strictly increasing capture timestamps.")
+        epochs.append(captured)
+        previous = captured
+    return epochs
+
+
+def _select_order_flow_snapshot(
+    observations: list[dict[str, Any]],
+    observation_epochs: list[float],
+    symbol: str,
+    as_of_epoch: float,
+    settings: dict[str, Any],
+) -> tuple[dict[str, Any], str]:
+    """Select only the latest prior snapshot and recompute source age at decision time.
+
+    Missing, stale, malformed, gapped or future-dated snapshots return an empty
+    override so the existing order-flow gate rejects a candidate. No older
+    snapshot is forward-filled across a stale interval.
+    """
+    index = bisect_right(observation_epochs, as_of_epoch + 1e-6) - 1
+    if index < 0:
+        return {}, "MISSING"
+    record = observations[index]
+    try:
+        captured = _snapshot_epoch(record.get("captured_at"), "captured_at")
+        if captured > as_of_epoch + 1e-6:
+            return {}, "FUTURE"
+        if record.get("capture_version") != 2 or record.get("capture_scope") != "ONE_UTC_MINUTE_FEATURE_SNAPSHOT":
+            return {}, "INVALID"
+        if record.get("symbol") != symbol or record.get("market_type") != "BINANCE_SPOT":
+            return {}, "INVALID"
+
+        trade_state = record.get("trade_state")
+        depth_book = record.get("depth_book")
+        snapshot = record.get("order_flow")
+        if not all(isinstance(value, dict) for value in (trade_state, depth_book, snapshot)):
+            return {}, "INVALID"
+        if trade_state.get("coverage_complete") is not True or trade_state.get("gap_detected") is not False:
+            return {}, "INVALID"
+        trade_id = trade_state.get("last_agg_trade_id")
+        if isinstance(trade_id, bool) or not isinstance(trade_id, int) or trade_id < 0:
+            return {}, "INVALID"
+        if depth_book.get("valid") is not True or depth_book.get("sequence_validated") is not True:
+            return {}, "INVALID"
+        if not isinstance(depth_book.get("bids"), list) or not depth_book["bids"]:
+            return {}, "INVALID"
+        if not isinstance(depth_book.get("asks"), list) or not depth_book["asks"]:
+            return {}, "INVALID"
+        update_id = depth_book.get("last_update_id")
+        if isinstance(update_id, bool) or not isinstance(update_id, int) or update_id < 0:
+            return {}, "INVALID"
+        if (
+            snapshot.get("market_type") != "BINANCE_SPOT"
+            or snapshot.get("feed_mode") != "PUBLIC_WEBSOCKET_STREAM"
+            or snapshot.get("depth_is_continuous") is not True
+            or snapshot.get("cvd_status") != "COMPLETE_SINCE_STATE_SEED"
+            or snapshot.get("depth_snapshot_update_id") != update_id
+        ):
+            return {}, "INVALID"
+        trade_count = snapshot.get("trade_count")
+        if isinstance(trade_count, bool) or not isinstance(trade_count, int) or trade_count < 1:
+            return {}, "INVALID"
+        provenance = snapshot.get("data_provenance")
+        sources = snapshot.get("data_sources")
+        book_metrics = snapshot.get("order_book")
+        if not isinstance(provenance, dict) or not isinstance(sources, dict) or not isinstance(book_metrics, dict):
+            return {}, "INVALID"
+        if (
+            provenance.get("candle_volume_used") is not False
+            or "aggressor" not in str(provenance.get("bid_ask_semantics") or "").lower()
+            or not str(sources.get("stream") or "").startswith("wss://")
+        ):
+            return {}, "INVALID"
+
+        trade_epoch = _snapshot_epoch(snapshot.get("last_trade_at"), "last_trade_at")
+        depth_epoch = _snapshot_epoch(snapshot.get("depth_observed_at"), "depth_observed_at")
+        if trade_epoch > as_of_epoch + 1e-6 or depth_epoch > as_of_epoch + 1e-6:
+            return {}, "FUTURE"
+        if trade_epoch > captured + 2.0 or depth_epoch > captured + 2.0:
+            return {}, "INVALID"
+
+        trade_age = as_of_epoch - trade_epoch
+        depth_age = as_of_epoch - depth_epoch
+        max_trade_age = float(settings.get("max_order_flow_trade_age_seconds", 15.0))
+        max_depth_age = float(settings.get("max_order_book_snapshot_age_seconds", 5.0))
+        if (
+            not math.isfinite(max_trade_age) or max_trade_age <= 0
+            or not math.isfinite(max_depth_age) or max_depth_age <= 0
+        ):
+            raise ValueError("Order-flow replay freshness settings must be finite and positive.")
+        if trade_age < 0 or depth_age < 0:
+            return {}, "FUTURE"
+        if trade_age > max_trade_age or depth_age > max_depth_age:
+            return {}, "STALE"
+
+        replay_snapshot = dict(snapshot)
+        replay_snapshot["trade_data_age_seconds"] = round(trade_age, 3)
+        return replay_snapshot, "AVAILABLE"
+    except (TypeError, ValueError, OverflowError):
+        return {}, "INVALID"
+
+
 def _limit_fill_price(side: str, limit_price: float, candle: dict[str, Any]) -> float | None:
     """Model a resting limit fill, including a favorable gap through the limit."""
     open_price = float(candle["open"])
@@ -96,6 +226,21 @@ def _metrics(trades: list[dict[str, Any]], counters: dict[str, int], candles: li
         "average_r": round(sum(r_values) / len(r_values), 3) if r_values else None,
         "max_drawdown_r": round(max_drawdown_r, 3),
         "buy_and_hold_return_pct": baseline,
+        "order_flow_replay_enabled": bool(counters.get("order_flow_enabled", 0)),
+        "order_flow_decision_points": counters.get("order_flow_decision_points", 0),
+        "order_flow_snapshot_matches": counters.get("order_flow_snapshot_matches", 0),
+        "order_flow_missing_snapshots": counters.get("order_flow_missing_snapshots", 0),
+        "order_flow_stale_snapshots": counters.get("order_flow_stale_snapshots", 0),
+        "order_flow_invalid_snapshots": counters.get("order_flow_invalid_snapshots", 0),
+        "order_flow_confirmed_candidates": counters.get("order_flow_confirmed_candidates", 0),
+        "order_flow_rejected_candidates": counters.get("order_flow_rejected_candidates", 0),
+        "order_flow_coverage_pct": round(
+            counters.get("order_flow_snapshot_matches", 0) / counters.get("order_flow_decision_points", 1) * 100, 2
+        ) if counters.get("order_flow_decision_points", 0) else None,
+        "order_flow_candidate_confirmation_pct": round(
+            counters.get("order_flow_confirmed_candidates", 0)
+            / max(1, counters.get("order_flow_confirmed_candidates", 0) + counters.get("order_flow_rejected_candidates", 0)) * 100, 2
+        ) if counters.get("order_flow_confirmed_candidates", 0) + counters.get("order_flow_rejected_candidates", 0) else None,
         "trades": trades[-200:],
     }
 
@@ -109,6 +254,7 @@ async def _simulate_slice(
     assumed_depth_usd: float,
     start_index: int,
     end_index: int,
+    order_flow_observations: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     primary_tf = str(settings.get("primary", "5"))
     enabled = list(dict.fromkeys(
@@ -125,7 +271,18 @@ async def _simulate_slice(
         tf: [_epoch(row["time"]) for row in rows]
         for tf, rows in candles_by_tf.items() if tf in TIMEFRAME_MINUTES
     }
-    counters = {"signals": 0, "waits": 0, "market": 0, "limit": 0, "limit_expired": 0}
+    observation_epochs = (
+        _validate_order_flow_observations(order_flow_observations, symbol)
+        if order_flow_observations is not None else None
+    )
+    counters = {
+        "signals": 0, "waits": 0, "market": 0, "limit": 0, "limit_expired": 0,
+        "order_flow_enabled": int(order_flow_observations is not None),
+        "order_flow_decision_points": 0, "order_flow_snapshot_matches": 0,
+        "order_flow_missing_snapshots": 0, "order_flow_stale_snapshots": 0,
+        "order_flow_invalid_snapshots": 0, "order_flow_confirmed_candidates": 0,
+        "order_flow_rejected_candidates": 0,
+    }
     trades: list[dict[str, Any]] = []
     index = max(0, start_index)
     end_index = min(end_index, len(primary) - 2)
@@ -216,10 +373,38 @@ async def _simulate_slice(
             "observed_at": as_of.isoformat(),
             "is_replay": True,
         }
-        result = await build_signal(
-            settings, symbol, candles_override=windows,
-            execution_context_override=execution, replay_as_of=as_of,
-        )
+        order_flow_override = None
+        if order_flow_observations is not None and observation_epochs is not None:
+            order_flow_override, observation_status = _select_order_flow_snapshot(
+                order_flow_observations, observation_epochs, symbol, as_of_epoch, settings
+            )
+            counters["order_flow_decision_points"] += 1
+            if observation_status == "AVAILABLE":
+                counters["order_flow_snapshot_matches"] += 1
+            elif observation_status == "MISSING":
+                counters["order_flow_missing_snapshots"] += 1
+            elif observation_status == "STALE":
+                counters["order_flow_stale_snapshots"] += 1
+            else:
+                counters["order_flow_invalid_snapshots"] += 1
+
+        build_kwargs = {
+            "candles_override": windows,
+            "execution_context_override": execution,
+            "replay_as_of": as_of,
+        }
+        if order_flow_observations is not None:
+            # An empty override deliberately fails the existing order-flow gate;
+            # historical candidates must not silently fall back to candle-only.
+            build_kwargs["order_flow_override"] = order_flow_override or {}
+            build_kwargs["order_flow_mode_override"] = "HISTORICAL_FEATURE_SNAPSHOT_REPLAY"
+        result = await build_signal(settings, symbol, **build_kwargs)
+        order_flow_result = result.get("order_flow") or {}
+        if order_flow_result.get("data_mode") == "HISTORICAL_FEATURE_SNAPSHOT_REPLAY":
+            if order_flow_result.get("accepted") is True:
+                counters["order_flow_confirmed_candidates"] += 1
+            elif order_flow_result.get("accepted") is False:
+                counters["order_flow_rejected_candidates"] += 1
         signal = result.get("signal")
         if result.get("status") != "SIGNAL" or not signal:
             counters["waits"] += 1
@@ -320,6 +505,7 @@ async def run_signal_walk_forward(
     train_ratio: float = 0.7,
     assumed_spread_bps: float = 5.0,
     assumed_depth_usd: float = 10000.0,
+    order_flow_observations: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Evaluate the actual signal rules on chronological training and unseen holdout slices."""
     settings = settings or {"primary": "5", "trend": "60", "enabled": ["60", "30", "15", "5", "1"], "min_score": 7}
@@ -361,6 +547,8 @@ async def run_signal_walk_forward(
         if values != sorted(values) or len(values) != len(set(values)):
             raise ValueError(f"Historical {timeframe}m candles must be unique and chronological.")
     primary_times = timestamps[primary_tf]
+    if order_flow_observations is not None:
+        _validate_order_flow_observations(order_flow_observations, symbol)
     minute_times = timestamps.get("1", [])
     missing_minute_bars = 0
     largest_gap_minutes = 0
@@ -400,6 +588,67 @@ async def run_signal_walk_forward(
         symbol, candles_by_tf, symbol_info, settings, assumed_spread_bps,
         assumed_depth_usd, split_index, len(primary) - 2,
     )
+
+    order_flow_replay = None
+    order_flow_comparison = None
+    if order_flow_observations is not None:
+        if not order_flow_observations:
+            order_flow_replay = {
+                "status": "NO_CAPTURED_ORDER_FLOW_DATA",
+                "observation_count": 0,
+                "note": "No eligible sequence-validated Spot feature snapshots overlap this historical candle range; no order-flow performance result is available.",
+            }
+        else:
+            order_flow_training = await _simulate_slice(
+                symbol, candles_by_tf, symbol_info, settings, assumed_spread_bps,
+                assumed_depth_usd, first_valid, split_index - 1,
+                order_flow_observations=order_flow_observations,
+            )
+            order_flow_out_of_sample = await _simulate_slice(
+                symbol, candles_by_tf, symbol_info, settings, assumed_spread_bps,
+                assumed_depth_usd, split_index, len(primary) - 2,
+                order_flow_observations=order_flow_observations,
+            )
+            order_flow_replay = {
+                "status": "EVALUATED",
+                "observation_count": len(order_flow_observations),
+                "first_captured_at": order_flow_observations[0].get("captured_at"),
+                "last_captured_at": order_flow_observations[-1].get("captured_at"),
+                "training": order_flow_training,
+                "out_of_sample": order_flow_out_of_sample,
+                "method": "Same candle strategy and execution model, with the existing live Spot order-flow confirmation gate applied only to snapshots captured at/before each decision time.",
+            }
+            baseline_expectancy = out_of_sample.get("expectancy_r")
+            flow_expectancy = order_flow_out_of_sample.get("expectancy_r")
+            baseline_win_rate = out_of_sample.get("win_rate_pct")
+            flow_win_rate = order_flow_out_of_sample.get("win_rate_pct")
+            order_flow_comparison = {
+                "out_of_sample_trade_count_delta": (
+                    order_flow_out_of_sample["trade_count"] - out_of_sample["trade_count"]
+                ),
+                "out_of_sample_expectancy_r_delta": (
+                    round(flow_expectancy - baseline_expectancy, 3)
+                    if isinstance(flow_expectancy, (int, float)) and isinstance(baseline_expectancy, (int, float))
+                    else None
+                ),
+                "out_of_sample_win_rate_percentage_point_delta": (
+                    round(flow_win_rate - baseline_win_rate, 2)
+                    if isinstance(flow_win_rate, (int, float)) and isinstance(baseline_win_rate, (int, float))
+                    else None
+                ),
+                "out_of_sample_profit_factor_baseline": out_of_sample["profit_factor"],
+                "out_of_sample_profit_factor_order_flow": order_flow_out_of_sample["profit_factor"],
+                "out_of_sample_net_pnl_quote_delta": round(
+                    order_flow_out_of_sample["net_pnl_quote"] - out_of_sample["net_pnl_quote"], 8
+                ),
+                "out_of_sample_estimated_cost_quote_delta": round(
+                    order_flow_out_of_sample["estimated_cost_quote"] - out_of_sample["estimated_cost_quote"], 8
+                ),
+                "out_of_sample_max_drawdown_r_delta": round(
+                    order_flow_out_of_sample["max_drawdown_r"] - out_of_sample["max_drawdown_r"], 3
+                ),
+                "interpretation": "Descriptive ablation only. Snapshot coverage is sparse and non-random; this comparison is not a calibrated causal estimate of order-flow edge.",
+            }
     return {
         "symbol": symbol,
         "market_type": "BINANCE_SPOT",
@@ -415,6 +664,8 @@ async def run_signal_walk_forward(
         "train_ratio": train_ratio,
         "training": training,
         "out_of_sample": out_of_sample,
+        "order_flow_replay": order_flow_replay,
+        "order_flow_comparison": order_flow_comparison,
         "assumptions": {
             "spread_bps": assumed_spread_bps,
             "top_book_depth_usd": assumed_depth_usd,
@@ -426,6 +677,7 @@ async def run_signal_walk_forward(
             "limit_fill": "Filled only if a 1m candle touches the limit within the 15-minute signal expiry; gap-through fills use the better opening price.",
             "intrabar_ambiguity": "If stop-loss and TP1 are both touched in one candle, stop-loss is assumed first.",
             "exit_policy": "Full position exits at stop-loss or TP1; TP2/TP3 partial exits are not modeled.",
+            "order_flow_replay": "Selects only the latest stored Spot feature snapshot captured at or before each decision; source ages are recomputed at that decision timestamp. Missing, stale, future, malformed or non-sequenced snapshots fail closed for candidates; no stale forward-fill is allowed.",
         },
         "method": "Chronological holdout. Each signal uses only candles closed by the next primary bar open; the holdout is not used for parameter fitting.",
         "limitations": [
@@ -434,5 +686,8 @@ async def run_signal_walk_forward(
             "No partial fills, funding, position sizing, contract multiplier, taxes or broker execution latency.",
             "Spot SELL is a sell signal only, not a short position.",
             "A historical holdout is not proof of future profitability.",
+            "Order-flow snapshots are retained for seven days, sampled at most once per symbol per minute, and only exist for symbols with active managed streams.",
+            "Captured order-flow snapshots are feature summaries, not raw AggTrade/depth-diff archives; CVD is bounded since the stream seed and UTC session delta may be incomplete.",
+            "The order-flow replay comparison is subject to sparse, non-random stream coverage and must not be interpreted as proof of incremental predictive value.",
         ],
     }

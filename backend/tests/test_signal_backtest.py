@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+
+import pytest
 
 import httpx
 
@@ -138,7 +140,7 @@ def test_signal_walk_forward_rejects_invalid_assumptions():
                      "30": _candles(600, 30), "15": _candles(1200, 15),
                      "1": _candles(18_000, 1)}
     info = {"filters": {"PRICE_FILTER": {"tickSize": "0.01"}}}
-    with __import__("pytest").raises(ValueError):
+    with pytest.raises(ValueError):
         asyncio.run(signal_backtest.run_signal_walk_forward(
             "BTCUSDT", candles_by_tf, info, assumed_spread_bps=200
         ))
@@ -354,3 +356,201 @@ def test_signal_replay_rejects_zero_or_non_finite_exchange_tick_size(monkeypatch
             assert "PRICE_FILTER" in str(exc)
         else:
             raise AssertionError(f"Replay must reject invalid tick size {tick_size}.")
+
+
+def _order_flow_observation(captured_at: datetime, *, trade_at: datetime | None = None, depth_at: datetime | None = None):
+    trade_at = trade_at or captured_at - timedelta(seconds=1)
+    depth_at = depth_at or captured_at - __import__("datetime").timedelta(seconds=0.5)
+    stamp = lambda value: value.astimezone(timezone.utc).isoformat()
+    return {
+        "capture_version": 2,
+        "capture_scope": "ONE_UTC_MINUTE_FEATURE_SNAPSHOT",
+        "captured_at": stamp(captured_at),
+        "symbol": "BTCUSDT",
+        "market_type": "BINANCE_SPOT",
+        "trade_state": {
+            "last_agg_trade_id": 1234,
+            "coverage_complete": True,
+            "gap_detected": False,
+        },
+        "depth_book": {
+            "valid": True,
+            "sequence_validated": True,
+            "last_update_id": 5678,
+            "bids": [["100.0", "2.0"]],
+            "asks": [["100.1", "2.0"]],
+        },
+        "order_flow": {
+            "market_type": "BINANCE_SPOT",
+            "feed_mode": "PUBLIC_WEBSOCKET_STREAM",
+            "depth_is_continuous": True,
+            "depth_snapshot_update_id": 5678,
+            "cvd_status": "COMPLETE_SINCE_STATE_SEED",
+            "last_trade_at": stamp(trade_at),
+            "depth_observed_at": stamp(depth_at),
+            "trade_data_age_seconds": 0.1,
+            "trade_count": 25,
+            "delta": 2.0,
+            "delta_ratio": 0.2,
+            "data_provenance": {
+                "bid_ask_semantics": "Aggressor-side inferred trade delta; not consolidated quoted bid/ask volume.",
+                "candle_volume_used": False,
+            },
+            "data_sources": {"stream": "wss://data-stream.binance.vision"},
+            "order_book": {"depth_imbalance": 0.15, "spread_bps": 1.0},
+        },
+    }
+
+
+def test_order_flow_replay_selects_latest_prior_snapshot_and_recomputes_source_age():
+    from app.signal_backtest import (
+        _select_order_flow_snapshot,
+        _validate_order_flow_observations,
+    )
+
+    base = datetime(2026, 11, 20, 6, 0, tzinfo=timezone.utc)
+    first = _order_flow_observation(base)
+    second = _order_flow_observation(
+        base + __import__("datetime").timedelta(seconds=30)
+    )
+    observations = [first, second]
+    epochs = _validate_order_flow_observations(observations, "BTCUSDT")
+
+    selected, status = _select_order_flow_snapshot(
+        observations, epochs, "BTCUSDT",
+        (base + __import__("datetime").timedelta(seconds=31)).timestamp(),
+        {"max_order_flow_trade_age_seconds": 15, "max_order_book_snapshot_age_seconds": 5},
+    )
+
+    assert status == "AVAILABLE"
+    assert selected["last_trade_at"] == second["order_flow"]["last_trade_at"]
+    assert selected["trade_data_age_seconds"] == 2.0
+
+
+def test_order_flow_replay_never_uses_future_snapshot_and_rejects_stale_book():
+    from app.signal_backtest import (
+        _select_order_flow_snapshot,
+        _validate_order_flow_observations,
+    )
+
+    base = datetime(2026, 11, 20, 6, 0, tzinfo=timezone.utc)
+    future = _order_flow_observation(base + __import__("datetime").timedelta(seconds=30))
+    epochs = _validate_order_flow_observations([future], "BTCUSDT")
+    selected, status = _select_order_flow_snapshot(
+        [future], epochs, "BTCUSDT", base.timestamp(),
+        {"max_order_flow_trade_age_seconds": 15, "max_order_book_snapshot_age_seconds": 5},
+    )
+    assert selected == {}
+    assert status == "MISSING"
+
+    stale = _order_flow_observation(
+        base,
+        trade_at=base - __import__("datetime").timedelta(seconds=2),
+        depth_at=base - __import__("datetime").timedelta(seconds=8),
+    )
+    epochs = _validate_order_flow_observations([stale], "BTCUSDT")
+    selected, status = _select_order_flow_snapshot(
+        [stale], epochs, "BTCUSDT",
+        (base + __import__("datetime").timedelta(seconds=1)).timestamp(),
+        {"max_order_flow_trade_age_seconds": 15, "max_order_book_snapshot_age_seconds": 5},
+    )
+    assert selected == {}
+    assert status == "STALE"
+
+
+def test_order_flow_replay_rejects_gapped_or_unsorted_capture_history():
+    from app.signal_backtest import _validate_order_flow_observations, _select_order_flow_snapshot
+
+    base = datetime(2026, 11, 20, 6, 0, tzinfo=timezone.utc)
+    invalid = _order_flow_observation(base)
+    invalid["trade_state"]["gap_detected"] = True
+    epochs = _validate_order_flow_observations([invalid], "BTCUSDT")
+    selected, status = _select_order_flow_snapshot(
+        [invalid], epochs, "BTCUSDT", (base + __import__("datetime").timedelta(seconds=1)).timestamp(),
+        {"max_order_flow_trade_age_seconds": 15, "max_order_book_snapshot_age_seconds": 5},
+    )
+    assert selected == {}
+    assert status == "INVALID"
+
+    later = _order_flow_observation(base + __import__("datetime").timedelta(seconds=30))
+    with __import__("pytest").raises(ValueError, match="strictly increasing"):
+        _validate_order_flow_observations([later, invalid], "BTCUSDT")
+
+
+def test_order_flow_replay_passes_historical_snapshot_mode_into_signal_engine(monkeypatch):
+    from app import signal_backtest
+    from datetime import timedelta
+
+    start = 1_700_002_800
+    primary = _candles(220, 60, start_epoch=start)
+    minute = _candles(13_200, 1, start_epoch=start)
+    as_of = datetime.fromisoformat(primary[211]["time"])
+    observation = _order_flow_observation(
+        as_of - timedelta(seconds=0.5),
+        trade_at=as_of - timedelta(seconds=1.5),
+        depth_at=as_of - timedelta(seconds=1.0),
+    )
+    captured = []
+
+    async def fake_build_signal(settings, symbol, **kwargs):
+        captured.append(kwargs)
+        return {
+            "status": "WAIT",
+            "signal": None,
+            "order_flow": {
+                "data_mode": kwargs.get("order_flow_mode_override"),
+                "accepted": False,
+            },
+        }
+
+    monkeypatch.setattr(signal_backtest, "build_signal", fake_build_signal)
+    result = asyncio.run(signal_backtest._simulate_slice(
+        "BTCUSDT",
+        {"1": minute, "60": primary},
+        {"quote_asset": "USDT", "filters": {"PRICE_FILTER": {"tickSize": "0.01"}}},
+        {"primary": "60", "trend": "60", "enabled": ["60"]},
+        5.0, 10_000.0, 210, 211,
+        order_flow_observations=[observation],
+    ))
+
+    assert len(captured) == 1
+    assert captured[0]["order_flow_mode_override"] == "HISTORICAL_FEATURE_SNAPSHOT_REPLAY"
+    assert captured[0]["order_flow_override"]["market_type"] == "BINANCE_SPOT"
+    assert captured[0]["order_flow_override"]["trade_data_age_seconds"] == 1.5
+    assert result["order_flow_snapshot_matches"] == 1
+    assert result["order_flow_confirmed_candidates"] == 0
+    assert result["order_flow_rejected_candidates"] == 1
+
+
+def test_order_flow_replay_fails_closed_when_no_prior_snapshot_exists(monkeypatch):
+    from app import signal_backtest
+
+    start = 1_700_002_800
+    primary = _candles(220, 60, start_epoch=start)
+    minute = _candles(13_200, 1, start_epoch=start)
+    captured = []
+
+    async def fake_build_signal(settings, symbol, **kwargs):
+        captured.append(kwargs)
+        return {
+            "status": "WAIT",
+            "signal": None,
+            "order_flow": {
+                "data_mode": kwargs.get("order_flow_mode_override"),
+                "accepted": False,
+            },
+        }
+
+    monkeypatch.setattr(signal_backtest, "build_signal", fake_build_signal)
+    result = asyncio.run(signal_backtest._simulate_slice(
+        "BTCUSDT",
+        {"1": minute, "60": primary},
+        {"quote_asset": "USDT", "filters": {"PRICE_FILTER": {"tickSize": "0.01"}}},
+        {"primary": "60", "trend": "60", "enabled": ["60"]},
+        5.0, 10_000.0, 210, 211,
+        order_flow_observations=[],
+    ))
+
+    assert captured[0]["order_flow_override"] == {}
+    assert result["order_flow_missing_snapshots"] == 1
+    assert result["order_flow_rejected_candidates"] == 1

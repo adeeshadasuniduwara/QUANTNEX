@@ -2,6 +2,7 @@ import asyncio
 
 import pytest
 
+from app import binance_order_flow_manager as manager_module
 from app.binance_order_flow_manager import (
     BinanceSpotOrderFlowManager,
     BinanceSpotOrderFlowManagerError,
@@ -119,5 +120,27 @@ def test_manager_restarts_symbol_stream_when_exchange_tick_size_changes():
         assert FakeStream.instances[0].status == "STOPPED"
         assert FakeStream.instances[1].tick_size == "0.1"
         await manager.stop()
+
+    asyncio.run(run())
+
+
+def test_manager_persists_ready_stream_snapshots_off_the_websocket_callback(monkeypatch):
+    async def run():
+        manager = BinanceSpotOrderFlowManager(max_streams=1, stream_factory=FakeStream)
+        captures = []
+        monkeypatch.setattr(manager_module, "is_recordable_order_flow_snapshot", lambda _snapshot: True)
+        monkeypatch.setattr(
+            manager,
+            "_persist_snapshot",
+            lambda snapshot, prune_before: captures.append((snapshot, prune_before)),
+        )
+
+        result = await manager.get_snapshot("BTCUSDT", "0.01", wait_seconds=0.1)
+        assert result["signal_ready"] is True
+        assert result["manager"]["capture"]["enabled"] is True
+        await manager.stop()
+
+        assert len(captures) == 1
+        assert captures[0][0]["symbol"] == "BTCUSDT"
 
     asyncio.run(run())

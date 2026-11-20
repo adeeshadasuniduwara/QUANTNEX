@@ -862,6 +862,8 @@ async def signal_engine_backtest(payload: dict, user: User = Depends(local_works
         if not 6 <= settings["min_score"] <= 10:
             raise ValueError("Minimum signal confluence must be between 6 and 10.")
         history = await fetch_binance_historical_candles(symbol, "1m", days, max_candles=days * 1440)
+        if not history:
+            raise MarketDataError("Binance returned no closed 1m candles for the selected replay window.")
         candles_by_tf = {"1": history}
         for timeframe in (5, 15, 30, 50, 60):
             candles_by_tf[str(timeframe)] = aggregate_minutes(history, timeframe, require_complete=True)

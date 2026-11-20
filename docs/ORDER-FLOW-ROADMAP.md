@@ -367,18 +367,38 @@ Merged 2026-11-19 as `50b5c0cc8cb324fb9e24b71d95a0c8e86511de48` (PR #225), based
 - USDⓈ-M and COIN-M Futures remain unsupported by the signal engine.
 
 
-## Phase C7 — replay exchange-filter enforcement (fix PR in progress)
+## Phase C7 — replay exchange-filter enforcement (merged PR #226)
 
-### Bug found
-The candle-only walk-forward replay used a generic `0.00000001` tick-size fallback when symbol metadata was missing. Its simulated execution context also omitted the normalized `PRICE_FILTER` object. The signal engine's price-filter helper therefore had no exchange bounds/tick to enforce in replay, so replay could accept prices that would not be valid for that Binance Spot symbol. This could contaminate backtest results.
+PR [#226](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/226) merged to `main` on 2026-11-19 as `9309185290224d8998f1b994e43c87da03aba912`.
 
-### Fix
-- Require the authoritative Binance Spot `PRICE_FILTER` from symbol metadata; fail closed for missing, malformed, zero/negative tick size, invalid bounds or non-finite values.
-- Pass exact `tickSize`, `minPrice` and `maxPrice` into the replay execution context in the normalized form used by the live entry validator.
-- Mark the source as `BINANCE_EXCHANGEINFO_PRICE_FILTER`.
-- Add tests proving missing, zero and non-finite tick metadata prevents signal evaluation and valid exchange filters are passed into the signal engine.
-- PR CI passed: 439 backend tests on Python 3.12 and 439 on Python 3.14; backend schema CI and Web checks passed.
+- Historical replay now requires the authoritative Binance Spot `PRICE_FILTER` and passes exact tick/min/max values into the same validator used by live entry selection.
+- Missing, malformed, zero/negative and non-finite tick metadata fails closed; the generic `1e-8` replay fallback was removed.
+- PR-head Backend CI and Backend/Web CI passed; the recorded suite count was 439 tests on Python 3.12 and 439 on Python 3.14.
+- The scheduled read-only live smoke run on the merge commit succeeded (see the 2026-11-20 automation checkpoint below). It is provider/scan-health evidence, not strategy-performance evidence.
 
-### Boundary
-- This fixes exchange price-grid validity in the existing candle-only replay. It does not add historical AggTrade/depth data or prove strategy profitability.
-- Next priority remains synchronized, bounded Spot AggTrade + diff-depth capture and chronological order-flow replay/ablation.
+## Phase C8 — bounded live order-flow feature snapshot capture (this PR)
+
+### Purpose
+
+The live Spot stream already maintains contiguous aggregate-trade state and a sequence-validated L2 book, but the data was discarded when a stream was evicted or the application restarted. That made it impossible to replay the same observed order-flow features chronologically or measure their incremental value against the candle-only baseline.
+
+### Implementation
+
+- Add `order_flow_observations`, a dedicated SQLAlchemy table for public Binance Spot feature snapshots.
+- Capture at most one observation per symbol per UTC minute, only after the stream reports fresh contiguous AggTrade coverage, complete CVD since its bounded bootstrap seed, and a bridged sequence-valid depth book.
+- Persist aggressor-side delta, CVD scope/status, UTC session-delta completeness, spread/depth imbalance, trade/depth IDs, source provenance, the latest volume profile, the 32 most active footprint buckets, and up to 20 bid/ask levels.
+- Keep capture writes off the WebSocket event loop using `asyncio.to_thread`; storage failures are surfaced in manager diagnostics and do not corrupt stream state or force a signal.
+- Retain seven days and prune at most hourly. Unique `(market_type, symbol, UTC-minute bucket)` keys make reconnect/eviction retries idempotent.
+- Add a strict chronological loader using millisecond capture timestamps and a half-open `[start, end)` interval so a replay cannot include an observation captured after its decision time.
+
+### Scope and limitations
+
+- This is a compact **feature-snapshot recorder**, not a raw tick archive. It does not retain every AggTrade or every depth diff, and it does not claim historical full-session CVD.
+- Only active, on-demand streams are sampled. The manager remains capped at eight simultaneous symbols; a full-universe scanner rotates candidates over time.
+- Binance Spot only. USDⓈ-M and COIN-M Futures remain unsupported by the signal engine.
+- Captured snapshots are not yet wired into walk-forward evaluation. No win-rate, expectancy or profitability uplift is claimed. The next phase must align these snapshots to closed 1m candles and compare candle-only baseline, order-flow gate and ablation variants on chronological out-of-sample windows.
+
+### Verification
+
+- New deterministic tests cover provenance/sequence/freshness rejection, one-per-minute idempotency, strict no-look-ahead time filtering, retention pruning and manager off-loop capture scheduling.
+- PR CI and post-merge checks are the acceptance gate. Do not merge if Backend CI (Python 3.12/3.14), schema/preflight or Web CI fails.

@@ -707,3 +707,57 @@ Add a first value-area method to the strategy registry without changing the live
 - Changed replay to require finite, positive authoritative `PRICE_FILTER.tickSize`, validate min/max bounds, and pass normalized `price_filter` metadata into `build_signal`.
 - Added deterministic tests for missing/zero/non-finite tick fail-closed behavior and correct propagation of authoritative tick/min/max.
 - PR #226 code/test checks passed: 439 backend tests on Python 3.12 and 439 on Python 3.14; backend schema CI and Web checks passed. Full diff review and mergeability verification remain before merge.
+
+
+## 2026-11-20 — Automation run 5: historical order-flow capture foundation
+
+### Latest repository audit
+
+- Repository: `adeeshadasuniduwara/QUANTNEX`; default branch: `main`.
+- Main at run start: `70c3700cc7564167befa874f56e918c8eae67b24` (merge of PR #238).
+- Open issues: none. Open PRs included #239 (GitHub updater rate-limit cache) and older UI/reporting/MT5 PRs; none was a pending Binance signal-engine PR.
+- PR #226 (replay exchange-filter enforcement) is closed/merged as `9309185290224d8998f1b994e43c87da03aba912`. Its PR-head Backend CI and Backend/Web CI passed; the recorded test count was 439 on Python 3.12 and 439 on Python 3.14.
+- Latest scheduled `QUANTNEX Live Crypto Signal Smoke` run: [run 44490651872](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/44490651872), 2026-11-19 08:47 UTC, on the PR #226 merge commit. Binance exchangeInfo returned 1,380 eligible Spot pairs; the workflow scanned a rotating 20-pair sample and returned 20 WAIT, 0 provider errors and 0 insufficient-history skips. This proves the sampled public data paths loaded; it does not prove a qualifying signal, full-universe same-cycle coverage or profitability.
+- Latest main commit `70c3700` contains Telegram multi-coin performance reporting (PR #238). The latest Backend CI and Backend/Web CI results in the visible run list were successful on its immediate parent `bed113a`; the PR #226 signal-core checks and scheduled smoke evidence are separately recorded above. The optional Telegram update-notification workflow failed on its announce job; that is not a backend signal-engine test result.
+
+### Confirmed core boundary before this phase
+
+- Binance Spot is the only verified crypto signal market; USDⓈ-M and COIN-M Futures are not integrated. XAUUSD is a separate MT5/Twelve Data feed.
+- Spot pair discovery is dynamic from authoritative exchangeInfo; Auto Signals rotates through the full eligible universe in bounded batches rather than scanning every pair simultaneously.
+- Live Spot signals require fresh sequence-validated public WebSocket AggTrade/depth state. Aggressor delta is inferred from Binance buyer-is-maker semantics; it is not consolidated quoted bid/ask volume.
+- CVD is complete only since a bounded stream bootstrap seed. Full UTC-session delta is reported only when the session-start anchor is proven.
+- Strategy registry currently reports the existing EMA/MACD/RSI/ADX, BOS/MSS, sweep, zone and timeframe rules; the legacy raw confluence score remains uncalibrated. Rolling OHLCV VWAP is diagnostic-only; observed AggTrade volume profile is diagnostic-only.
+- Historical walk-forward still uses candles and assumed spread/depth/fees. Before this phase, synchronized live order-flow observations were not persisted, so no order-flow incremental-value replay was possible.
+
+### Phase C8 — branch `feat/orderflow-feature-snapshot-capture`
+
+- Add a bounded `order_flow_observations` table and recorder for verified Binance Spot stream snapshots.
+- Sample at most once per symbol per UTC minute, only while the stream is fresh, AggTrade-contiguous, CVD-complete since seed, and L2 sequence-validated.
+- Persist compact metrics and provenance: delta/CVD/session scope, spread/depth imbalance, update IDs, latest volume profile, up to 32 active footprint buckets and up to 20 book levels.
+- Capture persistence runs in a worker thread so SQLite/Postgres writes do not block WebSocket event handling. The manager reports capture errors without weakening signal eligibility.
+- Retain seven days and prune at most hourly. The loader filters on millisecond timestamps in a strict `[start, end)` window to avoid look-ahead.
+- This is a feature-snapshot recorder, not raw AggTrade/depth-diff archival. It is not yet connected to walk-forward replay, and it does not change live scoring or thresholds.
+
+### Changed files
+
+- `backend/app/models.py`: add `OrderFlowObservation`.
+- `backend/app/main.py`: register the model before `Base.metadata.create_all`.
+- `backend/app/order_flow_recorder.py`: add strict validation, compact snapshot persistence, idempotent minute bucketing, retention pruning and chronological loading.
+- `backend/app/binance_order_flow_manager.py`: sample ready snapshots off the WebSocket callback and expose capture diagnostics.
+- `backend/tests/test_order_flow_recorder.py` and `backend/tests/test_binance_order_flow_manager.py`: add deterministic persistence/lifecycle tests.
+- `docs/ORDER-FLOW-ROADMAP.md` and this file: update the verified checkpoint and exact replay boundary.
+
+### Verification status
+
+- Branch created from main `70c3700cc7564167befa874f56e918c8eae67b24`.
+- GitHub Actions PR checks are the execution environment for this phase; no local repository runtime was available in this run.
+- No merge is permitted until all relevant Backend CI (Python 3.12/3.14), backend schema/preflight and Web CI checks pass and the complete diff is reviewed.
+- No real orders, API keys or live-money execution are introduced.
+
+### Exact next steps
+
+1. Verify PR CI and review the full diff/security surface; fix failures before merge.
+2. After merge, verify the new table is created by app startup and confirm manager capture diagnostics do not affect signal generation.
+3. Add replay alignment that selects only the latest feature snapshot captured at or before each 1m decision timestamp; never forward-fill across stale/gapped stream intervals.
+4. Compare candle-only baseline, existing order-flow hard gate and ablation variants on chronological training/holdout data with fees, spread, slippage and conservative LIMIT fill assumptions.
+5. Report sample size, coverage, trades, win rate, expectancy, profit factor, max drawdown and limitations; keep any unproven methods diagnostic-only.

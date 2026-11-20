@@ -764,7 +764,7 @@ Add a first value-area method to the strategy registry without changing the live
 5. Keep Futures unsupported until separate market adapters, metadata, filters and deterministic tests exist.
 
 
-## 2026-11-20 — Automation run 5 continued: Phase C9 historical order-flow replay (PR in progress)
+## 2026-11-20 — Automation run 5 continued: Phase C9 historical order-flow replay (merged PR #241)
 
 ### Start-of-phase repository audit
 
@@ -802,14 +802,47 @@ Add a first value-area method to the strategy registry without changing the live
 
 ### Verification status
 
-- PR [#241](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/241) was created against `main` at base `1b9d14ced78209cfe74de56f779ae2d3210043eb`. The PR head has been updated during review; current-head Backend CI, Backend/Web CI and Web CI are the verification gate. No passing result is claimed until the final head completes.
+- PR [#241](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/241) merged to `main` as `388e30e885621e0c74ed2f8e3183f6a66a94e945`. The final PR head `b6c49a62b305631dd46bb6721fe98131c133f1a1` passed Backend CI and Backend/Web CI (Python 3.12 and 3.14 plus Web CI).
 - No live scan, trade signal, performance uplift or profitability result is claimed by this code change.
 - No live orders or private Binance API credentials are introduced.
 
+### Verified outcome
+
+- Full PR diff reviewed: eight intended files only (backtest API, recorder, replay engine, signal-engine replay mode, two test files and two progress documents); no API credentials or live-order code were added.
+- PR #241 merged against its latest main base. Backend CI and Backend/Web CI passed on the final PR head; the exact main merge commit then passed Backend CI and Backend/Web CI. The optional Telegram Update Notifications workflow failed only in its separate `announce` step due the repository's configured chat target.
+- No live signal, stored-observation count, performance uplift or profitability result is claimed. A live endpoint exercise against a database containing recent recorded rows is still required.
+
 ### Exact next steps
 
-1. Review the full PR #241 diff, especially the API path and the historical snapshot alignment/freshness logic.
-2. Wait for Backend CI (Python 3.12/3.14), Backend/Web CI and Web CI on the final PR head; fix failures and re-run.
-3. Merge only after all relevant checks pass, full diff/security review is clean and mergeability/base are current.
-4. Verify post-merge main and exercise the backtest endpoint against real persisted rows for a symbol with active streams; report actual snapshot count and coverage.
-5. Keep order-flow results descriptive until enough chronological out-of-sample samples exist; do not alter live thresholds or claim improved accuracy from the gate alone.
+1. Improve snapshot timing so observations are available immediately before historical candle decision boundaries while still passing the same source-age limits.
+2. Preserve the candle-only baseline and fail-closed order-flow replay; do not loosen freshness limits to inflate coverage.
+3. Collect and inspect actual aligned observations before interpreting any out-of-sample comparison.
+
+
+
+## 2026-11-20 — Automation run 5 continued: Phase C10 decision-aligned order-flow capture
+
+### Finding
+
+Phase C9 replays only the latest snapshot captured at or before each candle decision time and recomputes source ages. The recorder stored one sample per UTC minute, but the manager captured it at an arbitrary point in that minute. A sample captured just after a 1m/5m/15m/30m/50m/1h boundary is correctly excluded as future data; the prior minute's sample is often older than the 5-second depth freshness limit. This can make replay coverage unnecessarily sparse even when the live stream is healthy.
+
+### Change on branch `feat/align-orderflow-replay-capture`
+
+- Capture only during the final two seconds before the next UTC minute boundary, so the sample is available to decisions at that boundary without look-ahead.
+- Before scheduling the database write, project trade and depth source ages forward to the next minute boundary and reject the sample if either would exceed its existing 15-second/5-second freshness limit.
+- Preserve the one-sample-per-symbol-per-minute uniqueness, seven-day retention, bounded async write queue, sequence-validation requirement and eight-stream cap.
+- Expose the capture alignment policy in manager diagnostics.
+- Add deterministic tests for boundary timing, source-age projection, invalid/non-finite ages and skipping off-window capture.
+
+### Verification status
+
+- Branch starts from main `388e30e885621e0c74ed2f8e3183f6a66a94e945`.
+- CI has not yet run on this phase branch. No test pass or replay-coverage improvement is claimed until the final PR head checks complete.
+- This change does not modify signal thresholds, live scoring, execution selection or order-flow confirmation rules.
+
+### Exact next steps
+
+1. Review the complete PR diff and run Backend CI on Python 3.12/3.14 plus Backend/Web and Web CI.
+2. Merge only if all checks pass and the final diff remains limited to the manager, deterministic manager tests and progress documentation.
+3. After merge, compare stored snapshot coverage at actual 1m/5m/15m decision timestamps against the previous arbitrary-minute sampling, using identical strict source-age limits.
+4. Keep all performance claims on hold until sufficiently large, representative chronological out-of-sample samples exist.

@@ -27,6 +27,53 @@ from .order_flow_recorder import (
 
 
 MAX_PENDING_CAPTURE_TASKS = 16
+REPLAY_CAPTURE_ALIGNMENT_WINDOW_SECONDS = 2.0
+
+
+def _seconds_until_next_utc_minute(captured_at: datetime) -> float | None:
+    """Return time to the next UTC minute only inside its final two seconds."""
+    if (
+        not isinstance(captured_at, datetime)
+        or captured_at.tzinfo is None
+        or captured_at.utcoffset() is None
+    ):
+        return None
+    stamp = captured_at.astimezone(timezone.utc)
+    elapsed = stamp.second + stamp.microsecond / 1_000_000
+    remaining = 60.0 - elapsed
+    if remaining <= 0 or remaining > REPLAY_CAPTURE_ALIGNMENT_WINDOW_SECONDS:
+        return None
+    return remaining
+
+
+def _snapshot_stays_fresh_until_next_minute(
+    snapshot: dict[str, Any],
+    seconds_until_boundary: float,
+    *,
+    max_trade_age_seconds: float,
+    max_depth_age_seconds: float,
+) -> bool:
+    """Ensure source ages still pass the replay gate at the next candle boundary."""
+    if not isinstance(snapshot, dict) or not math.isfinite(seconds_until_boundary) or seconds_until_boundary < 0:
+        return False
+    order_flow = snapshot.get("order_flow")
+    if not isinstance(order_flow, dict):
+        return False
+    try:
+        trade_age_value = order_flow.get("trade_data_age_seconds")
+        depth_age_value = snapshot.get("depth_age_seconds")
+        if isinstance(trade_age_value, bool) or isinstance(depth_age_value, bool):
+            return False
+        trade_age = float(trade_age_value)
+        depth_age = float(depth_age_value)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if not all(math.isfinite(value) and value >= 0 for value in (trade_age, depth_age)):
+        return False
+    return (
+        trade_age + seconds_until_boundary <= max_trade_age_seconds + 1e-9
+        and depth_age + seconds_until_boundary <= max_depth_age_seconds + 1e-9
+    )
 
 
 class BinanceSpotOrderFlowManagerError(RuntimeError):
@@ -210,16 +257,28 @@ class BinanceSpotOrderFlowManager:
         async def on_update(snapshot: dict[str, Any]) -> None:
             nonlocal last_capture_monotonic
             changed_event.set()
-            now = time.monotonic()
-            if last_capture_monotonic is not None and now - last_capture_monotonic < self.capture_interval_seconds:
+            captured_at = datetime.now(timezone.utc)
+            seconds_until_boundary = _seconds_until_next_utc_minute(captured_at)
+            if seconds_until_boundary is None:
                 return
             if len(self._capture_tasks) >= MAX_PENDING_CAPTURE_TASKS:
                 self.last_capture_error = "CAPTURE_BACKPRESSURE: pending snapshot writes reached the safety limit."
                 return
             if not is_recordable_order_flow_snapshot(snapshot):
                 return
+            # The replay decision timestamp is the next UTC minute boundary.
+            # Reject a sample if either source would be stale by that decision.
+            if not _snapshot_stays_fresh_until_next_minute(
+                snapshot,
+                seconds_until_boundary,
+                max_trade_age_seconds=max_trade_age_seconds,
+                max_depth_age_seconds=max_depth_age_seconds,
+            ):
+                return
+            now = time.monotonic()
+            if last_capture_monotonic is not None and now - last_capture_monotonic < self.capture_interval_seconds:
+                return
             last_capture_monotonic = now
-            captured_at = datetime.now(timezone.utc)
             prune_before = None
             if self._last_prune_monotonic is None or now - self._last_prune_monotonic >= 3600:
                 prune_before = captured_at - timedelta(days=self.capture_retention_days)
@@ -308,6 +367,8 @@ class BinanceSpotOrderFlowManager:
                 "enabled": True,
                 "sample_interval_seconds": self.capture_interval_seconds,
                 "retention_days": self.capture_retention_days,
+                "alignment": "FINAL_TWO_SECONDS_BEFORE_UTC_MINUTE_BOUNDARY",
+                "alignment_window_seconds": REPLAY_CAPTURE_ALIGNMENT_WINDOW_SECONDS,
                 "last_captured_at": self.last_capture_at,
                 "last_error": self.last_capture_error,
             },

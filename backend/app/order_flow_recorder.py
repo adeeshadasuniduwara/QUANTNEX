@@ -67,7 +67,7 @@ def is_recordable_order_flow_snapshot(snapshot: dict[str, Any]) -> bool:
         order_flow = snapshot.get("order_flow")
         if not all(isinstance(item, dict) for item in (trade_state, depth_book, order_flow)):
             return False
-        if trade_state.get("coverage_complete") is not True or trade_state.get("gap_detected") is True:
+        if trade_state.get("coverage_complete") is not True or trade_state.get("gap_detected") is not False:
             return False
         if depth_book.get("valid") is not True or depth_book.get("sequence_validated") is not True:
             return False

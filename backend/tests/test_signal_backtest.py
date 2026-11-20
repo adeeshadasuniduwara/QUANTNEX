@@ -507,7 +507,7 @@ def test_order_flow_replay_passes_historical_snapshot_mode_into_signal_engine(mo
         {"1": minute, "60": primary},
         {"quote_asset": "USDT", "filters": {"PRICE_FILTER": {"tickSize": "0.01"}}},
         {"primary": "60", "trend": "60", "enabled": ["60"]},
-        5.0, 10_000.0, 210, 210,
+        5.0, 10_000.0, 210, 211,
         order_flow_observations=[observation],
     ))
 
@@ -545,7 +545,7 @@ def test_order_flow_replay_fails_closed_when_no_prior_snapshot_exists(monkeypatc
         {"1": minute, "60": primary},
         {"quote_asset": "USDT", "filters": {"PRICE_FILTER": {"tickSize": "0.01"}}},
         {"primary": "60", "trend": "60", "enabled": ["60"]},
-        5.0, 10_000.0, 210, 210,
+        5.0, 10_000.0, 210, 211,
         order_flow_observations=[],
     ))
 

@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, DATABASE_URL, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
 from .database import Base, engine, get_db, SessionLocal
-from .models import AuditEvent, GoalContribution, JournalImport, PaperTrade, PaperTradeEvent, PersonalGoal, Preference, SignalTrade, SignalTradeEvent, StrategyLabRun, Trade, User, WalletTransaction
+from .models import AuditEvent, GoalContribution, JournalImport, OrderFlowObservation, PaperTrade, PaperTradeEvent, PersonalGoal, Preference, SignalTrade, SignalTradeEvent, StrategyLabRun, Trade, User, WalletTransaction
 from .schemas import AIChatRequest, AIChatResponse, LegacyJournalImportRequest, LegacyJournalImportResponse, PreferenceResponse, PreferenceWrite, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TradeCreate, TradeResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
 from .security import decrypt_secret, encrypt_secret
 from .maintenance import daily_backup_worker, record_audit_event

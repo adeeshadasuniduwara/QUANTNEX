@@ -405,7 +405,7 @@ The live Spot stream already maintains contiguous aggregate-trade state and a se
 - Final PR head `4420ee5ec42ea896eee86adf5256378234277034` passed Backend CI (464 tests), Backend/Web CI (464 tests on Python 3.12 and 464 on Python 3.14), startup preflight, compile, schema test and Web CI. PR #240 merged to `main` as `1b9d14ced78209cfe74de56f779ae2d3210043eb` on 2026-11-20 07:06:58 UTC; post-merge Backend CI, Backend/Web CI on Python 3.12/3.14 and Web check passed on that exact commit. The optional Telegram announce job failed separately due the configured chat target.
 
 
-## Phase C9 — causal historical replay of captured Spot order-flow snapshots (PR #241 in progress)
+## Phase C9 — causal historical replay of captured Spot order-flow snapshots (merged PR #241)
 
 ### Purpose
 
@@ -428,10 +428,43 @@ Phase C8 now persists bounded, sequence-validated feature snapshots, but the his
 - The seven-day recorder retains compact feature snapshots, not raw AggTrades/depth diffs. CVD remains bounded since the stream seed; full UTC-session delta may be unavailable. Historical execution spread/depth, fees and slippage remain assumed values, not reconstructed from the stored book.
 - No win-rate, expectancy, profit-factor or profitability uplift is claimed. Keep the live gate and legacy score unchanged until adequate independent out-of-sample evidence exists.
 
+### Verification
+
+- PR [#241](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/241) merged to main as `388e30e885621e0c74ed2f8e3183f6a66a94e945`.
+- Final PR head `b6c49a62b305631dd46bb6721fe98131c133f1a1` passed Backend CI and Backend/Web CI (Python 3.12/3.14 and Web check). Post-merge main Backend CI and Backend/Web CI passed on the merge commit.
+- Full diff reviewed: eight intended files only; no secrets, private API credentials or order-placement code.
+- The separate Telegram Update Notifications announce job failed due its configured chat target; backend and web checks were successful.
+- No live stored-row coverage or order-flow profitability uplift has yet been demonstrated.
+
 ### Next steps
 
-1. Run Backend CI on Python 3.12/3.14, Backend/Web CI and Web CI; review the complete diff and security surface before merge.
-2. After merge, verify the endpoint reports real observation counts and coverage for a symbol with active streams; a zero-count result is a data-coverage limitation, not an engine success.
-3. Collect sufficient time-aligned snapshots over several sessions before interpreting the order-flow ablation.
-4. Add explicit method-level and baseline-vs-ablation reports only after the synchronized replay has enough samples to be meaningful.
-5. Keep USDⓈ-M and COIN-M Futures unsupported until their market metadata, feed adapters, filters and deterministic tests are independently implemented.
+1. Align the once-per-minute feature sample with the next UTC candle-decision boundary without relaxing the existing source-age checks.
+2. Inspect real stored-row coverage and keep the candle-only baseline separate from the order-flow-gated replay.
+3. Keep USDⓈ-M and COIN-M Futures unsupported until their market metadata, feed adapters, filters and deterministic tests are independently implemented.
+
+
+
+## Phase C10 — decision-aligned order-flow feature capture (implementation PR)
+
+### Problem
+
+Historical replay selects only a snapshot captured at or before a candle decision timestamp and recomputes source age at that decision. The prior once-per-minute capture could happen anywhere in the minute. If it occurred after a candle boundary, it was correctly excluded; the previous sample was then commonly older than the 5-second L2 freshness limit. This could suppress replay coverage without indicating a broken live stream.
+
+### Implementation on branch `feat/align-orderflow-replay-capture`
+
+- Sample in the final two seconds before each UTC minute boundary. All currently supported replay timeframes are minute multiples, so a sample captured before that boundary can be used causally at the next 1m/5m/15m/30m/50m/1h decision.
+- Project the latest AggTrade and depth source ages to the boundary before accepting the sample. Reject if projected trade age exceeds the existing 15-second limit or projected depth age exceeds the existing 5-second limit.
+- Keep at most one row per symbol per UTC minute, existing seven-day retention and bounded background persistence. The sample is still accepted only when trade continuity/CVD and L2 sequence validation pass.
+- Expose the alignment window in stream-manager diagnostics.
+
+### Tests and limitations
+
+- Deterministic tests cover the final-two-second window, UTC-aware timestamps, projected freshness at the boundary, non-finite/negative ages and no capture outside the window.
+- This improves sampling alignment only; it does not create historical raw trades/depth, increase the eight-stream cap or prove that stored data exists for a given symbol.
+- No signal score, threshold, entry rule or execution behavior changes. No win-rate or profitability uplift is claimed.
+
+### Next steps
+
+1. Run Backend CI on Python 3.12/3.14, Backend/Web CI and Web CI; inspect the final diff and security surface.
+2. After merge, compare actual decision-time snapshot coverage using the unchanged strict replay freshness rules.
+3. Keep performance claims on hold until representative chronological out-of-sample samples are available.

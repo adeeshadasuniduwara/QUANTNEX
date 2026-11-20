@@ -5,7 +5,7 @@ import math
 import re
 import sqlite3
 import httpx
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -866,12 +866,44 @@ async def signal_engine_backtest(payload: dict, user: User = Depends(local_works
         for timeframe in (5, 15, 30, 50, 60):
             candles_by_tf[str(timeframe)] = aggregate_minutes(history, timeframe, require_complete=True)
         symbol_info = await get_binance_spot_symbol_info(symbol)
+        include_order_flow_replay = payload.get("include_order_flow_replay", True)
+        if not isinstance(include_order_flow_replay, bool):
+            raise ValueError("include_order_flow_replay must be a boolean.")
+        order_flow_observations = None
+        if include_order_flow_replay:
+            from .order_flow_recorder import load_order_flow_observations
+
+            first_candle = datetime.fromisoformat(str(history[0]["time"]).replace("Z", "+00:00"))
+            last_candle = datetime.fromisoformat(str(history[-1]["time"]).replace("Z", "+00:00"))
+            if first_candle.tzinfo is None:
+                first_candle = first_candle.replace(tzinfo=timezone.utc)
+            if last_candle.tzinfo is None:
+                last_candle = last_candle.replace(tzinfo=timezone.utc)
+            history_start = first_candle.astimezone(timezone.utc)
+            history_end = last_candle.astimezone(timezone.utc) + timedelta(minutes=1)
+            order_flow_observations = load_order_flow_observations(
+                db, symbol, history_start, history_end, limit=20000
+            )
         result = await run_signal_walk_forward(
             symbol, candles_by_tf, symbol_info, settings,
             train_ratio=float(payload.get("train_ratio", 0.7)),
             assumed_spread_bps=float(payload.get("assumed_spread_bps", 5.0)),
             assumed_depth_usd=float(payload.get("assumed_depth_usd", 10000.0)),
+            order_flow_observations=order_flow_observations,
         )
+        result["order_flow_capture"] = {
+            "requested": include_order_flow_replay,
+            "status": (
+                "AVAILABLE" if order_flow_observations
+                else "NO_CAPTURED_ORDER_FLOW_DATA" if include_order_flow_replay
+                else "DISABLED"
+            ),
+            "observation_count": len(order_flow_observations or []),
+            "retention_days": 7,
+            "sampling": "At most one sequence-validated feature snapshot per active symbol per UTC minute.",
+            "window_start": history_start.isoformat() if include_order_flow_replay else None,
+            "window_end": history_end.isoformat() if include_order_flow_replay else None,
+        }
     except HTTPException:
         raise
     except (ValueError, TypeError) as exc:
@@ -889,6 +921,7 @@ async def signal_engine_backtest(payload: dict, user: User = Depends(local_works
         "symbol": symbol, "days": days,
         "training_trades": result["training"]["trade_count"],
         "out_of_sample_trades": result["out_of_sample"]["trade_count"],
+        "order_flow_snapshots": len(order_flow_observations or []),
     })
     db.commit()
     event_hub.publish("strategy.research.changed", "strategy", "signal_walk_forward_saved", {"symbol": symbol})

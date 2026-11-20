@@ -19,6 +19,136 @@ def _epoch(value: str) -> float:
     return stamp.timestamp()
 
 
+def _snapshot_epoch(value: Any, label: str) -> float:
+    """Parse a persisted observation timestamp without accepting naive local time."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{label} must be a timezone-aware ISO timestamp.")
+    try:
+        stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise ValueError(f"{label} must be a timezone-aware ISO timestamp.") from None
+    if stamp.tzinfo is None or stamp.utcoffset() is None:
+        raise ValueError(f"{label} must be timezone-aware.")
+    return stamp.astimezone(timezone.utc).timestamp()
+
+
+def _validate_order_flow_observations(
+    observations: list[dict[str, Any]], symbol: str
+) -> list[float]:
+    """Validate the persisted Spot snapshot sequence before chronological replay."""
+    if not isinstance(observations, list):
+        raise ValueError("Order-flow replay observations must be a list.")
+    epochs: list[float] = []
+    previous = float("-inf")
+    for index, record in enumerate(observations):
+        if not isinstance(record, dict):
+            raise ValueError(f"Order-flow observation {index} must be an object.")
+        if record.get("market_type") != "BINANCE_SPOT" or record.get("symbol") != symbol:
+            raise ValueError("Order-flow replay observations must match the requested Binance Spot symbol.")
+        captured = _snapshot_epoch(record.get("captured_at"), "captured_at")
+        if captured <= previous:
+            raise ValueError("Order-flow observations must have unique, strictly increasing capture timestamps.")
+        epochs.append(captured)
+        previous = captured
+    return epochs
+
+
+def _select_order_flow_snapshot(
+    observations: list[dict[str, Any]],
+    observation_epochs: list[float],
+    symbol: str,
+    as_of_epoch: float,
+    settings: dict[str, Any],
+) -> tuple[dict[str, Any], str]:
+    """Select only the latest prior snapshot and recompute source age at decision time.
+
+    Missing, stale, malformed, gapped or future-dated snapshots return an empty
+    override so the existing order-flow gate rejects a candidate. No older
+    snapshot is forward-filled across a stale interval.
+    """
+    index = bisect_right(observation_epochs, as_of_epoch + 1e-6) - 1
+    if index < 0:
+        return {}, "MISSING"
+    record = observations[index]
+    try:
+        captured = _snapshot_epoch(record.get("captured_at"), "captured_at")
+        if captured > as_of_epoch + 1e-6:
+            return {}, "FUTURE"
+        if record.get("capture_version") != 2 or record.get("capture_scope") != "ONE_UTC_MINUTE_FEATURE_SNAPSHOT":
+            return {}, "INVALID"
+        if record.get("symbol") != symbol or record.get("market_type") != "BINANCE_SPOT":
+            return {}, "INVALID"
+
+        trade_state = record.get("trade_state")
+        depth_book = record.get("depth_book")
+        snapshot = record.get("order_flow")
+        if not all(isinstance(value, dict) for value in (trade_state, depth_book, snapshot)):
+            return {}, "INVALID"
+        if trade_state.get("coverage_complete") is not True or trade_state.get("gap_detected") is not False:
+            return {}, "INVALID"
+        trade_id = trade_state.get("last_agg_trade_id")
+        if isinstance(trade_id, bool) or not isinstance(trade_id, int) or trade_id < 0:
+            return {}, "INVALID"
+        if depth_book.get("valid") is not True or depth_book.get("sequence_validated") is not True:
+            return {}, "INVALID"
+        if not isinstance(depth_book.get("bids"), list) or not depth_book["bids"]:
+            return {}, "INVALID"
+        if not isinstance(depth_book.get("asks"), list) or not depth_book["asks"]:
+            return {}, "INVALID"
+        update_id = depth_book.get("last_update_id")
+        if isinstance(update_id, bool) or not isinstance(update_id, int) or update_id < 0:
+            return {}, "INVALID"
+        if (
+            snapshot.get("market_type") != "BINANCE_SPOT"
+            or snapshot.get("feed_mode") != "PUBLIC_WEBSOCKET_STREAM"
+            or snapshot.get("depth_is_continuous") is not True
+            or snapshot.get("cvd_status") != "COMPLETE_SINCE_STATE_SEED"
+            or snapshot.get("depth_snapshot_update_id") != update_id
+        ):
+            return {}, "INVALID"
+        trade_count = snapshot.get("trade_count")
+        if isinstance(trade_count, bool) or not isinstance(trade_count, int) or trade_count < 1:
+            return {}, "INVALID"
+        provenance = snapshot.get("data_provenance")
+        sources = snapshot.get("data_sources")
+        book_metrics = snapshot.get("order_book")
+        if not isinstance(provenance, dict) or not isinstance(sources, dict) or not isinstance(book_metrics, dict):
+            return {}, "INVALID"
+        if (
+            provenance.get("candle_volume_used") is not False
+            or "aggressor" not in str(provenance.get("bid_ask_semantics") or "").lower()
+            or not str(sources.get("stream") or "").startswith("wss://")
+        ):
+            return {}, "INVALID"
+
+        trade_epoch = _snapshot_epoch(snapshot.get("last_trade_at"), "last_trade_at")
+        depth_epoch = _snapshot_epoch(snapshot.get("depth_observed_at"), "depth_observed_at")
+        if trade_epoch > as_of_epoch + 1e-6 or depth_epoch > as_of_epoch + 1e-6:
+            return {}, "FUTURE"
+        if trade_epoch > captured + 2.0 or depth_epoch > captured + 2.0:
+            return {}, "INVALID"
+
+        trade_age = as_of_epoch - trade_epoch
+        depth_age = as_of_epoch - depth_epoch
+        max_trade_age = float(settings.get("max_order_flow_trade_age_seconds", 15.0))
+        max_depth_age = float(settings.get("max_order_book_snapshot_age_seconds", 5.0))
+        if (
+            not math.isfinite(max_trade_age) or max_trade_age <= 0
+            or not math.isfinite(max_depth_age) or max_depth_age <= 0
+        ):
+            raise ValueError("Order-flow replay freshness settings must be finite and positive.")
+        if trade_age < 0 or depth_age < 0:
+            return {}, "FUTURE"
+        if trade_age > max_trade_age or depth_age > max_depth_age:
+            return {}, "STALE"
+
+        replay_snapshot = dict(snapshot)
+        replay_snapshot["trade_data_age_seconds"] = round(trade_age, 3)
+        return replay_snapshot, "AVAILABLE"
+    except (TypeError, ValueError, OverflowError):
+        return {}, "INVALID"
+
+
 def _limit_fill_price(side: str, limit_price: float, candle: dict[str, Any]) -> float | None:
     """Model a resting limit fill, including a favorable gap through the limit."""
     open_price = float(candle["open"])
@@ -96,6 +226,21 @@ def _metrics(trades: list[dict[str, Any]], counters: dict[str, int], candles: li
         "average_r": round(sum(r_values) / len(r_values), 3) if r_values else None,
         "max_drawdown_r": round(max_drawdown_r, 3),
         "buy_and_hold_return_pct": baseline,
+        "order_flow_replay_enabled": bool(counters.get("order_flow_enabled", 0)),
+        "order_flow_decision_points": counters.get("order_flow_decision_points", 0),
+        "order_flow_snapshot_matches": counters.get("order_flow_snapshot_matches", 0),
+        "order_flow_missing_snapshots": counters.get("order_flow_missing_snapshots", 0),
+        "order_flow_stale_snapshots": counters.get("order_flow_stale_snapshots", 0),
+        "order_flow_invalid_snapshots": counters.get("order_flow_invalid_snapshots", 0),
+        "order_flow_confirmed_candidates": counters.get("order_flow_confirmed_candidates", 0),
+        "order_flow_rejected_candidates": counters.get("order_flow_rejected_candidates", 0),
+        "order_flow_coverage_pct": round(
+            counters.get("order_flow_snapshot_matches", 0) / counters.get("order_flow_decision_points", 1) * 100, 2
+        ) if counters.get("order_flow_decision_points", 0) else None,
+        "order_flow_candidate_confirmation_pct": round(
+            counters.get("order_flow_confirmed_candidates", 0)
+            / max(1, counters.get("order_flow_confirmed_candidates", 0) + counters.get("order_flow_rejected_candidates", 0)) * 100, 2
+        ) if counters.get("order_flow_confirmed_candidates", 0) + counters.get("order_flow_rejected_candidates", 0) else None,
         "trades": trades[-200:],
     }
 
@@ -109,6 +254,7 @@ async def _simulate_slice(
     assumed_depth_usd: float,
     start_index: int,
     end_index: int,
+    order_flow_observations: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     primary_tf = str(settings.get("primary", "5"))
     enabled = list(dict.fromkeys(
@@ -125,7 +271,18 @@ async def _simulate_slice(
         tf: [_epoch(row["time"]) for row in rows]
         for tf, rows in candles_by_tf.items() if tf in TIMEFRAME_MINUTES
     }
-    counters = {"signals": 0, "waits": 0, "market": 0, "limit": 0, "limit_expired": 0}
+    observation_epochs = (
+        _validate_order_flow_observations(order_flow_observations, symbol)
+        if order_flow_observations is not None else None
+    )
+    counters = {
+        "signals": 0, "waits": 0, "market": 0, "limit": 0, "limit_expired": 0,
+        "order_flow_enabled": int(order_flow_observations is not None),
+        "order_flow_decision_points": 0, "order_flow_snapshot_matches": 0,
+        "order_flow_missing_snapshots": 0, "order_flow_stale_snapshots": 0,
+        "order_flow_invalid_snapshots": 0, "order_flow_confirmed_candidates": 0,
+        "order_flow_rejected_candidates": 0,
+    }
     trades: list[dict[str, Any]] = []
     index = max(0, start_index)
     end_index = min(end_index, len(primary) - 2)

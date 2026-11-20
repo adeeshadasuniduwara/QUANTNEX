@@ -1116,6 +1116,7 @@ async def build_signal(
     candles_override: dict[str, list[dict[str, Any]]] | None = None,
     execution_context_override: dict[str, Any] | None = None,
     order_flow_override: dict[str, Any] | None = None,
+    order_flow_mode_override: str | None = None,
     replay_as_of: datetime | None = None,
 ) -> dict[str, Any]:
     symbol = str(symbol).upper()
@@ -1302,7 +1303,9 @@ async def build_signal(
             "note": "XAUUSD uses its configured Gold feed; Binance Spot order-flow is not applied.",
         }
     elif side and entry_choice:
-        order_flow_mode = "DETERMINISTIC_FIXTURE" if order_flow_override is not None else "PUBLIC_WEBSOCKET_STREAM"
+        order_flow_mode = order_flow_mode_override or (
+            "DETERMINISTIC_FIXTURE" if order_flow_override is not None else "PUBLIC_WEBSOCKET_STREAM"
+        )
         order_flow_snapshot = None
         try:
             if order_flow_override is not None:

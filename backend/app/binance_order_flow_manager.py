@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import math
 import time
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, Callable
@@ -16,6 +17,13 @@ from typing import Any, Callable
 import httpx
 
 from .binance_order_flow_stream import BinanceSpotOrderFlowStream
+from .database import SessionLocal
+from .order_flow_recorder import (
+    DEFAULT_RETENTION_DAYS,
+    SAMPLE_INTERVAL_SECONDS,
+    is_recordable_order_flow_snapshot,
+    record_order_flow_observation,
+)
 
 
 class BinanceSpotOrderFlowManagerError(RuntimeError):
@@ -44,6 +52,8 @@ class BinanceSpotOrderFlowManager:
         request_timeout_seconds: float = 8.0,
         connect_timeout_seconds: float = 3.0,
         stream_factory: Callable[..., BinanceSpotOrderFlowStream] = BinanceSpotOrderFlowStream,
+        capture_interval_seconds: float = SAMPLE_INTERVAL_SECONDS,
+        capture_retention_days: int = DEFAULT_RETENTION_DAYS,
     ) -> None:
         if isinstance(max_streams, bool) or not isinstance(max_streams, int) or max_streams < 1:
             raise ValueError("max_streams must be a positive integer.")
@@ -55,7 +65,17 @@ class BinanceSpotOrderFlowManager:
         self.max_streams = max_streams
         self.request_timeout_seconds = float(request_timeout_seconds)
         self.connect_timeout_seconds = float(connect_timeout_seconds)
+        if not math.isfinite(capture_interval_seconds) or capture_interval_seconds <= 0:
+            raise ValueError("capture_interval_seconds must be finite and positive.")
+        if isinstance(capture_retention_days, bool) or not isinstance(capture_retention_days, int) or capture_retention_days < 1:
+            raise ValueError("capture_retention_days must be a positive integer.")
         self.stream_factory = stream_factory
+        self.capture_interval_seconds = float(capture_interval_seconds)
+        self.capture_retention_days = capture_retention_days
+        self.last_capture_at: str | None = None
+        self.last_capture_error: str | None = None
+        self._last_prune_monotonic = 0.0
+        self._capture_tasks: set[asyncio.Task] = set()
         self._slots: dict[str, _ManagedStream] = {}
         self._client: httpx.AsyncClient | None = None
         self._lock = asyncio.Lock()
@@ -102,6 +122,8 @@ class BinanceSpotOrderFlowManager:
                 slot.stop_event.set()
         if slots:
             await asyncio.gather(*(self._stop_slot(slot) for slot in slots), return_exceptions=True)
+        if self._capture_tasks:
+            await asyncio.gather(*list(self._capture_tasks), return_exceptions=True)
         if client is not None and not client.is_closed:
             await client.aclose()
 
@@ -131,6 +153,30 @@ class BinanceSpotOrderFlowManager:
             raise BinanceSpotOrderFlowManagerError("Stream freshness limits must be finite and positive.")
         return normalized, str(tick_size), wait, trade_age, depth_age
 
+    def _persist_snapshot(self, snapshot: dict[str, Any], prune_before: datetime | None) -> dict[str, Any]:
+        db = SessionLocal()
+        try:
+            return record_order_flow_observation(db, snapshot, prune_before=prune_before)
+        finally:
+            db.close()
+
+    def _capture_finished(self, task: asyncio.Task) -> None:
+        self._capture_tasks.discard(task)
+        if task.cancelled():
+            return
+        try:
+            result = task.result()
+        except Exception as exc:
+            self.last_capture_error = f"{type(exc).__name__}: {exc}"
+            return
+        if isinstance(result, dict) and result.get("recorded"):
+            self.last_capture_at = result.get("captured_at")
+            self.last_capture_error = None
+        elif isinstance(result, dict) and result.get("reason") not in {
+            "DUPLICATE_UTC_MINUTE_BUCKET",
+        }:
+            self.last_capture_error = str(result.get("reason") or "Order-flow snapshot was not stored.")
+
     async def _create_slot(
         self,
         symbol: str,
@@ -149,8 +195,27 @@ class BinanceSpotOrderFlowManager:
         stop_event = asyncio.Event()
         changed_event = asyncio.Event()
 
-        async def on_update(_snapshot: dict[str, Any]) -> None:
+        last_capture_monotonic = 0.0
+
+        async def on_update(snapshot: dict[str, Any]) -> None:
+            nonlocal last_capture_monotonic
             changed_event.set()
+            now = time.monotonic()
+            if now - last_capture_monotonic < self.capture_interval_seconds:
+                return
+            if not is_recordable_order_flow_snapshot(snapshot):
+                return
+            last_capture_monotonic = now
+            prune_before = None
+            if now - self._last_prune_monotonic >= 3600:
+                prune_before = datetime.now(timezone.utc) - timedelta(days=self.capture_retention_days)
+                self._last_prune_monotonic = now
+            task = asyncio.create_task(
+                asyncio.to_thread(self._persist_snapshot, snapshot, prune_before),
+                name=f"quantnex-orderflow-capture-{symbol.lower()}",
+            )
+            self._capture_tasks.add(task)
+            task.add_done_callback(self._capture_finished)
 
         task = asyncio.create_task(
             stream.run(self._client, stop_event, on_update),
@@ -225,6 +290,13 @@ class BinanceSpotOrderFlowManager:
             "active_streams": self.active_stream_count,
             "max_streams": self.max_streams,
             "eviction_policy": "LEAST_RECENTLY_REQUESTED",
+            "capture": {
+                "enabled": True,
+                "sample_interval_seconds": self.capture_interval_seconds,
+                "retention_days": self.capture_retention_days,
+                "last_captured_at": self.last_capture_at,
+                "last_error": self.last_capture_error,
+            },
         }
         return snapshot
 

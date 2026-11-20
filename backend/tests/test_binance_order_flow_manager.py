@@ -129,6 +129,12 @@ def test_manager_persists_ready_stream_snapshots_off_the_websocket_callback(monk
         manager = BinanceSpotOrderFlowManager(max_streams=1, stream_factory=FakeStream)
         captures = []
         monkeypatch.setattr(manager_module, "is_recordable_order_flow_snapshot", lambda _snapshot: True)
+        monkeypatch.setattr(manager_module, "_seconds_until_next_utc_minute", lambda _stamp: 1.0)
+        monkeypatch.setattr(
+            manager_module,
+            "_snapshot_stays_fresh_until_next_minute",
+            lambda *_args, **_kwargs: True,
+        )
         monkeypatch.setattr(
             manager,
             "_persist_snapshot",
@@ -143,5 +149,67 @@ def test_manager_persists_ready_stream_snapshots_off_the_websocket_callback(monk
         assert len(captures) == 1
         assert captures[0][0]["symbol"] == "BTCUSDT"
         assert captures[0][1].tzinfo is not None
+
+    asyncio.run(run())
+
+
+
+def test_capture_window_aligns_samples_before_utc_minute_decisions():
+    from datetime import datetime, timezone
+
+    before_window = datetime(2026, 11, 20, 12, 34, 57, 999999, tzinfo=timezone.utc)
+    window_open = datetime(2026, 11, 20, 12, 34, 58, tzinfo=timezone.utc)
+    near_boundary = datetime(2026, 11, 20, 12, 34, 59, 500000, tzinfo=timezone.utc)
+
+    assert manager_module._seconds_until_next_utc_minute(before_window) is None
+    assert manager_module._seconds_until_next_utc_minute(window_open) == pytest.approx(2.0)
+    assert manager_module._seconds_until_next_utc_minute(near_boundary) == pytest.approx(0.5)
+    assert manager_module._seconds_until_next_utc_minute(
+        datetime(2026, 11, 20, 12, 34, 59)
+    ) is None
+
+
+@pytest.mark.parametrize(
+    ("trade_age", "depth_age", "remaining", "expected"),
+    [
+        (13.0, 3.0, 2.0, True),
+        (13.01, 3.0, 2.0, False),
+        (13.0, 3.01, 2.0, False),
+        (14.0, 4.0, 2.0, False),
+        (-0.1, 1.0, 1.0, False),
+        (float("nan"), 1.0, 1.0, False),
+        (1.0, float("inf"), 1.0, False),
+    ],
+)
+def test_capture_rejects_sources_that_will_be_stale_at_next_minute(
+    trade_age, depth_age, remaining, expected
+):
+    snapshot = {
+        "order_flow": {"trade_data_age_seconds": trade_age},
+        "depth_age_seconds": depth_age,
+    }
+    assert manager_module._snapshot_stays_fresh_until_next_minute(
+        snapshot,
+        remaining,
+        max_trade_age_seconds=15.0,
+        max_depth_age_seconds=5.0,
+    ) is expected
+
+
+def test_manager_skips_capture_outside_utc_boundary_alignment_window(monkeypatch):
+    async def run():
+        manager = BinanceSpotOrderFlowManager(max_streams=1, stream_factory=FakeStream)
+        captures = []
+        monkeypatch.setattr(manager_module, "is_recordable_order_flow_snapshot", lambda _snapshot: True)
+        monkeypatch.setattr(manager_module, "_seconds_until_next_utc_minute", lambda _stamp: None)
+        monkeypatch.setattr(
+            manager,
+            "_persist_snapshot",
+            lambda snapshot, captured_at, prune_before: captures.append(snapshot),
+        )
+
+        await manager.get_snapshot("BTCUSDT", "0.01", wait_seconds=0.1)
+        await manager.stop()
+        assert captures == []
 
     asyncio.run(run())

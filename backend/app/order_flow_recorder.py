@@ -84,8 +84,6 @@ def is_recordable_order_flow_snapshot(snapshot: dict[str, Any]) -> bool:
         depth_id = _non_negative_int(depth_book.get("last_update_id"), "depth update ID")
         if _non_negative_int(order_flow.get("depth_snapshot_update_id"), "order-flow depth update ID") != depth_id:
             return False
-        if trade_id < 1:
-            return False
 
         trade_age = _finite(order_flow.get("trade_data_age_seconds"), "trade age")
         depth_age = _finite(snapshot.get("depth_age_seconds"), "depth age")
@@ -213,20 +211,22 @@ def record_order_flow_observation(
     except (TypeError, ValueError, OverflowError) as exc:
         return {"recorded": False, "reason": f"INVALID_SNAPSHOT_PAYLOAD: {exc}"}
 
-    existing = db.query(OrderFlowObservation.id).filter(
-        OrderFlowObservation.market_type == "BINANCE_SPOT",
-        OrderFlowObservation.symbol == snapshot["symbol"],
-        OrderFlowObservation.sample_bucket == sample_bucket,
-    ).first()
-    if existing:
-        return {"recorded": False, "reason": "DUPLICATE_UTC_MINUTE_BUCKET", "sample_bucket": sample_bucket}
-
     cutoff_ms = None
     if prune_before is not None:
         cutoff_ms = int(_aware_utc(prune_before, "prune_before").timestamp() * 1000)
         db.query(OrderFlowObservation).filter(
             OrderFlowObservation.captured_at_epoch_ms < cutoff_ms
         ).delete(synchronize_session=False)
+
+    existing = db.query(OrderFlowObservation.id).filter(
+        OrderFlowObservation.market_type == "BINANCE_SPOT",
+        OrderFlowObservation.symbol == snapshot["symbol"],
+        OrderFlowObservation.sample_bucket == sample_bucket,
+    ).first()
+    if existing:
+        if cutoff_ms is not None:
+            db.commit()
+        return {"recorded": False, "reason": "DUPLICATE_UTC_MINUTE_BUCKET", "sample_bucket": sample_bucket}
 
     order_flow = snapshot["order_flow"]
     trade_state = snapshot["trade_state"]

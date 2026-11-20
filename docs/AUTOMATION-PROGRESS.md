@@ -820,7 +820,7 @@ Add a first value-area method to the strategy registry without changing the live
 
 
 
-## 2026-11-20 — Automation run 5 continued: Phase C10 decision-aligned order-flow capture
+## 2026-11-20 — Automation run 5 continued: Phase C10 decision-aligned order-flow capture (merged PR #242)
 
 ### Finding
 
@@ -836,13 +836,15 @@ Phase C9 replays only the latest snapshot captured at or before each candle deci
 
 ### Verification status
 
-- Branch starts from main `388e30e885621e0c74ed2f8e3183f6a66a94e945`.
-- CI has not yet run on this phase branch. No test pass or replay-coverage improvement is claimed until the final PR head checks complete.
+- PR [#242](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/242) merged to main as `0780e71fa5aa60dc67cb14398f07c4af770eb19d`.
+- Final PR head `fa8e83c22dc0dc2b8bf5ecd1ca61e1f99c1da5ab` passed Backend CI and Backend/Web CI; Python 3.12 and Python 3.14 each passed 478 tests, and Web CI passed.
+- Post-merge main Backend CI and Backend/Web CI passed on the exact merge commit (478 tests on Python 3.12 and 478 on Python 3.14, plus Web check).
+- Full diff reviewed: four intended files only; no secret patterns, private credentials or order-placement code. The optional Telegram announce job failed separately due its configured chat target.
+- No actual stored-snapshot coverage or trading-performance uplift has been measured yet.
 - This change does not modify signal thresholds, live scoring, execution selection or order-flow confirmation rules.
 
 ### Exact next steps
 
-1. Review the complete PR diff and run Backend CI on Python 3.12/3.14 plus Backend/Web and Web CI.
-2. Merge only if all checks pass and the final diff remains limited to the manager, deterministic manager tests and progress documentation.
-3. After merge, compare stored snapshot coverage at actual 1m/5m/15m decision timestamps against the previous arbitrary-minute sampling, using identical strict source-age limits.
-4. Keep all performance claims on hold until sufficiently large, representative chronological out-of-sample samples exist.
+1. Compare actual stored-snapshot coverage at 1m/5m/15m/30m/50m/1h decision timestamps against the previous arbitrary-minute capture, using unchanged strict source-age limits.
+2. Verify the backtest endpoint returns real observation counts and separate baseline/order-flow-gated metrics for a symbol with active streams; zero observations must remain an explicit no-data result.
+3. Collect representative chronological out-of-sample sessions before interpreting expectancy, profit factor, win rate or drawdown changes.

@@ -444,7 +444,7 @@ Phase C8 now persists bounded, sequence-validated feature snapshots, but the his
 
 
 
-## Phase C10 — decision-aligned order-flow feature capture (implementation PR)
+## Phase C10 — decision-aligned order-flow feature capture (merged PR #242)
 
 ### Problem
 
@@ -463,8 +463,16 @@ Historical replay selects only a snapshot captured at or before a candle decisio
 - This improves sampling alignment only; it does not create historical raw trades/depth, increase the eight-stream cap or prove that stored data exists for a given symbol.
 - No signal score, threshold, entry rule or execution behavior changes. No win-rate or profitability uplift is claimed.
 
+### Verification
+
+- PR [#242](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/242) merged to main as `0780e71fa5aa60dc67cb14398f07c4af770eb19d`.
+- Final PR head `fa8e83c22dc0dc2b8bf5ecd1ca61e1f99c1da5ab` passed Backend CI and Backend/Web CI; Python 3.12 and 3.14 each passed 478 tests, and Web CI passed.
+- Post-merge main Backend CI passed and Backend/Web CI passed on the exact merge commit (478 tests on Python 3.12 and 478 on Python 3.14, plus Web check).
+- Full diff reviewed: four intended files only (manager, deterministic manager tests and two progress documents); no secret patterns, API credentials or order-placement code.
+- The optional Telegram Update Notifications announce workflow failed separately because of the configured chat target. It does not change the successful backend/web test result.
+
 ### Next steps
 
-1. Run Backend CI on Python 3.12/3.14, Backend/Web CI and Web CI; inspect the final diff and security surface.
-2. After merge, compare actual decision-time snapshot coverage using the unchanged strict replay freshness rules.
-3. Keep performance claims on hold until representative chronological out-of-sample samples are available.
+1. Compare actual stored-snapshot coverage at 1m/5m/15m/30m/50m/1h decision timestamps against the previous arbitrary-minute capture, using unchanged strict source-age limits.
+2. Verify the backtest endpoint returns real observation counts and separate baseline/order-flow-gated metrics for a symbol with active streams; zero observations must remain an explicit no-data result.
+3. Collect representative chronological out-of-sample sessions before interpreting expectancy, profit factor, win rate or drawdown changes.

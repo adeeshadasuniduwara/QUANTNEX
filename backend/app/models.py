@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
@@ -219,9 +219,9 @@ class OrderFlowObservation(Base):
     symbol: Mapped[str] = mapped_column(String(30), index=True)
     sample_bucket: Mapped[int] = mapped_column(Integer)
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
-    captured_at_epoch_ms: Mapped[int] = mapped_column(Integer, index=True)
-    last_agg_trade_id: Mapped[int] = mapped_column(Integer)
-    depth_update_id: Mapped[int] = mapped_column(Integer)
+    captured_at_epoch_ms: Mapped[int] = mapped_column(BigInteger, index=True)
+    last_agg_trade_id: Mapped[int] = mapped_column(BigInteger)
+    depth_update_id: Mapped[int] = mapped_column(BigInteger)
     trade_count: Mapped[int] = mapped_column(Integer)
     trade_data_age_seconds: Mapped[float] = mapped_column(Float)
     depth_age_seconds: Mapped[float] = mapped_column(Float)

@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
@@ -204,3 +204,33 @@ class TelegramDelivery(Base):
     attempts: Mapped[int] = mapped_column(Integer, default=1)
     claimed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+
+class OrderFlowObservation(Base):
+    """Bounded, public Binance Spot order-flow feature snapshot for research replay."""
+    __tablename__ = "order_flow_observations"
+    __table_args__ = (
+        UniqueConstraint("market_type", "symbol", "sample_bucket", name="uq_order_flow_market_symbol_minute"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    market_type: Mapped[str] = mapped_column(String(24), index=True)
+    symbol: Mapped[str] = mapped_column(String(30), index=True)
+    sample_bucket: Mapped[int] = mapped_column(Integer)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+    captured_at_epoch_ms: Mapped[int] = mapped_column(BigInteger, index=True)
+    last_agg_trade_id: Mapped[int] = mapped_column(BigInteger)
+    depth_update_id: Mapped[int] = mapped_column(BigInteger)
+    trade_count: Mapped[int] = mapped_column(Integer)
+    trade_data_age_seconds: Mapped[float] = mapped_column(Float)
+    depth_age_seconds: Mapped[float] = mapped_column(Float)
+    delta: Mapped[float] = mapped_column(Float)
+    delta_ratio: Mapped[float] = mapped_column(Float)
+    cvd_value: Mapped[float] = mapped_column(Float)
+    cvd_status: Mapped[str] = mapped_column(String(40))
+    session_delta: Mapped[float | None] = mapped_column(Float, nullable=True)
+    session_delta_complete: Mapped[bool] = mapped_column(Boolean, default=False)
+    spread_bps: Mapped[float] = mapped_column(Float)
+    depth_imbalance: Mapped[float] = mapped_column(Float)
+    snapshot_json: Mapped[str] = mapped_column(Text)

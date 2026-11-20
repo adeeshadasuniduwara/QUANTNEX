@@ -400,5 +400,6 @@ The live Spot stream already maintains contiguous aggregate-trade state and a se
 
 ### Verification
 
-- New deterministic tests cover provenance/sequence/freshness rejection, one-per-minute idempotency, strict no-look-ahead time filtering, retention pruning and manager off-loop capture scheduling.
-- PR CI and post-merge checks are the acceptance gate. Do not merge if Backend CI (Python 3.12/3.14), schema/preflight or Web CI fails.
+- New deterministic tests cover provenance/sequence/freshness rejection, future-dated source rejection, one-per-minute idempotency, strict no-look-ahead time filtering, retention pruning and manager off-loop capture scheduling.
+- Implementation/test head `120c7508ddcf1b9824a497e106d306d19c0f160f` passed 464 tests on Python 3.12 and 464 on Python 3.14; backend schema test, automatic startup preflight, compile and Web CI passed. The full diff contains only the eight intended files and no credential/private-key patterns.
+- The PR remains open pending final-head checks and merge verification; no post-merge result is claimed.

@@ -751,7 +751,7 @@ Add a first value-area method to the strategy registry without changing the live
 
 - Branch created from main `70c3700cc7564167befa874f56e918c8eae67b24`.
 - GitHub Actions verified implementation/test head `120c7508ddcf1b9824a497e106d306d19c0f160f`: Backend CI passed 464 tests; Backend/Web CI passed 464 tests on Python 3.12 and 464 on Python 3.14; automatic startup preflight, backend compile, schema test and Web CI all passed.
-- Full PR diff reviewed: exactly the eight intended files listed above, no unrelated changes, and no credential/private-key patterns in added lines. PR #240 is mergeable, based on latest main `70c3700cc7564167befa874f56e918c8eae67b24` with zero commits behind. A documentation-only follow-up records these results; final head checks must also pass before merge.
+- Full PR diff reviewed: exactly the eight intended files listed above, no unrelated changes, and no credential/private-key patterns in added lines. Final PR head `4420ee5ec42ea896eee86adf5256378234277034` also passed Backend CI (464 tests), Backend/Web CI (464 tests on Python 3.12 and 464 on Python 3.14), startup preflight, compile, schema test and Web CI. PR #240 is mergeable and based on latest main `70c3700cc7564167befa874f56e918c8eae67b24` with zero commits behind.
 - No real orders, API keys or live-money execution are introduced.
 
 ### Exact next steps

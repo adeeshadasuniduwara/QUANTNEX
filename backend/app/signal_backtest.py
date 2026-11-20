@@ -373,10 +373,38 @@ async def _simulate_slice(
             "observed_at": as_of.isoformat(),
             "is_replay": True,
         }
-        result = await build_signal(
-            settings, symbol, candles_override=windows,
-            execution_context_override=execution, replay_as_of=as_of,
-        )
+        order_flow_override = None
+        if order_flow_observations is not None and observation_epochs is not None:
+            order_flow_override, observation_status = _select_order_flow_snapshot(
+                order_flow_observations, observation_epochs, symbol, as_of_epoch, settings
+            )
+            counters["order_flow_decision_points"] += 1
+            if observation_status == "AVAILABLE":
+                counters["order_flow_snapshot_matches"] += 1
+            elif observation_status == "MISSING":
+                counters["order_flow_missing_snapshots"] += 1
+            elif observation_status == "STALE":
+                counters["order_flow_stale_snapshots"] += 1
+            else:
+                counters["order_flow_invalid_snapshots"] += 1
+
+        build_kwargs = {
+            "candles_override": windows,
+            "execution_context_override": execution,
+            "replay_as_of": as_of,
+        }
+        if order_flow_observations is not None:
+            # An empty override deliberately fails the existing order-flow gate;
+            # historical candidates must not silently fall back to candle-only.
+            build_kwargs["order_flow_override"] = order_flow_override or {}
+            build_kwargs["order_flow_mode_override"] = "HISTORICAL_FEATURE_SNAPSHOT_REPLAY"
+        result = await build_signal(settings, symbol, **build_kwargs)
+        order_flow_result = result.get("order_flow") or {}
+        if order_flow_result.get("data_mode") == "HISTORICAL_FEATURE_SNAPSHOT_REPLAY":
+            if order_flow_result.get("accepted") is True:
+                counters["order_flow_confirmed_candidates"] += 1
+            elif order_flow_result.get("accepted") is False:
+                counters["order_flow_rejected_candidates"] += 1
         signal = result.get("signal")
         if result.get("status") != "SIGNAL" or not signal:
             counters["waits"] += 1
@@ -477,6 +505,7 @@ async def run_signal_walk_forward(
     train_ratio: float = 0.7,
     assumed_spread_bps: float = 5.0,
     assumed_depth_usd: float = 10000.0,
+    order_flow_observations: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Evaluate the actual signal rules on chronological training and unseen holdout slices."""
     settings = settings or {"primary": "5", "trend": "60", "enabled": ["60", "30", "15", "5", "1"], "min_score": 7}
@@ -518,6 +547,8 @@ async def run_signal_walk_forward(
         if values != sorted(values) or len(values) != len(set(values)):
             raise ValueError(f"Historical {timeframe}m candles must be unique and chronological.")
     primary_times = timestamps[primary_tf]
+    if order_flow_observations is not None:
+        _validate_order_flow_observations(order_flow_observations, symbol)
     minute_times = timestamps.get("1", [])
     missing_minute_bars = 0
     largest_gap_minutes = 0
@@ -557,6 +588,59 @@ async def run_signal_walk_forward(
         symbol, candles_by_tf, symbol_info, settings, assumed_spread_bps,
         assumed_depth_usd, split_index, len(primary) - 2,
     )
+
+    order_flow_replay = None
+    order_flow_comparison = None
+    if order_flow_observations is not None:
+        if not order_flow_observations:
+            order_flow_replay = {
+                "status": "NO_CAPTURED_ORDER_FLOW_DATA",
+                "observation_count": 0,
+                "note": "No eligible sequence-validated Spot feature snapshots overlap this historical candle range; no order-flow performance result is available.",
+            }
+        else:
+            order_flow_training = await _simulate_slice(
+                symbol, candles_by_tf, symbol_info, settings, assumed_spread_bps,
+                assumed_depth_usd, first_valid, split_index - 1,
+                order_flow_observations=order_flow_observations,
+            )
+            order_flow_out_of_sample = await _simulate_slice(
+                symbol, candles_by_tf, symbol_info, settings, assumed_spread_bps,
+                assumed_depth_usd, split_index, len(primary) - 2,
+                order_flow_observations=order_flow_observations,
+            )
+            order_flow_replay = {
+                "status": "EVALUATED",
+                "observation_count": len(order_flow_observations),
+                "first_captured_at": order_flow_observations[0].get("captured_at"),
+                "last_captured_at": order_flow_observations[-1].get("captured_at"),
+                "training": order_flow_training,
+                "out_of_sample": order_flow_out_of_sample,
+                "method": "Same candle strategy and execution model, with the existing live Spot order-flow confirmation gate applied only to snapshots captured at/before each decision time.",
+            }
+            baseline_expectancy = out_of_sample.get("expectancy_r")
+            flow_expectancy = order_flow_out_of_sample.get("expectancy_r")
+            baseline_win_rate = out_of_sample.get("win_rate_pct")
+            flow_win_rate = order_flow_out_of_sample.get("win_rate_pct")
+            order_flow_comparison = {
+                "out_of_sample_trade_count_delta": (
+                    order_flow_out_of_sample["trade_count"] - out_of_sample["trade_count"]
+                ),
+                "out_of_sample_expectancy_r_delta": (
+                    round(flow_expectancy - baseline_expectancy, 3)
+                    if isinstance(flow_expectancy, (int, float)) and isinstance(baseline_expectancy, (int, float))
+                    else None
+                ),
+                "out_of_sample_win_rate_percentage_point_delta": (
+                    round(flow_win_rate - baseline_win_rate, 2)
+                    if isinstance(flow_win_rate, (int, float)) and isinstance(baseline_win_rate, (int, float))
+                    else None
+                ),
+                "out_of_sample_max_drawdown_r_delta": round(
+                    order_flow_out_of_sample["max_drawdown_r"] - out_of_sample["max_drawdown_r"], 3
+                ),
+                "interpretation": "Descriptive ablation only. Snapshot coverage is sparse and non-random; this comparison is not a calibrated causal estimate of order-flow edge.",
+            }
     return {
         "symbol": symbol,
         "market_type": "BINANCE_SPOT",
@@ -572,6 +656,8 @@ async def run_signal_walk_forward(
         "train_ratio": train_ratio,
         "training": training,
         "out_of_sample": out_of_sample,
+        "order_flow_replay": order_flow_replay,
+        "order_flow_comparison": order_flow_comparison,
         "assumptions": {
             "spread_bps": assumed_spread_bps,
             "top_book_depth_usd": assumed_depth_usd,
@@ -583,6 +669,7 @@ async def run_signal_walk_forward(
             "limit_fill": "Filled only if a 1m candle touches the limit within the 15-minute signal expiry; gap-through fills use the better opening price.",
             "intrabar_ambiguity": "If stop-loss and TP1 are both touched in one candle, stop-loss is assumed first.",
             "exit_policy": "Full position exits at stop-loss or TP1; TP2/TP3 partial exits are not modeled.",
+            "order_flow_replay": "Selects only the latest stored Spot feature snapshot captured at or before each decision; source ages are recomputed at that decision timestamp. Missing, stale, future, malformed or non-sequenced snapshots fail closed for candidates; no stale forward-fill is allowed.",
         },
         "method": "Chronological holdout. Each signal uses only candles closed by the next primary bar open; the holdout is not used for parameter fitting.",
         "limitations": [
@@ -591,5 +678,8 @@ async def run_signal_walk_forward(
             "No partial fills, funding, position sizing, contract multiplier, taxes or broker execution latency.",
             "Spot SELL is a sell signal only, not a short position.",
             "A historical holdout is not proof of future profitability.",
+            "Order-flow snapshots are retained for seven days, sampled at most once per symbol per minute, and only exist for symbols with active managed streams.",
+            "Captured order-flow snapshots are feature summaries, not raw AggTrade/depth-diff archives; CVD is bounded since the stream seed and UTC session delta may be incomplete.",
+            "The order-flow replay comparison is subject to sparse, non-random stream coverage and must not be interpreted as proof of incremental predictive value.",
         ],
     }

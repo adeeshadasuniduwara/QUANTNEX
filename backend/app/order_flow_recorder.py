@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy.exc import IntegrityError
@@ -204,6 +204,14 @@ def record_order_flow_observation(
     if not is_recordable_order_flow_snapshot(snapshot):
         return {"recorded": False, "reason": "SNAPSHOT_NOT_READY_OR_NOT_SEQUENCE_VALIDATED"}
     captured = _aware_utc(captured_at or datetime.now(timezone.utc), "captured_at")
+    order_flow = snapshot["order_flow"]
+    for key in ("depth_observed_at", "last_trade_at"):
+        source_time = _aware_utc(
+            datetime.fromisoformat(str(order_flow.get(key) or "").replace("Z", "+00:00")),
+            key,
+        )
+        if source_time > captured + timedelta(seconds=2):
+            return {"recorded": False, "reason": "FUTURE_DATED_SOURCE_TIMESTAMP"}
     captured_epoch_ms = int(captured.timestamp() * 1000)
     sample_bucket = int(captured.timestamp()) // SAMPLE_INTERVAL_SECONDS
     try:

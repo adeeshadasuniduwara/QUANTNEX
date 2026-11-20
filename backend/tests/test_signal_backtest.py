@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+
+import pytest
 
 import httpx
 
@@ -138,7 +140,7 @@ def test_signal_walk_forward_rejects_invalid_assumptions():
                      "30": _candles(600, 30), "15": _candles(1200, 15),
                      "1": _candles(18_000, 1)}
     info = {"filters": {"PRICE_FILTER": {"tickSize": "0.01"}}}
-    with __import__("pytest").raises(ValueError):
+    with pytest.raises(ValueError):
         asyncio.run(signal_backtest.run_signal_walk_forward(
             "BTCUSDT", candles_by_tf, info, assumed_spread_bps=200
         ))
@@ -357,7 +359,7 @@ def test_signal_replay_rejects_zero_or_non_finite_exchange_tick_size(monkeypatch
 
 
 def _order_flow_observation(captured_at: datetime, *, trade_at: datetime | None = None, depth_at: datetime | None = None):
-    trade_at = trade_at or captured_at - __import__("datetime").timedelta(seconds=1)
+    trade_at = trade_at or captured_at - timedelta(seconds=1)
     depth_at = depth_at or captured_at - __import__("datetime").timedelta(seconds=0.5)
     stamp = lambda value: value.astimezone(timezone.utc).isoformat()
     return {

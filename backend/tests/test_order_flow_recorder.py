@@ -14,8 +14,8 @@ from app.order_flow_recorder import (
 )
 
 
-def _snapshot():
-    stamp = datetime(2026, 11, 20, 6, 0, tzinfo=timezone.utc).isoformat()
+def _snapshot(at=None):
+    stamp = (at or datetime(2026, 11, 20, 6, 0, tzinfo=timezone.utc)).isoformat()
     return {
         "symbol": "BTCUSDT",
         "market_type": "BINANCE_SPOT",
@@ -153,7 +153,7 @@ def test_recorder_deduplicates_utc_minute_and_loads_chronologically_without_look
     duplicate = record_order_flow_observation(
         db, snapshot, captured_at=start + timedelta(seconds=40)
     )
-    later_snapshot = _snapshot()
+    later_snapshot = _snapshot(start + timedelta(minutes=1, seconds=5))
     later_snapshot["order_flow"]["delta_ratio"] = -0.4
     later_snapshot["order_flow"]["delta"] = -4.0
     later_snapshot["trade_state"]["last_agg_trade_id"] = 1002
@@ -185,11 +185,11 @@ def test_recorder_deduplicates_utc_minute_and_loads_chronologically_without_look
 def test_recorder_prunes_old_rows_only_when_a_retention_cutoff_is_supplied(db):
     old_time = datetime(2026, 11, 1, tzinfo=timezone.utc)
     current_time = datetime(2026, 11, 20, tzinfo=timezone.utc)
-    assert record_order_flow_observation(db, _snapshot(), captured_at=old_time)["recorded"] is True
+    assert record_order_flow_observation(db, _snapshot(old_time), captured_at=old_time)["recorded"] is True
 
     current = record_order_flow_observation(
         db,
-        _snapshot(),
+        _snapshot(current_time),
         captured_at=current_time,
         prune_before=datetime(2026, 11, 13, tzinfo=timezone.utc),
     )
@@ -200,7 +200,7 @@ def test_recorder_prunes_old_rows_only_when_a_retention_cutoff_is_supplied(db):
 
 
 def test_recorder_rejects_non_finite_delta_instead_of_serializing_it(db):
-    snapshot = _snapshot()
+    snapshot = _snapshot(datetime(2026, 11, 20, 6, 0, tzinfo=timezone.utc))
     snapshot["order_flow"]["delta_ratio"] = float("nan")
     result = record_order_flow_observation(
         db,
@@ -209,4 +209,17 @@ def test_recorder_rejects_non_finite_delta_instead_of_serializing_it(db):
     )
     assert result["recorded"] is False
     assert result["reason"] == "SNAPSHOT_NOT_READY_OR_NOT_SEQUENCE_VALIDATED"
+    assert db.query(OrderFlowObservation).count() == 0
+
+
+
+def test_recorder_rejects_source_timestamps_after_the_capture_clock(db):
+    snapshot_time = datetime(2026, 11, 20, 6, 0, tzinfo=timezone.utc)
+    result = record_order_flow_observation(
+        db,
+        _snapshot(snapshot_time),
+        captured_at=snapshot_time - timedelta(seconds=5),
+    )
+    assert result["recorded"] is False
+    assert result["reason"] == "FUTURE_DATED_SOURCE_TIMESTAMP"
     assert db.query(OrderFlowObservation).count() == 0

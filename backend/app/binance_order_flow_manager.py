@@ -156,10 +156,17 @@ class BinanceSpotOrderFlowManager:
             raise BinanceSpotOrderFlowManagerError("Stream freshness limits must be finite and positive.")
         return normalized, str(tick_size), wait, trade_age, depth_age
 
-    def _persist_snapshot(self, snapshot: dict[str, Any], prune_before: datetime | None) -> dict[str, Any]:
+    def _persist_snapshot(
+        self,
+        snapshot: dict[str, Any],
+        captured_at: datetime,
+        prune_before: datetime | None,
+    ) -> dict[str, Any]:
         db = SessionLocal()
         try:
-            return record_order_flow_observation(db, snapshot, prune_before=prune_before)
+            return record_order_flow_observation(
+                db, snapshot, captured_at=captured_at, prune_before=prune_before
+            )
         finally:
             db.close()
 
@@ -212,12 +219,13 @@ class BinanceSpotOrderFlowManager:
             if not is_recordable_order_flow_snapshot(snapshot):
                 return
             last_capture_monotonic = now
+            captured_at = datetime.now(timezone.utc)
             prune_before = None
             if self._last_prune_monotonic is None or now - self._last_prune_monotonic >= 3600:
-                prune_before = datetime.now(timezone.utc) - timedelta(days=self.capture_retention_days)
+                prune_before = captured_at - timedelta(days=self.capture_retention_days)
                 self._last_prune_monotonic = now
             task = asyncio.create_task(
-                asyncio.to_thread(self._persist_snapshot, snapshot, prune_before),
+                asyncio.to_thread(self._persist_snapshot, snapshot, captured_at, prune_before),
                 name=f"quantnex-orderflow-capture-{symbol.lower()}",
             )
             self._capture_tasks.add(task)

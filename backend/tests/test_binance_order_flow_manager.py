@@ -132,7 +132,7 @@ def test_manager_persists_ready_stream_snapshots_off_the_websocket_callback(monk
         monkeypatch.setattr(
             manager,
             "_persist_snapshot",
-            lambda snapshot, prune_before: captures.append((snapshot, prune_before)),
+            lambda snapshot, captured_at, prune_before: captures.append((snapshot, captured_at, prune_before)),
         )
 
         result = await manager.get_snapshot("BTCUSDT", "0.01", wait_seconds=0.1)
@@ -142,5 +142,6 @@ def test_manager_persists_ready_stream_snapshots_off_the_websocket_callback(monk
 
         assert len(captures) == 1
         assert captures[0][0]["symbol"] == "BTCUSDT"
+        assert captures[0][1].tzinfo is not None
 
     asyncio.run(run())

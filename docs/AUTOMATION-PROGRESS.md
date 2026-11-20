@@ -802,15 +802,14 @@ Add a first value-area method to the strategy registry without changing the live
 
 ### Verification status
 
-- PR not yet created at the time of this progress update. GitHub Actions have not run on the Phase C9 head yet; no test result is claimed.
-- The existing main checks on `1b9d14c` passed. This is not evidence for the new branch.
+- PR [#241](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/241) was created against `main` at base `1b9d14ced78209cfe74de56f779ae2d3210043eb`. The PR head has been updated during review; current-head Backend CI, Backend/Web CI and Web CI are the verification gate. No passing result is claimed until the final head completes.
 - No live scan, trade signal, performance uplift or profitability result is claimed by this code change.
 - No live orders or private Binance API credentials are introduced.
 
 ### Exact next steps
 
-1. Review the complete Phase C9 diff and inspect the endpoint and replay changes for regressions, data leakage and credential exposure.
-2. Create PR against current main and wait for Backend CI (Python 3.12/3.14), Backend/Web CI and Web CI.
-3. Fix all failures, re-run final-head checks, and merge only after full diff and mergeability review.
-4. Verify post-merge main and then exercise the backtest endpoint against real persisted rows for a symbol with active streams; report actual snapshot count and coverage.
+1. Review the full PR #241 diff, especially the API path and the historical snapshot alignment/freshness logic.
+2. Wait for Backend CI (Python 3.12/3.14), Backend/Web CI and Web CI on the final PR head; fix failures and re-run.
+3. Merge only after all relevant checks pass, full diff/security review is clean and mergeability/base are current.
+4. Verify post-merge main and exercise the backtest endpoint against real persisted rows for a symbol with active streams; report actual snapshot count and coverage.
 5. Keep order-flow results descriptive until enough chronological out-of-sample samples exist; do not alter live thresholds or claim improved accuracy from the gate alone.

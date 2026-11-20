@@ -26,6 +26,9 @@ from .order_flow_recorder import (
 )
 
 
+MAX_PENDING_CAPTURE_TASKS = 16
+
+
 class BinanceSpotOrderFlowManagerError(RuntimeError):
     """Raised when a safe Spot order-flow stream cannot be managed."""
 
@@ -74,7 +77,7 @@ class BinanceSpotOrderFlowManager:
         self.capture_retention_days = capture_retention_days
         self.last_capture_at: str | None = None
         self.last_capture_error: str | None = None
-        self._last_prune_monotonic = 0.0
+        self._last_prune_monotonic: float | None = None
         self._capture_tasks: set[asyncio.Task] = set()
         self._slots: dict[str, _ManagedStream] = {}
         self._client: httpx.AsyncClient | None = None
@@ -195,19 +198,22 @@ class BinanceSpotOrderFlowManager:
         stop_event = asyncio.Event()
         changed_event = asyncio.Event()
 
-        last_capture_monotonic = 0.0
+        last_capture_monotonic: float | None = None
 
         async def on_update(snapshot: dict[str, Any]) -> None:
             nonlocal last_capture_monotonic
             changed_event.set()
             now = time.monotonic()
-            if now - last_capture_monotonic < self.capture_interval_seconds:
+            if last_capture_monotonic is not None and now - last_capture_monotonic < self.capture_interval_seconds:
+                return
+            if len(self._capture_tasks) >= MAX_PENDING_CAPTURE_TASKS:
+                self.last_capture_error = "CAPTURE_BACKPRESSURE: pending snapshot writes reached the safety limit."
                 return
             if not is_recordable_order_flow_snapshot(snapshot):
                 return
             last_capture_monotonic = now
             prune_before = None
-            if now - self._last_prune_monotonic >= 3600:
+            if self._last_prune_monotonic is None or now - self._last_prune_monotonic >= 3600:
                 prune_before = datetime.now(timezone.utc) - timedelta(days=self.capture_retention_days)
                 self._last_prune_monotonic = now
             task = asyncio.create_task(

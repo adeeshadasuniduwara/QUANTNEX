@@ -76,7 +76,10 @@ jobs:
           grep -q 'quantnex-view-chart.js' apps/web/index.html
           grep -q 'quantnex-view-chart.css' apps/web/index.html
           grep -q 'auto-refresh.js' apps/web/index.html
-          grep -q 'id="qxChartIntelSummary"' apps/web/index.html
+          ! grep -q 'id="qxChartIntelSummary"' apps/web/index.html
+          ! grep -q 'id="qxChartSignalSheetContent"' apps/web/index.html
+          grep -q 'id="qxSignalLedgerContent"' apps/web/index.html
+          ! grep -q 'id="qxCrossMarketSignalScan"' apps/web/index.html
           grep -q 'id="qxOverlayZones"' apps/web/index.html
           grep -q 'id="account"' apps/web/index.html
           grep -q 'id="walletDeposit"' apps/web/index.html

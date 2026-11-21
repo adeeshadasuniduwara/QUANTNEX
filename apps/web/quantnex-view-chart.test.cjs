@@ -128,6 +128,7 @@ console.log("QUANTNEX VIEW Spot/USDⓈ-M Futures market selector and .P ticker c
 assert.match(html, /Futures chart-only; signal and Order Flow engines remain Spot-only/, "UI must disclose that Futures chart support does not imply Futures signal/order-flow support.");
 
 const intelligence = fs.readFileSync("apps/web/quantnex-view-intelligence.js", "utf8");
+assert.match(intelligence, /marketType:\$\("qxMarketType"\)\?\.value\|\|"BINANCE_SPOT"/, "Intelligence selection must include the selected market type.");
 assert.match(intelligence, /FUTURES CHART ONLY · FUTURES SIGNAL ENGINE NOT ENABLED/, "Futures chart must never call the Spot signal engine.");
 assert.match(intelligence, /selection\.marketType!=="BINANCE_SPOT"/, "Futures historical signal replay must be explicitly disabled.");
 assert.match(intelligence, /current\.marketType!==s\.marketType/, "Async signal responses must be discarded after switching market type.");

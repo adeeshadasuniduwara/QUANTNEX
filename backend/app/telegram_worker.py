@@ -982,6 +982,8 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
     if command == "/health":
         from .binance_order_flow_manager import get_binance_spot_order_flow_manager
         manager = get_binance_spot_order_flow_manager()
+        from .order_flow_monitor import get_order_flow_capture_status
+        capture = get_order_flow_capture_status()
         try:
             from .ai_assistant import get_openai_config
             ai_key, ai_model = get_openai_config(db, user_id)
@@ -996,6 +998,8 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
             "Gold history: " + (gold_feed_provider() or "NOT CONFIGURED") + "\n"
             "Order Flow streams: " + str(manager.active_stream_count) + "/" + str(manager.max_streams) + "\n"
             "Last saved Order Flow sample: " + str(manager.last_capture_at or "none yet") + "\n"
+            "Minute capture worker: " + ("ON" if capture["running"] else "OFF") + " · " + ", ".join(capture["symbols"]) + "\n"
+            "Capture worker error: " + str(capture["last_error"] or "none") + "\n"
             "Automatic signal alerts: " + ("ON" if auto["enabled"] else "OFF") + "\n"
             "OpenAI: " + ai_state + "\n"
             "Broker execution: OFF · This command does not test broker order placement."

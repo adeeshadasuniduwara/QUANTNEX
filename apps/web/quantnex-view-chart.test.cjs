@@ -45,7 +45,7 @@ console.log("QUANTNEX chart redraw performance regression checks passed.");
 
 
 
-assert.ok(html.includes("quantnex-view-chart.js?v=20261121-compact-layout2"), "Shared chart analysis must invalidate the chart bundle cache.");
+assert.ok(html.includes("quantnex-view-chart.js?v=20261121-usdm-signal1"), "Shared chart analysis must invalidate the chart bundle cache.");
 
 assert.match(js, /quantnex:market-tick/, "Gold chart must consume the shared market tick feed.");
 assert.doesNotMatch(js, /goldTimer|scan\(\)/, "The chart must not call the removed scan function or poll full Gold history every five seconds.");
@@ -131,7 +131,7 @@ assert.match(html, /Futures chart-only; signal and Order Flow engines remain Spo
 
 const intelligence = fs.readFileSync("apps/web/quantnex-view-intelligence.js", "utf8");
 assert.match(intelligence, /marketType:\$\("qxMarketType"\)\?\.value\|\|"BINANCE_SPOT"/, "Intelligence selection must include the selected market type.");
-assert.match(intelligence, /FUTURES CHART ONLY · FUTURES SIGNAL ENGINE NOT ENABLED/, "Futures chart must never call the Spot signal engine.");
+assert.match(intelligence, /marketType==="BINANCE_USDM_FUTURES"\?"\/api\/v1\/quantnex-view\/analyze-futures"/, "Futures selection must call its independent USD-M signal endpoint.");
 assert.match(intelligence, /selection\.marketType!=="BINANCE_SPOT"/, "Futures historical signal replay must be explicitly disabled.");
 assert.match(intelligence, /current\.marketType!==s\.marketType/, "Async signal responses must be discarded after switching market type.");
 console.log("QUANTNEX VIEW Futures chart/Spot signal isolation checks passed.");

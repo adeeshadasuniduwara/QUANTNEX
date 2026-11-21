@@ -33,18 +33,13 @@
       const tr=document.createElement("tr"),td=document.createElement("td");
       td.colSpan=10;td.className="empty-row";td.textContent=message;tr.append(td);rows.append(tr);
     };
-    if(selection.marketType==="BINANCE_USDM_FUTURES"){
-      addEmpty("USDⓈ-M Futures chart is read-only. A separate validated Futures signal engine is not enabled.");
-      if(status)status.textContent="FUTURES · CHART ONLY";
-      return;
-    }
     if(!signal){
       addEmpty(state==="ERROR"?"Live analysis is temporarily unavailable. Retrying automatically…":
         (data?.message||"WAIT · No confirmed setup passed the current filters. The engine keeps monitoring."));
       if(status)status.textContent=state==="ERROR"?"RETRYING":(data?.status||"WAIT · NO QUALIFIED SETUP");
       return;
     }
-    const market=signal.symbol||data.symbol||selection.symbol;
+    const market=signal.display_symbol||signal.symbol||data.display_symbol||data.symbol||selection.symbol;
     const entry=signal.entry_type==="MARKET"?"MARKET ("+price(signal.entry)+")":"LIMIT ("+price(signal.limit_price||signal.entry)+")";
     const values=[market,signal.side,signal.timeframe||data.interval||selection.interval,entry,price(signal.stop_loss),price(signal.tp1),price(signal.tp2),price(signal.tp3),
       String(signal.score??data.confluence_score??"—")+"/20",data.status||"SIGNAL"];
@@ -122,19 +117,20 @@
       rows.append(tr);
     });
   }
-  async function refreshLifecycle(symbol=selected().symbol){
-    if(selected().marketType!=="BINANCE_SPOT"){const status=$("qxSignalLedgerStatus");if(status){status.textContent="FUTURES SIGNAL LEDGER NOT ENABLED";status.dataset.state="warning";}return;}
+  async function refreshLifecycle(symbol=null){
+    const selection=selected();
+    const marketSymbol=symbol|| (selection.marketType==="BINANCE_USDM_FUTURES"?selection.symbol+".P":selection.symbol);
     refreshOverallPerformance();
     if(ledgerBusy||!$("qxSignalLedgerRows"))return;ledgerBusy=true;
     try{
-      const rows=await apiRequest("/api/v1/signals/trades?symbol="+encodeURIComponent(symbol)+"&limit=100");
+      const rows=await apiRequest("/api/v1/signals/trades?symbol="+encodeURIComponent(marketSymbol)+"&limit=100");
       renderLifecycleTrades(rows);
       const status=$("qxSignalLedgerStatus");if(status){status.textContent="SYNCED · "+rows.length+" records";status.dataset.state="ok";}
     }catch(error){const status=$("qxSignalLedgerStatus");if(status){status.textContent="HISTORY UNAVAILABLE · "+error.message;status.dataset.state="error";}}
     finally{ledgerBusy=false;}
   }
   async function replayHistory(selection){
-    if(selection.marketType!=="BINANCE_SPOT"){const note=$("qxSignalReplayNote");if(note)note.textContent="Futures chart is read-only. Futures signal replay is not enabled; Spot replay is not applied to a Futures chart.";return;}
+    if(selection.marketType!=="BINANCE_SPOT"){const note=$("qxSignalReplayNote");if(note)note.textContent="USDⓈ-M Futures live signals are enabled and tracked separately. Historical Futures replay is not enabled yet; Spot history is never reused.";return;}
     const day=new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Colombo"});
     const key=[selection.symbol,selection.interval,selection.min,day].join("|");
     if(replayBusy||replayKey===key)return;replayBusy=true;replayKey=key;
@@ -157,34 +153,17 @@
 
   async function analyze(){
     if(!isTradingViewActive())return;
-    if(selected().marketType==="BINANCE_USDM_FUTURES"){
-      setStatus("FUTURES CHART ONLY · FUTURES SIGNAL ENGINE NOT ENABLED");
-      renderLiveSignals(null,selected());
-      window.quantnexViewSetTradePlan?.(null);
-      setText("qxChartIntelState","FUTURES CHART ONLY");
-      const summary=$("qxChartIntelSummary");if(summary)summary.textContent="FUTURES CHART · SIGNAL ANALYSIS NOT ENABLED";
-      const metrics=$("qxChartIntelMetrics");
-      if(metrics){
-        metrics.replaceChildren();
-        [["Market type","USDⓈ-M PERPETUAL"],["Signal engine","NOT ENABLED"],["Order Flow","SPOT ONLY"],["Data mode","READ-ONLY"]].forEach(([label,value])=>{
-          const item=document.createElement("div"),name=document.createElement("span"),valueNode=document.createElement("strong");
-          item.className="qx-chart-intel-metric";name.textContent=label;valueNode.textContent=value;item.append(name,valueNode);metrics.append(item);
-        });
-      }
-      const confidence=$("qxConfidenceFill");if(confidence)confidence.style.width="0%";
-      setText("qxConfidenceLabel","Futures signal confluence is not calculated.");
-      return;
-    }
     if(busy){analyzeQueued=true;return;}busy=true;setStatus("ANALYSING");
     try{
       const s=selected();
-      const data=await apiRequest("/api/v1/quantnex-view/analyze?symbol="+encodeURIComponent(s.symbol)+"&interval="+encodeURIComponent(s.interval)+"&min_score="+s.min);
+      const endpoint=s.marketType==="BINANCE_USDM_FUTURES"?"/api/v1/quantnex-view/analyze-futures":"/api/v1/quantnex-view/analyze";
+      const data=await apiRequest(endpoint+"?symbol="+encodeURIComponent(s.symbol)+"&interval="+encodeURIComponent(s.interval)+"&min_score="+s.min);
       const current=selected();
       if(!isTradingViewActive()||current.symbol!==s.symbol||current.interval!==s.interval||current.marketType!==s.marketType||current.min!==s.min)return;
       renderLiveSignals(data,s);window.quantnexViewSetAnalysis?.(data);
-      refreshLifecycle(s.symbol);
-      replayHistory(s);
-      setStatus(data.status+" · "+data.eligible_setups+" ELIGIBLE / 100");
+      refreshLifecycle(s.marketType==="BINANCE_USDM_FUTURES"?s.symbol+".P":s.symbol);
+      if(s.marketType==="BINANCE_SPOT")replayHistory(s);
+      setStatus(data.status+" · "+(data.market_type==="BINANCE_USDM_FUTURES"?"USDⓈ-M FUTURES · ":"")+data.eligible_setups+" ELIGIBLE / 100");
     }catch(error){setStatus("FEED ERROR");renderLiveSignals(null,selected(),"ERROR");const host=$("qxMainSignal");if(host)host.textContent="Signal analysis unavailable: "+error.message;}
     finally{busy=false;if(analyzeQueued&&isTradingViewActive()){analyzeQueued=false;analyze();}else if(!isTradingViewActive())analyzeQueued=false;}
   }

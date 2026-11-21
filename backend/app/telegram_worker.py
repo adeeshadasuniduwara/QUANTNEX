@@ -913,7 +913,7 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
             "🛠 OPERATIONS COMMANDS\n"
             "/health · /signals · /signals_on · /signals_off\n"
             "/watchlist · /watchlist_set BTCUSDT,ETHUSDT\n"
-            "/orderflow BTCUSDT · /futures_scan BTCUSDT 15m\n"
+            "/orderflow BTCUSDT · /orderflow_watchlist · /futures_scan BTCUSDT 15m\n"
             "/risk · /ai_status · /ai_test\n"
             "Existing controls: /scan · /report · /gold · /binance_status · /timeframes"
         )

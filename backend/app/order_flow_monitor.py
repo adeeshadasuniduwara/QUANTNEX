@@ -45,6 +45,42 @@ def normalize_order_flow_monitor_symbols(value: Any) -> list[str]:
     return result or list(DEFAULT_ORDER_FLOW_SYMBOLS)
 
 
+def get_recent_trade_count_baseline(symbol: str, *, now=None, lookback_minutes: int = 30) -> float | None:
+    """Return a median of stored, validated per-minute trade counts when coverage is sufficient."""
+    from datetime import datetime, timedelta, timezone
+    from statistics import median
+    from .order_flow_recorder import load_order_flow_observations
+
+    instant = now or datetime.now(timezone.utc)
+    if instant.tzinfo is None or instant.utcoffset() is None:
+        raise ValueError("now must be timezone-aware.")
+    if isinstance(lookback_minutes, bool) or not isinstance(lookback_minutes, int) or not 5 <= lookback_minutes <= 240:
+        raise ValueError("lookback_minutes must be between 5 and 240.")
+    db = SessionLocal()
+    try:
+        rows = load_order_flow_observations(
+            db, symbol, instant - timedelta(minutes=lookback_minutes), instant,
+            limit=min(500, lookback_minutes + 5),
+        )
+    finally:
+        db.close()
+    counts = []
+    for row in rows:
+        flow = row.get("order_flow") if isinstance(row, dict) else None
+        value = flow.get("trade_count") if isinstance(flow, dict) else None
+        if isinstance(value, bool):
+            continue
+        try:
+            count = float(value)
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if math.isfinite(count) and count > 0:
+            counts.append(count)
+    if len(counts) < 5:
+        return None
+    return float(median(counts[-lookback_minutes:]))
+
+
 def _load_symbols() -> list[str]:
     db = SessionLocal()
     try:

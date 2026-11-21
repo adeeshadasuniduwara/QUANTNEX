@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import json
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
@@ -94,6 +96,64 @@ class WebSourceUpdaterDownloadTests(unittest.TestCase):
         self.assertIn("text-overflow:ellipsis;", css)
         self.assertIn("flex-wrap:nowrap;", css)
         self.assertIn("workspace-polish.css?v=20261116-sidebar-compact1", html)
+
+
+class GitHubApiCacheTests(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        self.cache_file = Path(self.temp_dir.name) / "data" / "updates" / "github_api_cache.json"
+        self.cache_file.parent.mkdir(parents=True)
+        self.cache_patch = patch.object(UPDATER, "API_CACHE_FILE", self.cache_file)
+        self.cache_patch.start()
+        self.addCleanup(self.cache_patch.stop)
+
+    def test_repeated_status_checks_reuse_persistent_response(self):
+        url = "https://api.github.com/repos/example/project/commits/main"
+        calls = []
+
+        def respond(request, timeout):
+            calls.append(request.full_url)
+            return FakeResponse(b'{"sha":"fresh"}')
+
+        with patch.object(UPDATER.urllib.request, "urlopen", side_effect=respond):
+            self.assertEqual(UPDATER.github_json(url), {"sha": "fresh"})
+            self.assertEqual(UPDATER.github_json(url), {"sha": "fresh"})
+
+        self.assertEqual(calls, [url])
+        self.assertTrue(self.cache_file.is_file())
+
+    def test_expired_and_malformed_timestamps_refresh_safely(self):
+        url = "https://api.github.com/repos/example/project/commits/main"
+        for fetched_at in (1, "not-a-timestamp"):
+            self.cache_file.write_text(json.dumps({
+                url: {"fetched_at": fetched_at, "data": {"sha": "old"}}
+            }), encoding="utf-8")
+            with patch.object(
+                UPDATER.urllib.request, "urlopen",
+                return_value=FakeResponse(b'{"sha":"fresh"}'),
+            ) as request:
+                self.assertEqual(UPDATER.github_json(url), {"sha": "fresh"})
+                request.assert_called_once()
+
+    def test_stale_cache_fallback_handles_403_and_429(self):
+        url = "https://api.github.com/repos/example/project/commits/main"
+        for status_code in (403, 429):
+            self.cache_file.write_text(json.dumps({
+                url: {"fetched_at": 1, "data": {"sha": "last-known-good"}}
+            }), encoding="utf-8")
+
+            def rate_limited(request, timeout):
+                raise urllib.error.HTTPError(
+                    request.full_url, status_code, "rate limit exceeded", {}, None
+                )
+
+            with patch.object(UPDATER.urllib.request, "urlopen", side_effect=rate_limited):
+                self.assertEqual(
+                    UPDATER.github_json(url),
+                    {"sha": "last-known-good"},
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

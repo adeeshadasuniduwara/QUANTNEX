@@ -1481,6 +1481,13 @@ async def intelligence_orderbook(symbol: str, user: User = Depends(local_workspa
     except httpx.HTTPError:
         raise HTTPException(status_code=502,detail="Order-book provider is temporarily unavailable.")
 
+@app.get("/api/v1/order-flow/capture-status")
+def order_flow_capture_status(user: User = Depends(local_workspace)):
+    """Report bounded minute-aligned public Spot order-flow capture health."""
+    from .order_flow_monitor import get_order_flow_capture_status
+    return get_order_flow_capture_status()
+
+
 @app.get("/api/v1/order-flow/spot/{symbol}")
 async def spot_order_flow_snapshot(symbol: str, wait_seconds: float = 0.0, user: User = Depends(local_workspace)):
     """Expose validated public Binance Spot AggTrade + sequence-validated L2 data to QUANTNEX VIEW."""

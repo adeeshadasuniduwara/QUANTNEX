@@ -78,3 +78,51 @@ def test_futures_engine_rejects_non_chronological_or_malformed_candles(monkeypat
     monkeypatch.setattr(engine, "fetch_binance_usdm_candles", fake_fetch)
     with pytest.raises(engine.BinanceUsdMSignalError, match="validation"):
         asyncio.run(engine.analyze_usdm_futures_signal("BTCUSDT", "15m", 6))
+
+
+
+def test_futures_engine_rejects_missing_candle_intervals(monkeypatch):
+    rows = candles()
+    rows[-1]["time"] = (datetime.fromisoformat(rows[-1]["time"]) + timedelta(minutes=15)).isoformat()
+    async def fake_fetch(*_args):
+        return rows
+    monkeypatch.setattr(engine, "fetch_binance_usdm_candles", fake_fetch)
+    with pytest.raises(engine.BinanceUsdMSignalError, match="ordering validation"):
+        asyncio.run(engine.analyze_usdm_futures_signal("BTCUSDT", "15m", 6))
+
+
+def test_futures_engine_rejects_future_candle_timestamp(monkeypatch):
+    rows = candles()
+    rows[-1]["time"] = (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat()
+    async def fake_fetch(*_args):
+        return rows
+    monkeypatch.setattr(engine, "fetch_binance_usdm_candles", fake_fetch)
+    with pytest.raises(engine.BinanceUsdMSignalError, match="future"):
+        asyncio.run(engine.analyze_usdm_futures_signal("BTCUSDT", "15m", 6))
+
+
+def test_futures_analysis_api_records_a_separate_futures_source(monkeypatch):
+    from app import main, signal_lifecycle
+    signal = {"symbol": "BTCUSDT.P", "side": "BUY", "timeframe": "15m", "entry_type": "MARKET",
+              "entry": 100.0, "stop_loss": 99.0, "tp1": 101.0, "tp2": 102.0, "tp3": 103.0,
+              "signal_time": datetime.now(timezone.utc).isoformat()}
+    async def fake_analyze(*_args):
+        return {"symbol": "BTCUSDT.P", "market_type": "BINANCE_USDM_FUTURES",
+                "status": "SIGNAL", "signal": signal, "eligible_setups": 1}
+    class FakeTrade:
+        id = 42
+        symbol = "BTCUSDT.P"
+    class FakeDb:
+        committed = False
+        def commit(self): self.committed = True
+    class FakeUser:
+        id = 7
+    published = []
+    monkeypatch.setattr(engine, "analyze_usdm_futures_signal", fake_analyze)
+    monkeypatch.setattr(signal_lifecycle, "record_signal", lambda db, user_id, value, source: (FakeTrade(), True))
+    monkeypatch.setattr(main.event_hub, "publish", lambda *args: published.append(args))
+    db = FakeDb()
+    result = asyncio.run(main.quantnex_view_analyze_futures("BTCUSDT", "15m", 6, FakeUser(), db))
+    assert result["market_type"] == "BINANCE_USDM_FUTURES"
+    assert db.committed is True
+    assert published and published[0][-1]["symbol"] == "BTCUSDT.P"

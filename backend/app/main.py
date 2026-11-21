@@ -2083,9 +2083,9 @@ def delete_archived_personal_goal(goal_id: int, user: User = Depends(local_works
         raise HTTPException(status_code=404, detail="Goal not found.")
     if goal.achieved_at is None:
         raise HTTPException(status_code=409, detail="Only archived, achieved goals can be deleted here.")
-    db.execute(delete(GoalContribution).where(
+    db.query(GoalContribution).filter(
         GoalContribution.goal_id == goal.id, GoalContribution.user_id == user.id
-    ))
+    ).delete(synchronize_session=False)
     db.delete(goal)
     db.commit()
     return {"deleted": True, "goal_id": goal_id}

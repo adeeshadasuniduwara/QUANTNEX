@@ -84,7 +84,7 @@ console.log("Realtime event restart-resync checks passed.");
 
 const chartClient = fs.readFileSync("apps/web/quantnex-view-chart.js", "utf8");
 const chartIntelligence = fs.readFileSync("apps/web/quantnex-view-intelligence.js", "utf8");
-assert.ok(/src="quantnex-view-chart\.js\?v=20261121-compact-layout2"/.test(html), "Live chart controller must load with the current cache version");
+assert.ok(/src="quantnex-view-chart\.js\?v=20261121-sheet-cleanup1"/.test(html), "Live chart controller must load with the current cache version");
 assert.ok(html.includes('id="qxOverlayStructure"') && html.includes('id="qxOverlayZones"') && html.includes('id="qxOverlaySR"'), "Chart overlay controls must remain available outside the removed Live Signal Sheet.");
 assert.ok(html.includes('id="qxOverlayZones"'), "Chart must expose zone visibility control");
 for (const feature of ["bullish_fvg", "bearish_fvg", "bullish_order_block", "bearish_order_block",

@@ -183,7 +183,7 @@
           </div>
         </div>
         <div class="qx-chart-settings-row">
-          <button class="secondary-btn compact-btn qx-chart-settings-button" id="qxSignalSettingsToggle" type="button" aria-expanded="false" aria-controls="qxSignalSettingsPanel" title="Signal timeframe settings">⚙ <span>Signal settings</span></button>
+          <button class="secondary-btn compact-btn qx-chart-settings-button" id="qxSignalSettingsToggle" type="button" aria-expanded="false" aria-controls="qxSignalSettingsPanel" title="Signal timeframe settings" aria-label="Signal timeframe settings">⚙ <span>Settings</span></button>
         </div>
         <div class="qx-signal-settings-panel" id="qxSignalSettingsPanel" hidden>
         <section class="panel timeframe-panel">
@@ -247,40 +247,10 @@
         </div>
         <div class="qx-live-signals-table-wrap">
           <table class="qx-live-signals-table">
-            <thead><tr><th>Market</th><th>Side</th><th>Timeframe</th><th>Entry</th><th>Stop Loss</th><th>TP1</th><th>TP2</th><th>TP3</th><th>Confluence</th><th>Status</th></tr></thead>
+            <thead><tr><th>Pair</th><th>Side</th><th>TF</th><th>Entry</th><th>SL</th><th>TP1</th><th>TP2</th><th>TP3</th><th>Score</th><th>Status</th></tr></thead>
             <tbody id="qxLiveSignalsRows"><tr><td colspan="10" class="empty-row">Waiting for the first live analysis…</td></tr></tbody>
           </table>
         </div>
-      </section>
-      <section class="qx-chart-sessions" aria-label="Live global market sessions">
-        <div class="qx-chart-sessions-intro">
-          <div><span class="qx-market-sessions-kicker">GLOBAL MARKET HOURS · LIVE</span><h2>Market Sessions</h2><p>Track the world's major trading sessions in Sri Lanka time, with live clocks and opening / closing countdowns.</p></div>
-          <span class="qx-session-live"><i></i> LIVE UPDATING</span>
-        </div>
-        <aside class="qx-market-sessions" id="qxMarketSessions" aria-label="Live global market sessions">
-          <div class="qx-market-sessions-head">
-            <div><span class="qx-market-sessions-kicker">GLOBAL MARKET CLOCK</span><strong class="qx-market-sessions-title">Market Sessions</strong></div>
-            <span class="qx-session-live"><i></i> LIVE</span>
-          </div>
-          <div class="qx-session-clocks">
-            <article class="qx-session-clock">
-              <div class="qx-session-clock-label"><span>🇱🇰 SRI LANKA</span><span id="qxColomboOffset">—</span></div>
-              <strong class="qx-session-clock-time" id="qxColomboTime">--:--:--</strong>
-              <small class="qx-session-clock-date" id="qxColomboDate">Loading local time…</small>
-            </article>
-            <article class="qx-session-clock">
-              <div class="qx-session-clock-label"><span>🇺🇸 NEW YORK</span><span id="qxNewYorkOffset">—</span></div>
-              <strong class="qx-session-clock-time" id="qxNewYorkTime">--:--:--</strong>
-              <small class="qx-session-clock-date" id="qxNewYorkDate">Loading New York time…</small>
-            </article>
-          </div>
-          <div class="qx-session-active" id="qxSessionActive" data-state="closed">CHECKING LIVE SESSIONS…</div>
-          <div class="qx-session-overlap" id="qxSessionOverlap" hidden></div>
-          <div class="qx-session-list" id="qxSessionList">
-            <div class="qx-session-row"><div class="qx-session-identity"><span class="qx-session-flag">🌏</span><div class="qx-session-labels"><strong>Asia · Tokyo</strong><small>09:00–18:00 local</small></div></div><div class="qx-session-state"><strong>CHECKING</strong></div></div>
-          </div>
-          <div class="qx-session-next" id="qxSessionNext">Calculating next market transition…</div>
-        </aside>
       </section>
       <section class="qx-chart-intelligence qx-collapsible-panel" aria-live="polite" aria-label="Live chart intelligence">
         <div class="qx-collapsible-heading">
@@ -335,6 +305,36 @@
         <div class="qx-orderflow-footnote">Data scope: Binance Spot only. Gold/Forex depth is not simulated. Bookmap uses the backend's sequence-validated Spot diff-depth book; resting orders are not executed volume or guaranteed executable liquidity.</div>
       </section>
 
+      <section class="qx-chart-sessions" aria-label="Live global market sessions">
+        <div class="qx-chart-sessions-intro">
+          <div><span class="qx-market-sessions-kicker">GLOBAL MARKET HOURS · LIVE</span><h2>Market Sessions</h2><p>Track the world's major trading sessions in Sri Lanka time, with live clocks and opening / closing countdowns.</p></div>
+          <span class="qx-session-live"><i></i> LIVE UPDATING</span>
+        </div>
+        <aside class="qx-market-sessions" id="qxMarketSessions" aria-label="Live global market sessions">
+          <div class="qx-market-sessions-head">
+            <div><span class="qx-market-sessions-kicker">GLOBAL MARKET CLOCK</span><strong class="qx-market-sessions-title">Market Sessions</strong></div>
+            <span class="qx-session-live"><i></i> LIVE</span>
+          </div>
+          <div class="qx-session-clocks">
+            <article class="qx-session-clock">
+              <div class="qx-session-clock-label"><span>🇱🇰 SRI LANKA</span><span id="qxColomboOffset">—</span></div>
+              <strong class="qx-session-clock-time" id="qxColomboTime">--:--:--</strong>
+              <small class="qx-session-clock-date" id="qxColomboDate">Loading local time…</small>
+            </article>
+            <article class="qx-session-clock">
+              <div class="qx-session-clock-label"><span>🇺🇸 NEW YORK</span><span id="qxNewYorkOffset">—</span></div>
+              <strong class="qx-session-clock-time" id="qxNewYorkTime">--:--:--</strong>
+              <small class="qx-session-clock-date" id="qxNewYorkDate">Loading New York time…</small>
+            </article>
+          </div>
+          <div class="qx-session-active" id="qxSessionActive" data-state="closed">CHECKING LIVE SESSIONS…</div>
+          <div class="qx-session-overlap" id="qxSessionOverlap" hidden></div>
+          <div class="qx-session-list" id="qxSessionList">
+            <div class="qx-session-row"><div class="qx-session-identity"><span class="qx-session-flag">🌏</span><div class="qx-session-labels"><strong>Asia · Tokyo</strong><small>09:00–18:00 local</small></div></div><div class="qx-session-state"><strong>CHECKING</strong></div></div>
+          </div>
+          <div class="qx-session-next" id="qxSessionNext">Calculating next market transition…</div>
+        </aside>
+      </section>
       <section class="panel qx-signal-ledger qx-collapsible-panel" id="qxSignalLedger" aria-label="Signal outcome history">
         <div class="qx-collapsible-heading">
           <div><strong>SIGNAL RESULTS SHEET</strong><small>Signal outcomes and risk management · live synchronization continues while hidden</small></div>

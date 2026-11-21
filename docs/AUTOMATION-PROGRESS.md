@@ -935,7 +935,7 @@ Branch: `test/orderflow-replay-long-short-fixtures`.
 4. Collect real chronological order-flow sessions before reporting win rate, expectancy, profit factor, drawdown or any incremental edge.
 
 
-## 2026-11-21 — Automation run 6 continued: live smoke Order Flow diagnostics (PR pending)
+## 2026-11-21 — Automation run 6 continued: live smoke Order Flow diagnostics (merged PR #246)
 
 ### Purpose
 
@@ -964,11 +964,11 @@ The last scheduled live smoke run successfully scanned 20 dynamically selected B
 
 ### Verification
 
-- Pending PR checks and diff review.
+- PR [#246](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/246) merged to main as 9d951d18e547cca260378d3c5903870c6da64dab. Backend CI passed; Backend/Web CI passed with 487 tests on Python 3.12 and 487 on Python 3.14, plus Web CI. Post-merge checks passed on the exact merge commit. The separate Telegram announce job failed because of the configured chat target.
 
 ### Exact next steps
 
-1. Verify output formatting tests and all Backend CI / Backend-Web CI checks on Python 3.12 and 3.14.
-2. Trigger or inspect the next scheduled read-only smoke run and use the new diagnostics to distinguish no-setup WAIT from Order Flow readiness/confirmation vetoes.
+1. Inspect the next scheduled read-only smoke run and use the new diagnostics to distinguish no-setup WAIT from Order Flow readiness/confirmation vetoes.
+2. Verify actual local recorder coverage through the backtest endpoint while a managed Spot stream is active.
 3. Use local backtest API diagnostics to establish actual recorder row coverage and keep the candle-only baseline separate from Order Flow replay.
 4. Only after representative real chronological observations exist, calculate comparative OOS expectancy, win rate, profit factor and drawdown.

@@ -881,7 +881,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
       setMetric("qxOrderFlowSpread",Number.isFinite(spread)?fmt(spread,priceDigits(latestBookData.symbol))+" · "+fmt(book.spread_bps,2)+" bps":"—");
       setMetric("qxOrderFlowBidDepth",fmt(book.bid_depth_quote,2)+" "+latestBookData.quoteAsset);
       setMetric("qxOrderFlowAskDepth",fmt(book.ask_depth_quote,2)+" "+latestBookData.quoteAsset);
-      $("p7BookLiveStatus").textContent="LIVE · 100ms Binance depth · "+new Date(latestBookData.receivedAt).toLocaleTimeString();
+      $("p7BookLiveStatus").textContent="LIVE · sequence-validated Binance Spot L2 · "+new Date(latestBookData.receivedAt).toLocaleTimeString();
       $("p7BookLiveStatus").className="p7-live-indicator";
       [["p7Bids",bids],["p7Asks",asks]].forEach(([id,rows])=>{
         const body=$(id);body.replaceChildren();

@@ -1400,7 +1400,7 @@ async def intelligence_orderbook(symbol: str, user: User = Depends(local_workspa
 async def quantnex_view_spot_order_flow(symbol: str, wait_seconds: float = 0.0, user: User = Depends(local_workspace)):
     """Read-only, sequence-validated Binance Spot L2 and observed AggTrade flow."""
     from .signal_engine import MarketDataError, get_binance_spot_symbol_info, is_binance_spot_symbol
-    from .binance_order_flow_manager import BinanceSpotOrderFlowManagerError, get_binance_spot_order_flow_manager
+    from .binance_order_flow_manager import get_binance_spot_order_flow_manager
     from .order_flow import OrderFlowDataError, calculate_order_book_metrics
 
     normalized = str(symbol or "").strip().upper()
@@ -1493,10 +1493,12 @@ async def quantnex_view_spot_order_flow(symbol: str, wait_seconds: float = 0.0, 
         raise
     except MarketDataError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except (BinanceSpotOrderFlowManagerError, OrderFlowDataError, ValueError, TypeError, KeyError, OverflowError) as exc:
+    except (OrderFlowDataError, ValueError, TypeError, KeyError, OverflowError) as exc:
         raise HTTPException(status_code=503, detail="Validated Binance Spot order-flow snapshot is temporarily unavailable.") from exc
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail="Binance public order-flow feed is temporarily unavailable.") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Validated Binance Spot order-flow stream is temporarily unavailable.") from exc
 
 
 @app.post("/api/v1/intelligence/signals/scan")

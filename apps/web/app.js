@@ -776,6 +776,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   }
   let tickerSocket=null,tickerRetry=null,tickerReconnectAttempts=0,tickerLastMessageAt=0,tickerWatchdog=null;
   let bookRetry=null,bookGeneration=0,bookHistory=[],latestBookData=null,bookRenderTimer=null,lastBookTableAt=0;
+  let spotUniverseLoaded=false,spotUniversePromise=null;
   function scheduleTickerReconnect(){
     if(tickerRetry||document.hidden)return;
     const delay=Math.min(30000,1000*Math.pow(2,Math.min(tickerReconnectAttempts,5)));
@@ -898,7 +899,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
       set("qxOrderFlowTradeCount","—");set("qxOrderFlowBuyVolume","—");set("qxOrderFlowSellVolume","—");
       set("qxOrderFlowDelta","—");set("qxOrderFlowDeltaRatio","—");set("qxOrderFlowCvd","—");
       set("qxOrderFlowCvdScope",result?.reason||"Waiting for continuous trades");
-      set("qxOrderFlowSessionDelta","—");set("qxOrderFlowSessionScope","Full UTC session not yet verified");
+      set("qxOrderFlowSessionDelta","—");set("qxOrderFlowSessionScope","Full UTC session not yet verified");set("qxOrderFlowProfile","—");set("qxOrderFlowMicroprice","—");
       const body=$("qxOrderFlowFootprintRows");if(body)body.replaceChildren();
       if(status)status.textContent=result?.reason||"Trade stream warming up; no metrics fabricated.";
       return;
@@ -910,8 +911,12 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     set("qxOrderFlowDeltaRatio",Number.isFinite(Number(flow.delta_ratio))?(Number(flow.delta_ratio)*100).toFixed(2)+"%":"—");
     set("qxOrderFlowCvd",flow.cvd_value==null?"—":fmt(flow.cvd_value,6));
     set("qxOrderFlowCvdScope",String(flow.cvd_status||"UNKNOWN")+" · "+String(flow.cvd_scope||"scope unavailable"));
-    set("qxOrderFlowSessionDelta",flow.session_delta==null?"—":fmt(flow.session_delta,6));
-    set("qxOrderFlowSessionScope",flow.session_delta_coverage_complete===true?"COMPLETE UTC SESSION":"SAMPLE ONLY · "+String(flow.session_delta_scope||"incomplete"));
+    const sessionValue=flow.session_delta==null?flow.session_delta_sample:flow.session_delta;
+    set("qxOrderFlowSessionDelta",sessionValue==null?"—":fmt(sessionValue,6));
+    set("qxOrderFlowSessionScope",flow.session_delta_coverage_complete===true?"COMPLETE UTC SESSION":"INCOMPLETE UTC SESSION · SAMPLE ONLY · "+String(flow.session_delta_scope||"incomplete"));
+    const profile=flow.volume_profile||{};
+    set("qxOrderFlowProfile",[["POC",profile.poc],["VAH",profile.vah],["VAL",profile.val]].filter(item=>Number.isFinite(Number(item[1]))).map(item=>item[0]+" "+fmt(item[1],priceDigits(result.symbol))).join(" · ")||"Not available");
+    set("qxOrderFlowMicroprice",result.liquidity?.microprice==null?"—":fmt(result.liquidity.microprice,priceDigits(result.symbol)));
     const body=$("qxOrderFlowFootprintRows");
     if(body){
       body.replaceChildren();
@@ -925,6 +930,23 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     const provenance=result.data_provenance||{};
     set("qxOrderFlowProvenance",String(provenance.trade_side||"Aggressor-side provenance unavailable")+" · "+String(provenance.depth||"Depth provenance unavailable")+" · "+String(provenance.cvd||"CVD scope unavailable"));
     if(status)status.textContent="OBSERVED AGGTRADE FLOW · "+String(flow.trade_count)+" trades · trade age "+fmt(result.freshness?.trade_age_seconds,2)+"s";
+  }
+  async function loadSpotUniverse(){
+    if(spotUniverseLoaded||spotUniversePromise)return spotUniversePromise;
+    const select=$("qxSymbol");if(!select)return;
+    spotUniversePromise=(async()=>{
+      const payload=await apiRequest("/api/v1/signals/markets");
+      const symbols=Array.isArray(payload.symbols)?[...new Set(payload.symbols.filter(x=>typeof x==="string"&&/^[A-Z0-9]{5,30}$/.test(x)).map(x=>x.toUpperCase()))]:[];
+      if(!symbols.length)throw Error("Binance Spot exchangeInfo returned no eligible symbols.");
+      const saved=(()=>{try{return JSON.parse(localStorage.getItem("quantnex.chart.selection.v1")||"{}").symbol||"";}catch{return"";}})();
+      const previous=select.value,options=[...symbols,"XAUUSD"];
+      select.replaceChildren();
+      options.forEach(symbol=>{const option=document.createElement("option");option.value=symbol;option.textContent=symbol;select.append(option);});
+      select.value=options.includes(saved)?saved:options.includes(previous)?previous:symbols[0];
+      spotUniverseLoaded=true;
+      if(select.value!==previous)select.dispatchEvent(new Event("change",{bubbles:true}));
+    })();
+    try{await spotUniversePromise;}catch(error){console.warn("QUANTNEX Spot symbol universe refresh failed:",error.message);}finally{spotUniversePromise=null;}
   }
   async function pollBook(generation,symbol){
     if(generation!==bookGeneration||document.hidden||!isWorkspaceViewActive("tradingview"))return;
@@ -967,7 +989,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     ["qxOrderFlowBestBid","qxOrderFlowBestAsk","qxOrderFlowSpread","qxOrderFlowBidDepth","qxOrderFlowAskDepth"].forEach(id=>{const el=$(id);if(el)el.textContent="—";});
     ["p7Bids","p7Asks"].forEach(id=>{const body=$(id);if(body){body.replaceChildren();const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=2;td.className="empty-row";td.textContent="Waiting for sequence-validated depth.";tr.append(td);body.append(tr);}});
     renderTradeFlow(null);
-    if(symbol==="XAUUSD"||!symbol.endsWith("USDT")){
+    if(symbol==="XAUUSD"){
       $("p7BookLiveStatus").textContent="Binance Spot order flow is unavailable for "+symbol;
       $("p7BookNote").textContent="No Binance depth or trade-side flow is simulated for Gold or non-Spot markets.";
       return;
@@ -1158,7 +1180,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     // Keep one shared crypto ticker alive across workspace views. Only a hidden browser tab
     // pauses the socket; returning to any view reconnects it and resumes the common market feed.
     connectCryptoTicker();
-    if(isWorkspaceViewActive("tradingview"))loadBook();
+    if(isWorkspaceViewActive("tradingview")){loadSpotUniverse();loadBook();}
     else stopBookFeed();
     if(isWorkspaceViewActive("paper-trading"))refreshAnalytics();
     if(isWorkspaceViewActive("performance-lab"))loadPerformance();

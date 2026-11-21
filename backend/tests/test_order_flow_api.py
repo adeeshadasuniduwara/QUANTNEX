@@ -116,3 +116,25 @@ def test_order_flow_api_rejects_stale_or_unsequenced_depth(monkeypatch):
     assert response.status_code == 200
     data = response.json()
     assert data["depth_ready"] is False and data["signal_ready"] is False and data["liquidity"] is None
+
+
+
+def test_order_flow_capture_status_endpoint_reports_minute_aligned_capture(monkeypatch):
+    from app import order_flow_monitor
+
+    monkeypatch.setattr(order_flow_monitor, "get_order_flow_capture_status", lambda: {
+        "running": True,
+        "symbols": ["BTCUSDT", "ETHUSDT"],
+        "refresh_seconds": 15.0,
+        "last_cycle_at": "2026-11-21T10:00:00+00:00",
+        "last_error": None,
+        "capture_alignment": "ONE_OBSERVATION_PER_UTC_1M_CANDLE",
+        "raw_tick_archive": False,
+    })
+    response = TestClient(app).get("/api/v1/order-flow/capture-status")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["running"] is True
+    assert data["symbols"] == ["BTCUSDT", "ETHUSDT"]
+    assert data["capture_alignment"] == "ONE_OBSERVATION_PER_UTC_1M_CANDLE"
+    assert data["raw_tick_archive"] is False

@@ -33,16 +33,17 @@ class UpdateError(RuntimeError):
 
 
 def _request_json(url: str) -> dict:
-    request = urllib.request.Request(url, headers={
-        "Accept": "application/vnd.github+json",
-        "User-Agent": "QUANTNEX-Automatic-Updater",
-        "X-GitHub-Api-Version": "2022-11-28",
-    })
-    with urllib.request.urlopen(request, timeout=30) as response:
-        result = json.loads(response.read().decode("utf-8"))
-    if not isinstance(result, dict):
-        raise UpdateError("GitHub returned an invalid response.")
-    return result
+    # The latest commit is resolved once; all follow-up immutable tree requests
+    # use conditional ETags and the same persisted cache/backoff policy.
+    from backend.app.github_api_cache import github_json_cached
+    try:
+        return github_json_cached(
+            url, Path(__file__).resolve().parent / "data" / "updates" / "github-api-cache.json",
+            "QUANTNEX-Automatic-Updater", fresh_seconds=60,
+            stale_seconds=24 * 60 * 60, timeout=30,
+        )
+    except (RuntimeError, OSError, ValueError) as exc:
+        raise UpdateError(str(exc)) from exc
 
 
 def _valid_sha(value: object) -> bool:

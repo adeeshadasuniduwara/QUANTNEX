@@ -71,7 +71,7 @@ async def analyze_usdm_futures_signal(
         parsed_times.append(stamp)
 
     now = datetime.now(timezone.utc)
-    if parsed_times[-1] > now + __import__("datetime").timedelta(seconds=2):
+    if parsed_times[-1] > now + timedelta(seconds=2):
         raise BinanceUsdMSignalError("Latest Futures candle timestamp is in the future.")
     age = (now - parsed_times[-1]).total_seconds()
     stale_after = INTERVAL_SECONDS[interval] * 2 + 60

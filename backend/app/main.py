@@ -37,9 +37,14 @@ async def lifespan(app: FastAPI):
         start_binance_spot_order_flow_manager,
         stop_binance_spot_order_flow_manager,
     )
+    from .order_flow_monitor import (
+        start_order_flow_capture_worker,
+        stop_order_flow_capture_worker,
+    )
     await prepare_local_workspace()
     try:
         await start_binance_spot_order_flow_manager()
+        await start_order_flow_capture_worker()
         await start_signal_lifecycle_worker()
         await start_telegram_background_worker()
         await start_prop_challenge_guardian()
@@ -53,6 +58,7 @@ async def lifespan(app: FastAPI):
         await stop_daily_backup_worker()
         await stop_prop_challenge_guardian()
         await stop_telegram_background_worker()
+        await stop_order_flow_capture_worker()
         await stop_binance_spot_order_flow_manager()
         await stop_signal_lifecycle_worker()
 

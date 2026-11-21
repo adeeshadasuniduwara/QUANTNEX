@@ -58,7 +58,7 @@ assert.ok(!sectionIds.includes("signal-lab") && !navTargets.includes("signal-lab
 assert.ok(!sectionIds.includes("ai-signal-center") && !navTargets.includes("ai-signal-center"), "The duplicate AI Signal Center page and sidebar link must be removed.");
 assert.doesNotMatch(html, /Signal Lab|AI Signal Center/, "Retired signal workspace names must not remain in the active Web UI.");
 const tradingViewMarkup = html.slice(tradingViewStart, telegramPageStart);
-for (const id of ["signalMarketSymbol", "runSignalScan", "runSignalBacktest", "signalResult", "p7SignalSymbol", "p7SignalThreshold", "p7RunScan", "p7SignalResult", "p7SignalFrames", "p7UseSignal", "qxLiveSignalsRows", "qxChartSignalSheetContent", "qxSignalLedgerRows", "qxIndicatorsContent"]) {
+for (const id of ["signalMarketSymbol", "runSignalScan", "runSignalBacktest", "signalResult", "qxLiveSignalsRows", "qxSignalLedgerRows", "qxIndicatorsContent"]) {
   assert.ok(tradingViewMarkup.includes(`id="${id}"`), "QUANTNEX VIEW must retain signal functionality: " + id);
 }
 assert.doesNotMatch(tradingViewMarkup, /id="qxSignalIntelligence"|id="qxMainSignal"|id="qxPositionPreview"|Live Strategy Engine/,
@@ -73,8 +73,9 @@ assert.doesNotMatch(signalTool, /Signal Lab/, "Signal client must not reference 
 assert.ok(signalTool.includes("/api/v1/signals/scan"), "QUANTNEX VIEW must retain the multi-timeframe signal API.");
 assert.ok(fs.readFileSync("apps/web/quantnex-view-intelligence.js", "utf8").includes("/api/v1/quantnex-view/analyze"), "QUANTNEX VIEW must retain its chart intelligence API.");
 assert.ok(fs.readFileSync("apps/web/workspace-pages.js", "utf8").includes('quantnexNavigate("telegram-bot")'), "Connections & Integrations must open the dedicated Telegram Bot tool.");
-console.log("Signal consolidation checks passed: no duplicate pages; all signal analysis, cross-market scanning, research and trade planning live inside QUANTNEX VIEW.");
-assert.ok(fs.readFileSync("apps/web/app.js", "utf8").includes('window.quantnexNavigate("paper-trading")'), "Cross-market scan handoff must open the Paper Trading workspace.");
+assert.doesNotMatch(tradingViewMarkup, /Cross-Market Signal Scan|qxCrossMarketSignalScan|p7RunScan|p7SignalSymbol/, "The retired Cross Market Signal Scan must not remain in QUANTNEX VIEW.");
+console.log("Signal consolidation checks passed: chart signals, results, research and trade planning remain inside QUANTNEX VIEW.");
+assert.doesNotMatch(fs.readFileSync("apps/web/app.js", "utf8"), /p7RunScan|p7SignalResult|p7UseSignal/, "The removed Cross Market Signal Scan must not retain a frontend controller.");
 
 assert.match(realtime, /connectedOnce&&current!==lastEventId/, "A restarted event gateway must trigger a workspace snapshot resync");
 assert.match(realtime, /event_stream_restarted/, "A lower sequence after reconnect must be identified as an event-service restart");
@@ -84,7 +85,7 @@ console.log("Realtime event restart-resync checks passed.");
 const chartClient = fs.readFileSync("apps/web/quantnex-view-chart.js", "utf8");
 const chartIntelligence = fs.readFileSync("apps/web/quantnex-view-intelligence.js", "utf8");
 assert.ok(/src="quantnex-view-chart\.js\?v=20261121-compact-layout2"/.test(html), "Live chart controller must load with the current cache version");
-assert.ok(html.includes('id="qxChartIntelMetrics"'), "Chart must expose indicator readouts");
+assert.ok(html.includes('id="qxOverlayStructure"') && html.includes('id="qxOverlayZones"') && html.includes('id="qxOverlaySR"'), "Chart overlay controls must remain available outside the removed Live Signal Sheet.");
 assert.ok(html.includes('id="qxOverlayZones"'), "Chart must expose zone visibility control");
 for (const feature of ["bullish_fvg", "bearish_fvg", "bullish_order_block", "bearish_order_block",
   "bullish_breaker_block", "bearish_breaker_block", "bullish_ifvg", "bearish_ifvg",

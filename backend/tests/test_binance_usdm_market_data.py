@@ -23,7 +23,7 @@ def test_usdm_universe_filters_to_trading_perpetuals(monkeypatch):
     info = asyncio.run(futures.get_binance_usdm_symbol_info(force_refresh=True))
     assert set(info) == {"BTCUSDT"}  # underscore-delimited COIN-M-style contract is intentionally excluded
     assert info["BTCUSDT"]["filters"]["PRICE_FILTER"]["tickSize"] == "0.10"
-    assert info["ETHUSD_PERP"]["margin_asset"] == "BTC"
+    assert "ETHUSD_PERP" not in info  # COIN-M-style symbols are not USDⓈ-M chart instruments
 
 
 def test_usdm_candles_drop_open_and_malformed_rows(monkeypatch):

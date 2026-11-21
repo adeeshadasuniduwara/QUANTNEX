@@ -944,7 +944,7 @@ The last scheduled live smoke run successfully scanned 20 dynamically selected B
 ### Changes
 
 - Add a safe scalar formatter and a compact Order Flow diagnostic line for every successful symbol scan, whether the result is WAIT or SIGNAL.
-- Show status, accepted/not-applicable, feed mode, stream readiness, trade count, aggressor delta/ratio, CVD status, trade age, session-delta completeness, spread and L2 depth imbalance when present.
+- Show status, accepted/not-applicable, feed mode, stream readiness, trade count, aggressor delta/ratio, CVD value/status, UTC session delta/completeness, trade age, spread and L2 depth imbalance when present.
 - Do not print raw WebSocket URLs, raw footprint arrays, complete book levels, or full source payloads.
 - Add tests proving contradictory status/metrics appear in output and non-finite/missing values are omitted.
 

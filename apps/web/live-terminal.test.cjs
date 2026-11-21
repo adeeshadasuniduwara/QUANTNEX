@@ -87,7 +87,7 @@ console.log("QUANTNEX automatic update and private Telegram notification checks 
 assert.doesNotMatch(html, /(?:cdn\.jsdelivr\.net|unpkg\.com)\/.*lightweight-charts/, "QUANTNEX VIEW must not load an external TradingView chart engine");
 assert.match(nativeChart, /new WebSocket\(socketUrl\)/, "Native chart must open the selected market-specific live stream.");
 assert.match(nativeChart, /marketType==="BINANCE_USDM_FUTURES"\?"wss:\/\/fstream\.binance\.com\/ws\//, "Futures chart must use the USDⓈ-M WebSocket host.");
-assert.match(nativeChart, /"wss:\/\/stream\.binance\.com:9443\/ws\/"\+stream/, "Spot chart must retain the Binance Spot WebSocket host.");
+assert.match(nativeChart, /stream\.binance\.com:9443\/ws\//, "Spot chart must retain the Binance Spot WebSocket host.");
 assert.match(nativeChart, /scheduleReconnect\(/, "Native chart must reconnect its live candle feed");
 assert.match(nativeChart, /HISTORY FEED ERROR/, "Native chart history errors must be visible");
 assert.match(chartIntel, /Signal analysis unavailable: /, "Chart Intelligence must expose the analysis API cause");

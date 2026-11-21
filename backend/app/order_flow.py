@@ -124,7 +124,11 @@ def calculate_order_book_metrics(bids: list[list[Any]], asks: list[list[Any]], *
     spread_bps = (best_ask - best_bid) / mid * Decimal(10000)
     microprice = (best_ask * best_bid_qty + best_bid * best_ask_qty) / (best_bid_qty + best_ask_qty)
     return {
-        "best_bid": float(best_bid), "best_ask": float(best_ask), "mid_price": float(mid),
+        "best_bid": float(best_bid), "best_ask": float(best_ask),
+        "best_bid_quantity": float(best_bid_qty), "best_ask_quantity": float(best_ask_qty),
+        "best_bid_quote": float(best_bid * best_bid_qty),
+        "best_ask_quote": float(best_ask * best_ask_qty),
+        "mid_price": float(mid),
         "spread_bps": float(spread_bps), "bid_depth_quote": float(bid_notional),
         "ask_depth_quote": float(ask_notional), "depth_imbalance": imbalance,
         "microprice": float(microprice),

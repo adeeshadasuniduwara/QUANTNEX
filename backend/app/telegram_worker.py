@@ -806,7 +806,7 @@ async def _price(_client: httpx.AsyncClient | None = None) -> float | None:
     except (IntelligenceDataError, httpx.HTTPError, ValueError, TypeError, KeyError, OverflowError):
         return None
 
-async def _handle_command(client, db, user_id: int, token: str, chat_id: str, text: str) -> str | None:
+async def _handle_command(client, db, user_id: int, token: str, chat_id: str, text: str, chat_type: str = "private") -> str | None:
     clean_text = text.strip()
     if clean_text and not clean_text.startswith("/"):
         if len(clean_text) > 3500:
@@ -863,7 +863,7 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
         return "\n".join(lines)
     if command in {"/start","/help"}:
         saved_name = _get(db, user_id, "telegram_user_name", "").strip()
-        if command == "/start" and not saved_name:
+        if command == "/start" and chat_type == "private" and not saved_name:
             _set(db, user_id, "telegram_onboarding_state", "awaiting_name")
             db.commit()
             return (
@@ -1356,7 +1356,7 @@ async def telegram_worker() -> None:
                                                     try:
                                                         logo_png = build_personal_logo_png(display_name, user_id)
                                                         caption = (
-                                                            "✨ Your personal QUANTNEX logo is ready, " + html.escape(display_name) + "!\n\n"
+                                                            "✨ Your personal QUANTNEX logo is ready, " + display_name + "!\n\n
                                                             + "To set it as your bot's profile photo:\n"
                                                             + "1. Open @BotFather\n"
                                                             + "2. Send /mybots and choose your bot\n"
@@ -1381,7 +1381,7 @@ async def telegram_worker() -> None:
                                                         logger.warning("Telegram personal logo setup failed for local user %s: %s", user_id, type(logo_error).__name__)
                                                         await _send(client, token, chat_id, "I couldn't create or send the logo just now. Please send your name again and I'll retry.")
                                             continue
-                                        answer=await _handle_command(client,db,user_id,token,chat_id,command)
+                                        answer=await _handle_command(client,db,user_id,token,chat_id,command,chat_type=str(chat.get("type") or ""))
                                         if answer:
                                             is_start=command.strip().split(" ")[0].split("@")[0].lower() == "/start"
                                             is_help=command.strip().split(" ")[0].split("@")[0].lower() == "/help"

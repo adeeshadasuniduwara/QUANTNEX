@@ -36,3 +36,14 @@ assert.match(js, /new Set\(certificateDesigns\.map\(item=>item\.id\)\)\.size!==1
 assert.match(js, /design_id,orientation/, "The selected design and orientation must be sent when generating a PDF.");
 assert.match(js, /certificate-design-card/, "Users must be able to select a visible design card.");
 console.log("QUANTNEX 100-design certificate gallery contract checks passed.");
+
+
+assert.match(html, /id="goalArchivedCards"/, "Completed targets must have a separate archived-goals section.");
+assert.match(js, /goalArchivedCards/, "Achieved goals must render in the archive rather than active goals.");
+assert.match(js, /naturalWidth>=img\.naturalHeight/, "Goal image orientation must be detected from intrinsic image dimensions.");
+assert.match(js, /img\.naturalWidth\+" × "\+img\.naturalHeight/, "Image preview must expose the actual source resolution.");
+assert.match(js, /object-fit:contain/, "Goal images must preserve the full image without stretching or cropping.");
+assert.match(js, /method:"DELETE"/, "Archived goal deletion must call the owner-scoped API delete endpoint.");
+assert.match(js, /window\.confirm/, "Archived goal deletion must require explicit confirmation.");
+assert.match(html, /Archived goals/, "The Goals page must label the completed-target archive.");
+console.log("QUANTNEX goals image orientation, archived-goal layout and deletion UI checks passed.");

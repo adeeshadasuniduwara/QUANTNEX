@@ -629,3 +629,5 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 - Historical candles use `/fapi/v1/klines`; open/incomplete candles and malformed OHLC rows are rejected. Live chart klines use `wss://fstream.binance.com/ws/{symbol}@kline_{interval}`.
 - This is a read-only chart integration. It does not extend the Spot signal engine or Spot Order Flow manager to Futures. USDⓈ-M Futures Order Flow, funding/OI/liquidations integration, Futures signal quality/replay, and COIN-M remain separate future work.
 - Never interpret a Futures chart as a Spot chart or treat the display suffix as an exchange trading symbol.
+
+- Signal-engine isolation: the chart intelligence controller must not call Spot analyze/replay/backtest or display Spot signal ledger entries while a Futures market is selected. Current UI guard labels USDⓈ-M Futures as chart-only until a separate Futures strategy engine and replay evidence exist.

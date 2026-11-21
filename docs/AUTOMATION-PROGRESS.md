@@ -1112,3 +1112,5 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 - Futures selection is persisted independently from the pair. Switching market type cannot accidentally send a Spot symbol to the Futures feed or vice versa.
 - Important boundary: this phase adds chart market data only. Futures order-flow, Futures signal generation, funding/OI/liquidation confluence, and order execution are not enabled. Spot signal/order-flow engine remains Spot-only. No COIN-M support is claimed.
 - Deterministic tests are added for metadata filtering, closed candle parsing and invalid symbols; local browser/live WebSocket verification remains pending.
+
+- Additional safety review: QUANTNEX VIEW's intelligence controller previously auto-called the Spot analyze/replay/backtest endpoints for any selected symbol. Added an explicit USDⓈ-M Futures guard so Futures charts cannot silently show Spot signals/ledger/backtests for the same raw ticker. Futures chart selection now displays a clear "Futures chart only" status and clears the Spot trade plan.

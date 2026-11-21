@@ -4,6 +4,8 @@ const html = fs.readFileSync("apps/web/index.html", "utf8");
 const js = fs.readFileSync("apps/web/quantnex-view-chart.js", "utf8");
 const intel = fs.readFileSync("apps/web/quantnex-view-intelligence.js", "utf8");
 const css = fs.readFileSync("apps/web/quantnex-view-chart.css", "utf8");
+const app = fs.readFileSync("apps/web/app.js", "utf8");
+const signalTool = fs.readFileSync("apps/web/signal-tool.js", "utf8");
 for (const id of ["qxRsiChart", "qxMacdChart", "qxAdxChart", "qxAtrChart", "qxStochChart", "qxCciChart", "qxRsiValue", "qxMacdValue", "qxAdxValue", "qxAtrValue", "qxStochValue", "qxCciValue", "qxConfidenceMeter", "qxConfidenceFill"]) assert.ok(html.includes(`id="${id}"`), `Missing chart element: ${id}`);
 for (const token of ["function rsiSeries", "function adxSeries", "function atrSeries", "function stochSeries", "function cciSeries", "function renderIndicatorPanels", "new WebSocket", "kline_", "function pointerDown", "function wheel", "function mergeCandle", "window.quantnexViewSetAnalysis"]) assert.ok(js.includes(token), `Native chart/live path missing: ${token}`);
 assert.ok(!js.includes("window.LightweightCharts"), "Chart must not depend on the TradingView Lightweight Charts runtime.");
@@ -43,7 +45,7 @@ console.log("QUANTNEX chart redraw performance regression checks passed.");
 
 
 
-assert.ok(html.includes("quantnex-view-chart.js?v=20261121-usdm-futures1"), "Shared chart analysis must invalidate the chart bundle cache.");
+assert.ok(html.includes("quantnex-view-chart.js?v=20261121-compact-layout2"), "Shared chart analysis must invalidate the chart bundle cache.");
 
 assert.match(js, /quantnex:market-tick/, "Gold chart must consume the shared market tick feed.");
 assert.doesNotMatch(js, /goldTimer|scan\(\)/, "The chart must not call the removed scan function or poll full Gold history every five seconds.");
@@ -94,7 +96,7 @@ assert.ok(js.includes("function drawingsStorageKey"), "Chart drawings must persi
 assert.ok(js.includes("restoreChartSelection") && js.includes("quantnex.chart.selection.v1"), "Chart symbol/timeframe selection must be restored on next application start.");
 assert.ok(intel.includes("replayHistory(selected())"), "Selected-market historical replay must begin on application startup, not only after manually opening QUANTNEX VIEW.");
 assert.ok(js.includes("saveDrawings()"), "Drawing edits and clear actions must save to local chart storage.");
-assert.ok(intel.includes("ENTRY · MARKET") && intel.includes("MARKET ("), "Scalp entry must display MARKET with its reference price.");
+assert.ok(intel.includes("MARKET (") && intel.includes("entry_type"), "Live signal table must preserve MARKET entry labels and reference prices.");
 
 assert.match(js, /view=\{start:0,count:120/, "The chart must keep a right-side future-bar gutter in live and historical views.");
 assert.match(js, /plotSlots=Math\.max\(24,view\.count\+12\)/, "Candle spacing must reserve room for future bars instead of stretching the last candle to the edge.");
@@ -135,3 +137,39 @@ assert.match(intelligence, /current\.marketType!==s\.marketType/, "Async signal 
 console.log("QUANTNEX VIEW Futures chart/Spot signal isolation checks passed.");
 
 assert.match(js, /restoredChartSymbol/, "Dynamically populated chart selectors must restore a saved non-default pair after exchange metadata loads.");
+
+// Compact QUANTNEX VIEW layout: collapsible sheets keep their data lifecycle active.
+for (const id of ["qxSignalSettingsToggle", "qxSignalSettingsPanel", "qxChartSignalSheetToggle", "qxChartSignalSheetContent",
+  "qxSignalLedgerToggle", "qxSignalLedgerContent", "qxIndicatorsToggle", "qxIndicatorsContent"]) {
+  assert.ok(html.includes(`id="${id}"`), `Missing compact layout control: ${id}`);
+}
+for (const id of ["qxChartSignalSheetContent", "qxSignalLedgerContent", "qxIndicatorsContent"]) {
+  assert.ok(html.includes(`id="${id}" hidden`), `${id} should start collapsed to preserve chart space.`);
+}
+assert.ok(html.indexOf('id="qxSignalSettingsPanel"') < html.indexOf('id="qxChartHost"'),
+  "Signal timeframe preferences must be housed above the chart behind its settings control.");
+assert.ok(html.indexOf('id="qxLiveSignalsRows"') > html.indexOf('id="qxChartHost"') &&
+  html.indexOf('id="qxLiveSignalsRows"') < html.indexOf('id="qxMarketSessions"'),
+  "Live signal table must sit directly below the chart and above the Sri Lanka/New York session clocks.");
+assert.ok(html.includes('class="qx-indicator-table"'), "Technical indicators must be consolidated into one table.");
+assert.ok(!html.includes("qx-indicator-grid"), "The six separate indicator cards must be removed.");
+assert.ok(!html.includes("live-pnl-panel") && !html.includes("livePnlSymbol"),
+  "The unused Live Trade Results Calculator UI must be removed.");
+assert.ok(!html.includes("qxSignalIntelligence") && !html.includes("Live Strategy Engine"),
+  "The Live Strategy Engine panel must be removed from QUANTNEX VIEW.");
+assert.ok(html.includes('class="position-summary-table"') && html.includes('tbody id="positionSummary"'),
+  "Position tool must expose its upgraded calculation table.");
+assert.ok(!app.includes("initLivePnlCalculator") && !app.includes("livePnlSymbol"),
+  "The removed live PnL calculator must not keep background quote listeners.");
+assert.match(signalTool, /TP1 estimated reward/);
+assert.ok(html.includes('class="position-summary-table"'), "Position tool summary must render as a semantic HTML table.");
+for (const toggle of ["qxSignalSettingsToggle", "qxChartSignalSheetToggle", "qxSignalLedgerToggle", "qxIndicatorsToggle"]) {
+  assert.ok(js.includes(`bindDisclosure("${toggle}"`), `Missing toggle handler for ${toggle}`);
+}
+assert.match(intel, /qxLiveSignalsRows/, "Automatic chart analysis must render into the live signals table.");
+assert.match(intel, /setInterval\(\(\)=>\{if\(isTradingViewActive\(\)\)analyze\(\);\},60000\)/,
+  "Live signal analysis must continue on its timer while the display panels are collapsed.");
+assert.match(css, /\.qx-indicator-table/);
+assert.match(css, /\.qx-live-signals-table/);
+assert.match(css, /\.qx-collapsible-heading/);
+console.log("QUANTNEX compact chart layout, collapsed live sheets, live signals table and position risk table checks passed.");

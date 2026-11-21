@@ -152,7 +152,7 @@ function draw(){
  renderIndicatorPanels(ind);
 }
 function renderIndicatorPanels(ind=calcIndicators()){
- const closes=candles.map(c=>c.close),n=candles.length,tail=a=>a.slice(Math.max(0,n-120)),drawPanel=(id,lines,min,max,refs=[])=>{const el=$(id);if(!el)return;let c=el.querySelector("canvas");if(!c){el.replaceChildren();c=document.createElement("canvas");c.className="qx-indicator-native-canvas";el.append(c);}const w=el.clientWidth||500,h=el.clientHeight||142,d=Math.min(devicePixelRatio||1,2);c.width=w*d;c.height=h*d;c.style.width=w+"px";c.style.height=h+"px";const g=c.getContext("2d");g.scale(d,d);g.fillStyle=chartBg();g.fillRect(0,0,w,h);const pad=8,ww=w-16,hh=h-16;g.strokeStyle="rgba(130,150,175,.18)";g.font="9px system-ui";refs.forEach(v=>{const yy=pad+(max-v)/(max-min)*hh;g.beginPath();g.moveTo(pad,yy);g.lineTo(w-pad,yy);g.stroke();g.fillStyle=textColor();g.fillText(String(v),pad+2,yy-2);});lines.forEach(line=>{const vals=tail(line.values);g.strokeStyle=line.color;g.lineWidth=1.6;g.beginPath();let started=false;vals.forEach((v,i)=>{if(!Number.isFinite(v))return;const xx=pad+i*ww/Math.max(vals.length-1,1),yy=pad+(max-v)/(max-min)*hh;if(!started){g.moveTo(xx,yy);started=true;}else g.lineTo(xx,yy);});g.stroke();});};
+ const closes=candles.map(c=>c.close),n=candles.length,tail=a=>a.slice(Math.max(0,n-120)),drawPanel=(id,lines,min,max,refs=[])=>{const el=$(id);if(!el||!el.clientWidth)return;let c=el.querySelector("canvas");if(!c){el.replaceChildren();c=document.createElement("canvas");c.className="qx-indicator-native-canvas";el.append(c);}const w=el.clientWidth||500,h=el.clientHeight||142,d=Math.min(devicePixelRatio||1,2);c.width=w*d;c.height=h*d;c.style.width=w+"px";c.style.height=h+"px";const g=c.getContext("2d");g.scale(d,d);g.fillStyle=chartBg();g.fillRect(0,0,w,h);const pad=8,ww=w-16,hh=h-16;g.strokeStyle="rgba(130,150,175,.18)";g.font="9px system-ui";refs.forEach(v=>{const yy=pad+(max-v)/(max-min)*hh;g.beginPath();g.moveTo(pad,yy);g.lineTo(w-pad,yy);g.stroke();g.fillStyle=textColor();g.fillText(String(v),pad+2,yy-2);});lines.forEach(line=>{const vals=tail(line.values);g.strokeStyle=line.color;g.lineWidth=1.6;g.beginPath();let started=false;vals.forEach((v,i)=>{if(!Number.isFinite(v))return;const xx=pad+i*ww/Math.max(vals.length-1,1),yy=pad+(max-v)/(max-min)*hh;if(!started){g.moveTo(xx,yy);started=true;}else g.lineTo(xx,yy);});g.stroke();});};
  const r=ind.rsi.filter(Number.isFinite),m=ind.macd.filter(Number.isFinite),a=ind.adx.adx.filter(Number.isFinite);
  drawPanel("qxRsiChart",[{values:ind.rsi,color:"#b58cff"}],0,100,[30,50,70]);
  drawPanel("qxMacdChart",[{values:ind.macd,color:"#62aaff"},{values:ind.signal,color:"#f2c86b"}],Math.min(-1,...m),Math.max(1,...m),[0]);
@@ -163,6 +163,7 @@ function renderIndicatorPanels(ind=calcIndicators()){
  const last=a=>{for(let i=a.length-1;i>=0;i--)if(Number.isFinite(a[i]))return a[i];return null;};
  [["qxRsiValue",last(ind.rsi)],["qxMacdValue",last(ind.hist)],["qxAdxValue",last(ind.adx.adx)],["qxAtrValue",last(ind.atr)],["qxStochValue",last(ind.stoch.k)],["qxCciValue",last(ind.cci)]].forEach(([id,v])=>{if($(id))$(id).textContent=v==null?"—":Number(v).toFixed(2);});
 }
+window.quantnexViewRefreshIndicators=()=>renderIndicatorPanels();
 function drawingsStorageKey(){const pick=selected();return "quantnex.chart.drawings.v1."+pick.symbol+"."+pick.interval;}
 function loadDrawings(){try{const saved=JSON.parse(localStorage.getItem(drawingsStorageKey())||"[]");drawings=Array.isArray(saved)?saved.filter(d=>d&&["horizontal","vertical","trend","rectangle","fib"].includes(d.type)&&[d.x1,d.y1,d.x2,d.y2].every(v=>Number.isFinite(Number(v)))):[];}catch{drawings=[];}}
 function saveDrawings(){try{localStorage.setItem(drawingsStorageKey(),JSON.stringify(drawings.slice(-100)));}catch{}}
@@ -310,6 +311,20 @@ $("qxClearDrawings")?.addEventListener("click",()=>{drawings=[];pendingDrawing=n
 window.addEventListener("quantnex:market-tick",onTradingRoomTick);
 window.addEventListener("quantnex:view-changed",event=>{if(event.detail?.view==="tradingview")refresh();else stopFeed();});
 document.addEventListener("visibilitychange",()=>{if(document.hidden){stopFeed();return;}if(isChartViewActive())refresh();});
+function bindDisclosure(buttonId,contentId,onExpand){
+ const button=$(buttonId),content=$(contentId);if(!button||!content)return;
+ button.addEventListener("click",()=>{
+  const opening=content.hidden;content.hidden=!opening;
+  button.setAttribute("aria-expanded",String(opening));
+  if(buttonId==="qxSignalSettingsToggle")button.textContent=opening?"⚙ Close settings":"⚙ Signal settings";
+  else button.textContent=opening?"Collapse":"Expand";
+  if(opening&&onExpand)requestAnimationFrame(onExpand);
+ });
+}
+bindDisclosure("qxSignalSettingsToggle","qxSignalSettingsPanel");
+bindDisclosure("qxChartSignalSheetToggle","qxChartSignalSheetContent");
+bindDisclosure("qxSignalLedgerToggle","qxSignalLedgerContent");
+bindDisclosure("qxIndicatorsToggle","qxIndicatorsContent",()=>renderIndicatorPanels());
 setupCanvas();
 loadChartMarkets(true).then(()=>{if(isChartViewActive())refresh();});
 const marketUniverseTimer=setInterval(()=>{if(!document.hidden&&isChartViewActive())loadChartMarkets(true);},900000);

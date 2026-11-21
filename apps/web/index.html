@@ -7,10 +7,10 @@
   <link rel="icon" type="image/svg+xml" href="quantnex-mark.svg">
   <meta name="description" content="QUANTNEX is a modern trading workspace for risk planning and trade review.">
   <title>QUANTNEX — QUANTNEX VIEW</title>
-  <link rel="stylesheet" href="styles.css?v=20261112-quantnex-view3">
-  <link rel="stylesheet" href="signal-tool.css">
+  <link rel="stylesheet" href="styles.css?v=20261121-compact-layout1">
+  <link rel="stylesheet" href="signal-tool.css?v=20261121-position-table2">
   <link rel="stylesheet" href="quantnex-view-intelligence.css?v=20261120-overall-pnl1">
-  <link rel="stylesheet" href="quantnex-view-chart.css?v=20261121-sequence-orderflow1">
+  <link rel="stylesheet" href="quantnex-view-chart.css?v=20261121-compact-layout2">
   <link rel="stylesheet" href="market-sessions.css?v=20261118-chart-sessions1">
   <link rel="stylesheet" href="workspace-pages.css?v=20261118-distinct-certificate100">
   <link rel="stylesheet" href="workspace-polish.css?v=20261116-sidebar-compact1">
@@ -182,6 +182,37 @@
             <button class="secondary-btn compact-btn" id="qxScreenshot" type="button">Snapshot</button>
           </div>
         </div>
+        <div class="qx-chart-settings-row">
+          <button class="secondary-btn compact-btn qx-chart-settings-button" id="qxSignalSettingsToggle" type="button" aria-expanded="false" aria-controls="qxSignalSettingsPanel" title="Signal timeframe settings" aria-label="Signal timeframe settings">⚙ <span>Settings</span></button>
+        </div>
+        <div class="qx-signal-settings-panel" id="qxSignalSettingsPanel" hidden>
+        <section class="panel timeframe-panel">
+          <div class="signal-intro"><div><strong>Signal timeframe preferences</strong><p>Choose the market, analysis timeframes and confluence threshold used by the multi-market signal engine.</p></div><span class="signal-pill">USER CONFIGURABLE</span></div>
+          <div class="timeframe-grid">
+            <label>Signal market<input id="signalMarketSymbol" list="signalMarketOptions" value="BTCUSDT" autocomplete="off" placeholder="Search Binance pair, e.g. 1000PEPEUSDT"><datalist id="signalMarketOptions"></datalist></label>
+            <label>Primary signal timeframe<select id="primarySignalTf"><option value="1">1 Minute</option><option value="5" selected>5 Minutes</option><option value="15">15 Minutes</option><option value="30">30 Minutes</option><option value="60">1 Hour</option><option value="50">50 Minutes (custom)</option></select></label>
+            <label>Trend timeframe<select id="trendSignalTf"><option value="15">15 Minutes</option><option value="30" selected>30 Minutes</option><option value="60">1 Hour</option><option value="240">4 Hours</option></select></label>
+            <label>Chart timeframe<select id="chartSignalTf"><option value="1">1 Minute</option><option value="5">5 Minutes</option><option value="15" selected>15 Minutes</option><option value="30">30 Minutes</option><option value="60">1 Hour</option><option value="50">50 Minutes (custom)</option></select></label>
+          </div>
+          <div class="timeframe-checks"><label><input type="checkbox" name="analysisTf" value="60" checked> H1</label><label><input type="checkbox" name="analysisTf" value="30" checked> M30</label><label><input type="checkbox" name="analysisTf" value="15" checked> M15</label><label><input type="checkbox" name="analysisTf" value="5" checked> M5</label><label><input type="checkbox" name="analysisTf" value="1" checked> M1</label><label><input type="checkbox" name="analysisTf" value="50"> M50*</label></div>
+          <div class="signal-inputs signal-engine-options">
+            <label>Minimum confirmations<select id="signalMinScore"><option value="6">6 / 10 · Aggressive</option><option value="7" selected>7 / 10 · Balanced</option><option value="8">8 / 10 · Selective</option><option value="9">9 / 10 · Very selective</option></select></label>
+            <label>Risk per signal (%)<input id="signalRiskPct" type="number" min="0.1" max="5" step="0.1" value="1"></label>
+          </div>
+          <div class="signal-actions"><button class="primary-btn" id="saveTimeframes">Save signal settings</button><button class="secondary-btn" id="syncTimeframes">Load settings from Telegram</button><button class="secondary-btn" id="applyChartTf">Apply to QUANTNEX VIEW</button><button class="secondary-btn" id="runSignalScan">Run market signal scan</button><button class="secondary-btn" id="runSignalBacktest">Run historical walk-forward test</button></div>
+          <p class="telegram-status" id="timeframeStatus" aria-live="polite">Signal settings and market analysis are managed here. Crypto analysis uses Binance public data; Gold needs a configured local provider. M50 is aggregated from 1-minute candles.</p>
+          <div class="signal-actions"><button class="secondary-btn" id="openTelegramBotTool" type="button">Manage Telegram bot</button></div>
+          <p class="telegram-status" id="signalTelegramStatus" aria-live="polite">Checking Telegram bot connection…</p>
+          <div class="signal-warning">Gold and Forex analysis require a supported market-data provider configured on this computer. Keep provider credentials private; QUANTNEX never displays secret values in the website. Provider plan limits and market-data entitlements apply.</div>
+          <div id="signalBacktestResult" class="signal-result-empty">Historical validation: run a chronological training / out-of-sample test for the selected Binance Spot pair. Spread, depth, fees and slippage are modeled assumptions, not historical order-book data.</div>
+        </section>
+        <section class="panel signal-panel signal-results-panel">
+          <div class="signal-intro"><div><strong>Manual multi-timeframe signal scan</strong><p>Run the configured market scan from these settings. Automatic chart signals are shown in the Live Signals table below the chart.</p></div><span class="signal-pill" id="signalEngineState">NOT SCANNED</span></div>
+          <div id="signalResult" class="signal-result-empty">Choose a Binance Spot pair or configured Gold market, then run a manual scan.</div>
+          <div id="indicatorReadout" class="indicator-readout"></div>
+          <p class="signal-feed-note">The 0–10 score counts matching rules; it is not a measured win rate or probability. Reaper is not represented as a working confirmation without a verified formula.</p>
+        </section>
+        </div>
         <div class="qx-chart-options">
           <label><input type="checkbox" id="qxVolume" checked> Volume</label>
           <label><input type="checkbox" id="qxEma20" checked> EMA 20</label>
@@ -209,37 +240,24 @@
         <div id="qxChartHost" class="qx-chart-host"><div class="qx-chart-loading">Loading live candles…</div></div>
         <div class="qx-chart-footer"><span id="qxChartProvider">Market feed: waiting</span><span>Native QUANTNEX canvas engine · Binance live WebSocket · Futures chart-only; signal and Order Flow engines remain Spot-only</span></div>
       </section>
-      <section class="qx-chart-sessions" aria-label="Live global market sessions">
-        <div class="qx-chart-sessions-intro">
-          <div><span class="qx-market-sessions-kicker">GLOBAL MARKET HOURS · LIVE</span><h2>Market Sessions</h2><p>Track the world's major trading sessions in Sri Lanka time, with live clocks and opening / closing countdowns.</p></div>
-          <span class="qx-session-live"><i></i> LIVE UPDATING</span>
+      <section class="panel qx-live-signals-panel" id="qxLiveSignalsPanel" aria-label="Live signals">
+        <div class="qx-live-signals-heading">
+          <div><div class="overline">QUANTNEX VIEW · LIVE SIGNALS</div><h3>Live Signals</h3><p>Automatically refreshed from the selected chart market. Futures remains chart-only until its own signal engine is validated.</p></div>
+          <span class="pill" id="qxLiveSignalsStatus">SCANNING</span>
         </div>
-        <aside class="qx-market-sessions" id="qxMarketSessions" aria-label="Live global market sessions">
-          <div class="qx-market-sessions-head">
-            <div><span class="qx-market-sessions-kicker">GLOBAL MARKET CLOCK</span><strong class="qx-market-sessions-title">Market Sessions</strong></div>
-            <span class="qx-session-live"><i></i> LIVE</span>
-          </div>
-          <div class="qx-session-clocks">
-            <article class="qx-session-clock">
-              <div class="qx-session-clock-label"><span>🇱🇰 SRI LANKA</span><span id="qxColomboOffset">—</span></div>
-              <strong class="qx-session-clock-time" id="qxColomboTime">--:--:--</strong>
-              <small class="qx-session-clock-date" id="qxColomboDate">Loading local time…</small>
-            </article>
-            <article class="qx-session-clock">
-              <div class="qx-session-clock-label"><span>🇺🇸 NEW YORK</span><span id="qxNewYorkOffset">—</span></div>
-              <strong class="qx-session-clock-time" id="qxNewYorkTime">--:--:--</strong>
-              <small class="qx-session-clock-date" id="qxNewYorkDate">Loading New York time…</small>
-            </article>
-          </div>
-          <div class="qx-session-active" id="qxSessionActive" data-state="closed">CHECKING LIVE SESSIONS…</div>
-          <div class="qx-session-overlap" id="qxSessionOverlap" hidden></div>
-          <div class="qx-session-list" id="qxSessionList">
-            <div class="qx-session-row"><div class="qx-session-identity"><span class="qx-session-flag">🌏</span><div class="qx-session-labels"><strong>Asia · Tokyo</strong><small>09:00–18:00 local</small></div></div><div class="qx-session-state"><strong>CHECKING</strong></div></div>
-          </div>
-          <div class="qx-session-next" id="qxSessionNext">Calculating next market transition…</div>
-        </aside>
+        <div class="qx-live-signals-table-wrap">
+          <table class="qx-live-signals-table">
+            <thead><tr><th>Pair</th><th>Side</th><th>TF</th><th>Entry</th><th>SL</th><th>TP1</th><th>TP2</th><th>TP3</th><th>Score</th><th>Status</th></tr></thead>
+            <tbody id="qxLiveSignalsRows"><tr><td colspan="10" class="empty-row">Waiting for the first live analysis…</td></tr></tbody>
+          </table>
+        </div>
       </section>
-      <section class="qx-chart-intelligence" aria-live="polite" aria-label="Live chart intelligence">
+      <section class="qx-chart-intelligence qx-collapsible-panel" aria-live="polite" aria-label="Live chart intelligence">
+        <div class="qx-collapsible-heading">
+          <div><strong>LIVE SIGNAL SHEET</strong><small>Structure, confirmations and confluence · live updates continue while hidden</small></div>
+          <button class="secondary-btn compact-btn" id="qxChartSignalSheetToggle" type="button" aria-expanded="false" aria-controls="qxChartSignalSheetContent">Expand</button>
+        </div>
+        <div id="qxChartSignalSheetContent" hidden>
         <div><div class="qx-chart-intelligence-head"><strong>LIVE STRUCTURE &amp; CONFIRMATIONS</strong><small id="qxChartIntelState">SCANNING</small></div>
           <p class="qx-chart-intel-summary" id="qxChartIntelSummary">Waiting for market confirmation…</p><div class="qx-confidence" id="qxConfidenceMeter" aria-label="Rule confluence meter"><div class="qx-confidence-track"><span id="qxConfidenceFill"></span></div><small id="qxConfidenceLabel">0 / 20 rule matches · not a win probability</small></div>
           <div class="qx-chart-overlay-options">
@@ -252,8 +270,8 @@
           <div class="qx-chart-intel-metric"><span>RSI</span><strong>—</strong></div><div class="qx-chart-intel-metric"><span>ADX</span><strong>—</strong></div>
           <div class="qx-chart-intel-metric"><span>Structure</span><strong>—</strong></div><div class="qx-chart-intel-metric"><span>Liquidity</span><strong>—</strong></div>
         </div>
+        </div>
       </section>
-
       <section class="qx-orderflow-toolkit" id="qxOrderFlowToolkit" aria-label="Order Flow and Liquidity Toolkit">
         <div class="qx-orderflow-heading">
           <div><span class="qx-orderflow-kicker">QUANTNEX VIEW · MARKET MICROSTRUCTURE</span><h3>Order Flow &amp; Liquidity Toolkit</h3><p>Live Binance Spot liquidity tools linked to the market and timeframe selected above.</p></div>
@@ -287,7 +305,42 @@
         <div class="qx-orderflow-footnote">Data scope: Binance Spot only. Gold/Forex depth is not simulated. Bookmap uses the backend's sequence-validated Spot diff-depth book; resting orders are not executed volume or guaranteed executable liquidity.</div>
       </section>
 
-      <section class="panel qx-signal-ledger" id="qxSignalLedger" aria-label="Signal outcome history">
+      <section class="qx-chart-sessions" aria-label="Live global market sessions">
+        <div class="qx-chart-sessions-intro">
+          <div><span class="qx-market-sessions-kicker">GLOBAL MARKET HOURS · LIVE</span><h2>Market Sessions</h2><p>Track the world's major trading sessions in Sri Lanka time, with live clocks and opening / closing countdowns.</p></div>
+          <span class="qx-session-live"><i></i> LIVE UPDATING</span>
+        </div>
+        <aside class="qx-market-sessions" id="qxMarketSessions" aria-label="Live global market sessions">
+          <div class="qx-market-sessions-head">
+            <div><span class="qx-market-sessions-kicker">GLOBAL MARKET CLOCK</span><strong class="qx-market-sessions-title">Market Sessions</strong></div>
+            <span class="qx-session-live"><i></i> LIVE</span>
+          </div>
+          <div class="qx-session-clocks">
+            <article class="qx-session-clock">
+              <div class="qx-session-clock-label"><span>🇱🇰 SRI LANKA</span><span id="qxColomboOffset">—</span></div>
+              <strong class="qx-session-clock-time" id="qxColomboTime">--:--:--</strong>
+              <small class="qx-session-clock-date" id="qxColomboDate">Loading local time…</small>
+            </article>
+            <article class="qx-session-clock">
+              <div class="qx-session-clock-label"><span>🇺🇸 NEW YORK</span><span id="qxNewYorkOffset">—</span></div>
+              <strong class="qx-session-clock-time" id="qxNewYorkTime">--:--:--</strong>
+              <small class="qx-session-clock-date" id="qxNewYorkDate">Loading New York time…</small>
+            </article>
+          </div>
+          <div class="qx-session-active" id="qxSessionActive" data-state="closed">CHECKING LIVE SESSIONS…</div>
+          <div class="qx-session-overlap" id="qxSessionOverlap" hidden></div>
+          <div class="qx-session-list" id="qxSessionList">
+            <div class="qx-session-row"><div class="qx-session-identity"><span class="qx-session-flag">🌏</span><div class="qx-session-labels"><strong>Asia · Tokyo</strong><small>09:00–18:00 local</small></div></div><div class="qx-session-state"><strong>CHECKING</strong></div></div>
+          </div>
+          <div class="qx-session-next" id="qxSessionNext">Calculating next market transition…</div>
+        </aside>
+      </section>
+      <section class="panel qx-signal-ledger qx-collapsible-panel" id="qxSignalLedger" aria-label="Signal outcome history">
+        <div class="qx-collapsible-heading">
+          <div><strong>SIGNAL RESULTS SHEET</strong><small>Signal outcomes and risk management · live synchronization continues while hidden</small></div>
+          <button class="secondary-btn compact-btn" id="qxSignalLedgerToggle" type="button" aria-expanded="false" aria-controls="qxSignalLedgerContent">Expand</button>
+        </div>
+        <div id="qxSignalLedgerContent" hidden>
         <div class="qx-ledger-head">
           <div><div class="overline">QUANTNEX VIEW · SIGNAL LIFECYCLE</div><h3>Signal Outcomes &amp; Smart Risk Management</h3>
             <p>Closed-candle replay from Colombo midnight where provider history allows, plus automatic recovery after restart.</p></div>
@@ -310,61 +363,29 @@
         </div>
         <div class="qx-ledger-table-wrap"><table class="qx-ledger-table"><thead><tr><th>Signal time</th><th>Market</th><th>Side</th><th>Entry</th><th>SL / Active SL</th><th>TP1</th><th>TP2</th><th>TP3</th><th>Outcome</th><th>Result (R)</th></tr></thead>
           <tbody id="qxSignalLedgerRows"><tr><td colspan="10" class="empty-row">No tracked signals yet.</td></tr></tbody></table></div>
-      </section>
-
-      <section class="qx-indicator-panels" aria-label="Technical indicator panels">
-        <div class="qx-indicator-head"><div><strong>TECHNICAL INDICATORS</strong><small>Calculated from the same chart candles · 14-period RSI / ADX · MACD 12,26,9</small></div><span class="pill">LIVE INDICATORS</span></div>
-        <div class="qx-indicator-grid">
-          <article class="qx-indicator-card"><div class="qx-indicator-card-head"><strong>RSI · 14</strong><span id="qxRsiValue">—</span></div><div id="qxRsiChart" class="qx-indicator-chart"></div><small>Momentum · 70 overbought / 30 oversold reference levels</small></article>
-          <article class="qx-indicator-card"><div class="qx-indicator-card-head"><strong>MACD · 12 / 26 / 9</strong><span id="qxMacdValue">—</span></div><div id="qxMacdChart" class="qx-indicator-chart"></div><small>MACD line · signal line · histogram</small></article>
-          <article class="qx-indicator-card"><div class="qx-indicator-card-head"><strong>ADX · 14</strong><span id="qxAdxValue">—</span></div><div id="qxAdxChart" class="qx-indicator-chart"></div><small>Trend strength · +DI / −DI directional lines</small></article>
-          <article class="qx-indicator-card"><div class="qx-indicator-card-head"><strong>ATR · 14</strong><span id="qxAtrValue">—</span></div><div id="qxAtrChart" class="qx-indicator-chart"></div><small>Average true range · volatility</small></article>
-          <article class="qx-indicator-card"><div class="qx-indicator-card-head"><strong>Stochastic · 14 / 3</strong><span id="qxStochValue">—</span></div><div id="qxStochChart" class="qx-indicator-chart"></div><small>%K and %D · momentum</small></article>
-          <article class="qx-indicator-card"><div class="qx-indicator-card-head"><strong>CCI · 20</strong><span id="qxCciValue">—</span></div><div id="qxCciChart" class="qx-indicator-chart"></div><small>Commodity channel index</small></article>
         </div>
       </section>
-      <section class="panel live-pnl-panel" aria-label="Live trade result calculator">
-        <div class="signal-intro"><div><strong>Live trade result calculator</strong><p>Estimate unrealized P&amp;L using the latest BTC or XAUUSD market quote. No broker order is placed.</p></div><span class="signal-pill">LIVE PRICE</span></div>
-        <div class="live-pnl-grid">
-          <label>Market<select id="livePnlSymbol"><option value="BTCUSDT">Bitcoin · BTCUSDT</option><option value="XAUUSD">Gold · XAUUSD</option></select></label>
-          <label>Direction<select id="livePnlSide"><option value="LONG">BUY / LONG</option><option value="SHORT">SELL / SHORT</option></select></label>
-          <label>Entry price<input id="livePnlEntry" type="number" min="0" step="any" placeholder="Enter your entry price"></label>
-          <label>Quantity <span id="livePnlUnit">BTC</span><input id="livePnlQuantity" type="number" min="0" step="any" placeholder="0.001"></label>
-          <label id="livePnlContractSizeWrap" hidden>Gold contract size (oz / lot)<input id="livePnlContractSize" type="number" min="0.01" step="any" value="100"></label>
+      <section class="qx-indicator-panels qx-collapsible-panel" aria-label="Technical indicators">
+        <div class="qx-collapsible-heading">
+          <div><strong>TECHNICAL INDICATORS</strong><small>One compact live table · calculated from the selected chart candles</small></div>
+          <button class="secondary-btn compact-btn" id="qxIndicatorsToggle" type="button" aria-expanded="false" aria-controls="qxIndicatorsContent">Expand</button>
         </div>
-        <div class="live-pnl-result-grid">
-          <article><span>Latest market price</span><strong id="livePnlCurrent">Waiting for quote…</strong><small id="livePnlUpdated">Waiting for live market data</small></article>
-          <article><span>Estimated result</span><strong id="livePnlResult">—</strong><small id="livePnlMove">Enter entry and quantity</small></article>
+        <div id="qxIndicatorsContent" hidden>
+          <div class="qx-indicator-table-wrap">
+            <table class="qx-indicator-table">
+              <thead><tr><th>Indicator</th><th>Live value</th><th>What it measures</th><th>Recent movement</th></tr></thead>
+              <tbody>
+                <tr><th scope="row">RSI · 14</th><td id="qxRsiValue">—</td><td>Momentum · 70 overbought / 30 oversold</td><td><div id="qxRsiChart" class="qx-indicator-chart"></div></td></tr>
+                <tr><th scope="row">MACD · 12 / 26 / 9</th><td id="qxMacdValue">—</td><td>MACD histogram · momentum shift</td><td><div id="qxMacdChart" class="qx-indicator-chart"></div></td></tr>
+                <tr><th scope="row">ADX · 14</th><td id="qxAdxValue">—</td><td>Trend strength · +DI / −DI</td><td><div id="qxAdxChart" class="qx-indicator-chart"></div></td></tr>
+                <tr><th scope="row">ATR · 14</th><td id="qxAtrValue">—</td><td>Average true range · volatility</td><td><div id="qxAtrChart" class="qx-indicator-chart"></div></td></tr>
+                <tr><th scope="row">Stochastic · 14 / 3</th><td id="qxStochValue">—</td><td>%K / %D · momentum</td><td><div id="qxStochChart" class="qx-indicator-chart"></div></td></tr>
+                <tr><th scope="row">CCI · 20</th><td id="qxCciValue">—</td><td>Commodity channel index</td><td><div id="qxCciChart" class="qx-indicator-chart"></div></td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
-        <p class="p7-note">BTC quantity is measured in BTC. Gold quantity is measured in broker lots using the editable ounces-per-lot contract size (default 100 oz; confirm with your broker). This gross estimate excludes spread, commission, swap, funding and slippage.</p>
       </section>
-      <section class="panel timeframe-panel">
-        <div class="signal-intro"><div><strong>Signal timeframe preferences</strong><p>Choose the market, analysis timeframes and confluence threshold used by the multi-market signal engine.</p></div><span class="signal-pill">USER CONFIGURABLE</span></div>
-        <div class="timeframe-grid">
-          <label>Signal market<input id="signalMarketSymbol" list="signalMarketOptions" value="BTCUSDT" autocomplete="off" placeholder="Search Binance pair, e.g. 1000PEPEUSDT"><datalist id="signalMarketOptions"></datalist></label>
-          <label>Primary signal timeframe<select id="primarySignalTf"><option value="1">1 Minute</option><option value="5" selected>5 Minutes</option><option value="15">15 Minutes</option><option value="30">30 Minutes</option><option value="60">1 Hour</option><option value="50">50 Minutes (custom)</option></select></label>
-          <label>Trend timeframe<select id="trendSignalTf"><option value="15">15 Minutes</option><option value="30" selected>30 Minutes</option><option value="60">1 Hour</option><option value="240">4 Hours</option></select></label>
-          <label>Chart timeframe<select id="chartSignalTf"><option value="1">1 Minute</option><option value="5">5 Minutes</option><option value="15" selected>15 Minutes</option><option value="30">30 Minutes</option><option value="60">1 Hour</option><option value="50">50 Minutes (custom)</option></select></label>
-        </div>
-        <div class="timeframe-checks"><label><input type="checkbox" name="analysisTf" value="60" checked> H1</label><label><input type="checkbox" name="analysisTf" value="30" checked> M30</label><label><input type="checkbox" name="analysisTf" value="15" checked> M15</label><label><input type="checkbox" name="analysisTf" value="5" checked> M5</label><label><input type="checkbox" name="analysisTf" value="1" checked> M1</label><label><input type="checkbox" name="analysisTf" value="50"> M50*</label></div>
-        <div class="signal-inputs signal-engine-options">
-          <label>Minimum confirmations<select id="signalMinScore"><option value="6">6 / 10 · Aggressive</option><option value="7" selected>7 / 10 · Balanced</option><option value="8">8 / 10 · Selective</option><option value="9">9 / 10 · Very selective</option></select></label>
-          <label>Risk per signal (%)<input id="signalRiskPct" type="number" min="0.1" max="5" step="0.1" value="1"></label>
-        </div>
-        <div class="signal-actions"><button class="primary-btn" id="saveTimeframes">Save signal settings</button><button class="secondary-btn" id="syncTimeframes">Load settings from Telegram</button><button class="secondary-btn" id="applyChartTf">Apply to QUANTNEX VIEW</button><button class="secondary-btn" id="runSignalScan">Run market signal scan</button><button class="secondary-btn" id="runSignalBacktest">Run historical walk-forward test</button></div>
-        <p class="telegram-status" id="timeframeStatus" aria-live="polite">Signal settings and market analysis are managed here. Crypto analysis uses Binance public data; Gold needs a configured local provider. M50 is aggregated from 1-minute candles.</p>
-        <div class="signal-actions"><button class="secondary-btn" id="openTelegramBotTool" type="button">Manage Telegram bot</button></div>
-        <p class="telegram-status" id="signalTelegramStatus" aria-live="polite">Checking Telegram bot connection…</p>
-        <div class="signal-warning">Gold and Forex analysis require a supported market-data provider configured on this computer. Keep provider credentials private; QUANTNEX never displays secret values in the website. Provider plan limits and market-data entitlements apply.</div>
-        <div id="signalBacktestResult" class="signal-result-empty">Historical validation: run a chronological training / out-of-sample test for the selected Binance Spot pair. Spread, depth, fees and slippage are modeled assumptions, not historical order-book data.</div>
-      </section>
-      <section class="panel signal-panel signal-results-panel">
-        <div class="signal-intro"><div><strong>Live signal analysis</strong><p>EMA 20/50/200 · MACD · RSI · ADX · ATR · Structure · Liquidity · OB / Breaker / FVG / iFVG</p></div><span class="signal-pill" id="signalEngineState">NOT SCANNED</span></div>
-        <div id="signalResult" class="signal-result-empty">Select any Binance Spot pair or XAUUSD and run a scan. Historical walk-forward validation is available for Binance Spot pairs.</div>
-        <div id="indicatorReadout" class="indicator-readout"></div>
-        <p class="signal-feed-note">The 0–10 score counts matching rules; it is not a measured win rate or probability. Reaper is a named third-party/custom indicator with no confirmed formula in this project, so it is not represented as a working confirmation. The engine uses its own documented rule-based approximations for market structure and zones.</p>
-      </section>
-
       <section class="section-heading" id="signals"><div><div class="overline">XAUUSD · POSITION PLANNING</div><h2>Trade setup &amp; risk / reward</h2><p>Plan Entry, Stop Loss and three targets, then send the plan or TP1 warning to your Telegram.</p></div><span class="signal-pill">MANUAL PLAN · NO AUTO EXECUTION</span></section>
       <section class="signal-workspace">
         <article class="panel signal-panel">
@@ -382,42 +403,14 @@
           </div>
           <div class="signal-visual" id="riskRewardVisual"><div class="loss-zone" id="lossZone">LOSS / SL</div><div class="profit-zone" id="profitZone">PROFIT / TARGETS</div></div>
           <div class="entry-marker" id="entryMarker">ENTRY</div>
-          <div class="position-summary" id="positionSummary"></div>
+          <div class="position-summary position-summary-table-wrap" id="positionSummaryWrap">
+            <table class="position-summary-table"><thead><tr><th>Position metric</th><th>Calculated result</th></tr></thead><tbody id="positionSummary"><tr><td colspan="2">Enter a valid setup to calculate.</td></tr></tbody></table>
+          </div>
           <p class="signal-status" id="signalCalcStatus" aria-live="polite">Enter your setup to calculate.</p>
           <div class="signal-actions"><button class="primary-btn" id="sendPlanTelegram">Send trade plan to Telegram</button><button class="secondary-btn" id="tp1Breakeven">TP1 hit · Send breakeven warning</button></div>
           <div class="signal-warning">TP1 automation is not active: when you confirm TP1 manually, this button sends the warning to move SL to Entry. QUANTNEX does not monitor price touches or modify broker orders yet. Always move the stop manually in your broker platform.</div>
         </article>
 
-      </section>
-
-      <section class="panel qx-intelligence-panel" id="qxSignalIntelligence">
-        <div class="qx-intel-heading"><div><div class="overline">QUANTNEX VIEW · SIGNAL INTELLIGENCE</div><h2>Live Strategy Engine</h2><p>100 catalogue variants across ICT, SMC, trend and volume setup families.</p></div><span class="pill" id="qxIntelStatus">INITIALISING</span></div>
-        <div class="qx-intel-controls">
-          <label>Minimum confluence <select id="qxIntelMinScore"><option value="4">4 / 20</option><option value="6" selected>6 / 20</option><option value="8">8 / 20</option><option value="10">10 / 20</option><option value="12">12 / 20</option></select></label>
-          <label>Paper balance ($) <input id="qxBacktestBalance" type="number" min="100" max="10000000" value="10000"></label>
-          <label>Risk per trade (%) <input id="qxBacktestRisk" type="number" min="0.05" max="2" step="0.05" value="1"></label>
-          <button class="primary-btn" id="qxRunBacktest" type="button">Run historical backtest</button>
-        </div>
-        <div class="qx-intel-grid">
-          <div class="qx-intel-card"><span>EMA 20 / 50 / 200</span><strong id="qxIndEma">—</strong></div>
-          <div class="qx-intel-card"><span>RSI · MACD</span><strong id="qxIndMomentum">—</strong></div>
-          <div class="qx-intel-card"><span>ADX · ATR</span><strong id="qxIndVolatility">—</strong></div>
-          <div class="qx-intel-card"><span>Relative volume</span><strong id="qxIndVolume">—</strong></div>
-          <div class="qx-intel-card"><span>Market structure</span><strong id="qxIndStructure">—</strong></div>
-          <div class="qx-intel-card"><span>Premium / Discount</span><strong id="qxIndLocation">—</strong></div>
-        </div>
-        <div class="qx-signal-card" id="qxMainSignal"><div class="qx-signal-empty">Waiting for a confirmed setup. The engine will show one selected trade only.</div></div>
-        <div class="qx-position-preview" id="qxPositionPreview" hidden>
-          <div class="qx-position-controls"><label>Stop colour <input type="color" id="qxStopColor" value="#e6535d"></label><label>Target colour <input type="color" id="qxTargetColor" value="#20c997"></label><label>Entry colour <input type="color" id="qxEntryColor" value="#e5c15b"></label></div>
-          <div class="qx-position-levels" id="qxPositionLevels"></div>
-          <p>TP1 hit → stop moves to entry (break-even). Remaining size is managed toward TP2 and TP3.</p>
-        </div>
-        <div class="qx-backtest-card">
-          <div class="qx-intel-heading"><div><h3>Autonomous Research Backtest</h3><p>Runs on historical closed candles; one position per symbol. Results are separate from live signals.</p></div><span class="pill" id="qxBacktestStatus">NOT RUN</span></div>
-          <div class="qx-backtest-metrics" id="qxBacktestMetrics"><span>Run a backtest to populate win rate, profit factor, drawdown and simulated balance.</span></div>
-        </div>
-        <div class="qx-strategy-details"><details><summary>View setup catalogue and active confluence</summary><div id="qxStrategyList">Loading strategy catalogue…</div></details></div>
-        <p class="qx-intel-disclaimer">Confluence score is not a win probability. No 70% accuracy is promised. Backtest outcomes are historical simulations, not live results or financial advice. This engine does not place broker orders.</p>
       </section>
 
       <section class="panel phase07-panel" id="qxCrossMarketSignalScan">
@@ -936,16 +929,16 @@
   </div>
   <script src="shared-news-config.js?v=20261113-shared-news1"></script>
   <script src="journal-export.js?v=20261114-csvsafe1"></script>
-  <script src="app.js?v=20261121-sequence-orderflow3"></script>
+  <script src="app.js?v=20261121-compact-layout2"></script>
   <script src="realtime-events.js"></script>
   <script src="workspace-pages.js"></script>
   <script src="phase12-20.js"></script>
   <script src="goals.js?v=20261118-certificate-gallery100"></script>
 
-  <script src="signal-tool.js?v=20261116-qx-signal-consolidation1"></script>
-  <script src="quantnex-view-chart.js?v=20261121-usdm-futures1"></script>
+  <script src="signal-tool.js?v=20261121-position-table2"></script>
+  <script src="quantnex-view-chart.js?v=20261121-compact-layout2"></script>
   <script src="market-sessions.js?v=20261118-live-sessions1"></script>
-  <script src="quantnex-view-intelligence.js?v=20261121-futures-isolation1"></script>
+  <script src="quantnex-view-intelligence.js?v=20261121-live-signals-table2"></script>
   <script src="workspace-polish.js?v=20261114-single-icon2"></script>
   <script src="welcome-whats-new.js?v=20261113-1"></script>
   <script src="prop-challenge.js"></script>

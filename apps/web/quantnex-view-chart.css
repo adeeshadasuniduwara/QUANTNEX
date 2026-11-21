@@ -95,3 +95,53 @@
 .qx-orderflow-flow-grid article small,.qx-orderflow-session small{display:block;margin-top:4px;color:var(--muted,#9299a5);font-size:9px;line-height:1.5}
 .qx-orderflow-session{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:10px 0}
 @media(max-width:620px){.qx-orderflow-flow-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.qx-orderflow-session{align-items:flex-start;flex-direction:column}}
+
+
+/* Compact chart workspace controls and live-updating collapsible sheets. */
+.qx-chart-settings-row{display:flex;justify-content:flex-end;margin:4px 0 8px}
+.qx-chart-settings-button{display:inline-flex;align-items:center;gap:7px;font-size:11px}
+.qx-chart-settings-button:first-letter{font-size:15px}
+.qx-signal-settings-panel{margin:8px 0 12px;padding:12px;border:1px solid var(--border,#30343c);border-radius:10px;background:rgba(0,0,0,.16)}
+.qx-signal-settings-panel[hidden],.qx-collapsible-panel [hidden]{display:none!important}
+.qx-signal-settings-panel .timeframe-panel{margin:0;padding:0;border:0;background:transparent}
+.qx-signal-settings-panel .timeframe-panel .signal-intro{margin-bottom:10px}
+.qx-collapsible-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+.qx-collapsible-heading>div{min-width:0}
+.qx-collapsible-heading strong{display:block;color:var(--text,#e8edf5);font-size:12px;letter-spacing:.06em}
+.qx-collapsible-heading small{display:block;margin-top:4px;color:var(--muted,#9299a5);font-size:10px;line-height:1.45}
+.qx-chart-intelligence{display:block}
+.qx-live-signals-panel{margin:12px 0;padding:13px;min-width:0}
+.qx-live-signals-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.qx-live-signals-heading h3{margin:4px 0;color:var(--text,#e8edf5);font-size:15px}
+.qx-live-signals-heading p{margin:4px 0;color:var(--muted,#9299a5);font-size:10px;line-height:1.5}
+.qx-live-signals-table-wrap,.qx-indicator-table-wrap{max-width:100%;overflow:auto;border:1px solid var(--border,#30343c);border-radius:8px}
+.qx-live-signals-table,.qx-indicator-table{width:100%;border-collapse:collapse;font-size:10px}
+.qx-live-signals-table{min-width:920px}
+.qx-live-signals-table th,.qx-live-signals-table td,.qx-indicator-table th,.qx-indicator-table td{padding:8px 9px;border-bottom:1px solid var(--border,#30343c);text-align:left;white-space:nowrap;font-variant-numeric:tabular-nums}
+.qx-live-signals-table th,.qx-indicator-table thead th{color:var(--muted,#9299a5);font-weight:700;background:rgba(0,0,0,.16)}
+.qx-live-signals-table td{color:var(--text,#e8edf5)}
+.qx-live-signals-table td[data-side="BUY"]{color:#36c995;font-weight:800}
+.qx-live-signals-table td[data-side="SELL"]{color:#f07880;font-weight:800}
+.qx-live-signals-table td[data-status="SIGNAL"]{color:#36c995;font-weight:700}
+.qx-live-signal-note{white-space:normal!important;color:var(--muted,#9299a5)!important;line-height:1.5}
+.qx-indicator-table{min-width:700px}
+.qx-indicator-table tbody th{color:var(--text,#e8edf5);font-weight:700}
+.qx-indicator-table tbody td{color:var(--text,#e8edf5)}
+.qx-indicator-chart{width:190px;height:48px;margin:0}
+.qx-indicator-native-canvas{display:block;width:100%;height:100%}
+.qx-indicator-table tr:last-child th,.qx-indicator-table tr:last-child td,.qx-live-signals-table tr:last-child td{border-bottom:0}
+.position-summary-table-wrap{display:block;overflow:auto;margin:12px 0;border:1px solid #303030;border-radius:9px}
+.position-summary-table{width:100%;border-collapse:collapse;min-width:320px;font-size:11px}
+.position-summary-table th,.position-summary-table td{padding:9px 11px;border-bottom:1px solid #2c2c2c;text-align:left}
+.position-summary-table thead th{background:#141414;color:#aaa;font-size:10px;letter-spacing:.04em}
+.position-summary-table tbody th{width:55%;color:#aaa;font-weight:600}
+.position-summary-table tbody td{color:#f0f0f0;font-weight:700;font-variant-numeric:tabular-nums}
+.position-summary-table tbody tr:last-child th,.position-summary-table tbody tr:last-child td{border-bottom:0}
+@media(max-width:760px){
+ .qx-live-signals-panel{padding:10px}
+ .qx-collapsible-heading{align-items:flex-start}
+ .qx-signal-settings-panel{padding:9px}
+ .qx-indicator-table{min-width:650px}
+}
+
+.qx-chart-sessions{margin-top:20px}

@@ -67,7 +67,10 @@ jobs:
           python -m unittest discover -s tests -p 'test_*.py'
       - name: Verify local-only wallet and updater UI
         run: |
-          grep -q 'id="qxSignalIntelligence"' apps/web/index.html
+          ! grep -q 'id="qxSignalIntelligence"' apps/web/index.html
+          grep -q 'id="qxLiveSignalsRows"' apps/web/index.html
+          grep -q 'id="qxIndicatorsContent"' apps/web/index.html
+          grep -q 'id="qxSignalSettingsPanel"' apps/web/index.html
           grep -q 'quantnex-view-intelligence.js' apps/web/index.html
           grep -q 'quantnex-view-intelligence.css' apps/web/index.html
           grep -q 'quantnex-view-chart.js' apps/web/index.html

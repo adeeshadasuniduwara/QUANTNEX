@@ -10,6 +10,21 @@
   function setText(id,value){const el=$(id);if(el)el.textContent=value;}
   function selected(){return {symbol:$("qxSymbol")?.value||"BTCUSDT",interval:$("qxInterval")?.value||"15m",marketType:$("qxMarketType")?.value||"BINANCE_SPOT",min:Number($("qxIntelMinScore")?.value||6)};}
   function setStatus(value){setText("qxIntelStatus",value);}
+  function bindDisclosure(buttonId,contentId,expandLabel="Expand",collapseLabel="Collapse"){
+    const button=$(buttonId),content=$(contentId);
+    if(!button||!content)return;
+    button.addEventListener("click",()=>{
+      const expanded=button.getAttribute("aria-expanded")==="true";
+      content.hidden=expanded;
+      button.setAttribute("aria-expanded",String(!expanded));
+      button.textContent=expanded?expandLabel:collapseLabel;
+      if(!expanded&&contentId==="qxIndicatorsContent")window.quantnexViewRefreshIndicators?.();
+    });
+  }
+  bindDisclosure("qxSignalSettingsToggle","qxSignalSettingsPanel","⚙ Settings","⚙ Close settings");
+  bindDisclosure("qxChartSignalSheetToggle","qxChartSignalSheetContent");
+  bindDisclosure("qxSignalLedgerToggle","qxSignalLedgerContent");
+  bindDisclosure("qxIndicatorsToggle","qxIndicatorsContent");
   function renderFeatures(f){
     setText("qxIndEma",price(f.ema20)+" / "+price(f.ema50)+" / "+price(f.ema200));
     setText("qxIndMomentum","RSI "+Number(f.rsi).toFixed(1)+" · MACD "+Number(f.macd_histogram).toFixed(4));
@@ -44,6 +59,46 @@
       name.textContent=label;val.textContent=label.startsWith("ENTRY")&&s.entry_type==="MARKET"?"MARKET ("+price(value)+")":price(value);val.style.color=color;item.append(name,val);levels.append(item);
     });
     preview.hidden=false;window.quantnexViewSetTradePlan?.(s,{stop:colorStop,target:colorTarget,entry:colorEntry});
+  }
+  function renderLiveSignals(data,selection=selected(),state){
+    const rows=$("qxLiveSignalsRows"),status=$("qxLiveSignalsStatus");
+    if(!rows)return;
+    rows.replaceChildren();
+    const signal=data?.signal;
+    const addEmpty=message=>{
+      const tr=document.createElement("tr"),td=document.createElement("td");
+      td.colSpan=10;td.className="empty-row";td.textContent=message;tr.append(td);rows.append(tr);
+    };
+    if(selection.marketType==="BINANCE_USDM_FUTURES"){
+      addEmpty("USDⓈ-M Futures chart is read-only. A separate validated Futures signal engine is not enabled.");
+      if(status)status.textContent="FUTURES · CHART ONLY";
+      return;
+    }
+    if(!signal){
+      addEmpty(state==="ERROR"?"Live analysis is temporarily unavailable. Retrying automatically…":
+        (data?.message||"WAIT · No confirmed setup passed the current filters. The engine keeps monitoring."));
+      if(status)status.textContent=state==="ERROR"?"RETRYING":(data?.status||"WAIT · NO QUALIFIED SETUP");
+      return;
+    }
+    const market=signal.symbol||data.symbol||selection.symbol;
+    const entry=signal.entry_type==="MARKET"?"MARKET ("+price(signal.entry)+")":"LIMIT ("+price(signal.limit_price||signal.entry)+")";
+    const values=[market,signal.side,signal.timeframe||data.interval||selection.interval,entry,price(signal.stop_loss),price(signal.tp1),price(signal.tp2),price(signal.tp3),
+      String(signal.score??data.confluence_score??"—")+"/20",data.status||"SIGNAL"];
+    const tr=document.createElement("tr");
+    values.forEach((value,index)=>{
+      const td=document.createElement("td");td.textContent=String(value??"—");
+      if(index===1)td.dataset.side=signal.side;
+      if(index===9)td.dataset.status=data.status||"SIGNAL";
+      tr.append(td);
+    });
+    rows.append(tr);
+    const detailRow=document.createElement("tr"),detail=document.createElement("td");
+    detail.colSpan=10;detail.className="qx-live-signal-note";
+    detail.textContent="Setup: "+(signal.confirmations||[]).join(" + ")+
+      (signal.entry_reference_note?" · "+signal.entry_reference_note:"")+
+      (signal.reasons?.length?" · "+signal.reasons.join(" · "):"");
+    detailRow.append(detail);rows.append(detailRow);
+    if(status)status.textContent="LIVE · "+signal.side+" · "+market;
   }
   function renderBacktest(data){
     const host=$("qxBacktestMetrics");host.replaceChildren();
@@ -153,6 +208,7 @@
       lastAnalysis=null;
       setStatus("FUTURES CHART ONLY · FUTURES SIGNAL ENGINE NOT ENABLED");
       const host=$("qxMainSignal");if(host)host.textContent="Futures market data is displayed read-only. Spot signal rules are deliberately not run against this Futures chart.";
+      renderLiveSignals(null,selected());
       const list=$("qxStrategyList");if(list)list.textContent="USDⓈ-M Futures strategy evaluation is not enabled yet.";
       window.quantnexViewSetTradePlan?.(null);
       const summary=$("qxChartIntelSummary");if(summary)summary.textContent="FUTURES CHART · SIGNAL ANALYSIS NOT ENABLED";
@@ -165,7 +221,7 @@
       const data=await apiRequest("/api/v1/quantnex-view/analyze?symbol="+encodeURIComponent(s.symbol)+"&interval="+encodeURIComponent(s.interval)+"&min_score="+s.min);
       const current=selected();
       if(!isTradingViewActive()||current.symbol!==s.symbol||current.interval!==s.interval||current.marketType!==s.marketType||current.min!==s.min)return;
-      lastAnalysis=data;renderFeatures(data.features);renderSignal(data);window.quantnexViewSetAnalysis?.(data);
+      lastAnalysis=data;renderFeatures(data.features);renderSignal(data);renderLiveSignals(data,s);window.quantnexViewSetAnalysis?.(data);
       refreshLifecycle(s.symbol);
       replayHistory(s);
       setStatus(data.status+" · "+data.eligible_setups+" ELIGIBLE / 100");
@@ -181,7 +237,7 @@
         if(!table.childElementCount){const empty=document.createElement("p");empty.textContent="No setup variants passed all context gates on this candle.";table.append(empty);}
         list.append(table);
       }
-    }catch(error){setStatus("FEED ERROR");const host=$("qxMainSignal");if(host)host.textContent="Signal analysis unavailable: "+error.message;}
+    }catch(error){setStatus("FEED ERROR");renderLiveSignals(null,selected(),"ERROR");const host=$("qxMainSignal");if(host)host.textContent="Signal analysis unavailable: "+error.message;}
     finally{busy=false;if(analyzeQueued&&isTradingViewActive()){analyzeQueued=false;analyze();}else if(!isTradingViewActive())analyzeQueued=false;}
   }
   async function backtest(){
@@ -203,7 +259,7 @@
     setText("qxBacktestStatus","SELECTION CHANGED · RUN BACKTEST");
   }
   $("qxRunBacktest")?.addEventListener("click",backtest);
-  ["qxMarketType","qxSymbol","qxInterval","qxIntelMinScore"].forEach(id=>$(id)?.addEventListener("change",()=>{analyze();resetBacktestForSelection();}));
+  ["qxMarketType","qxSymbol","qxInterval","qxIntelMinScore"].forEach(id=>$(id)?.addEventListener("change",()=>{renderLiveSignals(null,selected());analyze();resetBacktestForSelection();}));
   ["qxStopColor","qxTargetColor","qxEntryColor"].forEach(id=>$(id)?.addEventListener("input",()=>{if(lastAnalysis)renderSignal(lastAnalysis);}));
   window.addEventListener("quantnex:view-changed",event=>{if(event.detail?.view==="tradingview")analyze();});
   document.addEventListener("visibilitychange",()=>{if(isTradingViewActive())analyze();});

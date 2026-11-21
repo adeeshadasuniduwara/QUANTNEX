@@ -105,6 +105,7 @@ class BinanceSpotOrderFlowCaptureWorker:
     async def _run(self) -> None:
         while not self._stop.is_set():
             try:
+                self.last_error = None
                 symbols = _load_symbols()
                 self.monitored_symbols = symbols
                 for symbol in symbols:
@@ -119,8 +120,6 @@ class BinanceSpotOrderFlowCaptureWorker:
                         logger.warning("Order Flow capture warm-up failed for %s: %s", symbol, type(exc).__name__)
                 from datetime import datetime, timezone
                 self.last_cycle_at = datetime.now(timezone.utc).isoformat()
-                if not self.last_error:
-                    self.last_error = None
             except asyncio.CancelledError:
                 raise
             except Exception as exc:

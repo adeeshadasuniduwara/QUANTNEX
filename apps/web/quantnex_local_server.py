@@ -104,7 +104,7 @@ def github_json(url: str) -> dict:
     # exhausting the unauthenticated GitHub API quota.
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
-    from github_api_cache import github_json_cached
+    from backend.app.github_api_cache import github_json_cached
     return github_json_cached(
         url, DATA / "updates" / "github-api-cache.json", "QUANTNEX-Web-Updater",
         fresh_seconds=60, stale_seconds=24 * 60 * 60, timeout=25,

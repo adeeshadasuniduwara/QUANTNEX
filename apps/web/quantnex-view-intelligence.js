@@ -24,14 +24,6 @@
   bindDisclosure("qxChartSignalSheetToggle","qxChartSignalSheetContent");
   bindDisclosure("qxSignalLedgerToggle","qxSignalLedgerContent");
   bindDisclosure("qxIndicatorsToggle","qxIndicatorsContent");
-  function renderFeatures(f){
-    setText("qxIndEma",price(f.ema20)+" / "+price(f.ema50)+" / "+price(f.ema200));
-    setText("qxIndMomentum","RSI "+Number(f.rsi).toFixed(1)+" · MACD "+Number(f.macd_histogram).toFixed(4));
-    setText("qxIndVolatility","ADX "+Number(f.adx).toFixed(1)+" · ATR "+price(f.atr));
-    setText("qxIndVolume",Number(f.relative_volume).toFixed(2)+"× average");
-    setText("qxIndStructure",f.structure.bos_mss+" · "+f.structure.liquidity_sweep);
-    setText("qxIndLocation",f.structure.premium_discount+" · EQ "+price(f.structure.equilibrium));
-  }
   function renderLiveSignals(data,selection=selected(),state){
     const rows=$("qxLiveSignalsRows"),status=$("qxLiveSignalsStatus");
     if(!rows)return;
@@ -169,7 +161,18 @@
       setStatus("FUTURES CHART ONLY · FUTURES SIGNAL ENGINE NOT ENABLED");
       renderLiveSignals(null,selected());
       window.quantnexViewSetTradePlan?.(null);
+      setText("qxChartIntelState","FUTURES CHART ONLY");
       const summary=$("qxChartIntelSummary");if(summary)summary.textContent="FUTURES CHART · SIGNAL ANALYSIS NOT ENABLED";
+      const metrics=$("qxChartIntelMetrics");
+      if(metrics){
+        metrics.replaceChildren();
+        [["Market type","USDⓈ-M PERPETUAL"],["Signal engine","NOT ENABLED"],["Order Flow","SPOT ONLY"],["Data mode","READ-ONLY"]].forEach(([label,value])=>{
+          const item=document.createElement("div"),name=document.createElement("span"),valueNode=document.createElement("strong");
+          item.className="qx-chart-intel-metric";name.textContent=label;valueNode.textContent=value;item.append(name,valueNode);metrics.append(item);
+        });
+      }
+      const confidence=$("qxConfidenceFill");if(confidence)confidence.style.width="0%";
+      setText("qxConfidenceLabel","Futures signal confluence is not calculated.");
       return;
     }
     if(busy){analyzeQueued=true;return;}busy=true;setStatus("ANALYSING");
@@ -178,7 +181,7 @@
       const data=await apiRequest("/api/v1/quantnex-view/analyze?symbol="+encodeURIComponent(s.symbol)+"&interval="+encodeURIComponent(s.interval)+"&min_score="+s.min);
       const current=selected();
       if(!isTradingViewActive()||current.symbol!==s.symbol||current.interval!==s.interval||current.marketType!==s.marketType||current.min!==s.min)return;
-      renderFeatures(data.features);renderLiveSignals(data,s);window.quantnexViewSetAnalysis?.(data);
+      renderLiveSignals(data,s);window.quantnexViewSetAnalysis?.(data);
       refreshLifecycle(s.symbol);
       replayHistory(s);
       setStatus(data.status+" · "+data.eligible_setups+" ELIGIBLE / 100");

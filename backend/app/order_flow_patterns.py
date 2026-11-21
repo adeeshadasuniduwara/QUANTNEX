@@ -7,6 +7,7 @@ candle volume is never treated as bid/ask volume.
 from __future__ import annotations
 
 import math
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -67,6 +68,31 @@ def detect_order_flow_patterns(
         raise ValueError("Order-flow pattern metrics are outside validated ranges.")
     if trade_age < 0 or trade_age > 15 or depth_age < 0 or depth_age > 5:
         raise ValueError("Order-flow pattern input is stale.")
+
+    candle_stamp = candle.get("time") or candle.get("open_time")
+    trade_stamp = flow.get("last_trade_at")
+    if candle_stamp is not None or trade_stamp is not None:
+        try:
+            candle_time = datetime.fromisoformat(str(candle_stamp).replace("Z", "+00:00"))
+            trade_time = datetime.fromisoformat(str(trade_stamp).replace("Z", "+00:00"))
+            if candle_time.tzinfo is None:
+                candle_time = candle_time.replace(tzinfo=timezone.utc)
+            if trade_time.tzinfo is None:
+                trade_time = trade_time.replace(tzinfo=timezone.utc)
+            candle_minute = int(candle_time.timestamp()) // 60
+            trade_minute = int(trade_time.timestamp()) // 60
+        except (TypeError, ValueError, OverflowError):
+            return {
+                "status": "NOT_ALIGNED", "direction": None, "accepted_for_side": True,
+                "reason": "Candle and exchange trade timestamps are unavailable or invalid; pattern confirmation is skipped.",
+                "evidence": [],
+            }
+        if candle_minute != trade_minute:
+            return {
+                "status": "NOT_ALIGNED", "direction": None, "accepted_for_side": True,
+                "reason": "The latest closed M1 candle and observed aggressor trades belong to different UTC minutes; no pattern is inferred.",
+                "evidence": [],
+            }
 
     close_location = (close - low) / candle_range
     upper_wick_ratio = (high - max(opening, close)) / candle_range

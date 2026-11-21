@@ -118,7 +118,7 @@ assert.ok(html.includes('id="qxChartTicker"'), "Selected exchange-style ticker m
 assert.ok(js.includes("ticker.textContent=chartTicker(pair.value,marketType)"), "Visible chart ticker must update when market type or pair changes.");
 assert.ok(html.includes('id="qxSymbol"'), "Chart must retain a pair selector separate from market type.");
 assert.match(js, /\/api\/v1\/charts\/markets\?market_type=/, "Chart symbols must come from authoritative market-type metadata.");
-assert.match(js, /chartTicker\(symbol,marketType\).*\.P/, "USDⓈ-M perpetual tickers must display the .P suffix.");
+assert.match(js, /marketType==="BINANCE_USDM_FUTURES"\?"\.P":""/, "USDⓈ-M perpetual tickers must display the .P suffix.");
 assert.match(js, /wss:\/\/fstream\.binance\.com\/ws\//, "Futures chart must use Binance USDⓈ-M live kline streams.");
 assert.match(js, /\/api\/v1\/charts\/futures\/candles/, "Futures chart history must use the separate USDⓈ-M candle endpoint.");
 assert.match(js, /marketType==="BINANCE_USDM_FUTURES"/, "Futures selection must remain isolated from Spot feeds.");

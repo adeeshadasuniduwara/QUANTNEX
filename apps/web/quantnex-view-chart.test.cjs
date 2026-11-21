@@ -115,7 +115,7 @@ console.log("QUANTNEX VIEW all-market overall signal P&L checks passed.");
 
 assert.ok(html.includes('id="qxMarketType"'), "Chart must expose separate Spot/Futures market selection.");
 assert.ok(html.includes('id="qxChartTicker"'), "Selected exchange-style ticker must be visible beside the chart price.");
-assert.match(js, /qxChartTicker.*chartTicker\(pair\.value,marketType\)/, "Visible chart ticker must update when market type or pair changes.");
+assert.ok(js.includes("ticker.textContent=chartTicker(pair.value,marketType)"), "Visible chart ticker must update when market type or pair changes.");
 assert.ok(html.includes('id="qxSymbol"'), "Chart must retain a pair selector separate from market type.");
 assert.match(js, /\/api\/v1\/charts\/markets\?market_type=/, "Chart symbols must come from authoritative market-type metadata.");
 assert.match(js, /chartTicker\(symbol,marketType\).*\.P/, "USDⓈ-M perpetual tickers must display the .P suffix.");

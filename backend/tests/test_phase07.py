@@ -125,3 +125,10 @@ def test_gold_order_book_api_route_exposes_mt5_snapshot(monkeypatch):
     assert response.json()["supported"] is True
     assert response.json()["provider"] == "MetaTrader 5 local terminal"
     assert response.json()["orders_enabled"] is False
+
+
+def test_retired_cross_market_signal_scan_api_is_not_registered():
+    from app.main import app
+
+    assert not any(route.path == "/api/v1/intelligence/signals/scan" for route in app.routes)
+    assert not hasattr(phase07_engine, "scan_market_signal")

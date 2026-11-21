@@ -9,21 +9,6 @@
   function setText(id,value){const el=$(id);if(el)el.textContent=value;}
   function selected(){return {symbol:$("qxSymbol")?.value||"BTCUSDT",interval:$("qxInterval")?.value||"15m",marketType:$("qxMarketType")?.value||"BINANCE_SPOT",min:Number($("qxIntelMinScore")?.value||6)};}
   function setStatus(value){setText("qxIntelStatus",value);}
-  function bindDisclosure(buttonId,contentId,expandLabel="Expand",collapseLabel="Collapse"){
-    const button=$(buttonId),content=$(contentId);
-    if(!button||!content)return;
-    button.addEventListener("click",()=>{
-      const expanded=button.getAttribute("aria-expanded")==="true";
-      content.hidden=expanded;
-      button.setAttribute("aria-expanded",String(!expanded));
-      button.textContent=expanded?expandLabel:collapseLabel;
-      if(!expanded&&contentId==="qxIndicatorsContent")window.quantnexViewRefreshIndicators?.();
-    });
-  }
-  bindDisclosure("qxSignalSettingsToggle","qxSignalSettingsPanel","⚙ Settings","⚙ Close settings");
-  bindDisclosure("qxChartSignalSheetToggle","qxChartSignalSheetContent");
-  bindDisclosure("qxSignalLedgerToggle","qxSignalLedgerContent");
-  bindDisclosure("qxIndicatorsToggle","qxIndicatorsContent");
   function renderLiveSignals(data,selection=selected(),state){
     const rows=$("qxLiveSignalsRows"),status=$("qxLiveSignalsStatus");
     if(!rows)return;

@@ -182,6 +182,11 @@
             <button class="secondary-btn compact-btn" id="qxScreenshot" type="button">Snapshot</button>
           </div>
         </div>
+        <div class="qx-chart-overlay-options" aria-label="Chart overlay visibility">
+          <label><input type="checkbox" id="qxOverlayStructure" checked> Structure &amp; sweeps</label>
+          <label><input type="checkbox" id="qxOverlayZones" checked> OB / BB / FVG zones</label>
+          <label><input type="checkbox" id="qxOverlaySR" checked> Support / resistance</label>
+        </div>
         <div class="qx-chart-settings-row">
           <button class="secondary-btn compact-btn qx-chart-settings-button" id="qxSignalSettingsToggle" type="button" aria-expanded="false" aria-controls="qxSignalSettingsPanel" title="Signal timeframe settings" aria-label="Signal timeframe settings">⚙ <span>Settings</span></button>
         </div>
@@ -252,26 +257,7 @@
           </table>
         </div>
       </section>
-      <section class="qx-chart-intelligence qx-collapsible-panel" aria-live="polite" aria-label="Live chart intelligence">
-        <div class="qx-collapsible-heading">
-          <div><strong>LIVE SIGNAL SHEET</strong><small>Structure, confirmations and confluence · live updates continue while hidden</small></div>
-          <button class="secondary-btn compact-btn" id="qxChartSignalSheetToggle" type="button" aria-expanded="false" aria-controls="qxChartSignalSheetContent">Expand</button>
-        </div>
-        <div id="qxChartSignalSheetContent" hidden>
-        <div><div class="qx-chart-intelligence-head"><strong>LIVE STRUCTURE &amp; CONFIRMATIONS</strong><small id="qxChartIntelState">SCANNING</small></div>
-          <p class="qx-chart-intel-summary" id="qxChartIntelSummary">Waiting for market confirmation…</p><div class="qx-confidence" id="qxConfidenceMeter" aria-label="Rule confluence meter"><div class="qx-confidence-track"><span id="qxConfidenceFill"></span></div><small id="qxConfidenceLabel">0 / 20 rule matches · not a win probability</small></div>
-          <div class="qx-chart-overlay-options">
-            <label><input type="checkbox" id="qxOverlayStructure" checked> Structure &amp; sweeps</label>
-            <label><input type="checkbox" id="qxOverlayZones" checked> OB / BB / FVG zones</label>
-            <label><input type="checkbox" id="qxOverlaySR" checked> Support / resistance</label>
-          </div>
-        </div>
-        <div class="qx-chart-intel-metrics" id="qxChartIntelMetrics">
-          <div class="qx-chart-intel-metric"><span>RSI</span><strong>—</strong></div><div class="qx-chart-intel-metric"><span>ADX</span><strong>—</strong></div>
-          <div class="qx-chart-intel-metric"><span>Structure</span><strong>—</strong></div><div class="qx-chart-intel-metric"><span>Liquidity</span><strong>—</strong></div>
-        </div>
-        </div>
-      </section>
+      
       <section class="qx-orderflow-toolkit" id="qxOrderFlowToolkit" aria-label="Order Flow and Liquidity Toolkit">
         <div class="qx-orderflow-heading">
           <div><span class="qx-orderflow-kicker">QUANTNEX VIEW · MARKET MICROSTRUCTURE</span><h3>Order Flow &amp; Liquidity Toolkit</h3><p>Live Binance Spot liquidity tools linked to the market and timeframe selected above.</p></div>
@@ -413,20 +399,7 @@
 
       </section>
 
-      <section class="panel phase07-panel" id="qxCrossMarketSignalScan">
-        <div class="phase07-toolbar">
-          <div><strong>Cross-Market Signal Scan</strong><p>15m / 1h / 4h confirmation across Crypto, Gold and Forex when the selected provider is available.</p></div>
-          <span class="pill">PAPER / ALERTS ONLY</span>
-        </div>
-        <div class="p7-form-row">
-          <label>Market <select id="p7SignalSymbol"><option value="XAUUSD">XAUUSD</option><option value="BTCUSDT">BTCUSDT</option><option value="ETHUSDT">ETHUSDT</option><option value="SOLUSDT">SOLUSDT</option><option value="EURUSD">EURUSD</option><option value="GBPUSD">GBPUSD</option><option value="USDJPY">USDJPY</option></select></label>
-          <label>Minimum score <select id="p7SignalThreshold"><option value="6">6 / 10</option><option value="7">7 / 10</option><option value="8">8 / 10</option></select></label>
-          <button class="primary-btn" id="p7RunScan" type="button">Scan market</button>
-        </div>
-        <div class="p7-signal-result" id="p7SignalResult"><div class="p7-empty">Choose a market and run a cross-market confirmation scan.</div></div>
-        <div class="p7-table-wrap"><table><thead><tr><th>Timeframe</th><th>Bias</th><th>Price</th><th>RSI</th><th>ADX</th><th>ATR</th></tr></thead><tbody id="p7SignalFrames"><tr><td colspan="6" class="empty-row">No analysis yet.</td></tr></tbody></table></div>
-        <div class="p7-signal-ticket" id="p7SignalTicket" hidden><strong>Send this setup to Paper Trading</strong><button class="secondary-btn" id="p7UseSignal" type="button">Use signal in paper ticket</button></div>
-      </section>
+      
 
       <section class="section-heading" id="telegram-bot"><div><div class="overline">WORKSPACE TOOL · TELEGRAM INTEGRATION</div><h2>Telegram Bot</h2><p>Connect your personal bot, manage alert delivery and configure scheduled reports. Signal analysis and trade planning are available inside QUANTNEX VIEW.</p></div><span class="pill">LOCAL · ENCRYPTED</span></section>
       <section class="signal-workspace telegram-tool-layout">
@@ -938,9 +911,9 @@
   <script src="goals.js?v=20261118-certificate-gallery100"></script>
 
   <script src="signal-tool.js?v=20261121-position-table2"></script>
-  <script src="quantnex-view-chart.js?v=20261121-compact-layout2"></script>
+  <script src="quantnex-view-chart.js?v=20261121-sheet-cleanup1"></script>
   <script src="market-sessions.js?v=20261118-live-sessions1"></script>
-  <script src="quantnex-view-intelligence.js?v=20261121-live-signals-table2"></script>
+  <script src="quantnex-view-intelligence.js?v=20261121-sheet-cleanup1"></script>
   <script src="workspace-polish.js?v=20261114-single-icon2"></script>
   <script src="welcome-whats-new.js?v=20261113-1"></script>
   <script src="prop-challenge.js"></script>

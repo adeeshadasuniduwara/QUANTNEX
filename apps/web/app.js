@@ -690,7 +690,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
 
 // Phase 07 — multi-market intelligence and paper-only trading UI.
 (function initPhase07(){
-  const ids=["p7RefreshMarkets","p7RunScan","p7LoadNews","p7OpenPaper","p7CalculateRisk"];
+  const ids=["p7RefreshMarkets","p7LoadNews","p7OpenPaper","p7CalculateRisk"];
   if(!$(ids[0]))return;
   const fmt=(value,digits=2)=>value==null||!Number.isFinite(Number(value))?"—":Number(value).toLocaleString(undefined,{maximumFractionDigits:digits});
   const priceDigits=symbol=>symbol==="XAUUSD"?2:["EURUSD","GBPUSD","USDJPY"].includes(symbol)?5:symbol==="BTCUSDT"?2:4;
@@ -708,7 +708,6 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     return views.includes(active)||views.some(view=>workspaceViewGroups[active]?.has(view));
   };
   const addCell=(row,text)=>row.append(node("td",text));
-  let lastSignal=null;
   const marketCards=new Map();
   async function loadMarkets(){
     const root=$("p7MarketCards");
@@ -954,40 +953,6 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     pollBook(generation,symbol);
   }
   window.addEventListener("resize",()=>{if(latestBookData)drawBookmap();});
-  function renderSignal(data){
-    const root=$("p7SignalResult");root.replaceChildren();
-    const signal=data.signal;
-    const header=node("div",undefined,"p7-signal-heading");
-    header.append(node("strong",data.symbol+" · "+(signal?signal.side:"WAIT"),signal?(signal.side==="BUY"?"buy":"sell"):"wait"));
-    header.append(node("span","Confluence "+data.confluence_score+"/10 · "+data.status));
-    root.append(header);
-    root.append(node("p",data.message+" "+data.score_note,"p7-note"));
-    if(signal){
-      const levels=node("div",undefined,"p7-signal-levels");
-      [[signal.entry_type==="MARKET"?"Entry · MARKET":"Entry · LIMIT",signal.entry_type==="MARKET"?"MARKET ("+fmt(signal.entry,priceDigits(data.symbol))+")":"LIMIT ("+fmt(signal.limit_price||signal.entry,priceDigits(data.symbol))+")"],["Stop Loss",signal.stop_loss],["TP1",signal.tp1],["TP2 / TP3",signal.tp2+" / "+signal.tp3]].forEach(([label,value])=>{
-        const box=node("div");box.append(node("span",label),node("b",String(value)));levels.append(box);
-      });
-      root.append(levels);
-      root.append(node("p","Confirmations: "+signal.confirmations.join(" · "),"p7-note"));
-    }
-    const frames=$("p7SignalFrames");frames.replaceChildren();
-    Object.entries(data.timeframes||{}).forEach(([tf,item])=>{
-      const tr=node("tr");
-      [tf,item.bias,fmt(item.close,priceDigits(data.symbol)),fmt(item.rsi,1),fmt(item.adx,1),fmt(item.atr,5)].forEach(x=>addCell(tr,String(x)));
-      frames.append(tr);
-    });
-    lastSignal=signal||null;$("p7SignalTicket").hidden=!signal;
-  }
-  async function scan(){
-    const button=$("p7RunScan");button.disabled=true;button.textContent="Analyzing…";
-    try{
-      const data=await apiRequest("/api/v1/intelligence/signals/scan",{method:"POST",body:JSON.stringify({
-        symbol:$("p7SignalSymbol").value,min_score:Number($("p7SignalThreshold").value)
-      })});
-      renderSignal(data);
-    }catch(error){$("p7SignalResult").replaceChildren(node("p",error.message,"p7-status-error"));}
-    finally{button.disabled=false;button.textContent="Scan market";}
-  }
   async function loadBook(){
     const symbol=$("p7BookSymbol").value;
     $("p7BookNote").textContent="Loading configured provider order-book snapshot…";
@@ -1103,18 +1068,10 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     finally{button.disabled=false;}
   }
   $("p7RefreshMarkets").addEventListener("click",loadMarkets);
-  $("p7RunScan").addEventListener("click",scan);
   $("p7LoadNews").addEventListener("click",loadNews);
   $("p7OpenPaper").addEventListener("click",openPaper);
   $("p7RefreshPaper").addEventListener("click",refreshAnalytics);
   $("p7CalculateRisk").addEventListener("click",calculateRisk);
-  $("p7UseSignal").addEventListener("click",()=>{
-    if(!lastSignal)return;
-    $("p7PaperSymbol").value=lastSignal.symbol;$("p7PaperSide").value=lastSignal.side;
-    $("p7PaperSL").value=lastSignal.stop_loss;$("p7PaperTP").value=lastSignal.tp1;
-    if(typeof window.quantnexNavigate==="function")window.quantnexNavigate("paper-trading");
-    else location.hash="#paper-trading";
-  });
   $("qxOrderFlowReconnect").addEventListener("click",()=>loadBook());
   $("qxSymbol")?.addEventListener("change",()=>{if(isWorkspaceViewActive("tradingview"))loadBook();});
   $("qxInterval")?.addEventListener("change",()=>{const label=$("qxOrderFlowTimeframe");if(label)label.textContent=$("qxInterval").value+" · SPOT";});

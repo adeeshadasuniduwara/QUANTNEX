@@ -112,3 +112,13 @@ assert.match(intel, /\/api\/v1\/signals\/performance/, "QUANTNEX VIEW must load 
 assert.match(intel, /refreshOverallPerformance\(\)/, "Overall signal P&L must refresh with the lifecycle ledger.");
 assert.match(intel, /unpriced_open_trades/, "Missing current prices must be disclosed instead of reporting a false complete P&L.");
 console.log("QUANTNEX VIEW all-market overall signal P&L checks passed.");
+
+assert.ok(html.includes('id="qxMarketType"'), "Chart must expose separate Spot/Futures market selection.");
+assert.ok(html.includes('id="qxSymbol"'), "Chart must retain a pair selector separate from market type.");
+assert.match(js, /\/api\/v1\/charts\/markets\?market_type=/, "Chart symbols must come from authoritative market-type metadata.");
+assert.match(js, /chartTicker\(symbol,marketType\).*\.P/, "USDⓈ-M perpetual tickers must display the .P suffix.");
+assert.match(js, /wss:\/\/fstream\.binance\.com\/ws\//, "Futures chart must use Binance USDⓈ-M live kline streams.");
+assert.match(js, /\/api\/v1\/charts\/futures\/candles/, "Futures chart history must use the separate USDⓈ-M candle endpoint.");
+assert.match(js, /marketType==="BINANCE_USDM_FUTURES"/, "Futures selection must remain isolated from Spot feeds.");
+assert.match(js, /quantnex\.chart\.selection\.v1/, "Market type selection must persist across reloads.");
+console.log("QUANTNEX VIEW Spot/USDⓈ-M Futures market selector and .P ticker checks passed.");

@@ -619,3 +619,13 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 - All 20 were WAIT / NOT_EVALUATED_NO_DIRECTIONAL_SETUP. No live signal was fabricated; Order Flow was not evaluated because there was no directional candidate.
 - Sample included non-USDT quote pairs, confirming the smoke selector can rotate beyond BTC/ETH/SOL and beyond USDT quote pairs. It is still only a 20-pair sample, not full-universe coverage.
 - This run validates public market-data scan health, not signal quality, browser UI streaming, or profitability.
+
+
+## Phase C15 — Binance USDⓈ-M Futures in QUANTNEX VIEW
+
+- QUANTNEX VIEW adds a distinct Spot / USDⓈ-M Futures market selector and dynamically populated pair selector.
+- Display convention: Spot `[EX-BTCUSDT]`; USDⓈ-M perpetual `[EX-BTCUSDT.P]`. The `.P` suffix is a UI identity label only; API/WebSocket requests use the exchange's actual symbol `BTCUSDT`.
+- Futures universe uses Binance `/fapi/v1/exchangeInfo`; only active `TRADING` `PERPETUAL` contracts are included. Delivery contracts are excluded. Metadata retains quote/margin assets, precision and filters.
+- Historical candles use `/fapi/v1/klines`; open/incomplete candles and malformed OHLC rows are rejected. Live chart klines use `wss://fstream.binance.com/ws/{symbol}@kline_{interval}`.
+- This is a read-only chart integration. It does not extend the Spot signal engine or Spot Order Flow manager to Futures. USDⓈ-M Futures Order Flow, funding/OI/liquidations integration, Futures signal quality/replay, and COIN-M remain separate future work.
+- Never interpret a Futures chart as a Spot chart or treat the display suffix as an exchange trading symbol.

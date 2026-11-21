@@ -1101,3 +1101,14 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 - All 20 returned WAIT with reason NOT_EVALUATED_NO_DIRECTIONAL_SETUP. This means no directional strategy setup qualified; it is not evidence of a generated signal or profitability.
 - Order Flow was correctly marked NOT_EVALUATED_NO_DIRECTIONAL_SETUP / accepted=n/a because no directional candidate reached the Order Flow gate. This run therefore does not validate the new UI stream or prove Order Flow confirmation behavior.
 - This remains a 20-pair rotating smoke subset, not full-universe coverage. Full dynamic-universe scan scheduling and realistic long/short replay remain separate acceptance items.
+
+
+### Phase C15 — QUANTNEX VIEW Binance USDⓈ-M Futures chart
+
+- Added a separate dynamic USDⓈ-M perpetual universe sourced from Binance `/fapi/v1/exchangeInfo`; only `status=TRADING` and `contractType=PERPETUAL` are eligible. Delivery contracts and COIN-M are excluded.
+- Added read-only USDⓈ-M historical candles from `/fapi/v1/klines`, with closed-candle validation, malformed OHLC filtering, minimum 210 bars, and explicit stale-data status.
+- Added live Futures chart kline WebSocket using `wss://fstream.binance.com/ws/{symbol}@kline_{interval}`.
+- QUANTNEX VIEW now has separate market-type and pair selectors. Tickers use `[EX-BTCUSDT]` for Spot and `[EX-BTCUSDT.P]` for USDⓈ-M perpetual Futures. Pair universe refreshes every 15 minutes while chart is active.
+- Futures selection is persisted independently from the pair. Switching market type cannot accidentally send a Spot symbol to the Futures feed or vice versa.
+- Important boundary: this phase adds chart market data only. Futures order-flow, Futures signal generation, funding/OI/liquidation confluence, and order execution are not enabled. Spot signal/order-flow engine remains Spot-only. No COIN-M support is claimed.
+- Deterministic tests are added for metadata filtering, closed candle parsing and invalid symbols; local browser/live WebSocket verification remains pending.

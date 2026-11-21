@@ -284,3 +284,17 @@ def test_signal_performance_marks_open_trades_without_prices_as_incomplete():
     assert summary["unpriced_open_trades"] == 1
     assert summary["is_complete"] is False
     db.close()
+
+
+
+def test_spot_and_futures_signal_ledgers_are_namespaced_independently():
+    db, user = _session()
+    now = datetime(2026, 11, 21, 4, 0, tzinfo=timezone.utc)
+    spot_signal = {**_signal(now), "symbol": "BTCUSDT"}
+    futures_signal = {**_signal(now + timedelta(minutes=1)), "symbol": "BTCUSDT.P"}
+    spot, spot_created = record_signal(db, user.id, spot_signal, "QUANTNEX_VIEW")
+    futures, futures_created = record_signal(db, user.id, futures_signal, "QUANTNEX_VIEW_FUTURES")
+    assert spot_created and futures_created
+    assert spot.symbol == "BTCUSDT" and spot.source == "QUANTNEX_VIEW"
+    assert futures.symbol == "BTCUSDT.P" and futures.source == "QUANTNEX_VIEW_FUTURES"
+    db.close()

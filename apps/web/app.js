@@ -775,7 +775,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     }catch(error){if(!root.children.length)root.replaceChildren(node("div","Market feed unavailable: "+error.message,"p7-empty"));}
   }
   let tickerSocket=null,tickerRetry=null,tickerReconnectAttempts=0,tickerLastMessageAt=0,tickerWatchdog=null;
-  let bookRetry=null,bookGeneration=0,bookHistory=[],latestBookData=null,bookRenderTimer=null,lastBookTableAt=0;
+  let bookRetry=null,bookReconnectAttempts=0,bookGeneration=0,bookHistory=[],latestBookData=null,bookRenderTimer=null,lastBookTableAt=0;
   function scheduleTickerReconnect(){
     if(tickerRetry||document.hidden)return;
     const delay=Math.min(30000,1000*Math.pow(2,Math.min(tickerReconnectAttempts,5)));
@@ -925,11 +925,19 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     set("qxOrderFlowProvenance",String(provenance.trade_side||"Aggressor-side provenance unavailable")+" · "+String(provenance.depth||"Depth provenance unavailable")+" · "+String(provenance.cvd||"CVD scope unavailable"));
     if(status)status.textContent="OBSERVED AGGTRADE FLOW · "+String(flow.trade_count)+" trades · trade age "+fmt(result.freshness?.trade_age_seconds,2)+"s";
   }
+  function scheduleBookReconnect(generation,symbol){
+    if(bookRetry||document.hidden||generation!==bookGeneration)return;
+    const delay=Math.min(30000,1000*Math.pow(2,Math.min(bookReconnectAttempts,5)));
+    bookReconnectAttempts=Math.min(bookReconnectAttempts+1,6);
+    $("p7BookLiveStatus").textContent="Order Flow API reconnecting in "+Math.ceil(delay/1000)+"s · attempt "+bookReconnectAttempts;
+    bookRetry=setTimeout(()=>{bookRetry=null;if(!document.hidden&&generation===bookGeneration)pollBook(generation,symbol);},delay);
+  }
   async function pollBook(generation,symbol){
     if(generation!==bookGeneration||document.hidden||!isWorkspaceViewActive("tradingview"))return;
     try{
       const result=await apiRequest("/api/v1/order-flow/spot/"+encodeURIComponent(symbol));
       if(generation!==bookGeneration)return;
+      bookReconnectAttempts=0;
       renderTradeFlow(result);
       if(result.depth_ready&&result.liquidity&&Array.isArray(result.liquidity.bids)&&Array.isArray(result.liquidity.asks)){
         renderBookmap(symbol,result.liquidity.bids,result.liquidity.asks,result);
@@ -944,14 +952,16 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
         $("p7BookLiveStatus").className="p7-status-error";
         $("p7BookLiveStatus").textContent="Validated order-flow API unavailable: "+error.message;
         renderTradeFlow(null);
+        scheduleBookReconnect(generation,symbol);
       }
     }finally{
-      if(generation===bookGeneration&&!document.hidden&&isWorkspaceViewActive("tradingview"))bookRetry=setTimeout(()=>pollBook(generation,symbol),500);
+      if(generation===bookGeneration&&!bookRetry&&!document.hidden&&isWorkspaceViewActive("tradingview"))bookRetry=setTimeout(()=>{bookRetry=null;pollBook(generation,symbol);},500);
     }
   }
   function loadBook(){
     const symbol=String($("qxSymbol")?.value||"BTCUSDT").toUpperCase();
     const generation=++bookGeneration;
+    bookReconnectAttempts=0;
     clearTimeout(bookRetry);bookRetry=null;
     if(bookRenderTimer!==null){clearTimeout(bookRenderTimer);bookRenderTimer=null;}
     bookHistory=[];latestBookData=null;lastBookTableAt=0;

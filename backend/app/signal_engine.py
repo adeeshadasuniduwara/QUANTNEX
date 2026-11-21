@@ -1374,7 +1374,7 @@ async def build_signal(
                     from .order_flow_monitor import get_recent_trade_count_baseline
                     pattern_snapshot = dict(order_flow_snapshot)
                     if isinstance(stream_result, dict):
-                        pattern_snapshot["depth_age_seconds"] = stream_result.get("depth_age_seconds")
+                        pattern_snapshot["depth_age_seconds"] = stream_result.get("depth_age_seconds") or pattern_snapshot.get("depth_age_seconds") or 0.0
                     # The order-flow snapshot is minute-aligned. Use a fully closed
                     # M1 candle for price response; never compare a short trade window
                     # with an unrelated higher-timeframe candle.

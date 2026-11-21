@@ -1375,24 +1375,35 @@ async def build_signal(
                     pattern_snapshot = dict(order_flow_snapshot)
                     if isinstance(stream_result, dict):
                         pattern_snapshot["depth_age_seconds"] = stream_result.get("depth_age_seconds")
-                    try:
-                        baseline_trade_count = get_recent_trade_count_baseline(symbol)
-                    except Exception:
-                        # A missing local history baseline disables exhaustion classification;
-                        # it must not crash an otherwise valid live signal evaluation.
-                        baseline_trade_count = None
-                    auction_patterns = detect_order_flow_patterns(
-                        side, candles[-1], pattern_snapshot,
-                        baseline_trade_count=baseline_trade_count,
-                    )
-                    order_flow_payload["auction_patterns"] = auction_patterns
-                    quality_filters["order_flow_pattern_confirmation"] = bool(auction_patterns["accepted_for_side"])
-                    if not auction_patterns["accepted_for_side"]:
-                        entry_rejection_reason = (
-                            f"Order Flow pattern {auction_patterns['status']} conflicts with {side}; "
-                            "the candidate remains WAIT until a non-conflicting setup forms."
+                    # The order-flow snapshot is minute-aligned. Use a fully closed
+                    # M1 candle for price response; never compare a short trade window
+                    # with an unrelated higher-timeframe candle.
+                    one_minute = closed_candles(candles.get("1", []), "1min") if candles.get("1") else []
+                    if one_minute:
+                        try:
+                            baseline_trade_count = get_recent_trade_count_baseline(symbol)
+                        except Exception:
+                            # A missing local history baseline disables exhaustion classification;
+                            # it must not crash an otherwise valid live signal evaluation.
+                            baseline_trade_count = None
+                        auction_patterns = detect_order_flow_patterns(
+                            side, one_minute[-1], pattern_snapshot,
+                            baseline_trade_count=baseline_trade_count,
                         )
-                        side = None
+                        order_flow_payload["auction_patterns"] = auction_patterns
+                        quality_filters["order_flow_pattern_confirmation"] = bool(auction_patterns["accepted_for_side"])
+                        if not auction_patterns["accepted_for_side"]:
+                            entry_rejection_reason = (
+                                f"Order Flow pattern {auction_patterns['status']} conflicts with {side}; "
+                                "the candidate remains WAIT until a non-conflicting setup forms."
+                            )
+                            side = None
+                    else:
+                        order_flow_payload["auction_patterns"] = {
+                            "status": "NOT_AVAILABLE",
+                            "accepted_for_side": True,
+                            "reason": "A fully closed M1 candle is required to align price response with the minute order-flow sample.",
+                        }
                 if not decision["accepted"]:
                     status = str(decision["status"]).lower()
                     entry_rejection_reason = (

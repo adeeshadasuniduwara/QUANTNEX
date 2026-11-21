@@ -1136,3 +1136,17 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 - Futures chart selection is isolated from Spot signal analysis, Spot replay, Spot backtest and Spot signal ledger. It is chart-only and read-only.
 - COIN-M, Futures Order Flow, Futures signal generation, funding/open-interest/liquidation confluence and execution remain unsupported. No live orders or margin actions.
 - Next: add independent USDⓈ-M Order Flow state/stream validation and Futures signal engine only after market-type-specific historical replay and execution-cost tests exist; keep Spot and Futures semantics separate.
+
+
+
+### Phase C16 — QUANTNEX VIEW compact chart workspace and position table
+
+- Moved Signal Timeframe Preferences into a compact Settings control at the top of QUANTNEX VIEW. The existing setting IDs, local persistence, Telegram sync and apply-to-chart actions are retained.
+- Added one consolidated Technical Indicators table for RSI, MACD, ADX, ATR, Stochastic and CCI. It starts collapsed to preserve chart height; indicator calculations and live values continue to update from chart candles while collapsed, and mini charts redraw at their expanded dimensions.
+- Made the Live Structure / Confirmation sheet and Signal Outcomes / Results sheet independently collapsible. Their existing live analysis, lifecycle reconciliation and periodic refresh paths remain active while the sheets are hidden. The Signal Outcomes data model and result logic were intentionally not changed pending the user's next instructions.
+- Added a dedicated Live Signals table directly below the chart. It is populated by the existing selected-market analysis cycle (60-second active-view refresh), includes entry type/reference price, SL, TP1–TP3, confluence and status, and explicitly refuses to apply Spot signals to a USDⓈ-M Futures chart.
+- Placed the Sri Lanka / New York market-session clock and session table below the Live Signals table.
+- Removed the unused Live Trade Results Calculator UI and its browser-side market-tick listeners.
+- Removed the separate Live Strategy Engine / catalogue / backtest panel from QUANTNEX VIEW. The existing read-only chart analysis path remains in place only to feed the Live Signals table, chart sheet and lifecycle history; this UI cleanup does not claim a new strategy or improve signal accuracy.
+- Upgraded the manual Position Tool's calculated summary from separate metric cards to a readable table with side, entry, stop distance, targets, equity, risk amount, estimated lots and gross target-profit estimates. Broker contract/tick value assumptions still require user verification; estimates exclude execution costs.
+- Validation status: deterministic UI contract tests were extended. CI and browser/device rendering must pass before this phase is described as merged or deployed. No live-money execution, order placement, Futures signals or Futures Order Flow were added.

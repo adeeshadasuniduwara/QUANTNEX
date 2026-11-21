@@ -8,7 +8,7 @@
   const isTradingViewActive=()=>!document.hidden&&document.querySelector(".workspace-view:not([hidden])")?.dataset.workspaceView==="tradingview";
 
   function setText(id,value){const el=$(id);if(el)el.textContent=value;}
-  function selected(){return {symbol:$("qxSymbol")?.value||"BTCUSDT",interval:$("qxInterval")?.value||"15m",min:Number($("qxIntelMinScore")?.value||6)};}
+  function selected(){return {symbol:$("qxSymbol")?.value||"BTCUSDT",interval:$("qxInterval")?.value||"15m",marketType:$("qxMarketType")?.value||"BINANCE_SPOT",min:Number($("qxIntelMinScore")?.value||6)};}
   function setStatus(value){setText("qxIntelStatus",value);}
   function renderFeatures(f){
     setText("qxIndEma",price(f.ema20)+" / "+price(f.ema50)+" / "+price(f.ema200));
@@ -115,6 +115,7 @@
     });
   }
   async function refreshLifecycle(symbol=selected().symbol){
+    if(selected().marketType!=="BINANCE_SPOT"){const status=$("qxSignalLedgerStatus");if(status){status.textContent="FUTURES SIGNAL LEDGER NOT ENABLED";status.dataset.state="warning";}return;}
     refreshOverallPerformance();
     if(ledgerBusy||!$("qxSignalLedgerRows"))return;ledgerBusy=true;
     try{
@@ -125,6 +126,7 @@
     finally{ledgerBusy=false;}
   }
   async function replayHistory(selection){
+    if(selection.marketType!=="BINANCE_SPOT"){const note=$("qxSignalReplayNote");if(note)note.textContent="Futures chart is read-only. Futures signal replay is not enabled; Spot replay is not applied to a Futures chart.";return;}
     const day=new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Colombo"});
     const key=[selection.symbol,selection.interval,selection.min,day].join("|");
     if(replayBusy||replayKey===key)return;replayBusy=true;replayKey=key;
@@ -147,12 +149,22 @@
 
   async function analyze(){
     if(!isTradingViewActive())return;
+    if(selected().marketType==="BINANCE_USDM_FUTURES"){
+      lastAnalysis=null;
+      setStatus("FUTURES CHART ONLY · FUTURES SIGNAL ENGINE NOT ENABLED");
+      const host=$("qxMainSignal");if(host)host.textContent="Futures market data is displayed read-only. Spot signal rules are deliberately not run against this Futures chart.";
+      const list=$("qxStrategyList");if(list)list.textContent="USDⓈ-M Futures strategy evaluation is not enabled yet.";
+      window.quantnexViewSetTradePlan?.(null);
+      const summary=$("qxChartIntelSummary");if(summary)summary.textContent="FUTURES CHART · SIGNAL ANALYSIS NOT ENABLED";
+      setText("qxBacktestStatus","FUTURES BACKTEST NOT ENABLED");
+      return;
+    }
     if(busy){analyzeQueued=true;return;}busy=true;setStatus("ANALYSING");
     try{
       const s=selected();
       const data=await apiRequest("/api/v1/quantnex-view/analyze?symbol="+encodeURIComponent(s.symbol)+"&interval="+encodeURIComponent(s.interval)+"&min_score="+s.min);
       const current=selected();
-      if(!isTradingViewActive()||current.symbol!==s.symbol||current.interval!==s.interval||current.min!==s.min)return;
+      if(!isTradingViewActive()||current.symbol!==s.symbol||current.interval!==s.interval||current.marketType!==s.marketType||current.min!==s.min)return;
       lastAnalysis=data;renderFeatures(data.features);renderSignal(data);window.quantnexViewSetAnalysis?.(data);
       refreshLifecycle(s.symbol);
       replayHistory(s);
@@ -173,7 +185,7 @@
     finally{busy=false;if(analyzeQueued&&isTradingViewActive()){analyzeQueued=false;analyze();}else if(!isTradingViewActive())analyzeQueued=false;}
   }
   async function backtest(){
-    if(!isTradingViewActive())return;
+    if(!isTradingViewActive()||selected().marketType!=="BINANCE_SPOT"){setText("qxBacktestStatus","FUTURES BACKTEST NOT ENABLED");return;}
     if(backtestBusy){backtestQueued=true;return;}backtestBusy=true;
     const button=$("qxRunBacktest");if(button)button.disabled=true;setText("qxBacktestStatus","RUNNING");
     try{
@@ -191,7 +203,7 @@
     setText("qxBacktestStatus","SELECTION CHANGED · RUN BACKTEST");
   }
   $("qxRunBacktest")?.addEventListener("click",backtest);
-  ["qxSymbol","qxInterval","qxIntelMinScore"].forEach(id=>$(id)?.addEventListener("change",()=>{analyze();resetBacktestForSelection();}));
+  ["qxMarketType","qxSymbol","qxInterval","qxIntelMinScore"].forEach(id=>$(id)?.addEventListener("change",()=>{analyze();resetBacktestForSelection();}));
   ["qxStopColor","qxTargetColor","qxEntryColor"].forEach(id=>$(id)?.addEventListener("input",()=>{if(lastAnalysis)renderSignal(lastAnalysis);}));
   window.addEventListener("quantnex:view-changed",event=>{if(event.detail?.view==="tradingview")analyze();});
   document.addEventListener("visibilitychange",()=>{if(isTradingViewActive())analyze();});

@@ -85,7 +85,9 @@ assert.match(css, /\.web-update-dialog/, "The update dialog must have dedicated 
 console.log("QUANTNEX automatic update and private Telegram notification checks passed.");
 
 assert.doesNotMatch(html, /(?:cdn\.jsdelivr\.net|unpkg\.com)\/.*lightweight-charts/, "QUANTNEX VIEW must not load an external TradingView chart engine");
-assert.match(nativeChart, /new WebSocket\(useCoinbase\?"wss:\/\/ws-feed\.exchange\.coinbase\.com":"wss:\/\/stream\.binance\.com:9443\/ws\/"\+stream\)/, "Native chart must prefer Binance live klines and retain the Coinbase fallback.");
+assert.match(nativeChart, /new WebSocket\(socketUrl\)/, "Native chart must open the selected market-specific live stream.");
+assert.match(nativeChart, /marketType==="BINANCE_USDM_FUTURES"\?"wss:\/\/fstream\.binance\.com\/ws\//, "Futures chart must use the USDⓈ-M WebSocket host.");
+assert.match(nativeChart, /stream\.binance\.com:9443\/ws\//, "Spot chart must retain the Binance Spot WebSocket host.");
 assert.match(nativeChart, /scheduleReconnect\(/, "Native chart must reconnect its live candle feed");
 assert.match(nativeChart, /HISTORY FEED ERROR/, "Native chart history errors must be visible");
 assert.match(chartIntel, /Signal analysis unavailable: /, "Chart Intelligence must expose the analysis API cause");
@@ -147,8 +149,8 @@ assert.match(nativeChart, /quantnex:view-changed/, "Chart feed must start on cha
 assert.match(nativeChart, /if\(!isChartViewActive\(\)\|\|selected\(\)\.symbol!==pick\.symbol/, "Late chart history responses must not update a hidden or stale chart.");
 assert.match(chartIntel, /isTradingViewActive/, "Chart intelligence analysis and backtests must pause outside QUANTNEX VIEW.");
 assert.match(chartIntel, /backtestBusy/, "Chart intelligence must prevent overlapping backtest requests.");
-assert.match(html, /quantnex-view-chart\.js\?v=20261116-price-axis-fix1/, "Chart lifecycle fix must invalidate the cached chart bundle.");
-assert.match(html, /quantnex-view-intelligence\.js\?v=20261120-overall-pnl1/, "Chart intelligence assets must be refreshed when the overall signal P&L UI changes.");
+assert.match(html, /quantnex-view-chart\.js\?v=20261121-usdm-futures1/, "Chart lifecycle fix must invalidate the cached chart bundle.");
+assert.match(html, /quantnex-view-intelligence\.js\?v=20261121-futures-isolation1/, "Chart intelligence assets must be refreshed when the overall signal P&L UI changes.");
 console.log("QUANTNEX VIEW active-page lifecycle checks passed.");
 
 

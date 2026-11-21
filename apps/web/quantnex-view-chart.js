@@ -9,6 +9,8 @@ const stamp=v=>{let s=String(v||"");if(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)
 const selected=()=>({symbol:$("qxSymbol")?.value||"BTCUSDT",interval:$("qxInterval")?.value||"15m"});
 function restoreChartSelection(){try{const saved=JSON.parse(localStorage.getItem("quantnex.chart.selection.v1")||"{}");if(saved.symbol&&[...($("qxSymbol")?.options||[])].some(x=>x.value===saved.symbol))$("qxSymbol").value=saved.symbol;if(saved.interval&&[...($("qxInterval")?.options||[])].some(x=>x.value===saved.interval))$("qxInterval").value=saved.interval;}catch{}}
 function saveChartSelection(){try{localStorage.setItem("quantnex.chart.selection.v1",JSON.stringify(selected()));}catch{}}
+function chartTicker(symbol=selected().symbol,marketType=selected().marketType){return "[EX-"+symbol+(marketType==="BINANCE_USDM_FUTURES"?".P":"")+"]";}
+async function loadChartMarkets(preserve=true){const marketType=$("qxMarketType")?.value||"BINANCE_SPOT",pair=$("qxSymbol"),previous=preserve?(restoredChartSymbol||pair?.value):null;if(!pair)return;try{const data=await apiRequest("/api/v1/charts/markets?market_type="+encodeURIComponent(marketType));if(marketType!==($("qxMarketType")?.value||"BINANCE_SPOT"))return;const symbols=Array.isArray(data.symbols)?data.symbols:[];if(!symbols.length)throw Error("No eligible "+marketType+" pairs returned.");const fragment=document.createDocumentFragment();symbols.forEach(symbol=>{const option=document.createElement("option");option.value=symbol;option.textContent=chartTicker(symbol,marketType);fragment.append(option);});if(marketType==="BINANCE_SPOT"){const option=document.createElement("option");option.value="XAUUSD";option.textContent="[EX-XAUUSD] · GOLD";fragment.append(option);}pair.replaceChildren(fragment);pair.value=symbols.includes(previous)?previous:(marketType==="BINANCE_SPOT"&&previous==="XAUUSD"?"XAUUSD":symbols.includes("BTCUSDT")?"BTCUSDT":symbols[0]);restoredChartSymbol=null;const ticker=$("qxChartTicker");if(ticker)ticker.textContent=chartTicker(pair.value,marketType);const p=$("qxChartProvider");if(p)p.textContent=marketType+" · "+symbols.length+" active symbols";saveChartSelection();}catch(error){setStatus("MARKET LIST ERROR · "+(error.message||"unavailable"),"error");}}
 restoreChartSelection();
 const isChartViewActive=()=>!document.hidden&&document.querySelector(".workspace-view:not([hidden])")?.dataset.workspaceView==="tradingview";
 let candles=[],analysis=null,ws=null,retry=null,historyRequests=new Map(),resize=null,reconnectAttempts=0,lastFeedMessageAt=0,staleWatchdog=null;
@@ -200,7 +202,7 @@ async function loadGoldQuote(){
  const pick=selected();
  try{
   const quote=await apiRequest("/api/v1/charts/quote?symbol=XAUUSD&interval="+encodeURIComponent(pick.interval));
-  if(!isChartViewActive()||selected().symbol!==pick.symbol||selected().interval!==pick.interval)return;
+  if(!isChartViewActive()||selected().symbol!==pick.symbol||selected().interval!==pick.interval||selected().marketType!==pick.marketType)return;
   if(quote.stale){setStatus("GOLD FEED STALE · CHECK MT5 / TWELVE DATA","error");return;}
   const price=Number(quote.price);
   if(!Number.isFinite(price)||price<=0)throw Error("Gold provider returned an invalid quote.");
@@ -217,16 +219,17 @@ async function loadGoldQuote(){
 function stopFeed(){if(ws){ws.onclose=null;ws.close();ws=null;}if(retry){clearTimeout(retry);retry=null;}if(staleWatchdog){clearInterval(staleWatchdog);staleWatchdog=null;}if(drawFrame!==null){cancelAnimationFrame(drawFrame);drawFrame=null;}}
 function connectLive(){
  stopFeed();
- const{symbol,interval}=selected(),recovering=reconnectAttempts>0,useCoinbase=symbol==="BTCUSDT"&&reconnectAttempts>=2;
+ const{symbol,interval,marketType}=selected(),recovering=reconnectAttempts>0,useCoinbase=marketType==="BINANCE_SPOT"&&symbol==="BTCUSDT"&&reconnectAttempts>=2;
  if(symbol==="XAUUSD"){feedState="polling";return;}
  const stream=symbol.toLowerCase()+"@kline_"+interval;
- try{ws=new WebSocket(useCoinbase?"wss://ws-feed.exchange.coinbase.com":"wss://stream.binance.com:9443/ws/"+stream);}
+ const socketUrl=useCoinbase?"wss://ws-feed.exchange.coinbase.com":(marketType==="BINANCE_USDM_FUTURES"?"wss://fstream.binance.com/ws/":"wss://stream.binance.com:9443/ws/")+stream;
+ try{ws=new WebSocket(socketUrl);}
  catch{feedState="reconnecting";return scheduleReconnect();}
  ws.onopen=()=>{
   if(useCoinbase)ws.send(JSON.stringify({type:"subscribe",product_ids:["BTC-USD"],channels:["ticker"]}));
   reconnectAttempts=0;lastFeedMessageAt=Date.now();feedState="live";
-  setStatus(useCoinbase?"LIVE STREAM · COINBASE EXCHANGE BTC-USD":"LIVE STREAM · "+symbol+" · "+interval.toUpperCase());
-  const p=$("qxChartProvider");if(p)p.textContent="Feed: "+(useCoinbase?"Coinbase Exchange WebSocket fallback":"Binance WebSocket live")+" · "+candles.length+" historical candles";
+  setStatus(useCoinbase?"LIVE STREAM · COINBASE EXCHANGE BTC-USD":"LIVE STREAM · "+chartTicker(symbol,marketType)+" · "+interval.toUpperCase());
+  const p=$("qxChartProvider");if(p)p.textContent="Feed: "+(useCoinbase?"Coinbase Exchange WebSocket fallback":marketType==="BINANCE_USDM_FUTURES"?"Binance USDⓈ-M Futures WebSocket":"Binance Spot WebSocket")+" · "+chartTicker(symbol,marketType)+" · "+candles.length+" historical candles";
   if(recovering)loadHistory();
  };
  ws.onmessage=e=>{
@@ -251,18 +254,19 @@ function connectLive(){
  ws.onerror=()=>{feedState="reconnecting";try{ws?.close();}catch{}};
  ws.onclose=()=>{
   if(staleWatchdog){clearInterval(staleWatchdog);staleWatchdog=null;}
-  if(selected().symbol===symbol&&selected().interval===interval){feedState="reconnecting";scheduleReconnect();}
+  if(selected().symbol===symbol&&selected().interval===interval&&selected().marketType===marketType){feedState="reconnecting";scheduleReconnect();}
  };
  staleWatchdog=setInterval(()=>{if(!document.hidden&&ws&&ws.readyState===WebSocket.OPEN&&lastFeedMessageAt&&Date.now()-lastFeedMessageAt>30000){feedState="reconnecting";setStatus("LIVE FEED STALE · RECONNECTING","error");try{ws.close();}catch{}}},10000);
 }
 function scheduleReconnect(){if(retry)return;const delay=Math.min(30000,1000*Math.pow(2,Math.min(reconnectAttempts,5)));reconnectAttempts=Math.min(reconnectAttempts+1,6);const p=$("qxChartProvider");if(p)p.textContent="Feed: reconnecting in "+Math.ceil(delay/1000)+"s · attempt "+reconnectAttempts;retry=setTimeout(()=>{retry=null;if(!document.hidden)connectLive();},delay);}
 async function loadHistory(){
  if(!isChartViewActive())return;
- const pick=selected(),key=pick.symbol+"|"+pick.interval;
+ const pick=selected(),key=pick.marketType+"|"+pick.symbol+"|"+pick.interval;
  if(historyRequests.has(key))return historyRequests.get(key);
  const request=(async()=>{
   try{
-   const bars=await apiRequest("/api/v1/charts/candles?symbol="+encodeURIComponent(pick.symbol)+"&interval="+encodeURIComponent(pick.interval)+"&limit=1000");
+   const endpoint=pick.marketType==="BINANCE_USDM_FUTURES"?"/api/v1/charts/futures/candles":"/api/v1/charts/candles";
+   const bars=await apiRequest(endpoint+"?symbol="+encodeURIComponent(pick.symbol)+"&interval="+encodeURIComponent(pick.interval)+"&limit=1000");
    if(!isChartViewActive()||selected().symbol!==pick.symbol||selected().interval!==pick.interval)return;
    const rows=(bars.candles||[]).map(c=>({...c,time:stamp(c.time),open:Number(c.open),high:Number(c.high),low:Number(c.low),close:Number(c.close),volume:Number(c.volume||0)}))
     .filter(c=>c.time!==null&&[c.open,c.high,c.low,c.close,c.volume].every(Number.isFinite)&&c.open>0&&c.high>0&&c.low>0&&c.close>0&&c.high>=Math.max(c.open,c.close,c.low)&&c.low<=Math.min(c.open,c.close,c.high)&&c.volume>=0)
@@ -277,7 +281,7 @@ async function loadHistory(){
    candles=[...merged.values()].sort((a,b)=>a.time-b.time).slice(-1200);candleRevision++;
    feedName=bars.provider||"Market feed";
    const p=$("qxChartProvider");
-   if(p)p.textContent="Feed: "+feedName+" · "+candles.length+" candles · "+(feedState==="live"?"WebSocket live":"polling")+(bars.stale?" · STALE DATA":" · FRESH")+(candles.length<210?" · INDICATORS WARMING UP":"");
+   if(p)p.textContent="Feed: "+feedName+" · "+chartTicker(pick.symbol,pick.marketType)+" · "+candles.length+" candles · "+(feedState==="live"?"WebSocket live":"polling")+(bars.stale?" · STALE DATA":" · FRESH")+(candles.length<210?" · INDICATORS WARMING UP":"");
    if(!view.start)fit();else draw();
    if(candles.length<210)setStatus("CHART READY · "+candles.length+" CANDLES · INDICATORS WARMING UP");
   }catch(e){
@@ -292,9 +296,11 @@ function renderAnalysis(data){analysis=data;const f=data.features||{},st=f.struc
 window.quantnexViewSetAnalysis=renderAnalysis;
 window.quantnexViewSetTradePlan=function(plan){tradePlan=plan||null;draw();};
 
-async function refresh(){if(!isChartViewActive())return;const pick=selected();loadDrawings();candles=[];candleRevision++;analysis=null;tradePlan=null;view.start=0;view.count=120;view.priceZoom=1;view.priceShift=0;reconnectAttempts=0;stopFeed();feedState=pick.symbol==="XAUUSD"?"polling":"connecting";setStatus("LOADING "+pick.symbol+" · "+pick.interval.toUpperCase());await loadHistory();if(pick.symbol!=="XAUUSD")connectLive();else{setStatus(candles.length?"GOLD FEED · MATCHING HISTORY PROVIDER":"GOLD HISTORY UNAVAILABLE · CHECK FEED SETTINGS","error");await loadGoldQuote();}}
+async function refresh(){if(!isChartViewActive())return;const pick=selected(),ticker=$("qxChartTicker");if(ticker)ticker.textContent=chartTicker(pick.symbol,pick.marketType);loadDrawings();candles=[];candleRevision++;analysis=null;tradePlan=null;view.start=0;view.count=120;view.priceZoom=1;view.priceShift=0;reconnectAttempts=0;stopFeed();feedState=pick.symbol==="XAUUSD"?"polling":"connecting";setStatus("LOADING "+pick.symbol+" · "+pick.interval.toUpperCase());await loadHistory();if(pick.symbol!=="XAUUSD")connectLive();else{setStatus(candles.length?"GOLD FEED · MATCHING HISTORY PROVIDER":"GOLD HISTORY UNAVAILABLE · CHECK FEED SETTINGS","error");await loadGoldQuote();}}
 function rebuild(){draw();}
-["qxSymbol","qxInterval"].forEach(id=>$(id)?.addEventListener("change",()=>{saveChartSelection();refresh();}));
+$("qxMarketType")?.addEventListener("change",async()=>{await loadChartMarkets(false);saveChartSelection();refresh();});
+$("qxSymbol")?.addEventListener("change",()=>{saveChartSelection();refresh();});
+$("qxInterval")?.addEventListener("change",()=>{saveChartSelection();refresh();});
 ["qxChartType","qxChartTheme","qxVolume","qxEma20","qxEma50","qxEma200","qxSma20","qxBollinger","qxVwap","qxGrid","qxUpColor","qxDownColor","qxOverlayStructure","qxOverlayZones","qxOverlaySR"].forEach(id=>$(id)?.addEventListener("change",rebuild));
 $("qxLogScale")?.addEventListener("change",rebuild);
 $("qxFitChart")?.addEventListener("click",fit);
@@ -305,6 +311,8 @@ window.addEventListener("quantnex:market-tick",onTradingRoomTick);
 window.addEventListener("quantnex:view-changed",event=>{if(event.detail?.view==="tradingview")refresh();else stopFeed();});
 document.addEventListener("visibilitychange",()=>{if(document.hidden){stopFeed();return;}if(isChartViewActive())refresh();});
 setupCanvas();
+loadChartMarkets(true).then(()=>{if(isChartViewActive())refresh();});
+const marketUniverseTimer=setInterval(()=>{if(!document.hidden&&isChartViewActive())loadChartMarkets(true);},900000);
 const goldQuoteTimer=setInterval(()=>{if(!document.hidden&&isChartViewActive()&&selected().symbol==="XAUUSD")loadGoldQuote();},30000);
-window.addEventListener("beforeunload",()=>{clearInterval(goldQuoteTimer);stopFeed();window.removeEventListener("quantnex:market-tick",onTradingRoomTick);resize?.disconnect();});
+window.addEventListener("beforeunload",()=>{clearInterval(goldQuoteTimer);clearInterval(marketUniverseTimer);stopFeed();window.removeEventListener("quantnex:market-tick",onTradingRoomTick);resize?.disconnect();});
 })();

@@ -18,7 +18,7 @@ assert.ok(!js.includes("candles.length<210)throw Error"), "A valid short history
 assert.ok(js.includes("INDICATORS WARMING UP"), "Short histories must clearly disclose indicator warm-up instead of failing chart preview.");
 assert.ok(js.includes("c.high>=Math.max(c.open,c.close,c.low)"), "Malformed OHLC candles must be filtered before canvas rendering.");
 assert.ok(css.includes(".qx-native-chart-canvas"), "Native chart canvas styles are missing.");
-for (const symbol of ["BNBUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT"]) assert.ok(html.includes(`value="${symbol}"`), `Missing market selector option: ${symbol}`);
+assert.match(js, /loadChartMarkets\(true\)/, "Market selector must load the live symbol universe dynamically instead of relying on a hard-coded shortlist.");
 console.log("QUANTNEX native canvas chart, live feed, indicators and market selector checks passed.");
 
 assert.match(js, /Math\.min\(30000,1000\*Math\.pow\(2,/ , "Live feed reconnect must use capped exponential backoff.");
@@ -43,7 +43,7 @@ console.log("QUANTNEX chart redraw performance regression checks passed.");
 
 
 
-assert.ok(html.includes("quantnex-view-chart.js?v=20261116-price-axis-fix1"), "Shared chart analysis must invalidate the chart bundle cache.");
+assert.ok(html.includes("quantnex-view-chart.js?v=20261121-usdm-futures1"), "Shared chart analysis must invalidate the chart bundle cache.");
 
 assert.match(js, /quantnex:market-tick/, "Gold chart must consume the shared market tick feed.");
 assert.doesNotMatch(js, /goldTimer|scan\(\)/, "The chart must not call the removed scan function or poll full Gold history every five seconds.");
@@ -112,3 +112,26 @@ assert.match(intel, /\/api\/v1\/signals\/performance/, "QUANTNEX VIEW must load 
 assert.match(intel, /refreshOverallPerformance\(\)/, "Overall signal P&L must refresh with the lifecycle ledger.");
 assert.match(intel, /unpriced_open_trades/, "Missing current prices must be disclosed instead of reporting a false complete P&L.");
 console.log("QUANTNEX VIEW all-market overall signal P&L checks passed.");
+
+assert.ok(html.includes('id="qxMarketType"'), "Chart must expose separate Spot/Futures market selection.");
+assert.ok(html.includes('id="qxChartTicker"'), "Selected exchange-style ticker must be visible beside the chart price.");
+assert.ok(js.includes("ticker.textContent=chartTicker(pair.value,marketType)"), "Visible chart ticker must update when market type or pair changes.");
+assert.ok(html.includes('id="qxSymbol"'), "Chart must retain a pair selector separate from market type.");
+assert.match(js, /\/api\/v1\/charts\/markets\?market_type=/, "Chart symbols must come from authoritative market-type metadata.");
+assert.match(js, /marketType==="BINANCE_USDM_FUTURES"\?"\.P":""/, "USDⓈ-M perpetual tickers must display the .P suffix.");
+assert.match(js, /wss:\/\/fstream\.binance\.com\/ws\//, "Futures chart must use Binance USDⓈ-M live kline streams.");
+assert.match(js, /\/api\/v1\/charts\/futures\/candles/, "Futures chart history must use the separate USDⓈ-M candle endpoint.");
+assert.match(js, /marketType==="BINANCE_USDM_FUTURES"/, "Futures selection must remain isolated from Spot feeds.");
+assert.match(js, /quantnex\.chart\.selection\.v1/, "Market type selection must persist across reloads.");
+console.log("QUANTNEX VIEW Spot/USDⓈ-M Futures market selector and .P ticker checks passed.");
+
+assert.match(html, /Futures chart-only; signal and Order Flow engines remain Spot-only/, "UI must disclose that Futures chart support does not imply Futures signal/order-flow support.");
+
+const intelligence = fs.readFileSync("apps/web/quantnex-view-intelligence.js", "utf8");
+assert.match(intelligence, /marketType:\$\("qxMarketType"\)\?\.value\|\|"BINANCE_SPOT"/, "Intelligence selection must include the selected market type.");
+assert.match(intelligence, /FUTURES CHART ONLY · FUTURES SIGNAL ENGINE NOT ENABLED/, "Futures chart must never call the Spot signal engine.");
+assert.match(intelligence, /selection\.marketType!=="BINANCE_SPOT"/, "Futures historical signal replay must be explicitly disabled.");
+assert.match(intelligence, /current\.marketType!==s\.marketType/, "Async signal responses must be discarded after switching market type.");
+console.log("QUANTNEX VIEW Futures chart/Spot signal isolation checks passed.");
+
+assert.match(js, /restoredChartSymbol/, "Dynamically populated chart selectors must restore a saved non-default pair after exchange metadata loads.");

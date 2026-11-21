@@ -1306,6 +1306,58 @@ async def stop_daily_backup_worker():
             pass
 
 
+
+@app.get("/api/v1/charts/markets")
+async def chart_markets(market_type: str = "BINANCE_SPOT"):
+    """Dynamic chart-only market universe for Binance Spot or USDⓈ-M perpetuals."""
+    market_type = market_type.strip().upper()
+    if market_type == "BINANCE_SPOT":
+        from .signal_engine import get_binance_spot_symbols, MarketDataError
+        try:
+            symbols = await get_binance_spot_symbols()
+        except MarketDataError as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+        return {"market_type": market_type, "count": len(symbols), "symbols": symbols,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "note": "Active Binance Spot pairs from Spot exchangeInfo."}
+    if market_type == "BINANCE_USDM_FUTURES":
+        from .binance_usdm_market_data import get_binance_usdm_symbols, BinanceUsdMDataError
+        try:
+            symbols = await get_binance_usdm_symbols()
+        except BinanceUsdMDataError as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+        return {"market_type": market_type, "count": len(symbols), "symbols": symbols,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "symbol_suffix": ".P",
+                "note": "Active Binance USDⓈ-M PERPETUAL contracts only; COIN-M and delivery contracts excluded."}
+    raise HTTPException(status_code=422, detail="Choose BINANCE_SPOT or BINANCE_USDM_FUTURES.")
+
+
+@app.get("/api/v1/charts/futures/candles")
+async def chart_futures_candles(symbol: str = "BTCUSDT", interval: str = "15m", limit: int = 500):
+    """Read-only USDⓈ-M perpetual OHLC candles for QUANTNEX VIEW; never used for orders."""
+    from .binance_usdm_market_data import fetch_binance_usdm_candles, BinanceUsdMDataError
+    if interval not in {"1m","5m","15m","30m","1h","4h"} or not 210 <= limit <= 1000:
+        raise HTTPException(status_code=422, detail="Choose a supported timeframe and 210–1,000 candles.")
+    from .binance_usdm_market_data import get_binance_usdm_symbols
+    try:
+        if symbol.upper() not in await get_binance_usdm_symbols():
+            raise HTTPException(status_code=422, detail="Choose an active Binance USDⓈ-M perpetual contract.")
+        rows = await fetch_binance_usdm_candles(symbol, interval, limit)
+    except BinanceUsdMDataError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    source_time = datetime.fromisoformat(rows[-1]["time"])
+    age = max(0.0, (datetime.now(timezone.utc) - source_time).total_seconds())
+    interval_seconds = {"1m":60,"5m":300,"15m":900,"30m":1800,"1h":3600,"4h":14400}[interval]
+    stale = age > max(120, interval_seconds * 2)
+    return {"symbol": symbol.upper(), "market_type": "BINANCE_USDM_FUTURES",
+            "provider": "Binance USDⓈ-M Futures", "candles": rows, "count": len(rows),
+            "timestamp": datetime.now(timezone.utc).isoformat(), "source_timestamp": rows[-1]["time"],
+            "age_seconds": round(age, 2), "stale": stale,
+            "data_health": "stale" if stale else "ok",
+            "stale_after_seconds": max(120, interval_seconds * 2)}
+
+
 @app.get("/api/v1/signals/markets")
 async def signal_markets(user: User = Depends(local_workspace)):
     """List the current tradable Binance Spot universe for the signal selector."""

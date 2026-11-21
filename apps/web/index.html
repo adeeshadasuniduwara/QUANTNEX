@@ -170,8 +170,9 @@
       <section class="panel chart-panel qx-chart-panel" aria-label="QUANTNEX VIEW live chart">
         <div class="qx-chart-topbar">
           <div class="qx-chart-market">
-            <label>Market<select id="qxSymbol"><option value="BTCUSDT">BTC / USDT</option><option value="ETHUSDT">ETH / USDT</option><option value="BNBUSDT">BNB / USDT</option><option value="XRPUSDT">XRP / USDT</option><option value="SOLUSDT">SOL / USDT</option><option value="ADAUSDT">ADA / USDT</option><option value="DOGEUSDT">DOGE / USDT</option><option value="AVAXUSDT">AVAX / USDT</option><option value="LINKUSDT">LINK / USDT</option><option value="LTCUSDT">LTC / USDT</option><option value="BCHUSDT">BCH / USDT</option><option value="DOTUSDT">DOT / USDT</option><option value="TRXUSDT">TRX / USDT</option><option value="TONUSDT">TON / USDT</option><option value="SUIUSDT">SUI / USDT</option><option value="NEARUSDT">NEAR / USDT</option><option value="UNIUSDT">UNI / USDT</option><option value="AAVEUSDT">AAVE / USDT</option><option value="SHIBUSDT">SHIB / USDT</option><option value="PEPEUSDT">PEPE / USDT</option><option value="XAUUSD">Gold / XAUUSD</option></select></label>
-            <div><strong id="qxChartLastPrice">—</strong><small id="qxChartChange">Waiting for market data</small></div>
+            <label>Market<select id="qxMarketType"><option value="BINANCE_SPOT" selected>SPOT</option><option value="BINANCE_USDM_FUTURES">FUTURES · PERPETUAL</option></select></label>
+            <label>Pair<select id="qxSymbol"><option value="BTCUSDT">[EX-BTCUSDT]</option></select></label>
+            <div><strong id="qxChartLastPrice">—</strong><small id="qxChartTicker">[EX-BTCUSDT]</small><small id="qxChartChange">Waiting for market data</small></div>
           </div>
           <div class="qx-chart-toolbar">
             <label>Timeframe<select id="qxInterval"><option value="1m">1m</option><option value="5m">5m</option><option value="15m" selected>15m</option><option value="30m">30m</option><option value="1h">1H</option><option value="4h">4H</option></select></label>
@@ -206,7 +207,7 @@
           <span class="qx-chart-status" id="qxChartStatus" role="status">Connecting to local market data…</span>
         </div>
         <div id="qxChartHost" class="qx-chart-host"><div class="qx-chart-loading">Loading live candles…</div></div>
-        <div class="qx-chart-footer"><span id="qxChartProvider">Market feed: waiting</span><span>Native QUANTNEX canvas engine · Binance live WebSocket for crypto · local chart settings</span></div>
+        <div class="qx-chart-footer"><span id="qxChartProvider">Market feed: waiting</span><span>Native QUANTNEX canvas engine · Binance live WebSocket · Futures chart-only; signal and Order Flow engines remain Spot-only</span></div>
       </section>
       <section class="qx-chart-sessions" aria-label="Live global market sessions">
         <div class="qx-chart-sessions-intro">
@@ -942,9 +943,9 @@
   <script src="goals.js?v=20261118-certificate-gallery100"></script>
 
   <script src="signal-tool.js?v=20261116-qx-signal-consolidation1"></script>
-  <script src="quantnex-view-chart.js?v=20261116-price-axis-fix1"></script>
+  <script src="quantnex-view-chart.js?v=20261121-usdm-futures1"></script>
   <script src="market-sessions.js?v=20261118-live-sessions1"></script>
-  <script src="quantnex-view-intelligence.js?v=20261120-overall-pnl1"></script>
+  <script src="quantnex-view-intelligence.js?v=20261121-futures-isolation1"></script>
   <script src="workspace-polish.js?v=20261114-single-icon2"></script>
   <script src="welcome-whats-new.js?v=20261113-1"></script>
   <script src="prop-challenge.js"></script>

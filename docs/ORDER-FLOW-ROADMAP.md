@@ -543,7 +543,7 @@ C11 proves that a valid synthetic long and short setup can pass through the real
 4. Build an evidence-backed chronological comparison only after enough real aligned observations exist.
 
 
-## Phase C13 — read-only live smoke Order Flow diagnostics (PR pending)
+## Phase C13 — read-only live smoke Order Flow diagnostics (merged PR #246)
 
 ### Objective
 
@@ -569,3 +569,20 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 2. Inspect the next live smoke output for per-symbol Order Flow statuses; diagnose any NOT_READY/STALE/CONTRADICTED states separately from no-setup WAIT.
 3. Verify local recorder observation counts through the backtest endpoint on a running local app with an active managed stream.
 4. Build performance comparisons only from representative chronological real Order Flow observations.
+
+
+### C13 verification update
+
+- PR [#246](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/246) merged as 9d951d18e547cca260378d3c5903870c6da64dab.
+- Backend CI and Backend/Web CI passed on the PR head; 487 tests passed on Python 3.12 and 487 on Python 3.14, plus Web CI.
+- Post-merge Backend CI and Backend/Web CI passed on the exact main merge commit.
+- The optional Telegram Update Notifications announce job failed separately because of the configured chat target; this did not fail backend, schema or Web checks.
+- The latest observed live smoke remains run #44703341723 (2026-11-20). The new per-symbol Order Flow diagnostics are merged but have not yet appeared in a subsequent scheduled live smoke output.
+- Current verified main commit: 9d951d18e547cca260378d3c5903870c6da64dab.
+
+### C13 next steps
+
+1. Inspect the next scheduled smoke log and classify WAIT rows by NOT_EVALUATED_NO_DIRECTIONAL_SETUP, stream-not-ready/error, stale/invalid or directionally contradicted Order Flow.
+2. Run the backtest endpoint on the user's local app while a managed Spot stream is active to inspect actual recorder row count and train/OOS coverage.
+3. Diagnose any low capture coverage without relaxing source-age or order-book sequence checks.
+4. Gather real chronological Order Flow history before measuring OOS edge or changing the strategy.

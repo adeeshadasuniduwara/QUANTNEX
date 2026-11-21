@@ -163,6 +163,10 @@ assert.ok(!app.includes("initLivePnlCalculator") && !app.includes("livePnlSymbol
   "The removed live PnL calculator must not keep background quote listeners.");
 assert.match(signalTool, /TP1 estimated reward/);
 assert.ok(html.includes('class="position-summary-table"'), "Position tool summary must render as a semantic HTML table.");
+assert.doesNotMatch(intel, /function bindDisclosure|bindDisclosure\(/, "Disclosure handlers must not be rebound by the intelligence controller.");
+for (const toggle of ["qxSignalSettingsToggle", "qxChartSignalSheetToggle", "qxSignalLedgerToggle", "qxIndicatorsToggle"]) {
+  assert.ok(js.includes(`bindDisclosure("${toggle}"`), `Chart controller must own the single disclosure handler for ${toggle}`);
+}
 for (const toggle of ["qxSignalSettingsToggle", "qxChartSignalSheetToggle", "qxSignalLedgerToggle", "qxIndicatorsToggle"]) {
   assert.ok(js.includes(`bindDisclosure("${toggle}"`), `Missing toggle handler for ${toggle}`);
 }

@@ -503,5 +503,5 @@ The prior replay tests verified causal snapshot selection, freshness recomputati
 - The first replay-test run failed on both directions. The test exposed that the historical execution model generated off-tick synthetic bid/ask prices; the live entry selector correctly rejected them at its `PRICE_FILTER` check.
 - The replay model now rounds bid down and ask up to the symbol tick, keeps the synthetic book uncrossed (minimum one tick when the assumed spread is zero), and recalculates the effective spread used in fee/slippage evaluation.
 - The long and short replay tests now pass through the real `build_signal` path, match a prior fresh snapshot, receive explicit order-flow confirmation and produce one paper MARKET fill each.
-- PR [#244](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/244) final head `a7b16c9d155867bfb9816d1a07277437ed230a6c` passed Backend CI and Backend/Web CI: 481 tests passed on Python 3.12 and 481 on Python 3.14; schema checks and Web CI passed.
+- PR [#244](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/244) passed Backend CI and Backend/Web CI: 481 tests passed on Python 3.12 and 481 on Python 3.14; schema checks and Web CI passed.
 - No live scoring thresholds, entry rules, freshness limits, data provenance rules or order execution permissions are changed.

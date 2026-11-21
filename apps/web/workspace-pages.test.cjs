@@ -58,9 +58,11 @@ assert.ok(!sectionIds.includes("signal-lab") && !navTargets.includes("signal-lab
 assert.ok(!sectionIds.includes("ai-signal-center") && !navTargets.includes("ai-signal-center"), "The duplicate AI Signal Center page and sidebar link must be removed.");
 assert.doesNotMatch(html, /Signal Lab|AI Signal Center/, "Retired signal workspace names must not remain in the active Web UI.");
 const tradingViewMarkup = html.slice(tradingViewStart, telegramPageStart);
-for (const id of ["signalMarketSymbol", "runSignalScan", "runSignalBacktest", "signalResult", "p7SignalSymbol", "p7SignalThreshold", "p7RunScan", "p7SignalResult", "p7SignalFrames", "p7UseSignal", "qxSignalIntelligence", "qxMainSignal", "qxPositionPreview"]) {
+for (const id of ["signalMarketSymbol", "runSignalScan", "runSignalBacktest", "signalResult", "p7SignalSymbol", "p7SignalThreshold", "p7RunScan", "p7SignalResult", "p7SignalFrames", "p7UseSignal", "qxLiveSignalsRows", "qxChartSignalSheetContent", "qxSignalLedgerRows", "qxIndicatorsContent"]) {
   assert.ok(tradingViewMarkup.includes(`id="${id}"`), "QUANTNEX VIEW must retain signal functionality: " + id);
 }
+assert.doesNotMatch(tradingViewMarkup, /id="qxSignalIntelligence"|id="qxMainSignal"|id="qxPositionPreview"|Live Strategy Engine/,
+  "The retired Live Strategy Engine panel and its legacy signal cards must not remain.");
 assert.ok(navTargets.includes("telegram-bot"), "Telegram Bot must have its own sidebar entry.");
 assert.ok(telegramArticleStart > telegramPageStart, "Bot credentials and delivery controls must live inside the Telegram Bot page.");
 assert.ok(html.includes('id="openTelegramBotTool"'), "QUANTNEX VIEW must link to the separate Telegram Bot tool.");

@@ -24,7 +24,7 @@ SKIP_PARTS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_c
 SKIP_NAMES = {".env", ".env.local", ".env.production"}
 SAFE_ROOTS = {".github", "apps", "backend", "docs", "scripts", "shared", "services", "tests"}
 SAFE_ROOT_FILES = {"README.md", "README_SI.md", "TODO.md", "FEATURE_STATUS_SI.md",
-                   "requirements.txt", "pyproject.toml", "github_api_cache.py", "quantnex_updater.py",
+                   "requirements.txt", "pyproject.toml", "quantnex_updater.py",
                    "run_quantnex.bat", "run_quantnex_services.py", "run_backend.bat", ".gitignore"}
 
 
@@ -35,7 +35,7 @@ class UpdateError(RuntimeError):
 def _request_json(url: str) -> dict:
     # The latest commit is resolved once; all follow-up immutable tree requests
     # use conditional ETags and the same persisted cache/backoff policy.
-    from github_api_cache import github_json_cached
+    from backend.app.github_api_cache import github_json_cached
     try:
         return github_json_cached(
             url, Path(__file__).resolve().parent / "data" / "updates" / "github-api-cache.json",

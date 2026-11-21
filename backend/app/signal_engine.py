@@ -1375,7 +1375,12 @@ async def build_signal(
                     pattern_snapshot = dict(order_flow_snapshot)
                     if isinstance(stream_result, dict):
                         pattern_snapshot["depth_age_seconds"] = stream_result.get("depth_age_seconds")
-                    baseline_trade_count = get_recent_trade_count_baseline(symbol)
+                    try:
+                        baseline_trade_count = get_recent_trade_count_baseline(symbol)
+                    except Exception:
+                        # A missing local history baseline disables exhaustion classification;
+                        # it must not crash an otherwise valid live signal evaluation.
+                        baseline_trade_count = None
                     auction_patterns = detect_order_flow_patterns(
                         side, candles[-1], pattern_snapshot,
                         baseline_trade_count=baseline_trade_count,

@@ -120,12 +120,12 @@ assert.match(workspaceCss, /calendar-impact\.impact-high/, "High-impact events m
 console.log("QUANTNEX Finnhub economic calendar workspace checks passed.");
 
 assert.match(app, /function scheduleTickerReconnect\(/, "Trading Room ticker must use a dedicated bounded reconnect scheduler.");
-assert.match(app, /function scheduleBookReconnect\(/, "Trading Room depth must use a dedicated bounded reconnect scheduler.");
+assert.match(app, /async function pollBook\(generation,symbol\)/, "Bookmap must poll the local validated backend snapshot.");
 assert.match(app, /Math\.min\(30000,1000\*Math\.pow\(2,Math\.min\(/, "Trading Room retries must use capped exponential backoff.");
 assert.match(app, /Date\.now\(\)-tickerLastMessageAt>30000/, "A silent crypto ticker socket must be detected as stale.");
-assert.match(app, /Date\.now\(\)-bookLastMessageAt>30000/, "A silent order-book socket must be detected as stale.");
+assert.match(app, /result\.depth_ready/, "Bookmap must withhold stale or unsequenced backend depth.");
 assert.match(app, /feed:"crypto",status:"stale"/, "Ticker staleness must be exposed through the workspace stream-status event.");
-assert.match(app, /Depth feed stale · reconnecting/, "Order-book staleness must be visible to the user.");
+assert.match(app, /DEPTH_NOT_SEQUENCE_VALIDATED_OR_STALE/, "Order-book staleness and sequence failures must be visible.");
 assert.match(app, /retry_in_ms:delay/, "Ticker reconnect status must expose its retry delay.");
 console.log("Trading Room ticker and order-book recovery checks passed.");
 
@@ -136,7 +136,7 @@ assert.match(app, /isWorkspaceViewActive\("paper-trading"\)\)loadPaper\(\)/, "Pa
 assert.match(app, /isWorkspaceViewActive\("performance-lab"\)\)loadPerformance\(\)/, "Performance polling must only run while Performance Lab is visible.");
 assert.match(app, /isWorkspaceViewActive\("news-intelligence"\)\)loadNews\(\)/, "News polling must only run while News Intelligence is visible.");
 assert.match(app, /setInterval\(\(\)=>\{if\(isWorkspaceViewActive\("paper-trading"\)\)loadPaper\(\);\},20000\)/, "Paper polling must use a lower-frequency 20-second cadence.");
-assert.match(app, /function stopBookFeed\(/, "Order-book sockets and timers must be cleaned up when leaving their workspace.");
+assert.match(app, /function stopBookFeed\(/, "Order-book polling timers must be cleaned up when leaving their workspace.");
 console.log("QUANTNEX active-workspace polling and cleanup checks passed.");
 
 assert.match(html, /app\.js\?v=20261121-sequence-orderflow3/, "Workspace polling and wallet ledger fixes must invalidate the cached app.js asset.");
@@ -154,8 +154,8 @@ console.log("QUANTNEX VIEW active-page lifecycle checks passed.");
 
 assert.doesNotMatch(app, /tickerSocket\.onopen=\(\)=>\{tickerReconnectAttempts=0/, "Ticker reconnect backoff must not reset merely because the socket opened.");
 assert.match(app, /tickerSocket\.onmessage=event=>\{\s*tickerLastMessageAt=Date\.now\(\);\s*try\{\s*const packet=JSON\.parse\(event\.data\),data=packet\.data\|\|packet;tickerReconnectAttempts=0;/, "Ticker reconnect backoff must reset only after a valid market message arrives.");
-assert.doesNotMatch(app, /bookSocket\.onopen=\(\)=>\{if\(generation===bookGeneration\)\{bookReconnectAttempts=0/, "Depth reconnect backoff must not reset merely because the socket opened.");
-assert.match(app, /bookSocket\.onmessage=event=>\{\s*if\(generation!==bookGeneration\)return;\s*bookLastMessageAt=Date\.now\(\);\s*try\{const data=JSON\.parse\(event\.data\);bookReconnectAttempts=0;/, "Depth reconnect backoff must reset only after a valid order-book message arrives.");
+assert.match(app, /setTimeout\(\(\)=>pollBook\(generation,symbol\),500\)/, "Validated order-flow snapshots must use bounded polling.");
+assert.doesNotMatch(app, /bookSocket|bookLastMessageAt|bookReconnectAttempts/, "Browser-side unsequenced depth sockets must be removed.");
 console.log("QUANTNEX live-feed backoff reset checks passed.");
 
 assert.match(chartIntel, /api\/v1\/quantnex-view\/analyze/, "Chart intelligence must own the single periodic analysis request.");

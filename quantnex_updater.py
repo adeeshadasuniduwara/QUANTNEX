@@ -363,7 +363,7 @@ def _load_managed_paths(root: Path, fallback_sha: str) -> list[str]:
     except (OSError, ValueError, AttributeError):
         pass
     # Older installations did not record a managed-file manifest. Reconstruct
-    # the previous exact source set from its Git tree before syncing the new one.
+    # the previous exact source set from its pinned archive before syncing the new one.
     return _managed_paths_from_archive(fallback_sha)
 
 

@@ -287,6 +287,7 @@ BOT_COMMANDS = [
     {"command":"watchlist","description":"Show the active signal watchlist"},
     {"command":"watchlist_set","description":"Set selected pairs, e.g. /watchlist_set BTCUSDT,ETHUSDT"},
     {"command":"orderflow","description":"Inspect live Binance Spot order flow, e.g. /orderflow BTCUSDT"},
+    {"command":"orderflow_watchlist","description":"Choose up to 8 pairs for continuous Order Flow capture"},
     {"command":"futures_scan","description":"Analyze USD-M Futures, e.g. /futures_scan BTCUSDT 15m"},
     {"command":"risk","description":"Show signal risk and confluence settings"},
     {"command":"ai_test","description":"Test the connected OpenAI assistant"},
@@ -1056,6 +1057,31 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
             "Minimum confluence: " + str(score) + "/10\n"
             "These are analysis preferences, not a verified account balance or broker-side risk limit. No order is placed."
         )
+    if command == "/orderflow_watchlist":
+        from .order_flow_monitor import MAX_ORDER_FLOW_MONITOR_SYMBOLS, normalize_order_flow_monitor_symbols
+        current = normalize_order_flow_monitor_symbols(_get(db, user_id, "order_flow_monitor_symbols", "[]"))
+        if len(parts) < 2:
+            return (
+                "📡 CONTINUOUS ORDER FLOW WATCHLIST\n"
+                + ", ".join(current)
+                + "\nUp to " + str(MAX_ORDER_FLOW_MONITOR_SYMBOLS) + " Binance Spot pairs are captured at 1-minute boundaries."
+                + "\nSet: /orderflow_watchlist BTCUSDT,ETHUSDT,SOLUSDT"
+            )
+        requested = list(dict.fromkeys(value.strip().upper() for value in " ".join(parts[1:]).split(",") if value.strip()))
+        if not requested or len(requested) > MAX_ORDER_FLOW_MONITOR_SYMBOLS:
+            return "Choose between 1 and " + str(MAX_ORDER_FLOW_MONITOR_SYMBOLS) + " comma-separated Binance Spot pairs."
+        if any(not value.isalnum() or not 5 <= len(value) <= 25 for value in requested):
+            return "One or more pair symbols are invalid. Example: /orderflow_watchlist BTCUSDT,ETHUSDT."
+        try:
+            eligible = set(await get_binance_spot_symbols())
+        except Exception:
+            return "Binance exchange metadata is unavailable. The Order Flow watchlist was not changed."
+        invalid = [value for value in requested if value not in eligible]
+        if invalid:
+            return "Not active Binance Spot pairs: " + ", ".join(invalid) + ". No settings were changed."
+        _set(db, user_id, "order_flow_monitor_symbols", json.dumps(requested, separators=(",", ":")))
+        db.commit()
+        return "✅ Continuous Order Flow watchlist saved: " + ", ".join(requested) + "\nCapture is minute-aligned; stream warm-up may take a short time."
     if command == "/orderflow":
         symbol = parts[1].upper() if len(parts) > 1 else "BTCUSDT"
         if not symbol.isalnum() or not 5 <= len(symbol) <= 25:

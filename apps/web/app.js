@@ -835,6 +835,9 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
       $("p7BookImbalance").textContent=Number.isFinite(Number(book.depth_imbalance))?(Number(book.depth_imbalance)*100).toFixed(1)+"%":"—";
       setMetric("qxOrderFlowBestBid",Number.isFinite(bestBid)?fmt(bestBid,(Number.isInteger(latestBookData.pricePrecision)?latestBookData.pricePrecision:(Number.isInteger(latestBookData.pricePrecision)?latestBookData.pricePrecision:priceDigits(latestBookData.symbol)))):"—");
       setMetric("qxOrderFlowBestAsk",Number.isFinite(bestAsk)?fmt(bestAsk,(Number.isInteger(latestBookData.pricePrecision)?latestBookData.pricePrecision:priceDigits(latestBookData.symbol))):"—");
+      const baseAsset=latestBookData.symbol.replace(/USDT$|USDC$|BTC$|ETH$/,"");
+      setMetric("qxOrderFlowBestBidSize",Number.isFinite(Number(book.best_bid_quantity))?fmt(book.best_bid_quantity,6)+" "+baseAsset:"—");
+      setMetric("qxOrderFlowBestAskSize",Number.isFinite(Number(book.best_ask_quantity))?fmt(book.best_ask_quantity,6)+" "+baseAsset:"—");
       setMetric("qxOrderFlowSpread",Number.isFinite(spread)?fmt(spread,(Number.isInteger(latestBookData.pricePrecision)?latestBookData.pricePrecision:priceDigits(latestBookData.symbol)))+" · "+fmt(book.spread_bps,2)+" bps":"—");
       setMetric("qxOrderFlowBidDepth",fmt(book.bid_depth_quote,2)+" "+latestBookData.quoteAsset);
       setMetric("qxOrderFlowAskDepth",fmt(book.ask_depth_quote,2)+" "+latestBookData.quoteAsset);
@@ -907,7 +910,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   async function pollBook(generation,symbol){
     if(generation!==bookGeneration||document.hidden||!isWorkspaceViewActive("tradingview"))return;
     try{
-      const result=await apiRequest("/api/v1/order-flow/spot/"+encodeURIComponent(symbol));
+      const result=await apiRequest("/api/v1/order-flow/spot/"+encodeURIComponent(symbol)+"?wait_seconds=0.75");
       if(generation!==bookGeneration)return;
       renderTradeFlow(result);
       if(result.depth_ready&&result.liquidity&&Array.isArray(result.liquidity.bids)&&Array.isArray(result.liquidity.asks)){
@@ -930,8 +933,9 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
       }
     }
   }
-  function loadBook(){
+  function loadQuantnexViewOrderFlow(){
     const symbol=String($("qxSymbol")?.value||"BTCUSDT").toUpperCase();
+    const marketType=String($("qxMarketType")?.value||"BINANCE_SPOT");
     const generation=++bookGeneration;
     clearTimeout(bookRetry);bookRetry=null;
     if(bookRenderTimer!==null){clearTimeout(bookRenderTimer);bookRenderTimer=null;}
@@ -942,12 +946,12 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     const timeframeLabel=$("qxOrderFlowTimeframe");if(timeframeLabel)timeframeLabel.textContent=($("qxInterval")?.value||"15m")+" · SPOT";
     const canvas=$("p7BookmapCanvas");if(canvas){const ctx=canvas.getContext("2d");if(ctx)ctx.clearRect(0,0,canvas.width,canvas.height);}
     $("p7BookImbalance").textContent="Waiting for validated book";
-    ["qxOrderFlowBestBid","qxOrderFlowBestAsk","qxOrderFlowSpread","qxOrderFlowBidDepth","qxOrderFlowAskDepth"].forEach(id=>{const el=$(id);if(el)el.textContent="—";});
+    ["qxOrderFlowBestBid","qxOrderFlowBestAsk","qxOrderFlowBestBidSize","qxOrderFlowBestAskSize","qxOrderFlowSpread","qxOrderFlowBidDepth","qxOrderFlowAskDepth"].forEach(id=>{const el=$(id);if(el)el.textContent="—";});
     ["p7Bids","p7Asks"].forEach(id=>{const body=$(id);if(body){body.replaceChildren();const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=2;td.className="empty-row";td.textContent="Waiting for sequence-validated depth.";tr.append(td);body.append(tr);}});
     renderTradeFlow(null);
-    if(symbol==="XAUUSD"){
-      $("p7BookLiveStatus").textContent="Binance Spot order flow is unavailable for "+symbol;
-      $("p7BookNote").textContent="No Binance depth or trade-side flow is simulated for Gold or non-Spot markets.";
+    if(symbol==="XAUUSD"||marketType!=="BINANCE_SPOT"){
+      $("p7BookLiveStatus").textContent="BINANCE SPOT ORDER FLOW UNAVAILABLE · "+(symbol==="XAUUSD"?"GOLD":"NON-SPOT MARKET");
+      $("p7BookNote").textContent="This feed is an exchange-native Binance Spot order book. Futures, Gold and Forex require their own validated venue/broker feeds; no synthetic Bid/Ask or depth is displayed.";
       return;
     }
     $("p7BookNote").textContent="Waiting for the backend to validate the Binance Spot depth sequence and AggTrade continuity.";
@@ -988,7 +992,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     }catch(error){$("p7SignalResult").replaceChildren(node("p",error.message,"p7-status-error"));}
     finally{button.disabled=false;button.textContent="Scan market";}
   }
-  async function loadBook(){
+  async function loadMarketIntelligenceOrderBook(){
     const symbol=$("p7BookSymbol").value;
     $("p7BookNote").textContent="Loading configured provider order-book snapshot…";
     try{
@@ -1115,8 +1119,8 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     if(typeof window.quantnexNavigate==="function")window.quantnexNavigate("paper-trading");
     else location.hash="#paper-trading";
   });
-  $("qxOrderFlowReconnect").addEventListener("click",()=>loadBook());
-  $("qxSymbol")?.addEventListener("change",()=>{if(isWorkspaceViewActive("tradingview"))loadBook();});
+  $("qxOrderFlowReconnect").addEventListener("click",()=>loadQuantnexViewOrderFlow());
+  $("qxSymbol")?.addEventListener("change",()=>{if(isWorkspaceViewActive("tradingview"))loadQuantnexViewOrderFlow();});
   $("qxInterval")?.addEventListener("change",()=>{const label=$("qxOrderFlowTimeframe");if(label)label.textContent=$("qxInterval").value+" · SPOT";});
   document.querySelectorAll("[data-qx-orderflow-tab]").forEach(button=>button.addEventListener("click",()=>{
     const tab=button.dataset.qxOrderflowTab;
@@ -1135,7 +1139,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     // Keep one shared crypto ticker alive across workspace views. Only a hidden browser tab
     // pauses the socket; returning to any view reconnects it and resumes the common market feed.
     connectCryptoTicker();
-    if(isWorkspaceViewActive("tradingview")){loadSpotUniverse();loadBook();}
+    if(isWorkspaceViewActive("tradingview")){loadSpotUniverse();loadQuantnexViewOrderFlow();}
     else stopBookFeed();
     if(isWorkspaceViewActive("paper-trading"))refreshAnalytics();
     if(isWorkspaceViewActive("performance-lab"))loadPerformance();

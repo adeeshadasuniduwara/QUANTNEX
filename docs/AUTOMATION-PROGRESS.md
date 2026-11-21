@@ -1039,3 +1039,25 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 3. USDⓈ-M/COIN-M Futures, Gold and Forex depth are not claimed as supported.
 4. Next UI/order-flow phase: expose validated Spot AggTrade-derived delta/CVD and session coverage to QUANTNEX VIEW; keep partial-depth and executed-trade metrics distinct.
 5. Independently continue the primary signal-engine milestone: dynamic Binance symbol universe, deterministic long/short replay and chronological OOS validation.
+
+
+## 2026-11-21 — Phase C14: validated Spot Order Flow API (implementation branch)
+
+- Main baseline: 450194b8a750273cf8734e4d5f2a81bd629d4c41; branch feat/quantnex-view-sequence-validated-orderflow.
+- Backend already owns a bounded Binance Spot AggTrade + diff-depth manager with trade-ID gap backfill, sequence-validated L2, CVD since stream seed and explicit UTC session coverage. The previous browser Bookmap bypassed it and opened an unsequenced depth20@100ms partial stream.
+- Add a local read-only API to expose the validated manager snapshot and replace the browser partial-depth socket with bounded polling.
+- Trade Flow UI consumes actual AggTrade-derived delta/CVD/footprint with provenance; full UTC session delta remains unavailable until independently anchored.
+- Depth readiness and trade-flow readiness are separate; no stale/unsequenced depth fallback is rendered.
+- Pending PR checks and post-merge local device/live stream verification.
+
+- Follow-up C14 integration: the chart symbol selector now refreshes all current eligible Binance Spot symbols on entry and every 15 minutes while the chart is active; the Bookmap uses the backend sequence-validated L2 stream and the Trade Flow panel displays AggTrade delta/CVD, footprint, volume-profile POC/VAH/VAL, microprice and honest UTC session coverage. Price formatting follows each pair's exchange tick size.
+
+- CI caught a test-only cache-key mismatch: the stylesheet version correctly remains sequence-orderflow1 (its CSS last changed in the first toolkit merge), while app.js is sequence-orderflow3. Updated the toolkit contract test to check each asset's actual version; no application behavior changed by this correction.
+
+- CI caught a stale legacy assertion in live-terminal.test.cjs that required the old browser-side @depth20@100ms stream. Replaced it with assertions for the validated local Order Flow API and no partial-depth fallback; this reflects the intended architecture change.
+
+- CI caught a malformed regex escape in the updated legacy live-terminal contract assertion. Replaced it with a direct source-string assertion; the new Order Flow toolkit contract suite itself passed.
+
+- CI found additional legacy live-terminal assertions for the removed browser-side Bookmap WebSocket reconnect logic. Replaced them with checks for the validated backend polling lifecycle, sequence/staleness veto and absence of browser depth sockets.
+
+- Updated the legacy live-terminal contract to assert that backend-provided freshness/sequence rejection reasons are surfaced, rather than expecting the backend enum string to be hard-coded in the browser.

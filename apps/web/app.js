@@ -734,7 +734,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
 
 // Phase 07 — multi-market intelligence and paper-only trading UI.
 (function initPhase07(){
-  const ids=["p7RefreshMarkets","p7RunScan","p7LoadBook","p7LoadNews","p7OpenPaper","p7CalculateRisk"];
+  const ids=["p7RefreshMarkets","p7RunScan","p7LoadNews","p7OpenPaper","p7CalculateRisk"];
   if(!$(ids[0]))return;
   const fmt=(value,digits=2)=>value==null||!Number.isFinite(Number(value))?"—":Number(value).toLocaleString(undefined,{maximumFractionDigits:digits});
   const priceDigits=symbol=>symbol==="XAUUSD"?2:["EURUSD","GBPUSD","USDJPY"].includes(symbol)?5:symbol==="BTCUSDT"?2:4;
@@ -775,8 +775,8 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     }catch(error){if(!root.children.length)root.replaceChildren(node("div","Market feed unavailable: "+error.message,"p7-empty"));}
   }
   let tickerSocket=null,tickerRetry=null,tickerReconnectAttempts=0,tickerLastMessageAt=0,tickerWatchdog=null;
-  let bookSocket=null,bookRetry=null,bookReconnectAttempts=0,bookLastMessageAt=0,bookWatchdog=null;
-  let bookGeneration=0,bookHistory=[],latestBookData=null,bookRenderTimer=null,lastBookTableAt=0;
+  let bookRetry=null,bookGeneration=0,bookHistory=[],latestBookData=null,bookRenderTimer=null,lastBookTableAt=0;
+  let spotUniverseLoaded=false,spotUniversePromise=null;
   function scheduleTickerReconnect(){
     if(tickerRetry||document.hidden)return;
     const delay=Math.min(30000,1000*Math.pow(2,Math.min(tickerReconnectAttempts,5)));
@@ -823,8 +823,8 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     if(tickerWatchdog){clearInterval(tickerWatchdog);tickerWatchdog=null;}
     if(tickerSocket){tickerSocket.onclose=null;tickerSocket.close();tickerSocket=null;}
   }
-  function renderBookmap(symbol,bids,asks){
-    latestBookData={symbol,bids:bids.slice(0,20).map(row=>[Number(row[0]),Number(row[1])]),asks:asks.slice(0,20).map(row=>[Number(row[0]),Number(row[1])]),receivedAt:Date.now()};
+  function renderBookmap(symbol,bids,asks,apiData){
+    latestBookData={symbol,bids:bids.slice(0,100).map(row=>[Number(row[0]),Number(row[1])]),asks:asks.slice(0,100).map(row=>[Number(row[0]),Number(row[1])]),liquidity:apiData.liquidity||{},receivedAt:Date.now(),quoteAsset:apiData.quote_asset||"",pricePrecision:apiData.price_precision};
     bookHistory.push(latestBookData);
     if(bookHistory.length>120)bookHistory.shift();
     if(bookRenderTimer===null)bookRenderTimer=setTimeout(drawBookmap,90);
@@ -874,68 +874,128 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     if(now-lastBookTableAt>=500){
       lastBookTableAt=now;
       const bids=latestBookData.bids,asks=latestBookData.asks;
-      const totalBid=bids.reduce((sum,row)=>sum+row[1],0),totalAsk=asks.reduce((sum,row)=>sum+row[1],0);
-      const total=totalBid+totalAsk,imbalance=total?(totalBid-totalAsk)/total*100:0;
-      $("p7BookImbalance").textContent=imbalance.toFixed(1)+"%";
-      const bestBid=bids[0]?.[0],bestAsk=asks[0]?.[0],mid=(bestBid+bestAsk)/2,spread=bestAsk-bestBid;
+      const book=latestBookData.liquidity||{},bestBid=Number(book.best_bid??bids[0]?.[0]),bestAsk=Number(book.best_ask??asks[0]?.[0]),spread=bestAsk-bestBid;
       const setMetric=(id,value)=>{const el=$(id);if(el)el.textContent=value;};
-      setMetric("qxOrderFlowBestBid",Number.isFinite(bestBid)?fmt(bestBid,priceDigits(latestBookData.symbol)):"—");
-      setMetric("qxOrderFlowBestAsk",Number.isFinite(bestAsk)?fmt(bestAsk,priceDigits(latestBookData.symbol)):"—");
-      setMetric("qxOrderFlowSpread",Number.isFinite(spread)&&Number.isFinite(mid)&&mid>0?fmt(spread,priceDigits(latestBookData.symbol))+" · "+(spread/mid*10000).toFixed(2)+" bps":"—");
-      setMetric("qxOrderFlowBidDepth",fmt(totalBid,4));
-      setMetric("qxOrderFlowAskDepth",fmt(totalAsk,4));
-      $("p7BookLiveStatus").textContent="LIVE · 100ms Binance depth · "+new Date(latestBookData.receivedAt).toLocaleTimeString();
+      $("p7BookImbalance").textContent=Number.isFinite(Number(book.depth_imbalance))?(Number(book.depth_imbalance)*100).toFixed(1)+"%":"—";
+      setMetric("qxOrderFlowBestBid",Number.isFinite(bestBid)?fmt(bestBid,(Number.isInteger(latestBookData.pricePrecision)?latestBookData.pricePrecision:(Number.isInteger(latestBookData.pricePrecision)?latestBookData.pricePrecision:priceDigits(latestBookData.symbol)))):"—");
+      setMetric("qxOrderFlowBestAsk",Number.isFinite(bestAsk)?fmt(bestAsk,(Number.isInteger(latestBookData.pricePrecision)?latestBookData.pricePrecision:priceDigits(latestBookData.symbol))):"—");
+      setMetric("qxOrderFlowSpread",Number.isFinite(spread)?fmt(spread,(Number.isInteger(latestBookData.pricePrecision)?latestBookData.pricePrecision:priceDigits(latestBookData.symbol)))+" · "+fmt(book.spread_bps,2)+" bps":"—");
+      setMetric("qxOrderFlowBidDepth",fmt(book.bid_depth_quote,2)+" "+latestBookData.quoteAsset);
+      setMetric("qxOrderFlowAskDepth",fmt(book.ask_depth_quote,2)+" "+latestBookData.quoteAsset);
+      $("p7BookLiveStatus").textContent="LIVE · sequence-validated Binance Spot L2 · age "+fmt(book.depth_age_seconds,2)+"s";
       $("p7BookLiveStatus").className="p7-live-indicator";
       [["p7Bids",bids],["p7Asks",asks]].forEach(([id,rows])=>{
         const body=$(id);body.replaceChildren();
-        rows.slice(0,12).forEach(([price,qty])=>{const tr=node("tr");addCell(tr,fmt(price,priceDigits(latestBookData.symbol)));addCell(tr,fmt(qty,6));body.append(tr);});
+        rows.slice(0,12).forEach(([price,qty])=>{const tr=node("tr");addCell(tr,fmt(price,(Number.isInteger(latestBookData.pricePrecision)?latestBookData.pricePrecision:priceDigits(latestBookData.symbol))));addCell(tr,fmt(qty,6));body.append(tr);});
       });
-      $("p7BookNote").textContent="Rolling 12-second liquidity history from Binance Spot top-20 partial-depth snapshots. Resting orders only; not executed volume or guaranteed liquidity.";
+      $("p7BookNote").textContent="Rolling 60-second view from the backend sequence-validated Binance Spot diff-depth book. Resting liquidity is not executed volume or guaranteed executable liquidity.";
     }
   }
-  function scheduleBookReconnect(generation){
-    if(bookRetry||document.hidden||generation!==bookGeneration)return;
-    const delay=Math.min(30000,1000*Math.pow(2,Math.min(bookReconnectAttempts,5)));
-    bookReconnectAttempts=Math.min(bookReconnectAttempts+1,6);
-    $("p7BookLiveStatus").textContent="Depth reconnecting in "+Math.ceil(delay/1000)+"s · attempt "+bookReconnectAttempts;
-    bookRetry=setTimeout(()=>{bookRetry=null;if(!document.hidden&&generation===bookGeneration)loadBook(true);},delay);
-  }
-  function loadBook(reconnect=false){
-    const symbol=String($("qxSymbol")?.value||"BTCUSDT").toLowerCase();
-    if(!reconnect)bookReconnectAttempts=0;
-    const generation=++bookGeneration;
-    clearTimeout(bookRetry);bookRetry=null;
-    if(bookWatchdog){clearInterval(bookWatchdog);bookWatchdog=null;}
-    if(bookRenderTimer!==null){clearTimeout(bookRenderTimer);bookRenderTimer=null;}
-    bookHistory=[];latestBookData=null;lastBookTableAt=0;
-    if(bookSocket){bookSocket.onclose=null;bookSocket.close();bookSocket=null;}
-    $("p7BookLiveStatus").textContent="Connecting to "+symbol.toUpperCase()+" depth stream…";
-    const marketLabel=$("qxOrderFlowMarket");if(marketLabel)marketLabel.textContent=symbol.toUpperCase();
-    const timeframeLabel=$("qxOrderFlowTimeframe");if(timeframeLabel)timeframeLabel.textContent=($("qxInterval")?.value||"15m")+" · SPOT";
-    const canvas=$("p7BookmapCanvas");if(canvas){const ctx=canvas.getContext("2d");if(ctx)ctx.clearRect(0,0,canvas.width,canvas.height);}
-    $("p7BookImbalance").textContent="Waiting for book";
-    ["qxOrderFlowBestBid","qxOrderFlowBestAsk","qxOrderFlowSpread","qxOrderFlowBidDepth","qxOrderFlowAskDepth"].forEach(id=>{const el=$(id);if(el)el.textContent="—";});
-    ["p7Bids","p7Asks"].forEach(id=>{const body=$(id);if(body){body.replaceChildren();const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=2;td.className="empty-row";td.textContent="Waiting for depth snapshot.";tr.append(td);body.append(tr);}});
-    if(symbol==="xauusd"||!symbol.endsWith("usdt")){
-      $("p7BookLiveStatus").textContent="Binance Spot depth is unavailable for "+symbol.toUpperCase();
-      $("p7BookNote").textContent="No depth is simulated. Select a Binance Spot crypto pair in the QUANTNEX VIEW market selector.";
-      $("p7BookImbalance").textContent="Not available";
-      ["qxOrderFlowBestBid","qxOrderFlowBestAsk","qxOrderFlowSpread","qxOrderFlowBidDepth","qxOrderFlowAskDepth"].forEach(id=>{const el=$(id);if(el)el.textContent="—";});
+  function renderTradeFlow(result){
+    const flow=result?.trade_flow;
+    const set=(id,value)=>{const el=$(id);if(el)el.textContent=value;};
+    const status=$("qxOrderFlowTradeStatus");
+    if(!flow){
+      set("qxOrderFlowTradeCount","—");set("qxOrderFlowBuyVolume","—");set("qxOrderFlowSellVolume","—");
+      set("qxOrderFlowDelta","—");set("qxOrderFlowDeltaRatio","—");set("qxOrderFlowCvd","—");
+      set("qxOrderFlowCvdScope",result?.reason||"Waiting for continuous trades");
+      set("qxOrderFlowSessionDelta","—");set("qxOrderFlowSessionScope","Full UTC session not yet verified");set("qxOrderFlowProfile","—");set("qxOrderFlowMicroprice","—");
+      const body=$("qxOrderFlowFootprintRows");if(body)body.replaceChildren();
+      if(status)status.textContent=result?.reason||"Trade stream warming up; no metrics fabricated.";
       return;
     }
-    if(!window.WebSocket||document.hidden)return;
+    set("qxOrderFlowTradeCount",String(flow.trade_count??"—"));
+    set("qxOrderFlowBuyVolume",fmt(flow.buy_volume,6));
+    set("qxOrderFlowSellVolume",fmt(flow.sell_volume,6));
+    set("qxOrderFlowDelta",fmt(flow.delta,6));
+    set("qxOrderFlowDeltaRatio",Number.isFinite(Number(flow.delta_ratio))?(Number(flow.delta_ratio)*100).toFixed(2)+"%":"—");
+    set("qxOrderFlowCvd",flow.cvd_value==null?"—":fmt(flow.cvd_value,6));
+    set("qxOrderFlowCvdScope",String(flow.cvd_status||"UNKNOWN")+" · "+String(flow.cvd_scope||"scope unavailable"));
+    const sessionValue=flow.session_delta==null?flow.session_delta_sample:flow.session_delta;
+    set("qxOrderFlowSessionDelta",sessionValue==null?"—":fmt(sessionValue,6));
+    set("qxOrderFlowSessionScope",flow.session_delta_coverage_complete===true?"COMPLETE UTC SESSION":"INCOMPLETE UTC SESSION · SAMPLE ONLY · "+String(flow.session_delta_scope||"incomplete"));
+    const profile=flow.volume_profile||{};
+    set("qxOrderFlowProfile",[["POC",profile.poc],["VAH",profile.vah],["VAL",profile.val]].filter(item=>Number.isFinite(Number(item[1]))).map(item=>item[0]+" "+fmt(item[1],(Number.isInteger(result.price_precision)?result.price_precision:(Number.isInteger(result.price_precision)?result.price_precision:priceDigits(result.symbol))))).join(" · ")||"Not available");
+    set("qxOrderFlowMicroprice",result.liquidity?.microprice==null?"—":fmt(result.liquidity.microprice,(Number.isInteger(result.price_precision)?result.price_precision:priceDigits(result.symbol))));
+    const body=$("qxOrderFlowFootprintRows");
+    if(body){
+      body.replaceChildren();
+      (Array.isArray(flow.footprint)?flow.footprint:[]).slice(0,40).forEach(row=>{
+        const tr=node("tr");
+        [fmt(row.price,(Number.isInteger(result.price_precision)?result.price_precision:priceDigits(result.symbol))),fmt(row.buy_volume,6),fmt(row.sell_volume,6),fmt(row.delta,6),row.is_imbalanced?"YES":"—"].forEach(value=>addCell(tr,value));
+        body.append(tr);
+      });
+      if(!body.children.length){const tr=node("tr"),td=node("td","No footprint buckets in the current validated trade window.","empty-row");td.colSpan=5;tr.append(td);body.append(tr);}
+    }
+    const provenance=result.data_provenance||{};
+    set("qxOrderFlowProvenance",String(provenance.trade_side||"Aggressor-side provenance unavailable")+" · "+String(provenance.depth||"Depth provenance unavailable")+" · "+String(provenance.cvd||"CVD scope unavailable"));
+    if(status)status.textContent="OBSERVED AGGTRADE FLOW · "+String(flow.trade_count)+" trades · trade age "+fmt(result.freshness?.trade_age_seconds,2)+"s";
+  }
+  async function loadSpotUniverse(){
+    if(spotUniverseLoaded||spotUniversePromise)return spotUniversePromise;
+    const select=$("qxSymbol");if(!select)return;
+    spotUniversePromise=(async()=>{
+      const payload=await apiRequest("/api/v1/signals/markets");
+      const symbols=Array.isArray(payload.symbols)?[...new Set(payload.symbols.filter(x=>typeof x==="string"&&/^[A-Z0-9]{5,30}$/.test(x)).map(x=>x.toUpperCase()))]:[];
+      if(!symbols.length)throw Error("Binance Spot exchangeInfo returned no eligible symbols.");
+      const saved=(()=>{try{return JSON.parse(localStorage.getItem("quantnex.chart.selection.v1")||"{}").symbol||"";}catch{return"";}})();
+      const previous=select.value,options=[...symbols,"XAUUSD"];
+      select.replaceChildren();
+      options.forEach(symbol=>{const option=document.createElement("option");option.value=symbol;option.textContent=symbol;select.append(option);});
+      select.value=options.includes(saved)?saved:options.includes(previous)?previous:symbols[0];
+      spotUniverseLoaded=true;
+      if(select.value!==previous)select.dispatchEvent(new Event("change",{bubbles:true}));
+    })();
+    try{await spotUniversePromise;}catch(error){console.warn("QUANTNEX Spot symbol universe refresh failed:",error.message);}finally{spotUniversePromise=null;}
+  }
+  async function pollBook(generation,symbol){
+    if(generation!==bookGeneration||document.hidden||!isWorkspaceViewActive("tradingview"))return;
     try{
-      bookSocket=new WebSocket("wss://stream.binance.com:9443/ws/"+symbol+"@depth20@100ms");
-      bookSocket.onopen=()=>{if(generation===bookGeneration){bookLastMessageAt=Date.now();$("p7BookLiveStatus").textContent="Connected · waiting for depth";}};
-      bookSocket.onmessage=event=>{
-        if(generation!==bookGeneration)return;
-        bookLastMessageAt=Date.now();
-        try{const data=JSON.parse(event.data);bookReconnectAttempts=0;renderBookmap(symbol.toUpperCase(),data.bids||[],data.asks||[]);}catch{}
-      };
-      bookSocket.onerror=()=>{try{bookSocket?.close();}catch{}};
-      bookSocket.onclose=()=>{if(generation!==bookGeneration)return;if(bookWatchdog){clearInterval(bookWatchdog);bookWatchdog=null;}bookSocket=null;if(!document.hidden){$("p7BookLiveStatus").textContent="Stream disconnected · reconnecting…";scheduleBookReconnect(generation);}};
-      bookWatchdog=setInterval(()=>{if(!document.hidden&&generation===bookGeneration&&bookSocket&&bookSocket.readyState===WebSocket.OPEN&&bookLastMessageAt&&Date.now()-bookLastMessageAt>30000){$("p7BookLiveStatus").textContent="Depth feed stale · reconnecting…";try{bookSocket.close();}catch{}}},10000);
-    }catch(error){bookSocket=null;$("p7BookLiveStatus").textContent="Live depth unavailable: "+error.message;scheduleBookReconnect(generation);}
+      const result=await apiRequest("/api/v1/order-flow/spot/"+encodeURIComponent(symbol));
+      if(generation!==bookGeneration)return;
+      renderTradeFlow(result);
+      if(result.depth_ready&&result.liquidity&&Array.isArray(result.liquidity.bids)&&Array.isArray(result.liquidity.asks)){
+        renderBookmap(symbol,result.liquidity.bids,result.liquidity.asks,result);
+        $("p7BookLiveStatus").className="p7-live-indicator";
+      }else{
+        $("p7BookLiveStatus").className="p7-status-error";
+        $("p7BookLiveStatus").textContent=String(result.reason||"Sequence-validated depth is warming up");
+        $("p7BookNote").textContent="Depth is withheld until the backend bridges the REST snapshot to the Binance diff-depth stream and validates update-ID continuity. No partial-depth fallback is shown.";
+      }
+    }catch(error){
+      if(generation===bookGeneration){
+        $("p7BookLiveStatus").className="p7-status-error";
+        $("p7BookLiveStatus").textContent="Validated order-flow API unavailable: "+error.message;
+        renderTradeFlow(null);
+      }
+    }finally{
+      if(generation===bookGeneration&&!document.hidden&&isWorkspaceViewActive("tradingview")){
+        bookRetry=setTimeout(()=>pollBook(generation,symbol),500);
+      }
+    }
+  }
+  function loadBook(){
+    const symbol=String($("qxSymbol")?.value||"BTCUSDT").toUpperCase();
+    const generation=++bookGeneration;
+    clearTimeout(bookRetry);bookRetry=null;
+    if(bookRenderTimer!==null){clearTimeout(bookRenderTimer);bookRenderTimer=null;}
+    bookHistory=[];latestBookData=null;lastBookTableAt=0;
+    $("p7BookLiveStatus").className="";
+    $("p7BookLiveStatus").textContent="Connecting to validated "+symbol+" Spot order-flow stream…";
+    const marketLabel=$("qxOrderFlowMarket");if(marketLabel)marketLabel.textContent=symbol;
+    const timeframeLabel=$("qxOrderFlowTimeframe");if(timeframeLabel)timeframeLabel.textContent=($("qxInterval")?.value||"15m")+" · SPOT";
+    const canvas=$("p7BookmapCanvas");if(canvas){const ctx=canvas.getContext("2d");if(ctx)ctx.clearRect(0,0,canvas.width,canvas.height);}
+    $("p7BookImbalance").textContent="Waiting for validated book";
+    ["qxOrderFlowBestBid","qxOrderFlowBestAsk","qxOrderFlowSpread","qxOrderFlowBidDepth","qxOrderFlowAskDepth"].forEach(id=>{const el=$(id);if(el)el.textContent="—";});
+    ["p7Bids","p7Asks"].forEach(id=>{const body=$(id);if(body){body.replaceChildren();const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=2;td.className="empty-row";td.textContent="Waiting for sequence-validated depth.";tr.append(td);body.append(tr);}});
+    renderTradeFlow(null);
+    if(symbol==="XAUUSD"){
+      $("p7BookLiveStatus").textContent="Binance Spot order flow is unavailable for "+symbol;
+      $("p7BookNote").textContent="No Binance depth or trade-side flow is simulated for Gold or non-Spot markets.";
+      return;
+    }
+    $("p7BookNote").textContent="Waiting for the backend to validate the Binance Spot depth sequence and AggTrade continuity.";
+    pollBook(generation,symbol);
   }
   window.addEventListener("resize",()=>{if(latestBookData)drawBookmap();});
   function renderSignal(data){
@@ -1067,7 +1127,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
         quantity:Number($("p7PaperQty").value),stop_loss:Number($("p7PaperSL").value),
         take_profit:Number($("p7PaperTP").value)
       })});
-      setMessage("p7PaperStatus","Paper trade #"+result.id+" opened at "+fmt(result.entry_price,priceDigits(result.symbol))+". No broker order was placed.");
+      setMessage("p7PaperStatus","Paper trade #"+result.id+" opened at "+fmt(result.entry_price,(Number.isInteger(result.price_precision)?result.price_precision:priceDigits(result.symbol)))+". No broker order was placed.");
       await refreshAnalytics();
     }catch(error){setMessage("p7PaperStatus",error.message,true);}
     finally{button.disabled=false;button.textContent="Open paper trade";}
@@ -1088,7 +1148,6 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   }
   $("p7RefreshMarkets").addEventListener("click",loadMarkets);
   $("p7RunScan").addEventListener("click",scan);
-  $("p7LoadBook").addEventListener("click",loadBook);
   $("p7LoadNews").addEventListener("click",loadNews);
   $("p7OpenPaper").addEventListener("click",openPaper);
   $("p7RefreshPaper").addEventListener("click",refreshAnalytics);
@@ -1112,17 +1171,15 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   }));
   function stopBookFeed(){
     clearTimeout(bookRetry);bookRetry=null;
-    if(bookWatchdog){clearInterval(bookWatchdog);bookWatchdog=null;}
     if(bookRenderTimer!==null){clearTimeout(bookRenderTimer);bookRenderTimer=null;}
     bookGeneration++;
-    if(bookSocket){bookSocket.onclose=null;bookSocket.close();bookSocket=null;}
   }
   function syncWorkspaceView(){
     if(isWorkspaceViewActive("market-intelligence"))loadMarkets();
     // Keep one shared crypto ticker alive across workspace views. Only a hidden browser tab
     // pauses the socket; returning to any view reconnects it and resumes the common market feed.
     connectCryptoTicker();
-    if(isWorkspaceViewActive("tradingview"))loadBook();
+    if(isWorkspaceViewActive("tradingview")){loadSpotUniverse();loadBook();}
     else stopBookFeed();
     if(isWorkspaceViewActive("paper-trading"))refreshAnalytics();
     if(isWorkspaceViewActive("performance-lab"))loadPerformance();
@@ -1135,6 +1192,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   });
   // Keep network work scoped to the visible workspace. Hidden panels stay idle.
   setInterval(()=>{if(isWorkspaceViewActive("market-intelligence"))loadMarkets();},60000);
+  setInterval(()=>{if(isWorkspaceViewActive("tradingview")){spotUniverseLoaded=false;loadSpotUniverse();}},900000);
   setInterval(()=>{if(isWorkspaceViewActive("paper-trading"))loadPaper();},20000);
   setInterval(()=>{if(isWorkspaceViewActive("performance-lab"))loadPerformance();},30000);
   setInterval(()=>{if(isWorkspaceViewActive("news-intelligence"))loadNews();},900000);

@@ -71,7 +71,7 @@
     if(!url){const hint=document.createElement("span");hint.textContent="Use a direct HTTPS image URL.";host.append(hint);return;}
     const img=document.createElement("img");img.alt="Goal image preview";img.loading="lazy";
     const hint=document.createElement("span");hint.textContent="Loading image preview…";host.append(img,hint);
-    img.onload=()=>{hint.textContent="Image preview";};
+    img.onload=()=>{const landscape=img.naturalWidth>=img.naturalHeight;img.dataset.orientation=landscape?"landscape":"portrait";img.style.aspectRatio=img.naturalWidth+"/"+img.naturalHeight;hint.textContent="Image preview · "+img.naturalWidth+" × "+img.naturalHeight+" · "+(landscape?"Landscape":"Portrait");};
     img.onerror=()=>{img.remove();hint.textContent="Preview unavailable. Use a direct image-file URL, not a Google Images results page.";};
     img.src=url;
   }
@@ -87,8 +87,10 @@
     if([...select.options].some(o=>o.value===previous))select.value=previous;
   }
   function render(){
-    const host=$("goalCards");if(!host)return;host.replaceChildren();
-    if(!goals.length){const empty=document.createElement("article");empty.className="workspace-page-card";empty.textContent="No personal goals yet. Create your first goal above.";host.append(empty);}
+    const host=$("goalCards"),archiveHost=$("goalArchivedCards");if(!host)return;host.replaceChildren();archiveHost?.replaceChildren();
+    const activeGoals=goals.filter(goal=>!goal.achieved),archivedGoals=goals.filter(goal=>goal.achieved);
+    if(!activeGoals.length){const empty=document.createElement("article");empty.className="workspace-page-card";empty.textContent="No active goals. Create a new personal goal above.";host.append(empty);}
+    if(archiveHost&&!archivedGoals.length){const empty=document.createElement("article");empty.className="workspace-page-card";empty.textContent="No achieved goals archived yet.";archiveHost.append(empty);}
     goals.forEach(goal=>{
       const card=document.createElement("article");card.className="goal-card";
       if(goal.image_url){
@@ -96,6 +98,7 @@
         if(url){
           const link=document.createElement("a");link.className="goal-image-link";link.href=url;link.target="_blank";link.rel="noopener noreferrer";link.setAttribute("aria-label","Open "+goal.title+" image");
           const img=document.createElement("img");img.className="goal-image";img.src=url;img.alt=goal.title;img.loading="lazy";
+          img.onload=()=>{const landscape=img.naturalWidth>=img.naturalHeight;img.dataset.orientation=landscape?"landscape":"portrait";img.style.aspectRatio=img.naturalWidth+"/"+img.naturalHeight;};
           img.onerror=()=>{img.remove();const fallback=document.createElement("span");fallback.className="goal-image-fallback";fallback.textContent="Image preview unavailable · open image link";link.append(fallback);};
           link.append(img);card.append(link);
         }
@@ -118,7 +121,18 @@
       if(goal.achieved_at&&goal.created_at){const duration=document.createElement("small");const hours=Math.max(0,Math.floor((new Date(goal.achieved_at)-new Date(goal.created_at))/3600000));duration.textContent="Time invested · "+Math.floor(hours/24)+" days · "+hours+" hours";card.append(duration);}
       if(goal.target_date&&!goal.achieved){const due=document.createElement("small");due.textContent="Target date · "+new Date(goal.target_date).toLocaleDateString();card.append(due);}
       const bubbles=document.createElement("div");bubbles.className="goal-bubbles";for(let i=0;i<5;i++){const bubble=document.createElement("i");bubble.style.setProperty("--bubble-delay",(i*.7)+"s");bubbles.append(bubble);}card.append(bubbles);
-      host.append(card);
+      if(goal.achieved){
+        const actions=document.createElement("div");actions.className="goal-archive-actions";
+        const archived=document.createElement("span");archived.className="goal-archived-label";archived.textContent="ARCHIVED · COMPLETED";actions.append(archived);
+        const remove=document.createElement("button");remove.type="button";remove.className="goal-delete-button";remove.textContent="Delete target";remove.setAttribute("aria-label","Delete archived goal "+goal.title);
+        remove.addEventListener("click",async()=>{
+          if(!window.confirm("Permanently delete the archived goal \""+goal.title+"\" and its saved contribution history and certificate record? This cannot be undone."))return;
+          remove.disabled=true;remove.textContent="Deleting…";
+          try{await api("/api/v1/goals/"+goal.id,{method:"DELETE"});status("goalsStatus","Archived goal deleted.");await load();}
+          catch(error){status("goalsStatus",error.message,true);remove.disabled=false;remove.textContent="Delete target";}
+        });
+        actions.append(remove);card.append(actions);(archiveHost||host).append(card);
+      }else host.append(card);
     });
     fillSelect("goalContributionSelect",goals);
     fillSelect("goalCertificateSelect",goals,true);

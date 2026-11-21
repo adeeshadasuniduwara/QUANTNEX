@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const html = fs.readFileSync("apps/web/index.html", "utf8");
 const js = fs.readFileSync("apps/web/goals.js", "utf8");
+const css = fs.readFileSync("apps/web/workspace-pages.css", "utf8");
 assert.match(html, /id="goalCreateForm"/, "Goals must expose the create form");
 assert.match(html, /id="goalTitle"[^>]*required/, "Goal name must be required");
 assert.match(html, /id="goalTarget"[^>]*required/, "Target amount must be required");
@@ -36,3 +37,14 @@ assert.match(js, /new Set\(certificateDesigns\.map\(item=>item\.id\)\)\.size!==1
 assert.match(js, /design_id,orientation/, "The selected design and orientation must be sent when generating a PDF.");
 assert.match(js, /certificate-design-card/, "Users must be able to select a visible design card.");
 console.log("QUANTNEX 100-design certificate gallery contract checks passed.");
+
+
+assert.match(html, /id="goalArchivedCards"/, "Completed targets must have a separate archived-goals section.");
+assert.match(js, /goalArchivedCards/, "Achieved goals must render in the archive rather than active goals.");
+assert.match(js, /naturalWidth>=img\.naturalHeight/, "Goal image orientation must be detected from intrinsic image dimensions.");
+assert.match(js, /img\.naturalWidth\+" × "\+img\.naturalHeight/, "Image preview must expose the actual source resolution.");
+assert.match(css, /\.goal-image\{[^}]*object-fit:contain/s, "Goal images must preserve the full image without stretching or cropping.");
+assert.match(js, /method:"DELETE"/, "Archived goal deletion must call the owner-scoped API delete endpoint.");
+assert.match(js, /window\.confirm/, "Archived goal deletion must require explicit confirmation.");
+assert.match(html, /Archived goals/, "The Goals page must label the completed-target archive.");
+console.log("QUANTNEX goals image orientation, archived-goal layout and deletion UI checks passed.");

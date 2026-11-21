@@ -748,39 +748,49 @@ def delete_ai_config(user: User = Depends(local_workspace), db: Session = Depend
 
 @app.post("/api/v1/ai/test")
 async def test_ai_config(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
-    from .ai_assistant import get_openai_config
+    from .ai_assistant import ask_openai, openai_http_error_message
     try:
-        key, model = get_openai_config(db, user.id)
-        if not key:
-            raise HTTPException(status_code=409, detail="Add an OpenAI API key first.")
-        async with httpx.AsyncClient(timeout=15) as client:
-            response = await client.get("https://api.openai.com/v1/models/" + model,
-                headers={"Authorization": f"Bearer {key}"})
-        if response.status_code == 401:
-            raise HTTPException(status_code=401, detail="OpenAI rejected this API key.")
-        if response.status_code == 404:
-            raise HTTPException(status_code=422, detail="This model is not available to the configured API project.")
-        response.raise_for_status()
-        return {"ok": True, "model": model, "message": "OpenAI API key and model access verified."}
-    except HTTPException:
-        raise
-    except (httpx.HTTPError, ValueError):
-        raise HTTPException(status_code=502, detail="Could not verify OpenAI. Check internet access, API key and project billing.")
+        reply, model = await ask_openai(
+            db, user.id, "Reply with exactly: QUANTNEX AI connection verified."
+        )
+        return {
+            "ok": True,
+            "model": model,
+            "message": "OpenAI Responses API returned a valid text reply.",
+            "reply_preview": reply[:160],
+        }
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        mapped = status if status in {400, 401, 403, 429} else 422 if status == 404 else 502
+        raise HTTPException(status_code=mapped, detail=openai_http_error_message(exc))
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="OpenAI timed out while testing the Responses API.")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="Could not reach the OpenAI Responses API. Check internet access.")
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
 
 @app.post("/api/v1/ai/chat", response_model=AIChatResponse)
 async def ai_chat(payload: AIChatRequest, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
-    from .ai_assistant import ask_openai
+    from .ai_assistant import ask_openai, openai_http_error_message
     try:
         reply, model = await ask_openai(db, user.id, payload.message)
         return AIChatResponse(reply=reply, model=model)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     except httpx.HTTPStatusError as exc:
-        if exc.response.status_code == 401:
-            raise HTTPException(status_code=401, detail="OpenAI rejected the saved API key.")
-        raise HTTPException(status_code=502, detail="OpenAI request failed. Check model access and API billing.")
-    except (httpx.HTTPError, KeyError, IndexError, ValueError):
-        raise HTTPException(status_code=502, detail="OpenAI assistant request failed.")
+        status = exc.response.status_code
+        mapped = status if status in {400, 401, 403, 429} else 422 if status == 404 else 502
+        raise HTTPException(status_code=mapped, detail=openai_http_error_message(exc))
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="OpenAI took too long to respond. Retry with a shorter request.")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="Could not reach the OpenAI Responses API.")
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
 
 
 @app.post("/api/v1/telegram/send")

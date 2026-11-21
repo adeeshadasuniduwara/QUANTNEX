@@ -8,17 +8,18 @@ from app import binance_usdm_signal_engine as engine
 
 def candles(count=220, age_seconds=60):
     now = datetime.now(timezone.utc)
-    start = now - timedelta(minutes=count + 2)
+    interval_seconds = engine.INTERVAL_SECONDS["15m"]
+    last_stamp = now - timedelta(seconds=age_seconds)
+    start = last_stamp - timedelta(seconds=interval_seconds * (count - 1))
     rows = []
     for index in range(count):
-        stamp = start + timedelta(minutes=index)
+        stamp = start + timedelta(seconds=interval_seconds * index)
         price = 100 + index * 0.1
         rows.append({
             "time": stamp.isoformat(), "open": price - 0.02,
             "high": price + 0.10, "low": price - 0.10,
             "close": price, "volume": 100.0,
         })
-    rows[-1]["time"] = (now - timedelta(seconds=age_seconds)).isoformat()
     return rows
 
 

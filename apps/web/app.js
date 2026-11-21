@@ -588,50 +588,6 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
 ;
 
 // Live BTC/XAUUSD gross P&L estimate from the latest available market events.
-(function initLivePnlCalculator(){
-  const symbolInput=$("livePnlSymbol");
-  if(!symbolInput)return;
-  const prices=new Map();
-  const money=value=>(value<0?"−":"+")+"$"+Math.abs(value).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
-  const priceText=value=>"$"+Number(value).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
-  function update(){
-    const symbol=symbolInput.value,price=prices.get(symbol);
-    const unit=$("livePnlUnit"),quantity=$("livePnlQuantity");
-    if(unit)unit.textContent=symbol==="BTCUSDT"?"BTC":"lots";
-    if(quantity)quantity.placeholder=symbol==="BTCUSDT"?"0.001":"0.01";
-    const contractWrap=$("livePnlContractSizeWrap");
-    if(contractWrap)contractWrap.hidden=symbol!=="XAUUSD";
-    $("livePnlCurrent").textContent=Number.isFinite(price)?priceText(price):"Waiting for quote…";
-    if(!Number.isFinite(price)){
-      $("livePnlUpdated").textContent="Waiting for "+(symbol==="BTCUSDT"?"Binance trade feed":"Gold provider quote");
-      $("livePnlResult").textContent="—";$("livePnlMove").textContent="Live price not available";return;
-    }
-    const entry=Number($("livePnlEntry").value),qty=Number(quantity.value),direction=$("livePnlSide").value==="LONG"?1:-1;
-    const contractSize=symbol==="XAUUSD"?Number($("livePnlContractSize").value):1;
-    if(!Number.isFinite(entry)||entry<=0||!Number.isFinite(qty)||qty<=0||!Number.isFinite(contractSize)||contractSize<=0){
-      $("livePnlResult").textContent="—";$("livePnlMove").textContent="Enter valid entry, quantity and contract size";return;
-    }
-    const pnl=(price-entry)*qty*contractSize*direction,pct=((price-entry)/entry)*direction*100;
-    $("livePnlResult").textContent=money(pnl);
-    $("livePnlResult").className=pnl>=0?"positive":"negative";
-    $("livePnlMove").textContent=(pct>=0?"+":"")+pct.toFixed(3)+"% price move · gross estimate";
-  }
-  window.addEventListener("quantnex:market-tick",event=>{
-    const data=event.detail||{},symbol=String(data.symbol||"").toUpperCase(),price=Number(data.price);
-    if((symbol==="BTCUSDT"||symbol==="XAUUSD")&&Number.isFinite(price)&&price>0){
-      prices.set(symbol,price);
-      if(symbol===symbolInput.value){
-        $("livePnlUpdated").textContent=(data.source||"Market feed")+" · "+new Date(Number(data.eventTime)||Date.now()).toLocaleTimeString();
-        update();
-      }
-    }
-  });
-  [symbolInput,$("livePnlSide"),$("livePnlEntry"),$("livePnlQuantity"),$("livePnlContractSize")].forEach(input=>{
-    input.addEventListener("input",update);input.addEventListener("change",update);
-  });
-  update();
-})();
-
 // Phase 06.3 local system health, backup and audit UI.
 (function initSystemSecurity(){
   const panel=document.querySelector(".system-security-panel");

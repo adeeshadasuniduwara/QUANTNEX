@@ -21,7 +21,7 @@ VENV_PYTHON = VENV_DIR / (Path("Scripts") / "python.exe" if os.name == "nt" else
 LOG_FILE = ROOT / "logs" / "launcher.log"
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 PROCESSES: list[tuple[str, subprocess.Popen]] = []
-UPDATE_INTERVAL_SECONDS = 300
+UPDATE_INTERVAL_SECONDS = 1800
 UPDATE_REQUEST_FILE = ROOT / "data" / "updates" / "check_requested.json"
 UPDATE_PROGRESS_FILE = ROOT / "data" / "updates" / "check_in_progress.json"
 UPDATE_ERROR_FILE = ROOT / "data" / "updates" / "check_error.json"
@@ -342,7 +342,7 @@ def main() -> int:
             webbrowser.open("http://127.0.0.1:5500/")
         print("\nQUANTNEX Web + Backend are running.", flush=True)
         print("Keep this CMD window open. Do not close it while using the workspace.", flush=True)
-        print("Automatic GitHub source checks run every 5 minutes.", flush=True)
+        print("Automatic GitHub source checks run every 30 minutes.", flush=True)
         print("Press CTRL+C once to stop both services.", flush=True)
 
         next_update_check = time.monotonic() + UPDATE_INTERVAL_SECONDS

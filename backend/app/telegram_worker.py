@@ -16,6 +16,7 @@ from .signal_engine import (
     gold_feed_configured, gold_feed_provider,
 )
 from .events import event_hub
+from .telegram_branding import build_personal_logo_png, normalise_telegram_name
 
 logger = logging.getLogger("quantnex.telegram")
 _SOURCE_UPDATE_PR_CACHE: dict[str, str] = {}
@@ -572,6 +573,36 @@ async def _deliver_gold_report(client, db, user_id: int, token: str, chat_id: st
     return {"snapshot":snapshot,"has_24h":previous is not None}
 
 
+async def _send_png_photo(client, token: str, chat_id: str, photo: bytes, filename: str, caption: str):
+    """Send a generated personal logo as a real PNG image."""
+    try:
+        await _telegram_post(client, token, "sendChatAction", {"chat_id": chat_id, "action": "upload_photo"})
+    except Exception:
+        pass
+    url = f"https://api.telegram.org/bot{token}/sendPhoto"
+    for attempt in range(3):
+        response = await client.post(
+            url,
+            data={"chat_id": chat_id, "caption": _format_telegram_message(caption)[:1000], "parse_mode": "HTML"},
+            files={"photo": (filename, photo, "image/png")},
+        )
+        try:
+            data = response.json()
+        except ValueError:
+            data = {}
+        if response.status_code == 429 and attempt < 2:
+            await asyncio.sleep(max(1, min(10, int((data.get("parameters") or {}).get("retry_after", 2)))))
+            continue
+        if response.status_code >= 500 and attempt < 2:
+            await asyncio.sleep(2 ** attempt)
+            continue
+        response.raise_for_status()
+        if not data.get("ok"):
+            raise httpx.HTTPStatusError("Telegram rejected the personal logo image.", request=response.request, response=response)
+        return data.get("result", {})
+    raise RuntimeError("Telegram personal logo retry limit reached.")
+
+
 async def _edit_message(client, token: str, chat_id: str, message_id: int, text: str, reply_markup: dict | None = None):
     payload={"chat_id":chat_id,"message_id":message_id,"text":_format_telegram_message(text),"parse_mode":"HTML"}
     if reply_markup is not None: payload["reply_markup"]=reply_markup
@@ -831,8 +862,19 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
                       "Note: this is the roadmap catalogue; tools are enabled only after implementation and testing."])
         return "\n".join(lines)
     if command in {"/start","/help"}:
+        saved_name = _get(db, user_id, "telegram_user_name", "").strip()
+        if command == "/start" and not saved_name:
+            _set(db, user_id, "telegram_onboarding_state", "awaiting_name")
+            db.commit()
+            return (
+                "One small step before we open your workspace.\n"
+                "What name should appear on your personal QUANTNEX logo?\n"
+                "Type the name exactly as you want it displayed (2–32 characters)."
+            )
+        welcome_back = ("Welcome back, " + saved_name + "!\n\n") if command == "/start" and saved_name else ""
         return (
-            "QUANTNEX · YOUR SMART TRADING COMPANION\n"
+            welcome_back
+            + "QUANTNEX · YOUR SMART TRADING COMPANION\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━\n"
             "🌍 ENGLISH\n"
             "Welcome to QUANTNEX — a trading intelligence workspace built to help you study markets, analyse setups and manage your trading routine.\n\n"
@@ -1297,11 +1339,59 @@ async def telegram_worker() -> None:
                                         chat=message.get("chat") or {}
                                         if str(chat.get("id"))!=str(chat_id) and not (str(chat_id).startswith("@") and ("@"+str(chat.get("username","")).lower())==str(chat_id).lower()):continue
                                         command=message.get("text","")
+                                        onboarding_state = _get(db, user_id, "telegram_onboarding_state", "")
+                                        is_private_chat = str(chat.get("type") or "") == "private"
+                                        if is_private_chat and onboarding_state == "awaiting_name" and command.strip():
+                                            if command.strip().split()[0].split("@")[0].lower() == "/cancel":
+                                                _set(db, user_id, "telegram_onboarding_state", "")
+                                                db.commit()
+                                                await _send(client, token, chat_id, "Logo setup cancelled. Send /start whenever you want to set it up.", MENU)
+                                            elif command.strip().startswith("/"):
+                                                await _send(client, token, chat_id, "Please type the name you want on your QUANTNEX logo, or send /cancel.")
+                                            else:
+                                                display_name = normalise_telegram_name(command)
+                                                if display_name is None:
+                                                    await _send(client, token, chat_id, "That name format is not valid. Please send 2–32 letters/numbers with spaces, dots, underscores, apostrophes or hyphens.")
+                                                else:
+                                                    try:
+                                                        logo_png = build_personal_logo_png(display_name, user_id)
+                                                        caption = (
+                                                            "✨ Your personal QUANTNEX logo is ready, " + html.escape(display_name) + "!\n\n"
+                                                            + "To set it as your bot's profile photo:\n"
+                                                            + "1. Open @BotFather\n"
+                                                            + "2. Send /mybots and choose your bot\n"
+                                                            + "3. Select Edit Bot → Edit Botpic\n"
+                                                            + "4. Upload this square PNG image.\n\n"
+                                                            + "You can keep this image and use it again any time."
+                                                        )
+                                                        await _send_png_photo(
+                                                            client, token, chat_id, logo_png,
+                                                            "QUANTNEX-" + str(user_id) + "-logo.png", caption,
+                                                        )
+                                                        _set(db, user_id, "telegram_user_name", display_name)
+                                                        _set(db, user_id, "telegram_onboarding_state", "completed")
+                                                        db.commit()
+                                                        await _send(
+                                                            client, token, chat_id,
+                                                            "You're all set, " + display_name + "! Welcome to your QUANTNEX workspace.\nChoose a section below to get started.",
+                                                            MENU,
+                                                        )
+                                                    except Exception as logo_error:
+                                                        db.rollback()
+                                                        logger.warning("Telegram personal logo setup failed for local user %s: %s", user_id, type(logo_error).__name__)
+                                                        await _send(client, token, chat_id, "I couldn't create or send the logo just now. Please send your name again and I'll retry.")
+                                            continue
                                         answer=await _handle_command(client,db,user_id,token,chat_id,command)
                                         if answer:
-                                            is_start=command.strip().split(" ")[0].split("@")[0].lower() in {"/start","/help"}
-                                            is_plain_text=bool(command.strip()) and not command.strip().startswith("/")
-                                            await _send(client,token,chat_id,answer,MENU if (is_start or is_plain_text) else None)
+                                            is_start=command.strip().split(" ")[0].split("@")[0].lower() == "/start"
+                                            is_help=command.strip().split(" ")[0].split("@")[0].lower() == "/help"
+                                            if is_start and is_private_chat and _get(db, user_id, "telegram_onboarding_state", "") == "awaiting_name":
+                                                await _send(client, token, chat_id,
+                                                    "✨ Welcome to QUANTNEX!\nYour personal trading workspace is being prepared. Let's create a logo just for you.")
+                                                await _send(client, token, chat_id, answer)
+                                            else:
+                                                is_plain_text=bool(command.strip()) and not command.strip().startswith("/")
+                                                await _send(client,token,chat_id,answer,MENU if (is_start or is_help or is_plain_text) else None)
                                     except Exception as update_error:
                                         logger.warning("Telegram update %s failed for local user %s: %s",
                                                        update.get("update_id"), user_id, type(update_error).__name__)

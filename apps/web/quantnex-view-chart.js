@@ -311,7 +311,7 @@ $("qxClearDrawings")?.addEventListener("click",()=>{drawings=[];pendingDrawing=n
 window.addEventListener("quantnex:market-tick",onTradingRoomTick);
 window.addEventListener("quantnex:view-changed",event=>{if(event.detail?.view==="tradingview")refresh();else stopFeed();});
 document.addEventListener("visibilitychange",()=>{if(document.hidden){stopFeed();return;}if(isChartViewActive())refresh();});
-function bindPanelToggle(buttonId,contentId,onExpand){
+function bindDisclosure(buttonId,contentId,onExpand){
  const button=$(buttonId),content=$(contentId);if(!button||!content)return;
  button.addEventListener("click",()=>{
   const opening=content.hidden;content.hidden=!opening;
@@ -321,10 +321,10 @@ function bindPanelToggle(buttonId,contentId,onExpand){
   if(opening&&onExpand)requestAnimationFrame(onExpand);
  });
 }
-bindPanelToggle("qxSignalSettingsToggle","qxSignalSettingsPanel");
-bindPanelToggle("qxChartSignalSheetToggle","qxChartSignalSheetContent");
-bindPanelToggle("qxSignalLedgerToggle","qxSignalLedgerContent");
-bindPanelToggle("qxIndicatorsToggle","qxIndicatorsContent",()=>renderIndicatorPanels());
+bindDisclosure("qxSignalSettingsToggle","qxSignalSettingsPanel");
+bindDisclosure("qxChartSignalSheetToggle","qxChartSignalSheetContent");
+bindDisclosure("qxSignalLedgerToggle","qxSignalLedgerContent");
+bindDisclosure("qxIndicatorsToggle","qxIndicatorsContent",()=>renderIndicatorPanels());
 setupCanvas();
 loadChartMarkets(true).then(()=>{if(isChartViewActive())refresh();});
 const marketUniverseTimer=setInterval(()=>{if(!document.hidden&&isChartViewActive())loadChartMarkets(true);},900000);

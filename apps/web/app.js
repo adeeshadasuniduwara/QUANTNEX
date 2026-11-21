@@ -877,16 +877,16 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
       const book=latestBookData.liquidity||{},bestBid=Number(book.best_bid??bids[0]?.[0]),bestAsk=Number(book.best_ask??asks[0]?.[0]),spread=bestAsk-bestBid;
       const setMetric=(id,value)=>{const el=$(id);if(el)el.textContent=value;};
       $("p7BookImbalance").textContent=Number.isFinite(Number(book.depth_imbalance))?(Number(book.depth_imbalance)*100).toFixed(1)+"%":"—";
-      setMetric("qxOrderFlowBestBid",Number.isFinite(bestBid)?fmt(bestBid,(Number.isInteger(latestBookData.pricePrecision)?latestBookData.pricePrecision:priceDigits(latestBookData.symbol))):"—");
-      setMetric("qxOrderFlowBestAsk",Number.isFinite(bestAsk)?fmt(bestAsk,priceDigits(latestBookData.symbol)):"—");
-      setMetric("qxOrderFlowSpread",Number.isFinite(spread)?fmt(spread,priceDigits(latestBookData.symbol))+" · "+fmt(book.spread_bps,2)+" bps":"—");
+      setMetric("qxOrderFlowBestBid",Number.isFinite(bestBid)?fmt(bestBid,(Number.isInteger(latestBookData.pricePrecision)?latestBookData.pricePrecision:(Number.isInteger(latestBookData.pricePrecision)?latestBookData.pricePrecision:priceDigits(latestBookData.symbol)))):"—");
+      setMetric("qxOrderFlowBestAsk",Number.isFinite(bestAsk)?fmt(bestAsk,(Number.isInteger(latestBookData.pricePrecision)?latestBookData.pricePrecision:priceDigits(latestBookData.symbol))):"—");
+      setMetric("qxOrderFlowSpread",Number.isFinite(spread)?fmt(spread,(Number.isInteger(latestBookData.pricePrecision)?latestBookData.pricePrecision:priceDigits(latestBookData.symbol)))+" · "+fmt(book.spread_bps,2)+" bps":"—");
       setMetric("qxOrderFlowBidDepth",fmt(book.bid_depth_quote,2)+" "+latestBookData.quoteAsset);
       setMetric("qxOrderFlowAskDepth",fmt(book.ask_depth_quote,2)+" "+latestBookData.quoteAsset);
       $("p7BookLiveStatus").textContent="LIVE · sequence-validated Binance Spot L2 · age "+fmt(book.depth_age_seconds,2)+"s";
       $("p7BookLiveStatus").className="p7-live-indicator";
       [["p7Bids",bids],["p7Asks",asks]].forEach(([id,rows])=>{
         const body=$(id);body.replaceChildren();
-        rows.slice(0,12).forEach(([price,qty])=>{const tr=node("tr");addCell(tr,fmt(price,priceDigits(latestBookData.symbol)));addCell(tr,fmt(qty,6));body.append(tr);});
+        rows.slice(0,12).forEach(([price,qty])=>{const tr=node("tr");addCell(tr,fmt(price,(Number.isInteger(latestBookData.pricePrecision)?latestBookData.pricePrecision:priceDigits(latestBookData.symbol))));addCell(tr,fmt(qty,6));body.append(tr);});
       });
       $("p7BookNote").textContent="Rolling 60-second view from the backend sequence-validated Binance Spot diff-depth book. Resting liquidity is not executed volume or guaranteed executable liquidity.";
     }
@@ -915,14 +915,14 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     set("qxOrderFlowSessionDelta",sessionValue==null?"—":fmt(sessionValue,6));
     set("qxOrderFlowSessionScope",flow.session_delta_coverage_complete===true?"COMPLETE UTC SESSION":"INCOMPLETE UTC SESSION · SAMPLE ONLY · "+String(flow.session_delta_scope||"incomplete"));
     const profile=flow.volume_profile||{};
-    set("qxOrderFlowProfile",[["POC",profile.poc],["VAH",profile.vah],["VAL",profile.val]].filter(item=>Number.isFinite(Number(item[1]))).map(item=>item[0]+" "+fmt(item[1],(Number.isInteger(result.price_precision)?result.price_precision:priceDigits(result.symbol)))).join(" · ")||"Not available");
-    set("qxOrderFlowMicroprice",result.liquidity?.microprice==null?"—":fmt(result.liquidity.microprice,priceDigits(result.symbol)));
+    set("qxOrderFlowProfile",[["POC",profile.poc],["VAH",profile.vah],["VAL",profile.val]].filter(item=>Number.isFinite(Number(item[1]))).map(item=>item[0]+" "+fmt(item[1],(Number.isInteger(result.price_precision)?result.price_precision:(Number.isInteger(result.price_precision)?result.price_precision:priceDigits(result.symbol))))).join(" · ")||"Not available");
+    set("qxOrderFlowMicroprice",result.liquidity?.microprice==null?"—":fmt(result.liquidity.microprice,(Number.isInteger(result.price_precision)?result.price_precision:priceDigits(result.symbol))));
     const body=$("qxOrderFlowFootprintRows");
     if(body){
       body.replaceChildren();
       (Array.isArray(flow.footprint)?flow.footprint:[]).slice(0,40).forEach(row=>{
         const tr=node("tr");
-        [fmt(row.price,priceDigits(result.symbol)),fmt(row.buy_volume,6),fmt(row.sell_volume,6),fmt(row.delta,6),row.is_imbalanced?"YES":"—"].forEach(value=>addCell(tr,value));
+        [fmt(row.price,(Number.isInteger(result.price_precision)?result.price_precision:priceDigits(result.symbol))),fmt(row.buy_volume,6),fmt(row.sell_volume,6),fmt(row.delta,6),row.is_imbalanced?"YES":"—"].forEach(value=>addCell(tr,value));
         body.append(tr);
       });
       if(!body.children.length){const tr=node("tr"),td=node("td","No footprint buckets in the current validated trade window.","empty-row");td.colSpan=5;tr.append(td);body.append(tr);}
@@ -1127,7 +1127,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
         quantity:Number($("p7PaperQty").value),stop_loss:Number($("p7PaperSL").value),
         take_profit:Number($("p7PaperTP").value)
       })});
-      setMessage("p7PaperStatus","Paper trade #"+result.id+" opened at "+fmt(result.entry_price,priceDigits(result.symbol))+". No broker order was placed.");
+      setMessage("p7PaperStatus","Paper trade #"+result.id+" opened at "+fmt(result.entry_price,(Number.isInteger(result.price_precision)?result.price_precision:priceDigits(result.symbol)))+". No broker order was placed.");
       await refreshAnalytics();
     }catch(error){setMessage("p7PaperStatus",error.message,true);}
     finally{button.disabled=false;button.textContent="Open paper trade";}

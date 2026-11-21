@@ -31,5 +31,6 @@ assert.match(app,/profile\.poc/);
 assert.match(app,/apiRequest\("\/api\/v1\/signals\/markets"\)/);
 assert.match(app,/900000\);/);
 assert.match(app,/pricePrecision:apiData\.price_precision/);
+assert.match(app,/price_precision\?\?priceDigits/);
 assert.doesNotMatch(html,/id="p7BookSymbol"|id="p7LoadBook"/);
 console.log("QUANTNEX VIEW sequence-validated Order Flow toolkit checks passed.");

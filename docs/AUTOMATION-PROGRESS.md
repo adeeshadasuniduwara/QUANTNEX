@@ -861,7 +861,7 @@ Phase C9 replays only the latest snapshot captured at or before each candle deci
 - The smoke workflow still uses a rotating 20-symbol sample from the dynamic Binance Spot exchangeInfo universe. It is not a same-cycle full-universe scan and does not persist order-flow observations into the user's local database.
 - Binance Spot remains the only verified crypto signal market. USDⓈ-M and COIN-M Futures remain unsupported by the signal engine.
 
-### Phase C11 — deterministic historical replay signal proof
+### Phase C11 — deterministic historical replay signal proof (merged PR #244)
 
 Branch: `test/orderflow-replay-long-short-fixtures`.
 
@@ -886,12 +886,11 @@ Branch: `test/orderflow-replay-long-short-fixtures`.
 - No signal thresholds, production scoring, order-flow freshness limits, live execution settings, or order-placement behavior were changed.
 - No API keys or live-money execution were introduced.
 
-### Exact next steps
+### Exact next steps (updated after merge)
 
-1. Re-review the final four-file diff and confirm the PR still targets the current main SHA with all checks green.
-2. Merge PR #244 only after the mergeability and security review; then verify the merge commit and post-merge checks on main.
-3. Separately inspect real `order_flow_observations` counts for active local streams through the backtest endpoint. GitHub smoke success alone cannot prove that the local recorder has stored rows.
-4. Keep baseline candle replay separate from order-flow-gated replay; collect representative chronological out-of-sample observations before interpreting any performance delta.
+1. Add negative end-to-end replay fixtures for contradictory, stale and gapped Order Flow snapshots.
+2. Inspect real local order_flow_observations counts for active streams through the backtest endpoint; GitHub smoke success does not prove local recorder coverage.
+3. Keep baseline candle replay separate from order-flow-gated replay; collect representative chronological out-of-sample observations before interpreting any performance delta.
 
 
 ## 2026-11-21 — Automation run 6: fail-closed historical replay negative fixtures (PR pending)

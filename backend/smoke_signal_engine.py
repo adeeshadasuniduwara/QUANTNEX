@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import math
 from datetime import datetime, timezone
 import sys
 
@@ -43,6 +44,53 @@ def rotating_symbol_sample(
 
 def _format_price(symbol: str, value: float) -> str:
     return f"{float(value):.{2 if symbol == 'XAUUSD' else 8}f}"
+
+
+def _format_diagnostic_value(value: object) -> str | None:
+    """Format a small, safe scalar for smoke diagnostics."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        numeric = float(value)
+        return f"{numeric:.4g}" if math.isfinite(numeric) else None
+    if isinstance(value, str):
+        normalized = " ".join(value.split())
+        return normalized[:100] if normalized else None
+    return None
+
+
+def _format_order_flow_diagnostics(result: dict) -> str:
+    """Expose the live Order Flow gate outcome without dumping raw feed payloads."""
+    flow = result.get("order_flow")
+    if not isinstance(flow, dict):
+        return "  Order Flow: UNAVAILABLE"
+
+    status = _format_diagnostic_value(flow.get("status")) or "UNKNOWN"
+    accepted_value = flow.get("accepted")
+    accepted = (
+        "n/a" if accepted_value is None
+        else "yes" if accepted_value is True
+        else "no" if accepted_value is False
+        else _format_diagnostic_value(accepted_value) or "unknown"
+    )
+    fields = [f"status={status}", f"accepted={accepted}"]
+    for key in (
+        "feed_mode", "stream_ready", "trade_count", "delta", "delta_ratio",
+        "cvd_status", "trade_data_age_seconds", "session_delta_coverage_complete",
+    ):
+        formatted = _format_diagnostic_value(flow.get(key))
+        if formatted is not None:
+            fields.append(f"{key}={formatted}")
+
+    book = flow.get("order_book")
+    if isinstance(book, dict):
+        for key in ("spread_bps", "depth_imbalance"):
+            formatted = _format_diagnostic_value(book.get(key))
+            if formatted is not None:
+                fields.append(f"{key}={formatted}")
+    return "  Order Flow: " + " | ".join(fields)
 
 
 async def _run(
@@ -116,6 +164,7 @@ async def _run(
                     f"TP3={_format_price(symbol, signal['tp3'])}"
                 )
                 print(f"  Candle={signal['signal_candle_time']}")
+            print(_format_order_flow_diagnostics(result))
         except MarketDataError as exc:
             detail = str(exc)
             if any(marker in detail for marker in (

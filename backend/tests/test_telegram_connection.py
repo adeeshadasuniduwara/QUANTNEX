@@ -105,7 +105,9 @@ def test_telegram_connect_accepts_verified_private_destination(monkeypatch):
     assert payload["destination_type"] == "private"
     assert payload["chat_id"] == "222333"
     assert [call[0] for call in fake.calls] == ["getMe", "getChat"]
-    assert client.get("/api/v1/telegram/status").json()["connected"] is True
+    status = client.get("/api/v1/telegram/status").json()
+    assert status["connected"] is True
+    assert status["destination_type"] == "private"
     client.delete("/api/v1/telegram/connect")
 
 

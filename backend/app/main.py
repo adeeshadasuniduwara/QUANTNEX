@@ -1052,6 +1052,7 @@ async def connect_telegram_bot(payload: TelegramConnectRequest, user: User = Dep
     _save_preference(db,user.id,"telegram_chat_id",payload.chat_id.strip())
     _save_preference(db,user.id,"telegram_bot_username",bot.get("username",""))
     _save_preference(db,user.id,"telegram_bot_display_name",payload.display_name.strip() or bot.get("first_name","QUANTNEX Bot"))
+    _save_preference(db,user.id,"telegram_chat_type",chat_type)
     record_audit_event(db, "telegram.connected", {"bot_username": bot.get("username", ""), "destination_type": chat_type})
     db.commit()
     event_hub.publish("integration.changed", "telegram", "connected", {"bot_username": bot.get("username", "")})
@@ -1066,11 +1067,12 @@ def telegram_status(user: User = Depends(local_workspace), db: Session = Depends
     return {"connected":connected,"bot_username":_preference(db,user.id,"telegram_bot_username") if connected else None,
             "display_name":_preference(db,user.id,"telegram_bot_display_name") if connected else None,
             "chat_id":_preference(db,user.id,"telegram_chat_id") if connected else None,
+            "destination_type":_preference(db,user.id,"telegram_chat_type") if connected else None,
             "worker":"active while this API process is running"}
 
 @app.delete("/api/v1/telegram/connect")
 def disconnect_telegram_bot(user: User = Depends(local_workspace), db: Session = Depends(get_db)):
-    for key in ["telegram_bot_token_enc","telegram_chat_id","telegram_bot_username","telegram_bot_display_name","telegram_update_offset","active_signal","telegram_daily_report_enabled","telegram_daily_report_sent_date","auto_signal_settings","auto_signal_last_fingerprint","auto_signal_last_fingerprint_btcusdt","auto_signal_last_fingerprint_ethusdt","auto_signal_last_fingerprint_solusdt","auto_signal_last_fingerprint_xauusd"]:
+    for key in ["telegram_bot_token_enc","telegram_chat_id","telegram_chat_type","telegram_bot_username","telegram_bot_display_name","telegram_update_offset","telegram_user_name","telegram_onboarding_state","active_signal","telegram_daily_report_enabled","telegram_daily_report_sent_date","auto_signal_settings","auto_signal_last_fingerprint","auto_signal_last_fingerprint_btcusdt","auto_signal_last_fingerprint_ethusdt","auto_signal_last_fingerprint_solusdt","auto_signal_last_fingerprint_xauusd"]:
         row=db.scalar(select(Preference).where(Preference.user_id==user.id,Preference.key==key))
         if row:db.delete(row)
     record_audit_event(db, "telegram.disconnected")

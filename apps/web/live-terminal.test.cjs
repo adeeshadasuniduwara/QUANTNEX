@@ -141,7 +141,7 @@ assert.match(app, /setInterval\(\(\)=>\{if\(isWorkspaceViewActive\("paper-tradin
 assert.match(app, /function stopBookFeed\(/, "Order-book polling timers must be cleaned up when leaving their workspace.");
 console.log("QUANTNEX active-workspace polling and cleanup checks passed.");
 
-assert.match(html, /app\.js\?v=20261121-sequence-orderflow3/, "Workspace polling and wallet ledger fixes must invalidate the cached app.js asset.");
+assert.match(html, /app\.js\?v=20261121-compact-layout1/, "Workspace polling and wallet ledger fixes must invalidate the cached app.js asset.");
 
 
 assert.match(nativeChart, /isChartViewActive/, "QUANTNEX VIEW history, analysis and live ticks must be scoped to the visible chart workspace.");
@@ -149,8 +149,8 @@ assert.match(nativeChart, /quantnex:view-changed/, "Chart feed must start on cha
 assert.match(nativeChart, /if\(!isChartViewActive\(\)\|\|selected\(\)\.symbol!==pick\.symbol/, "Late chart history responses must not update a hidden or stale chart.");
 assert.match(chartIntel, /isTradingViewActive/, "Chart intelligence analysis and backtests must pause outside QUANTNEX VIEW.");
 assert.match(chartIntel, /backtestBusy/, "Chart intelligence must prevent overlapping backtest requests.");
-assert.match(html, /quantnex-view-chart\.js\?v=20261121-usdm-futures1/, "Chart lifecycle fix must invalidate the cached chart bundle.");
-assert.match(html, /quantnex-view-intelligence\.js\?v=20261121-futures-isolation1/, "Chart intelligence assets must be refreshed when the overall signal P&L UI changes.");
+assert.match(html, /quantnex-view-chart\.js\?v=20261121-compact-layout2/, "Chart lifecycle fix must invalidate the cached chart bundle.");
+assert.match(html, /quantnex-view-intelligence\.js\?v=20261121-live-signals-table2/, "Chart intelligence assets must be refreshed when the overall signal P&L UI changes.");
 console.log("QUANTNEX VIEW active-page lifecycle checks passed.");
 
 

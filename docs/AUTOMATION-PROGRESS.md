@@ -888,7 +888,7 @@ Branch: `test/orderflow-replay-long-short-fixtures`.
 
 ### Exact next steps
 
-1. Re-review the final three-file diff and confirm the PR still targets the current main SHA with all checks green.
+1. Re-review the final four-file diff and confirm the PR still targets the current main SHA with all checks green.
 2. Merge PR #244 only after the mergeability and security review; then verify the merge commit and post-merge checks on main.
 3. Separately inspect real `order_flow_observations` counts for active local streams through the backtest endpoint. GitHub smoke success alone cannot prove that the local recorder has stored rows.
 4. Keep baseline candle replay separate from order-flow-gated replay; collect representative chronological out-of-sample observations before interpreting any performance delta.

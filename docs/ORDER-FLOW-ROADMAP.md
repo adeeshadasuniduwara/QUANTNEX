@@ -599,3 +599,14 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 - Deterministic API tests use a fake manager and verify symbol rejection, metadata tick-size use, sequence validation, stale-depth veto, independent readiness, CVD scope and session limitations. Local browser/live-stream smoke remains required.
 
 - The QUANTNEX VIEW chart market selector now loads the complete current Binance Spot symbol list from the exchangeInfo-backed /api/v1/signals/markets endpoint at view entry and refreshes it every 15 minutes while the chart is active. It retains XAUUSD as a separate non-Binance market and uses each selected symbol's authoritative PRICE_FILTER tick size for Order Flow price formatting.
+
+
+## C14 merge verification — PR #250
+
+- Merged commit: d5758744c61ccedabc6fc71eb70b1c07798cf7c6.
+- Web CI passed. Backend CI and Backend/Web CI passed. Python 3.12: 491 passed; Python 3.14: 491 passed, pre-merge and post-merge.
+- Browser now uses the validated backend Spot diff-depth manager and actual AggTrade-derived flow. Dynamic Spot symbol list refreshes every 15 minutes while QUANTNEX VIEW is active.
+- Full UTC session delta remains unavailable until full-session trade-ID coverage is anchored. CVD is since stream seed. This is not multi-venue quoted bid/ask footprint.
+- Live smoke 44884113669 was still in progress at the time of this record. Device/browser rendering remains unverified.
+- Telegram announce failed because the configured TELEGRAM_CHAT_ID points to the bot itself; requires a valid private/group destination.
+- Supervisor source auto-update interval verified at 300 seconds with rollback. Local supervisor must be running.

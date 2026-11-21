@@ -1061,3 +1061,32 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 - CI found additional legacy live-terminal assertions for the removed browser-side Bookmap WebSocket reconnect logic. Replaced them with checks for the validated backend polling lifecycle, sequence/staleness veto and absence of browser depth sockets.
 
 - Updated the legacy live-terminal contract to assert that backend-provided freshness/sequence rejection reasons are surfaced, rather than expecting the backend enum string to be hard-coded in the browser.
+
+
+### Phase C14 merge record — PR #250
+
+- PR [#250](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/250) squash-merged into main as d5758744c61ccedabc6fc71eb70b1c07798cf7c6 on 2026-11-21.
+- Compare before merge: 11 commits ahead, 0 behind; mergeable; 9 intended files; no private-key/API-secret pattern detected.
+- Pre-merge CI: Web CI passed; Backend CI and Backend/Web CI passed. Python 3.12 and Python 3.14 suites each reported 491 passed.
+- Post-merge CI on exact merge commit d5758744c61ccedabc6fc71eb70b1c07798cf7c6: Web CI passed; Backend CI and Backend/Web CI passed; Python 3.12 and Python 3.14 each reported 491 passed.
+- Verified main ref equals d5758744c61ccedabc6fc71eb70b1c07798cf7c6.
+- Live public crypto smoke run 44884113669 was triggered by this main update; its final scan output was still in progress at the time of this documentation record. It is the existing three-symbol smoke subset, not full-universe coverage.
+- Telegram update-notification workflow failed at the announce step because TELEGRAM_CHAT_ID resolves to the bot itself. Exact blocker: the repository secret must be changed to a private chat ID or a group/channel ID where the bot can post. The token itself was not inspected or changed.
+- Source supervisor auto-update interval remains 300 seconds. While the local supervisor is running, it checks, downloads and applies verified main source automatically with backup/rollback; if QUANTNEX is closed, update applies on next launch.
+- User-device browser rendering and live Binance Spot stream verification remain pending.
+
+### C14 capability status
+
+- Binance Spot only is exposed in the QUANTNEX VIEW Order Flow package. The selector dynamically refreshes the active Spot symbol universe from exchangeInfo at chart entry and every 15 minutes while active.
+- Bookmap and Depth Ladder now consume the backend's sequence-validated Spot diff-depth book through a local read-only API. The browser no longer opens an unsequenced depth20 partial stream.
+- Trade Flow shows observed AggTrade-derived buy/sell volume, delta, delta ratio, CVD since stream seed, footprint, volume profile and microprice with provenance.
+- UTC session delta is displayed as complete only when the stream reports complete UTC-session coverage; otherwise the sample is explicitly labelled incomplete.
+- USDⓈ-M Futures, COIN-M Futures, Gold and Forex depth are not claimed as supported. No real orders or live-money execution are enabled.
+
+### Next steps
+
+1. Confirm the triggered live smoke result and distinguish live WAIT from provider/engine errors.
+2. Run the local app after automatic source update and verify BTCUSDT plus a non-USDT Spot pair, then XAUUSD unavailable state.
+3. Extend deterministic API/replay coverage for reconnects, trade gaps, book sequence gaps and stale snapshots at the UI boundary.
+4. Continue primary signal-engine validation: dynamic universe end-to-end scans, valid long/short replay, walk-forward OOS and paper execution costs.
+5. Resolve Telegram notification destination by setting a valid private/group chat ID; do not expose bot token in chat.

@@ -892,3 +892,45 @@ Branch: `test/orderflow-replay-long-short-fixtures`.
 2. Merge PR #244 only after the mergeability and security review; then verify the merge commit and post-merge checks on main.
 3. Separately inspect real `order_flow_observations` counts for active local streams through the backtest endpoint. GitHub smoke success alone cannot prove that the local recorder has stored rows.
 4. Keep baseline candle replay separate from order-flow-gated replay; collect representative chronological out-of-sample observations before interpreting any performance delta.
+
+
+## 2026-11-21 — Automation run 6: fail-closed historical replay negative fixtures (PR pending)
+
+### Start-of-run audit
+
+- Latest main at the start of this phase: ef702a2e77a66bae6fcd5362a08e1e480668d594, containing merged PR #244.
+- Open issues: none. Open PRs at audit were #239, #206, #201, #185, #172, #170, #110, #76 and #57; none targeted the Binance signal/replay core.
+- Latest available scheduled Live Crypto Signal Smoke was [run #44703341723](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/44703341723), created 2026-11-20 08:32:20 UTC. It discovered 1,375 eligible Spot pairs and scanned a rotating 20-pair slice. All 20 scans completed with Binance Spot data, zero insufficient-history skips and zero provider errors; all 20 returned WAIT. The highest displayed confluence values were 7/10 and 8/10, but the runner did not expose per-candidate Order Flow rejection details. This is a healthy provider smoke run, not evidence of a live setup or strategy profitability.
+- Latest main CI for PR #244 merge commit: Backend CI and Backend/Web CI passed; the separate Telegram Update Notifications workflow failed in its announce job because of the configured chat target.
+
+### Phase C12 — end-to-end negative replay proof
+
+- Refactor the deterministic replay fixture into one shared runner so positive and negative scenarios use the same 1m/5m/15m/30m/1h candles, symbol filters, assumed execution costs and actual _simulate_slice + build_signal path.
+- Preserve the two positive acceptance cases: aligned BUY and SELL AggTrade-derived delta plus sequence-validated L2 depth must each generate exactly one synthetic replay signal and one modeled paper MARKET fill.
+- Add both-direction negative fixtures where trade delta and depth imbalance oppose the otherwise valid candle setup. These must remain WAIT with zero signals/trades.
+- Add both-direction stale-depth fixtures. The replay must count the stale snapshot, reject the candidate and produce no trade.
+- Add a trade-ID gap fixture. The replay must classify the snapshot invalid, reject the candidate and produce no trade.
+- No strategy threshold, signal score, market/limit selection, freshness limit, feed state or live order permission is changed.
+
+### Evidence boundary
+
+- These fixtures prove the replay's fail-closed behavior on deterministic synthetic candle and stored-snapshot inputs. They are not historical-market performance evidence, not live signals and not a win-rate/expectancy improvement claim.
+- The latest GitHub smoke runner scans only a rotating subset (20 of 1,375 eligible Spot pairs in the last observed run); it does not inspect the user's local database or prove that order-flow snapshots were persisted locally.
+- The backtest API already exposes order_flow_capture.status and observation_count; a local run with an active stream is still required to establish real recorder coverage and compare candle-only versus Order-Flow-gated OOS metrics.
+- Binance Spot remains the only verified crypto signal market. USDⓈ-M and COIN-M Futures remain unsupported by the signal engine.
+
+### Changed files
+
+- backend/tests/test_signal_backtest.py: shared actual-engine replay runner plus stale-depth, contradictory delta/depth and trade-gap negative fixtures for the signal replay path.
+- docs/AUTOMATION-PROGRESS.md and docs/ORDER-FLOW-ROADMAP.md: record the verified smoke output, merged C11 checkpoint, C12 scope, evidence boundary and exact next steps.
+
+### Verification
+
+- Pending PR checks and final diff review. No live order placement or private API credentials are introduced.
+
+### Exact next steps
+
+1. Verify all C12 positive and negative replay fixtures on the PR head, then run Backend CI and Backend/Web CI on both Python 3.12 and 3.14.
+2. Inspect actual local order_flow_observations coverage via the backtest endpoint while one of the managed Spot streams is active; record the returned count and train/OOS coverage counters without inferring local data from GitHub smoke logs.
+3. If local coverage is sparse, diagnose the eight-stream cap, capture-window timing, stream readiness and recorder errors without relaxing 15-second trade / 5-second depth freshness limits.
+4. Collect real chronological order-flow sessions before reporting win rate, expectancy, profit factor, drawdown or any incremental edge.

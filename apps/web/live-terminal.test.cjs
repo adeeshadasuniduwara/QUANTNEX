@@ -121,9 +121,9 @@ assert.match(app, /function scheduleTickerReconnect\(/, "Trading Room ticker mus
 assert.match(app, /function scheduleBookReconnect\(/, "Trading Room depth must use a dedicated bounded reconnect scheduler.");
 assert.match(app, /Math\.min\(30000,1000\*Math\.pow\(2,Math\.min\(/, "Trading Room retries must use capped exponential backoff.");
 assert.match(app, /Date\.now\(\)-tickerLastMessageAt>30000/, "A silent crypto ticker socket must be detected as stale.");
-assert.match(app, /Date\.now\(\)-bookLastMessageAt>30000/, "A silent order-book socket must be detected as stale.");
+assert.match(app, /result\.depth_ready/, "Bookmap must render only sequence-validated depth from the backend snapshot.");
 assert.match(app, /feed:"crypto",status:"stale"/, "Ticker staleness must be exposed through the workspace stream-status event.");
-assert.match(app, /Depth feed stale · reconnecting/, "Order-book staleness must be visible to the user.");
+assert.match(app, /Order Flow API reconnecting in/, "Order Flow API failures must be visible and retried with bounded backoff.");
 assert.match(app, /retry_in_ms:delay/, "Ticker reconnect status must expose its retry delay.");
 console.log("Trading Room ticker and order-book recovery checks passed.");
 

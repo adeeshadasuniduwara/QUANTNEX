@@ -133,4 +133,5 @@ assert.match(intelligence, /FUTURES CHART ONLY · FUTURES SIGNAL ENGINE NOT ENAB
 assert.match(intelligence, /selection\.marketType!=="BINANCE_SPOT"/, "Futures historical signal replay must be explicitly disabled.");
 assert.match(intelligence, /current\.marketType!==s\.marketType/, "Async signal responses must be discarded after switching market type.");
 console.log("QUANTNEX VIEW Futures chart/Spot signal isolation checks passed.");
-\nassert.match(js, /restoredChartSymbol/, "Dynamically populated chart selectors must restore a saved non-default pair after exchange metadata loads.");\n
+
+assert.match(js, /restoredChartSymbol/, "Dynamically populated chart selectors must restore a saved non-default pair after exchange metadata loads.");\n

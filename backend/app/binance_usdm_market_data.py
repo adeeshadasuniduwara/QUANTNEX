@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import math
 import time
+from weakref import WeakKeyDictionary
 from datetime import datetime, timezone
 from typing import Any
 
@@ -23,7 +24,17 @@ BASES = (
 INTERVALS = {"1m", "5m", "15m", "30m", "1h", "4h"}
 _CACHE: tuple[float, dict[str, dict[str, Any]]] | None = None
 _CACHE_TTL = 300.0
-_LOCK = asyncio.Lock()
+_LOCKS: WeakKeyDictionary = WeakKeyDictionary()
+
+
+async def _cache_guard():
+    loop = asyncio.get_running_loop()
+    lock = _LOCKS.get(loop)
+    if lock is None:
+        lock = asyncio.Lock()
+        _LOCKS[loop] = lock
+    async with lock:
+        yield
 
 
 class BinanceUsdMDataError(RuntimeError):
@@ -55,7 +66,7 @@ async def get_binance_usdm_symbol_info(force_refresh: bool = False) -> dict[str,
     cached = _CACHE
     if not force_refresh and cached and time.monotonic() - cached[0] < _CACHE_TTL:
         return cached[1]
-    async with _LOCK:
+    async with _cache_guard():
         cached = _CACHE
         if not force_refresh and cached and time.monotonic() - cached[0] < _CACHE_TTL:
             return cached[1]

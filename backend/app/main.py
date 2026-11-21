@@ -1337,7 +1337,12 @@ async def chart_markets(market_type: str = "BINANCE_SPOT"):
 async def chart_futures_candles(symbol: str = "BTCUSDT", interval: str = "15m", limit: int = 500):
     """Read-only USDⓈ-M perpetual OHLC candles for QUANTNEX VIEW; never used for orders."""
     from .binance_usdm_market_data import fetch_binance_usdm_candles, BinanceUsdMDataError
+    if interval not in {"1m","5m","15m","30m","1h","4h"} or not 210 <= limit <= 1000:
+        raise HTTPException(status_code=422, detail="Choose a supported timeframe and 210–1,000 candles.")
+    from .binance_usdm_market_data import get_binance_usdm_symbols
     try:
+        if symbol.upper() not in await get_binance_usdm_symbols():
+            raise HTTPException(status_code=422, detail="Choose an active Binance USDⓈ-M perpetual contract.")
         rows = await fetch_binance_usdm_candles(symbol, interval, limit)
     except BinanceUsdMDataError as exc:
         raise HTTPException(status_code=503, detail=str(exc))

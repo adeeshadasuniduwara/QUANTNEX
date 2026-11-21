@@ -908,7 +908,13 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
             "Signals are analysis only. Paper mode is simulated. No live broker orders are placed by this Telegram assistant. Always verify market data, spread and risk yourself.\n"
             "Signals යනු විශ්ලේෂණ තොරතුරු පමණයි. මෙය profit හෝ win-rate සහතිකයක් නොවේ.\n\n"
             "👇 TAP A BUTTON BELOW TO OPEN YOUR WORKSPACE\n"
-            "👇 පහත Button එකක් තෝරාගෙන ආරම්භ කරන්න."
+            "👇 පහත Button එකක් තෝරාගෙන ආරම්භ කරන්න.\\n\\n"
+            "🛠 OPERATIONS COMMANDS\n"
+            "/health · /signals · /signals_on · /signals_off\n"
+            "/watchlist · /watchlist_set BTCUSDT,ETHUSDT\n"
+            "/orderflow BTCUSDT · /futures_scan BTCUSDT 15m\n"
+            "/risk · /ai_status · /ai_test\n"
+            "Existing controls: /scan · /report · /gold · /binance_status · /timeframes"
         )
     if command=="/timeframes":
         enabled=", ".join(names.get(str(x),str(x)) for x in settings.get("enabled",[]))

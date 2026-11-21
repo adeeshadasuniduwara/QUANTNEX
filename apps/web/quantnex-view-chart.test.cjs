@@ -138,16 +138,19 @@ console.log("QUANTNEX VIEW Futures chart/Spot signal isolation checks passed.");
 
 assert.match(js, /restoredChartSymbol/, "Dynamically populated chart selectors must restore a saved non-default pair after exchange metadata loads.");
 
-// Compact QUANTNEX VIEW layout: collapsible sheets keep their data lifecycle active.
-for (const id of ["qxSignalSettingsToggle", "qxSignalSettingsPanel", "qxChartSignalSheetToggle", "qxChartSignalSheetContent",
+// Compact QUANTNEX VIEW layout: keep Signal Results Sheet and Technical Indicators; remove duplicate Live Signal Sheet.
+for (const id of ["qxSignalSettingsToggle", "qxSignalSettingsPanel",
   "qxSignalLedgerToggle", "qxSignalLedgerContent", "qxIndicatorsToggle", "qxIndicatorsContent"]) {
   assert.ok(html.includes(`id="${id}"`), `Missing compact layout control: ${id}`);
 }
-for (const id of ["qxChartSignalSheetContent", "qxSignalLedgerContent", "qxIndicatorsContent"]) {
+for (const id of ["qxSignalLedgerContent", "qxIndicatorsContent"]) {
   assert.ok(html.includes(`id="${id}" hidden`), `${id} should start collapsed to preserve chart space.`);
 }
 assert.ok(html.indexOf('id="qxSignalSettingsPanel"') < html.indexOf('id="qxChartHost"'),
   "Signal timeframe preferences must be housed above the chart behind its settings control.");
+assert.ok(html.includes('id="qxLiveSignalsPanel"'), "The upper Current Pool Live Signals box must remain.");
+assert.ok(!html.includes("LIVE SIGNAL SHEET") && !html.includes("qxChartSignalSheetContent"), "The duplicate Live Signal Sheet must be completely removed.");
+assert.ok(!html.includes("Cross-Market Signal Scan") && !html.includes("qxCrossMarketSignalScan") && !html.includes("p7RunScan"), "The obsolete Cross Market Signal Scan must be completely removed.");
 assert.ok(html.indexOf('id="qxLiveSignalsRows"') > html.indexOf('id="qxChartHost"') &&
   html.indexOf('id="qxLiveSignalsRows"') < html.indexOf('id="qxMarketSessions"'),
   "Live signal table must sit directly below the chart and above the Sri Lanka/New York session clocks.");
@@ -163,9 +166,10 @@ assert.ok(!app.includes("initLivePnlCalculator") && !app.includes("livePnlSymbol
   "The removed live PnL calculator must not keep background quote listeners.");
 assert.match(signalTool, /TP1 estimated reward/);
 assert.ok(html.includes('class="position-summary-table"'), "Position tool summary must render as a semantic HTML table.");
-for (const toggle of ["qxSignalSettingsToggle", "qxChartSignalSheetToggle", "qxSignalLedgerToggle", "qxIndicatorsToggle"]) {
+for (const toggle of ["qxSignalSettingsToggle", "qxSignalLedgerToggle", "qxIndicatorsToggle"]) {
   assert.ok(js.includes(`bindDisclosure("${toggle}"`), `Missing toggle handler for ${toggle}`);
 }
+assert.doesNotMatch(intel, /bindDisclosure\(/, "Disclosure handlers must have one owner to prevent double-toggle cancellation.");
 assert.match(intel, /qxLiveSignalsRows/, "Automatic chart analysis must render into the live signals table.");
 assert.doesNotMatch(intel, /qxStrategyList|qxRunBacktest|function backtest\(|function renderBacktest\(/, "Retired Live Strategy Engine UI/controller code must not remain.");
 assert.match(intel, /setInterval\(\(\)=>\{if\(isTradingViewActive\(\)\)analyze\(\);\},60000\)/,

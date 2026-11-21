@@ -8,6 +8,8 @@ import shutil
 import sys
 import tempfile
 import threading
+import time
+import urllib.error
 import urllib.request
 import zipfile
 from datetime import datetime, timezone
@@ -23,10 +25,15 @@ SOURCE_STATE_FILE = DATA / "quantnex_update_state.json"
 SUPERVISOR_CHECK_FILE = DATA / "updates" / "check_requested.json"
 SUPERVISOR_PROGRESS_FILE = DATA / "updates" / "check_in_progress.json"
 SUPERVISOR_ERROR_FILE = DATA / "updates" / "check_error.json"
+API_CACHE_FILE = DATA / "updates" / "github_api_cache.json"
+API_CACHE_TTL_SECONDS = 600
+API_CACHE_MAX_AGE_SECONDS = 86400
+API_CACHE_MAX_ENTRIES = 100
 REPO = "adeeshadasuniduwara/QUANTNEX"
 BRANCH = "main"
 HOST, PORT = "127.0.0.1", 5500
 LOCK = threading.Lock()
+API_CACHE_LOCK = threading.Lock()
 STATE = {"status": "idle", "message": ""}
 
 
@@ -82,7 +89,7 @@ def supervisor_update_status() -> dict:
             if syncing else
             "A source update is available. The QUANTNEX supervisor will install it and restart the services safely."
             if update_available else
-            "QUANTNEX source is up to date. Automatic checks continue every five minutes."
+            "QUANTNEX source is up to date. Automatic checks continue every thirty minutes."
         ),
     }
 
@@ -99,7 +106,66 @@ def queue_supervisor_check() -> None:
     temporary.replace(SUPERVISOR_CHECK_FILE)
 
 
-def github_json(url: str) -> dict:
+def _read_api_cache() -> dict:
+    try:
+        payload = json.loads(API_CACHE_FILE.read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_api_cache(cache: dict, url: str, payload: dict, fetched_at: float) -> None:
+    entry = {"fetched_at": fetched_at, "data": payload}
+    retained = {}
+    for key, value in cache.items():
+        if not isinstance(key, str) or not isinstance(value, dict):
+            continue
+        if not isinstance(value.get("data"), dict):
+            continue
+        try:
+            age = fetched_at - float(value.get("fetched_at", 0))
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if 0 <= age < API_CACHE_MAX_AGE_SECONDS:
+            retained[key] = value
+
+    retained[url] = entry
+    if len(retained) > API_CACHE_MAX_ENTRIES:
+        retained = dict(sorted(
+            retained.items(),
+            key=lambda item: float(item[1]["fetched_at"]),
+            reverse=True,
+        )[:API_CACHE_MAX_ENTRIES])
+
+    temporary = API_CACHE_FILE.with_name(
+        API_CACHE_FILE.name + f".{os.getpid()}.{threading.get_ident()}.tmp"
+    )
+    try:
+        API_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        temporary.write_text(json.dumps(retained), encoding="utf-8")
+        os.replace(temporary, API_CACHE_FILE)
+    except OSError:
+        # Cache persistence is optional; a live GitHub response remains usable.
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def _github_json_cached(url: str) -> dict:
+    cache = _read_api_cache()
+    cached = cache.get(url)
+    cached_data = cached.get("data") if isinstance(cached, dict) else None
+    now = time.time()
+
+    if isinstance(cached_data, dict):
+        try:
+            age = now - float(cached.get("fetched_at", 0))
+        except (TypeError, ValueError, OverflowError):
+            age = -1
+        if 0 <= age < API_CACHE_TTL_SECONDS:
+            return cached_data
+
     request = urllib.request.Request(
         url,
         headers={
@@ -108,11 +174,28 @@ def github_json(url: str) -> dict:
             "X-GitHub-Api-Version": "2022-11-28",
         },
     )
-    with urllib.request.urlopen(request, timeout=25) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(request, timeout=25) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        # Preserve the last known result while GitHub applies primary/secondary rate limits.
+        if exc.code in (403, 429) and isinstance(cached_data, dict):
+            return cached_data
+        raise
+
     if not isinstance(payload, dict):
         raise RuntimeError("GitHub returned an invalid update response.")
+
+    fetched_at = time.time()
+    cache[url] = {"fetched_at": fetched_at, "data": payload}
+    _write_api_cache(cache, url, payload, fetched_at)
     return payload
+
+
+def github_json(url: str) -> dict:
+    # The Web server handles concurrent browser status requests.
+    with API_CACHE_LOCK:
+        return _github_json_cached(url)
 
 
 def latest_commit() -> dict:

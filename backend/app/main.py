@@ -2073,6 +2073,24 @@ def list_personal_goals(user: User = Depends(local_workspace), db: Session = Dep
     return {"goals":output,"accounting_note":"Only user-confirmed manual real-account profit/savings contributions count. Bot paper trades, backtests and wallet estimates are excluded."}
 
 
+@app.delete("/api/v1/goals/{goal_id}")
+def delete_archived_personal_goal(goal_id: int, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
+    """Permanently delete an achieved goal and its private contribution/certificate history."""
+    goal = db.scalar(select(PersonalGoal).where(
+        PersonalGoal.id == goal_id, PersonalGoal.user_id == user.id
+    ))
+    if goal is None:
+        raise HTTPException(status_code=404, detail="Goal not found.")
+    if goal.achieved_at is None:
+        raise HTTPException(status_code=409, detail="Only archived, achieved goals can be deleted here.")
+    db.execute(delete(GoalContribution).where(
+        GoalContribution.goal_id == goal.id, GoalContribution.user_id == user.id
+    ))
+    db.delete(goal)
+    db.commit()
+    return {"deleted": True, "goal_id": goal_id}
+
+
 @app.post("/api/v1/goals")
 def create_personal_goal(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     title=str(payload.get("title","")).strip()

@@ -19,11 +19,11 @@ assert.doesNotMatch(html, /<\/?(?:code|pre)\b/i, "User-facing HTML must not expo
 assert.doesNotMatch(html, /id="refreshSystemHealth"/, "System health must not require a manual refresh button");
 
 assert.ok(app.includes("/api/v1/order-flow/spot/"), "Bookmap must consume the local validated Spot Order Flow API");
-assert.match(app, /function loadQuantnexViewOrderFlow\\(/, "QUANTNEX VIEW must have a dedicated Order Flow loader");
-assert.match(app, /async function loadMarketIntelligenceOrderBook\\(/, "Market Intelligence must keep its own separately named order-book loader");
-assert.doesNotMatch(app, /function loadBook\\(/, "Duplicate loadBook declarations must not shadow the QUANTNEX VIEW feed");
-assert.match(app, /loadQuantnexViewOrderFlow\\(\\);/, "Chart entry and symbol changes must start the dedicated Spot Order Flow feed");
-assert.match(app, /wait_seconds=0\\.75/, "The first Order Flow poll must allow the validated stream to warm up");
+assert.match(app, /function loadQuantnexViewOrderFlow\(/, "QUANTNEX VIEW must have a dedicated Order Flow loader");
+assert.match(app, /async function loadMarketIntelligenceOrderBook\(/, "Market Intelligence must keep its own separately named order-book loader");
+assert.doesNotMatch(app, /function loadBook\(/, "Duplicate loadBook declarations must not shadow the QUANTNEX VIEW feed");
+assert.match(app, /loadQuantnexViewOrderFlow\(\);/, "Chart entry and symbol changes must start the dedicated Spot Order Flow feed");
+assert.match(app, /wait_seconds=0\.75/, "The first Order Flow poll must allow the validated stream to warm up");
 assert.match(html, /id="qxOrderFlowBestBidSize"/, "Top-of-book best bid quantity must be visible");
 assert.match(html, /id="qxOrderFlowBestAskSize"/, "Top-of-book best ask quantity must be visible");
 assert.match(app, /sequence-validated Binance Spot L2/, "Bookmap must display sequence-validated backend depth");

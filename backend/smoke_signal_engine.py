@@ -78,7 +78,8 @@ def _format_order_flow_diagnostics(result: dict) -> str:
     fields = [f"status={status}", f"accepted={accepted}"]
     for key in (
         "feed_mode", "stream_ready", "trade_count", "delta", "delta_ratio",
-        "cvd_status", "trade_data_age_seconds", "session_delta_coverage_complete",
+        "cvd_value", "cvd_status", "session_delta", "trade_data_age_seconds",
+        "session_delta_coverage_complete",
     ):
         formatted = _format_diagnostic_value(flow.get(key))
         if formatted is not None:

@@ -1396,6 +1396,109 @@ async def intelligence_orderbook(symbol: str, user: User = Depends(local_workspa
     except httpx.HTTPError:
         raise HTTPException(status_code=502,detail="Order-book provider is temporarily unavailable.")
 
+@app.get("/api/v1/order-flow/spot/{symbol}")
+async def quantnex_view_spot_order_flow(symbol: str, wait_seconds: float = 0.0, user: User = Depends(local_workspace)):
+    """Read-only, sequence-validated Binance Spot L2 and observed AggTrade flow."""
+    from .signal_engine import MarketDataError, get_binance_spot_symbol_info, is_binance_spot_symbol
+    from .binance_order_flow_manager import BinanceSpotOrderFlowManagerError, get_binance_spot_order_flow_manager
+    from .order_flow import OrderFlowDataError, calculate_order_book_metrics
+
+    normalized = str(symbol or "").strip().upper()
+    if not math.isfinite(wait_seconds) or not 0.0 <= wait_seconds <= 1.5:
+        raise HTTPException(status_code=422, detail="wait_seconds must be between 0 and 1.5.")
+    try:
+        if not await is_binance_spot_symbol(normalized):
+            raise HTTPException(status_code=422, detail="Symbol is not an active, eligible Binance Spot pair.")
+        info = await get_binance_spot_symbol_info(normalized)
+        filters = info.get("filters") if isinstance(info, dict) else None
+        price_filter = filters.get("PRICE_FILTER") if isinstance(filters, dict) else None
+        tick_size = price_filter.get("tickSize") if isinstance(price_filter, dict) else None
+        if not tick_size:
+            raise HTTPException(status_code=422, detail="Binance Spot symbol metadata has no valid PRICE_FILTER tickSize.")
+        snapshot = await get_binance_spot_order_flow_manager().get_snapshot(
+            normalized, str(tick_size), wait_seconds=wait_seconds,
+            max_trade_age_seconds=15.0, max_depth_age_seconds=5.0,
+        )
+        depth = snapshot.get("depth_book") if isinstance(snapshot, dict) else None
+        depth_age = snapshot.get("depth_age_seconds") if isinstance(snapshot, dict) else None
+        depth_ready = bool(
+            isinstance(depth, dict) and depth.get("valid") is True
+            and depth.get("sequence_validated") is True
+            and isinstance(depth_age, (int, float)) and not isinstance(depth_age, bool)
+            and math.isfinite(float(depth_age)) and 0.0 <= float(depth_age) <= 5.0
+            and isinstance(depth.get("bids"), list) and depth["bids"]
+            and isinstance(depth.get("asks"), list) and depth["asks"]
+        )
+        liquidity = None
+        if depth_ready:
+            try:
+                metrics = calculate_order_book_metrics(depth["bids"], depth["asks"], depth_levels=10)
+            except OrderFlowDataError:
+                depth_ready = False
+            else:
+                liquidity = {
+                    **metrics, "bids": depth["bids"][:100], "asks": depth["asks"][:100],
+                    "depth_update_id": depth.get("last_update_id"),
+                    "depth_age_seconds": round(float(depth_age), 3),
+                    "observed_at": snapshot.get("last_message_at"), "sequence_validated": True,
+                }
+        raw_flow = snapshot.get("order_flow") if isinstance(snapshot, dict) else None
+        trade_ready = bool(
+            isinstance(raw_flow, dict)
+            and isinstance(raw_flow.get("trade_data_age_seconds"), (int, float))
+            and not isinstance(raw_flow.get("trade_data_age_seconds"), bool)
+            and math.isfinite(float(raw_flow["trade_data_age_seconds"]))
+            and 0.0 <= float(raw_flow["trade_data_age_seconds"]) <= 15.0
+        )
+        trade_flow = None
+        if trade_ready:
+            trade_flow = {
+                key: raw_flow.get(key) for key in (
+                    "trade_count", "buy_volume", "sell_volume", "delta", "delta_ratio",
+                    "window_cumulative_delta", "window_delta_scope", "cvd_value",
+                    "cvd_status", "cvd_scope", "quote_delta", "session_timezone",
+                    "session_date_utc", "session_delta", "session_delta_sample",
+                    "session_delta_coverage_complete", "session_delta_scope",
+                    "session_start_trade_id", "trade_data_age_seconds", "last_trade_at",
+                    "footprint", "volume_profile", "data_provenance", "quality",
+                ) if key in raw_flow
+            }
+            trade_flow["footprint"] = trade_flow.get("footprint", [])[:40] if isinstance(trade_flow.get("footprint"), list) else []
+        trade_state = snapshot.get("trade_state") if isinstance(snapshot, dict) else {}
+        manager = snapshot.get("manager") if isinstance(snapshot, dict) else {}
+        reason = None
+        if not depth_ready:
+            reason = "DEPTH_NOT_SEQUENCE_VALIDATED_OR_STALE"
+        elif not trade_ready:
+            reason = str((trade_state or {}).get("cvd_status") or snapshot.get("status") or "TRADE_FLOW_WARMING_UP")
+        return {
+            "symbol": normalized, "market_type": "BINANCE_SPOT", "quote_asset": info.get("quote_asset"),
+            "status": snapshot.get("status", "NOT_READY"),
+            "signal_ready": depth_ready and trade_ready, "depth_ready": depth_ready,
+            "trade_flow_ready": trade_ready, "reason": reason, "liquidity": liquidity,
+            "trade_flow": trade_flow,
+            "freshness": {
+                "trade_age_seconds": raw_flow.get("trade_data_age_seconds") if isinstance(raw_flow, dict) else None,
+                "depth_age_seconds": depth_age, "max_trade_age_seconds": 15.0,
+                "max_depth_age_seconds": 5.0, "last_message_at": snapshot.get("last_message_at"),
+            },
+            "data_provenance": snapshot.get("data_provenance") or {},
+            "stream": {
+                "feed_mode": "PUBLIC_WEBSOCKET_STREAM", "depth_sequence_validated": depth_ready,
+                "active_streams": manager.get("active_streams") if isinstance(manager, dict) else None,
+                "max_streams": manager.get("max_streams") if isinstance(manager, dict) else None,
+            },
+        }
+    except HTTPException:
+        raise
+    except MarketDataError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (BinanceSpotOrderFlowManagerError, OrderFlowDataError, ValueError, TypeError, KeyError, OverflowError) as exc:
+        raise HTTPException(status_code=503, detail="Validated Binance Spot order-flow snapshot is temporarily unavailable.") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="Binance public order-flow feed is temporarily unavailable.") from exc
+
+
 @app.post("/api/v1/intelligence/signals/scan")
 async def intelligence_signal_scan(payload: dict, user: User = Depends(local_workspace), db: Session = Depends(get_db)):
     from .phase07_engine import scan_market_signal, market_info, IntelligenceDataError

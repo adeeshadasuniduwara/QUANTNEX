@@ -44,6 +44,26 @@ def get_openai_config(db: Session, user_id: int) -> tuple[str, str]:
     return key, model
 
 
+def openai_http_error_message(exc: httpx.HTTPStatusError) -> str:
+    """Map provider HTTP failures to actionable, credential-safe user messages."""
+    status = exc.response.status_code
+    if status == 401:
+        return "OpenAI rejected the saved API key. Reconnect the key in Connections & Integrations."
+    if status == 403:
+        return "The OpenAI project does not have permission to use this model or endpoint. Check project access."
+    if status == 404:
+        return "The selected OpenAI model was not found or is unavailable to this API project."
+    if status == 429:
+        return "OpenAI rate limit or project quota was reached. Check usage limits and billing, then retry later."
+    if status == 400:
+        return "OpenAI rejected the request. Check the selected model and request settings."
+    if status in {408, 504}:
+        return "OpenAI took too long to respond. Retry with a shorter request."
+    if status >= 500:
+        return "OpenAI is temporarily experiencing a service problem. Retry shortly."
+    return "OpenAI request failed with HTTP " + str(status) + ". Check model access and project settings."
+
+
 def extract_response_text(data: dict[str, Any]) -> str:
     """Extract user-visible text across Responses API output item variants."""
     if not isinstance(data, dict):

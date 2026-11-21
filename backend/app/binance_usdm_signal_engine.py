@@ -63,7 +63,7 @@ async def analyze_usdm_futures_signal(
                     or min(op, high, low, close) <= 0 or volume < 0
                     or high < max(op, close, low) or low > min(op, close, high)):
                 raise ValueError
-            if previous is not None and stamp <= previous:
+            if previous is not None and stamp - previous != __import__("datetime").timedelta(seconds=INTERVAL_SECONDS[interval]):
                 raise ValueError
         except (KeyError, TypeError, ValueError, OverflowError) as exc:
             raise BinanceUsdMSignalError("Futures candles failed OHLC, timestamp or ordering validation.") from exc
@@ -71,7 +71,9 @@ async def analyze_usdm_futures_signal(
         parsed_times.append(stamp)
 
     now = datetime.now(timezone.utc)
-    age = max(0.0, (now - parsed_times[-1]).total_seconds())
+    if parsed_times[-1] > now + __import__("datetime").timedelta(seconds=2):
+        raise BinanceUsdMSignalError("Latest Futures candle timestamp is in the future.")
+    age = (now - parsed_times[-1]).total_seconds()
     stale_after = INTERVAL_SECONDS[interval] * 2 + 60
     if age > stale_after:
         raise BinanceUsdMSignalError(

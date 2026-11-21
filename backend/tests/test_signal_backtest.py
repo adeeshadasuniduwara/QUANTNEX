@@ -634,22 +634,21 @@ def _next_replay_bar(previous: dict, at: datetime, side: str) -> dict:
     }
 
 
-@pytest.mark.parametrize(("side", "direction"), [("BUY", "BUY"), ("SELL", "SELL")])
-def test_historical_order_flow_replay_generates_real_long_and_short_signals(side, direction):
-    """Exercise the actual signal engine through replay with a prior, fresh L2/CVD snapshot."""
+def _run_historical_order_flow_replay_fixture(direction: str, observation: dict) -> dict:
+    """Run a deterministic qualifying setup through the real replay + signal engine."""
     from app.signal_backtest import _simulate_slice
 
     as_of = datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)
     minute = _synthetic_replay_setup(direction, "1min", as_of)
     for offset in range(6):
         minute.append(_next_replay_bar(
-            minute[-1], as_of + timedelta(minutes=offset), side
+            minute[-1], as_of + timedelta(minutes=offset), direction
         ))
 
     primary = _synthetic_replay_setup(direction, "5min", as_of)
-    primary.append(_next_replay_bar(primary[-1], as_of, side))
+    primary.append(_next_replay_bar(primary[-1], as_of, direction))
     primary.append(_next_replay_bar(
-        primary[-1], as_of + timedelta(minutes=5), side
+        primary[-1], as_of + timedelta(minutes=5), direction
     ))
 
     candles_by_tf = {
@@ -659,12 +658,6 @@ def test_historical_order_flow_replay_generates_real_long_and_short_signals(side
         "30": _synthetic_replay_setup(direction, "30min", as_of),
         "60": _synthetic_replay_setup(direction, "1h", as_of),
     }
-    observation = _order_flow_observation(
-        as_of - timedelta(seconds=1.5),
-        trade_at=as_of - timedelta(seconds=2.5),
-        depth_at=as_of - timedelta(seconds=2.0),
-        side=side,
-    )
     symbol_info = {
         "quote_asset": "USDT",
         "filters": {
@@ -679,7 +672,7 @@ def test_historical_order_flow_replay_generates_real_long_and_short_signals(side
         "min_score": 8,
     }
 
-    result = asyncio.run(_simulate_slice(
+    return asyncio.run(_simulate_slice(
         "BTCUSDT",
         candles_by_tf,
         symbol_info,
@@ -691,6 +684,19 @@ def test_historical_order_flow_replay_generates_real_long_and_short_signals(side
         order_flow_observations=[observation],
     ))
 
+
+@pytest.mark.parametrize(("side", "direction"), [("BUY", "BUY"), ("SELL", "SELL")])
+def test_historical_order_flow_replay_generates_real_long_and_short_signals(side, direction):
+    """Exercise the actual signal engine with prior, fresh, directionally aligned L2/CVD."""
+    as_of = datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)
+    observation = _order_flow_observation(
+        as_of - timedelta(seconds=1.5),
+        trade_at=as_of - timedelta(seconds=2.5),
+        depth_at=as_of - timedelta(seconds=2.0),
+        side=side,
+    )
+    result = _run_historical_order_flow_replay_fixture(direction, observation)
+
     assert result["order_flow_decision_points"] == 1, result
     assert result["order_flow_snapshot_matches"] == 1, result
     assert result["order_flow_confirmed_candidates"] == 1, result
@@ -700,6 +706,70 @@ def test_historical_order_flow_replay_generates_real_long_and_short_signals(side
     assert result["market_entries"] == 1
     assert result["trades"][0]["side"] == side
     assert result["trades"][0]["entry_type"] == "MARKET"
+
+
+@pytest.mark.parametrize(("direction", "opposite_side"), [("BUY", "SELL"), ("SELL", "BUY")])
+def test_historical_order_flow_replay_rejects_directionally_contradictory_delta_and_depth(
+    direction, opposite_side
+):
+    """A valid candle setup must remain WAIT when observed trade/book pressure opposes it."""
+    as_of = datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)
+    observation = _order_flow_observation(
+        as_of - timedelta(seconds=1.5),
+        trade_at=as_of - timedelta(seconds=2.5),
+        depth_at=as_of - timedelta(seconds=2.0),
+        side=opposite_side,
+    )
+    result = _run_historical_order_flow_replay_fixture(direction, observation)
+
+    assert result["order_flow_decision_points"] == 1, result
+    assert result["order_flow_snapshot_matches"] == 1, result
+    assert result["order_flow_confirmed_candidates"] == 0, result
+    assert result["order_flow_rejected_candidates"] == 1, result
+    assert result["signal_count"] == 0, result
+    assert result["trade_count"] == 0
+
+
+@pytest.mark.parametrize("direction", ["BUY", "SELL"])
+def test_historical_order_flow_replay_rejects_stale_depth_for_valid_candle_setup(direction):
+    """A stale L2 source must veto an otherwise qualifying replay setup in either direction."""
+    as_of = datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)
+    observation = _order_flow_observation(
+        as_of - timedelta(seconds=1.5),
+        trade_at=as_of - timedelta(seconds=2.5),
+        depth_at=as_of - timedelta(seconds=8.0),
+        side=direction,
+    )
+    result = _run_historical_order_flow_replay_fixture(direction, observation)
+
+    assert result["order_flow_decision_points"] == 1, result
+    assert result["order_flow_snapshot_matches"] == 0, result
+    assert result["order_flow_stale_snapshots"] == 1, result
+    assert result["order_flow_confirmed_candidates"] == 0, result
+    assert result["order_flow_rejected_candidates"] == 1, result
+    assert result["signal_count"] == 0, result
+    assert result["trade_count"] == 0
+
+
+def test_historical_order_flow_replay_rejects_gap_for_valid_candle_setup():
+    """A trade-ID gap must invalidate the stored snapshot before signal evaluation."""
+    as_of = datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)
+    observation = _order_flow_observation(
+        as_of - timedelta(seconds=1.5),
+        trade_at=as_of - timedelta(seconds=2.5),
+        depth_at=as_of - timedelta(seconds=2.0),
+        side="BUY",
+    )
+    observation["trade_state"]["gap_detected"] = True
+    result = _run_historical_order_flow_replay_fixture("BUY", observation)
+
+    assert result["order_flow_decision_points"] == 1, result
+    assert result["order_flow_snapshot_matches"] == 0, result
+    assert result["order_flow_invalid_snapshots"] == 1, result
+    assert result["order_flow_confirmed_candidates"] == 0, result
+    assert result["order_flow_rejected_candidates"] == 1, result
+    assert result["signal_count"] == 0, result
+    assert result["trade_count"] == 0
 
 
 def test_replay_execution_quotes_are_tick_aligned_uncrossed_and_cost_conservative():

@@ -296,7 +296,7 @@ function renderAnalysis(data){analysis=data;const f=data.features||{},st=f.struc
 window.quantnexViewSetAnalysis=renderAnalysis;
 window.quantnexViewSetTradePlan=function(plan){tradePlan=plan||null;draw();};
 
-async function refresh(){if(!isChartViewActive())return;const pick=selected();loadDrawings();candles=[];candleRevision++;analysis=null;tradePlan=null;view.start=0;view.count=120;view.priceZoom=1;view.priceShift=0;reconnectAttempts=0;stopFeed();feedState=pick.symbol==="XAUUSD"?"polling":"connecting";setStatus("LOADING "+pick.symbol+" · "+pick.interval.toUpperCase());await loadHistory();if(pick.symbol!=="XAUUSD")connectLive();else{setStatus(candles.length?"GOLD FEED · MATCHING HISTORY PROVIDER":"GOLD HISTORY UNAVAILABLE · CHECK FEED SETTINGS","error");await loadGoldQuote();}}
+async function refresh(){if(!isChartViewActive())return;const pick=selected(),ticker=$("#qxChartTicker");if(ticker)ticker.textContent=chartTicker(pick.symbol,pick.marketType);loadDrawings();candles=[];candleRevision++;analysis=null;tradePlan=null;view.start=0;view.count=120;view.priceZoom=1;view.priceShift=0;reconnectAttempts=0;stopFeed();feedState=pick.symbol==="XAUUSD"?"polling":"connecting";setStatus("LOADING "+pick.symbol+" · "+pick.interval.toUpperCase());await loadHistory();if(pick.symbol!=="XAUUSD")connectLive();else{setStatus(candles.length?"GOLD FEED · MATCHING HISTORY PROVIDER":"GOLD HISTORY UNAVAILABLE · CHECK FEED SETTINGS","error");await loadGoldQuote();}}
 function rebuild(){draw();}
 $("qxMarketType")?.addEventListener("change",async()=>{await loadChartMarkets(false);saveChartSelection();refresh();});
 $("qxSymbol")?.addEventListener("change",()=>{saveChartSelection();refresh();});

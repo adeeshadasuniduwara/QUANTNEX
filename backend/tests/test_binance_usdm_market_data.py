@@ -4,6 +4,8 @@ import asyncio
 import pytest
 
 from app import binance_usdm_market_data as futures
+from fastapi.testclient import TestClient
+from app.main import app
 
 
 def test_usdm_universe_filters_to_trading_perpetuals(monkeypatch):
@@ -59,3 +61,42 @@ def test_usdm_rejects_unsupported_interval_and_limit():
         asyncio.run(futures.fetch_binance_usdm_candles("BTCUSDT", "2m", 210))
     with pytest.raises(futures.BinanceUsdMDataError, match="210"):
         asyncio.run(futures.fetch_binance_usdm_candles("BTCUSDT", "1m", 10))
+
+
+def test_usdm_chart_markets_route_returns_dynamic_perpetual_universe(monkeypatch):
+    async def fake_symbols():
+        return ["BTCUSDT", "ETHUSDT"]
+    monkeypatch.setattr(futures, "get_binance_usdm_symbols", fake_symbols)
+    response = TestClient(app).get("/api/v1/charts/markets?market_type=BINANCE_USDM_FUTURES")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["market_type"] == "BINANCE_USDM_FUTURES"
+    assert body["symbols"] == ["BTCUSDT", "ETHUSDT"]
+    assert body["symbol_suffix"] == ".P"
+
+
+def test_usdm_chart_candles_route_is_read_only_and_market_scoped(monkeypatch):
+    now = datetime.now(timezone.utc)
+    rows = [{"time": (now-timedelta(minutes=5)).isoformat(), "open": 100.0,
+             "high": 102.0, "low": 99.0, "close": 101.0, "volume": 12.0}]
+    async def fake_symbols():
+        return ["BTCUSDT"]
+    async def fake_candles(symbol, interval, limit):
+        assert (symbol, interval, limit) == ("BTCUSDT", "15m", 500)
+        return rows
+    monkeypatch.setattr(futures, "get_binance_usdm_symbols", fake_symbols)
+    monkeypatch.setattr(futures, "fetch_binance_usdm_candles", fake_candles)
+    response = TestClient(app).get("/api/v1/charts/futures/candles?symbol=BTCUSDT&interval=15m&limit=500")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["market_type"] == "BINANCE_USDM_FUTURES"
+    assert body["provider"] == "Binance USDⓈ-M Futures"
+    assert body["candles"] == rows
+
+
+def test_usdm_chart_candles_route_rejects_unknown_contract(monkeypatch):
+    async def fake_symbols():
+        return ["BTCUSDT"]
+    monkeypatch.setattr(futures, "get_binance_usdm_symbols", fake_symbols)
+    response = TestClient(app).get("/api/v1/charts/futures/candles?symbol=UNKNOWNUSDT")
+    assert response.status_code == 422

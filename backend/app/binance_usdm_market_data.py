@@ -10,6 +10,7 @@ import math
 import time
 from weakref import WeakKeyDictionary
 from datetime import datetime, timezone
+from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
@@ -27,6 +28,7 @@ _CACHE_TTL = 300.0
 _LOCKS: WeakKeyDictionary = WeakKeyDictionary()
 
 
+@asynccontextmanager
 async def _cache_guard():
     loop = asyncio.get_running_loop()
     lock = _LOCKS.get(loop)

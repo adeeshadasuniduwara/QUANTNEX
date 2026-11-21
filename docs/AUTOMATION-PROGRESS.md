@@ -1019,3 +1019,23 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 - Follow-up safety hardening: clear the previous symbol's heatmap, depth tables and metrics before opening a new stream or returning early for Gold/non-USDT instruments, preventing stale BTC/ETH/SOL depth from remaining visible after a chart-market switch.
 
 - CI found the existing app.js cache-key contract in `live-terminal.test.cjs`; updated it to the new app asset version. Added a regression assertion and code guard ensuring a BTC/ETH/SOL heatmap, ladder and metrics are cleared before switching to Gold/non-USDT instruments, so old crypto liquidity is never left on screen as if it belonged to the new market.
+
+
+### Final merge and post-merge verification — PR #248
+
+- Compare review confirmed the feature branch was 4 commits ahead / 0 behind latest main, mergeable, with 8 intended files only and no private-key/API-secret pattern in the diff.
+- PR [#248](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/248) was squash-merged as `177ddecc0d5104b2bfd324fa03b607271f8d70d5` on 2026-11-21.
+- PR-head checks passed: Web CI, Backend/Web CI Web check, Backend tests on Python 3.12 (487 passed) and Python 3.14 (487 passed).
+- Post-merge checks passed on the exact merge commit: Web CI and Backend/Web CI Web check; Python 3.12: 487 passed; Python 3.14: 487 passed.
+- The separate Telegram `announce` workflow failed independently; backend tests and web checks passed. This does not verify Telegram update delivery.
+- Verified `main` ref points to merge commit `177ddecc0d5104b2bfd324fa03b607271f8d70d5`.
+- Confirmed source supervisor uses `UPDATE_INTERVAL_SECONDS = 300` (5 minutes), checks for automatic source updates, installs the pinned source snapshot and restarts services with health-check rollback. The user does not need to click the Web install button for supervisor-managed source updates. The local supervisor must be running; if QUANTNEX is closed, it will update when launched.
+- Local browser rendering/live Binance stream has not been verified on the user's machine.
+
+### Remaining limitations / next phase
+
+1. The browser Bookmap remains Binance Spot `depth20@100ms` partial snapshots only; it is not a sequence-validated full depth-diff order book.
+2. Trade-side Delta/CVD is deliberately marked unavailable in the browser until validated backend observations are exposed through a read-only endpoint with provenance, freshness and gap state.
+3. USDⓈ-M/COIN-M Futures, Gold and Forex depth are not claimed as supported.
+4. Next UI/order-flow phase: expose validated Spot AggTrade-derived delta/CVD and session coverage to QUANTNEX VIEW; keep partial-depth and executed-trade metrics distinct.
+5. Independently continue the primary signal-engine milestone: dynamic Binance symbol universe, deterministic long/short replay and chronological OOS validation.

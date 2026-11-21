@@ -102,6 +102,8 @@ def queue_supervisor_check() -> None:
 def github_json(url: str) -> dict:
     # Shared persistent ETag cache prevents repeated update-status requests from
     # exhausting the unauthenticated GitHub API quota.
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
     from github_api_cache import github_json_cached
     return github_json_cached(
         url, DATA / "updates" / "github-api-cache.json", "QUANTNEX-Web-Updater",

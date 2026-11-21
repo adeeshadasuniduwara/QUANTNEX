@@ -691,12 +691,12 @@ def test_historical_order_flow_replay_generates_real_long_and_short_signals(side
         order_flow_observations=[observation],
     ))
 
+    assert result["order_flow_decision_points"] == 1, result
+    assert result["order_flow_snapshot_matches"] == 1, result
+    assert result["order_flow_confirmed_candidates"] == 1, result
+    assert result["order_flow_rejected_candidates"] == 0, result
     assert result["signal_count"] == 1, result
     assert result["trade_count"] == 1
     assert result["market_entries"] == 1
-    assert result["order_flow_decision_points"] == 1
-    assert result["order_flow_snapshot_matches"] == 1
-    assert result["order_flow_confirmed_candidates"] == 1
-    assert result["order_flow_rejected_candidates"] == 0
     assert result["trades"][0]["side"] == side
     assert result["trades"][0]["entry_type"] == "MARKET"

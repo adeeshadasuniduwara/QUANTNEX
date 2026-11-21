@@ -29,7 +29,7 @@ def test_rotating_sample_handles_small_universe_and_invalid_size():
         rotating_symbol_sample(["BTCUSDT"], 0, day_index=0)
 
 
-def test_smoke_run_scans_dynamic_sample_without_hardcoded_symbols(monkeypatch):
+def test_smoke_run_scans_dynamic_sample_without_hardcoded_symbols(monkeypatch, capsys):
     import smoke_signal_engine as smoke
 
     universe = [f"COIN{index:03d}USDT" for index in range(12)]
@@ -44,14 +44,37 @@ def test_smoke_run_scans_dynamic_sample_without_hardcoded_symbols(monkeypatch):
             "provider": "Mocked Binance Spot",
             "signal": None,
             "confluence_score": 0,
+            "order_flow": {
+                "status": "CONTRADICTED",
+                "accepted": False,
+                "feed_mode": "PUBLIC_WEBSOCKET_STREAM",
+                "stream_ready": True,
+                "trade_count": 18,
+                "delta": -3.5,
+                "delta_ratio": -0.25,
+                "cvd_value": 24.0,
+                "cvd_status": "COMPLETE_SINCE_STATE_SEED",
+                "session_delta": 11.5,
+                "trade_data_age_seconds": 0.7,
+                "session_delta_coverage_complete": False,
+                "order_book": {"spread_bps": 2.1, "depth_imbalance": -0.14},
+                "data_sources": {"stream": "wss://must-not-be-dumped.example"},
+            },
         }
 
     monkeypatch.setattr(smoke, "get_binance_spot_symbols", fake_universe)
     monkeypatch.setattr(smoke, "build_signal", fake_build)
     result = asyncio.run(_run(None, 8, universe_sample_size=4, sample_day=0))
 
+    output = capsys.readouterr().out
     assert result == 0
     assert calls == rotating_symbol_sample(universe, 4, day_index=0)
+    assert "Order Flow: status=CONTRADICTED | accepted=no" in output
+    assert "delta=-3.5" in output
+    assert "cvd_value=24" in output
+    assert "session_delta=11.5" in output
+    assert "spread_bps=2.1" in output
+    assert "wss://" not in output
 
 
 def test_smoke_run_skips_new_pairs_without_enough_closed_history(monkeypatch, capsys):
@@ -73,3 +96,21 @@ def test_smoke_run_skips_new_pairs_without_enough_closed_history(monkeypatch, ca
     assert result == 0
     assert "[SKIP] NEWUSDT" in output
     assert "1 insufficient-history skip(s)" in output
+
+
+def test_order_flow_diagnostic_formatter_handles_missing_and_non_finite_values():
+    from smoke_signal_engine import _format_order_flow_diagnostics
+
+    assert _format_order_flow_diagnostics({}) == "  Order Flow: UNAVAILABLE"
+    line = _format_order_flow_diagnostics({
+        "order_flow": {
+            "status": "NOT_EVALUATED_NO_DIRECTIONAL_SETUP",
+            "accepted": None,
+            "delta": float("nan"),
+            "order_book": {"spread_bps": float("inf")},
+        }
+    })
+    assert "status=NOT_EVALUATED_NO_DIRECTIONAL_SETUP" in line
+    assert "accepted=n/a" in line
+    assert "delta=" not in line
+    assert "spread_bps=" not in line

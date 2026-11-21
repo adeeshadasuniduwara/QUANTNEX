@@ -507,7 +507,7 @@ The prior replay tests verified causal snapshot selection, freshness recomputati
 - No live scoring thresholds, entry rules, freshness limits, data provenance rules or order execution permissions are changed.
 
 
-## Phase C12 — end-to-end fail-closed replay negatives (PR pending)
+## Phase C12 — end-to-end fail-closed replay negatives (merged PR #245)
 
 ### Objective
 
@@ -537,7 +537,35 @@ C11 proves that a valid synthetic long and short setup can pass through the real
 
 ### Next steps
 
-1. Pass the positive and negative replay fixtures on the PR head and verify Backend CI plus Backend/Web CI on Python 3.12 and 3.14.
+1. Improve the read-only live smoke output so WAIT results expose Order Flow readiness and confirmation diagnostics.
 2. Run the backtest endpoint locally while a managed Spot stream is active and inspect actual snapshot count, train/OOS coverage, stale/missing/invalid counts and Order Flow candidate confirmations/rejections.
 3. Diagnose any sparse local capture through stream-cap, readiness, boundary alignment and recorder diagnostics; do not relax freshness or sequence requirements.
 4. Build an evidence-backed chronological comparison only after enough real aligned observations exist.
+
+
+## Phase C13 — read-only live smoke Order Flow diagnostics (PR pending)
+
+### Objective
+
+The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, provider and legacy confluence count. It did not print the already-available compact Order Flow decision payload, so a healthy WAIT could not be distinguished from a stream-readiness failure or an Order Flow veto.
+
+### Changes
+
+- Print a compact Order Flow diagnostic for every successful symbol scan, including WAIT results.
+- Include status/accepted, feed mode, stream readiness, trade count, aggressor delta/ratio, CVD value/status, UTC session delta/completeness, trade age, spread and depth imbalance when present.
+- Sanitize and bound scalar strings; omit non-finite numeric values and never dump raw source URLs, full footprints or complete order-book levels.
+- Add deterministic tests for contradictory Order Flow output and missing/non-finite diagnostics.
+
+### Evidence boundary
+
+- This is observability only. It does not change the live signal gate, score, symbol universe, sample size, freshness limits or execution logic.
+- No directional setup means Order Flow can legitimately be NOT_EVALUATED_NO_DIRECTIONAL_SETUP; that is distinct from a stream-not-ready or contradictory-data veto.
+- The smoke runner still scans a rotating subset of the dynamic Spot universe and does not access the user's local database.
+- No live signal or profitability improvement is claimed.
+
+### Next steps
+
+1. Pass all formatter/smoke tests and Backend CI plus Backend/Web CI on Python 3.12 and 3.14.
+2. Inspect the next live smoke output for per-symbol Order Flow statuses; diagnose any NOT_READY/STALE/CONTRADICTED states separately from no-setup WAIT.
+3. Verify local recorder observation counts through the backtest endpoint on a running local app with an active managed stream.
+4. Build performance comparisons only from representative chronological real Order Flow observations.

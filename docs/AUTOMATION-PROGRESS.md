@@ -902,7 +902,7 @@ Branch: `test/orderflow-replay-long-short-fixtures`.
 - Latest available scheduled Live Crypto Signal Smoke was [run #44703341723](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/44703341723), created 2026-11-20 08:32:20 UTC. It discovered 1,375 eligible Spot pairs and scanned a rotating 20-pair slice. All 20 scans completed with Binance Spot data, zero insufficient-history skips and zero provider errors; all 20 returned WAIT. The highest displayed confluence values were 7/10 and 8/10, but the runner did not expose per-candidate Order Flow rejection details. This is a healthy provider smoke run, not evidence of a live setup or strategy profitability.
 - Latest main CI for PR #244 merge commit: Backend CI and Backend/Web CI passed; the separate Telegram Update Notifications workflow failed in its announce job because of the configured chat target.
 
-### Phase C12 — end-to-end negative replay proof
+### Phase C12 — end-to-end negative replay proof (merged PR #245)
 
 - Refactor the deterministic replay fixture into one shared runner so positive and negative scenarios use the same 1m/5m/15m/30m/1h candles, symbol filters, assumed execution costs and actual _simulate_slice + build_signal path.
 - Preserve the two positive acceptance cases: aligned BUY and SELL AggTrade-derived delta plus sequence-validated L2 depth must each generate exactly one synthetic replay signal and one modeled paper MARKET fill.
@@ -925,11 +925,50 @@ Branch: `test/orderflow-replay-long-short-fixtures`.
 
 ### Verification
 
-- Pending PR checks and final diff review. No live order placement or private API credentials are introduced.
+- PR [#245](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/245) merged to main as 43029441a672929c104466452ff32dfe6c6231e5. Backend CI passed; Backend/Web CI passed with 486 tests on Python 3.12 and 486 on Python 3.14, plus Web CI. Post-merge checks passed on the exact merge commit. The separate Telegram announce job failed because of the configured chat target. No live order placement or private API credentials were introduced.
 
-### Exact next steps
+### Exact next steps (updated after merge)
 
-1. Verify all C12 positive and negative replay fixtures on the PR head, then run Backend CI and Backend/Web CI on both Python 3.12 and 3.14.
+1. Improve the read-only smoke output so WAIT results expose the Order Flow gate status and key freshness/delta/depth metrics.
 2. Inspect actual local order_flow_observations coverage via the backtest endpoint while one of the managed Spot streams is active; record the returned count and train/OOS coverage counters without inferring local data from GitHub smoke logs.
 3. If local coverage is sparse, diagnose the eight-stream cap, capture-window timing, stream readiness and recorder errors without relaxing 15-second trade / 5-second depth freshness limits.
 4. Collect real chronological order-flow sessions before reporting win rate, expectancy, profit factor, drawdown or any incremental edge.
+
+
+## 2026-11-21 — Automation run 6 continued: live smoke Order Flow diagnostics (PR pending)
+
+### Purpose
+
+The last scheduled live smoke run successfully scanned 20 dynamically selected Binance Spot pairs, but its output printed only WAIT and the legacy confluence count. That did not show whether a WAIT came from no directional candle setup, an unready sequence-validated stream, contradictory aggressor delta, stale depth or another Order Flow gate outcome. The signal API already returns a compact Order Flow summary, so the smoke runner can expose the decision without changing the strategy.
+
+### Changes
+
+- Add a safe scalar formatter and a compact Order Flow diagnostic line for every successful symbol scan, whether the result is WAIT or SIGNAL.
+- Show status, accepted/not-applicable, feed mode, stream readiness, trade count, aggressor delta/ratio, CVD value/status, UTC session delta/completeness, trade age, spread and L2 depth imbalance when present.
+- Do not print raw WebSocket URLs, raw footprint arrays, complete book levels, or full source payloads.
+- Add tests proving contradictory status/metrics appear in output and non-finite/missing values are omitted.
+
+### Evidence boundary
+
+- This improves diagnosis only. It does not change live signal eligibility, scoring, freshness thresholds, symbol coverage, or order execution.
+- A WAIT with status NOT_EVALUATED_NO_DIRECTIONAL_SETUP means no directional candle candidate reached the Order Flow gate; it is not a stream failure.
+- A WAIT with accepted=false and a stream/decision status identifies an Order Flow veto or data-readiness problem. The smoke runner still does not persist the user's local database observations.
+- No live signal or performance improvement is claimed.
+
+### Changed files
+
+- backend/smoke_signal_engine.py
+- backend/tests/test_smoke_signal_engine.py
+- docs/AUTOMATION-PROGRESS.md
+- docs/ORDER-FLOW-ROADMAP.md
+
+### Verification
+
+- Pending PR checks and diff review.
+
+### Exact next steps
+
+1. Verify output formatting tests and all Backend CI / Backend-Web CI checks on Python 3.12 and 3.14.
+2. Trigger or inspect the next scheduled read-only smoke run and use the new diagnostics to distinguish no-setup WAIT from Order Flow readiness/confirmation vetoes.
+3. Use local backtest API diagnostics to establish actual recorder row coverage and keep the candle-only baseline separate from Order Flow replay.
+4. Only after representative real chronological observations exist, calculate comparative OOS expectancy, win rate, profit factor and drawdown.

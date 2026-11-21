@@ -161,10 +161,10 @@ assert.ok(html.includes('class="position-summary-table"') && html.includes('tbod
   "Position tool must expose its upgraded calculation table.");
 assert.ok(!app.includes("initLivePnlCalculator") && !app.includes("livePnlSymbol"),
   "The removed live PnL calculator must not keep background quote listeners.");
-assert.match(signalTool, /TP1 potential profit/);
+assert.match(signalTool, /estimated reward/);
 assert.ok(html.includes('class="position-summary-table"'), "Position tool summary must render as a semantic HTML table.");
 for (const toggle of ["qxSignalSettingsToggle", "qxChartSignalSheetToggle", "qxSignalLedgerToggle", "qxIndicatorsToggle"]) {
-  assert.ok(js.includes(`bindPanelToggle("${toggle}"`), `Missing toggle handler for ${toggle}`);
+  assert.ok(js.includes(`bindDisclosure("${toggle}"`), `Missing toggle handler for ${toggle}`);
 }
 assert.match(intel, /qxLiveSignalsRows/, "Automatic chart analysis must render into the live signals table.");
 assert.match(intel, /setInterval\(\(\)=>\{if\(isTradingViewActive\(\)\)analyze\(\);\},60000\)/,

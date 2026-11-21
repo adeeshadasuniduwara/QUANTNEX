@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -358,9 +359,16 @@ def test_signal_replay_rejects_zero_or_non_finite_exchange_tick_size(monkeypatch
             raise AssertionError(f"Replay must reject invalid tick size {tick_size}.")
 
 
-def _order_flow_observation(captured_at: datetime, *, trade_at: datetime | None = None, depth_at: datetime | None = None):
+def _order_flow_observation(
+    captured_at: datetime,
+    *,
+    trade_at: datetime | None = None,
+    depth_at: datetime | None = None,
+    side: str = "BUY",
+):
     trade_at = trade_at or captured_at - timedelta(seconds=1)
-    depth_at = depth_at or captured_at - __import__("datetime").timedelta(seconds=0.5)
+    depth_at = depth_at or timedelta(seconds=0.5) * -1 + captured_at
+    direction = 1.0 if side == "BUY" else -1.0
     stamp = lambda value: value.astimezone(timezone.utc).isoformat()
     return {
         "capture_version": 2,
@@ -390,14 +398,14 @@ def _order_flow_observation(captured_at: datetime, *, trade_at: datetime | None 
             "depth_observed_at": stamp(depth_at),
             "trade_data_age_seconds": 0.1,
             "trade_count": 25,
-            "delta": 2.0,
-            "delta_ratio": 0.2,
+            "delta": 2.0 * direction,
+            "delta_ratio": 0.2 * direction,
             "data_provenance": {
                 "bid_ask_semantics": "Aggressor-side inferred trade delta; not consolidated quoted bid/ask volume.",
                 "candle_volume_used": False,
             },
             "data_sources": {"stream": "wss://data-stream.binance.vision"},
-            "order_book": {"depth_imbalance": 0.15, "spread_bps": 1.0},
+            "order_book": {"depth_imbalance": 0.15 * direction, "spread_bps": 1.0},
         },
     }
 
@@ -554,3 +562,141 @@ def test_order_flow_replay_fails_closed_when_no_prior_snapshot_exists(monkeypatc
     assert captured[0]["order_flow_override"] == {}
     assert result["order_flow_missing_snapshots"] == 1
     assert result["order_flow_rejected_candidates"] == 1
+
+
+def _synthetic_replay_setup(direction: str, interval: str, as_of: datetime):
+    """Create a deterministic causal trend + sweep + structure-break candle fixture."""
+    from app.signal_engine import INTERVAL_SECONDS, structure
+
+    rows = []
+    for index in range(320):
+        if direction == "BUY":
+            close = 100 + 0.035 * index + 0.45 * math.sin(index * 0.42)
+            previous = (
+                100 + 0.035 * (index - 1) + 0.45 * math.sin((index - 1) * 0.42)
+                if index else close - 0.02
+            )
+        else:
+            close = 150 - 0.035 * index - 0.45 * math.sin(index * 0.42)
+            previous = (
+                150 - 0.035 * (index - 1) - 0.45 * math.sin((index - 1) * 0.42)
+                if index else close + 0.02
+            )
+        open_price = previous
+        rows.append({
+            "open": open_price,
+            "high": max(open_price, close) + 0.08,
+            "low": min(open_price, close) - 0.08,
+            "close": close,
+            "volume": 10.0,
+        })
+
+    pivots = structure(rows)
+    if direction == "BUY":
+        swing_high, swing_low = pivots["swing_high"], pivots["swing_low"]
+        rows[-2]["close"] = swing_high - 0.10
+        rows[-2]["open"] = rows[-3]["close"]
+        rows[-2]["high"] = max(rows[-2]["open"], rows[-2]["close"]) + 0.08
+        rows[-2]["low"] = min(rows[-2]["open"], rows[-2]["close"]) - 0.08
+        rows[-1]["open"] = rows[-2]["close"]
+        rows[-1]["close"] = swing_high + 0.10
+        rows[-1]["high"] = rows[-1]["close"] + 0.08
+        rows[-1]["low"] = swing_low - 0.20
+    else:
+        swing_high, swing_low = pivots["swing_high"], pivots["swing_low"]
+        rows[-2]["close"] = swing_low + 0.10
+        rows[-2]["open"] = rows[-3]["close"]
+        rows[-2]["high"] = max(rows[-2]["open"], rows[-2]["close"]) + 0.08
+        rows[-2]["low"] = min(rows[-2]["open"], rows[-2]["close"]) - 0.08
+        rows[-1]["open"] = rows[-2]["close"]
+        rows[-1]["close"] = swing_low - 0.10
+        rows[-1]["low"] = rows[-1]["close"] - 0.08
+        rows[-1]["high"] = swing_high + 0.20
+
+    seconds = INTERVAL_SECONDS[interval]
+    last_open = as_of - timedelta(seconds=seconds + 30)
+    first_open = last_open - timedelta(seconds=seconds * (len(rows) - 1))
+    for index, row in enumerate(rows):
+        row["time"] = (first_open + timedelta(seconds=seconds * index)).isoformat()
+    return rows
+
+
+def _next_replay_bar(previous: dict, at: datetime, side: str) -> dict:
+    open_price = float(previous["close"])
+    close = open_price + (0.02 if side == "BUY" else -0.02)
+    return {
+        "time": at.isoformat(),
+        "open": open_price,
+        "high": max(open_price, close) + 0.03,
+        "low": min(open_price, close) - 0.03,
+        "close": close,
+        "volume": 10.0,
+    }
+
+
+@pytest.mark.parametrize(("side", "direction"), [("BUY", "BUY"), ("SELL", "SELL")])
+def test_historical_order_flow_replay_generates_real_long_and_short_signals(side, direction):
+    """Exercise the actual signal engine through replay with a prior, fresh L2/CVD snapshot."""
+    from app.signal_backtest import _simulate_slice
+
+    as_of = datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)
+    minute = _synthetic_replay_setup(direction, "1min", as_of)
+    for offset in range(6):
+        minute.append(_next_replay_bar(
+            minute[-1], as_of + timedelta(minutes=offset), side
+        ))
+
+    primary = _synthetic_replay_setup(direction, "5min", as_of)
+    primary.append(_next_replay_bar(primary[-1], as_of, side))
+    primary.append(_next_replay_bar(
+        primary[-1], as_of + timedelta(minutes=5), side
+    ))
+
+    candles_by_tf = {
+        "1": minute,
+        "5": primary,
+        "15": _synthetic_replay_setup(direction, "15min", as_of),
+        "30": _synthetic_replay_setup(direction, "30min", as_of),
+        "60": _synthetic_replay_setup(direction, "1h", as_of),
+    }
+    observation = _order_flow_observation(
+        as_of - timedelta(seconds=1.5),
+        trade_at=as_of - timedelta(seconds=2.5),
+        depth_at=as_of - timedelta(seconds=2.0),
+        side=side,
+    )
+    symbol_info = {
+        "quote_asset": "USDT",
+        "filters": {
+            "PRICE_FILTER": {"tickSize": "0.01", "minPrice": "0", "maxPrice": "0"},
+            "LOT_SIZE": {"stepSize": "0.001", "minQty": "0.001", "maxQty": "100000"},
+        },
+    }
+    settings = {
+        "primary": "5",
+        "trend": "60",
+        "enabled": ["60", "30", "15", "5", "1"],
+        "min_score": 8,
+    }
+
+    result = asyncio.run(_simulate_slice(
+        "BTCUSDT",
+        candles_by_tf,
+        symbol_info,
+        settings,
+        assumed_spread_bps=5.0,
+        assumed_depth_usd=10_000.0,
+        start_index=319,
+        end_index=320,
+        order_flow_observations=[observation],
+    ))
+
+    assert result["signal_count"] == 1
+    assert result["trade_count"] == 1
+    assert result["market_entries"] == 1
+    assert result["order_flow_decision_points"] == 1
+    assert result["order_flow_snapshot_matches"] == 1
+    assert result["order_flow_confirmed_candidates"] == 1
+    assert result["order_flow_rejected_candidates"] == 0
+    assert result["trades"][0]["side"] == side
+    assert result["trades"][0]["entry_type"] == "MARKET"

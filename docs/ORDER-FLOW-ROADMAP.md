@@ -505,3 +505,39 @@ The prior replay tests verified causal snapshot selection, freshness recomputati
 - The long and short replay tests now pass through the real `build_signal` path, match a prior fresh snapshot, receive explicit order-flow confirmation and produce one paper MARKET fill each.
 - PR [#244](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/244) passed Backend CI and Backend/Web CI: 481 tests passed on Python 3.12 and 481 on Python 3.14; schema checks and Web CI passed.
 - No live scoring thresholds, entry rules, freshness limits, data provenance rules or order execution permissions are changed.
+
+
+## Phase C12 — end-to-end fail-closed replay negatives (PR pending)
+
+### Objective
+
+C11 proves that a valid synthetic long and short setup can pass through the real historical replay loop when the prior Order Flow snapshot is fresh, contiguous, sequence-validated and directionally aligned. This phase adds the complementary acceptance evidence: the same valid candle setups must not trade when Order Flow is stale, contradictory or known to contain a trade-ID gap.
+
+### Changes
+
+- Reuse the same deterministic multi-timeframe candle setup and execution model for all positive and negative cases.
+- Preserve aligned BUY/SELL fixtures as positive controls.
+- Add both-direction negative fixtures where aggressor-side delta and L2 depth imbalance oppose the candle direction.
+- Add both-direction stale-depth fixtures; the replay must classify the snapshot as stale and reject the candidate.
+- Add a trade-ID-gap fixture; the replay must classify the observation as invalid and reject the candidate.
+- Assert zero replay signals and zero paper trades for every negative case, while checking the exact rejection/coverage counters.
+
+### Verification boundary
+
+- These are synthetic deterministic replay fixtures through the actual _simulate_slice and build_signal path. They test the data-integrity vetoes, not profitability.
+- No thresholds, signal scoring, execution choice, freshness limits or live trading permissions are changed.
+- No raw market history is fabricated and no candle volume is substituted for observed aggressor-side delta.
+
+### Operational findings at this checkpoint
+
+- The latest inspected Live Crypto Signal Smoke run was [#44703341723](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/44703341723) on 2026-11-20 08:32:20 UTC. Binance exchangeInfo returned 1,375 eligible Spot pairs; the rotating 20-symbol sample had 20 successful Binance Spot scans, 0 insufficient-history skips, 0 provider errors and 20 WAIT results.
+- This smoke run proves only provider/scan-path health for its 20-pair sample. It does not prove same-cycle full-universe coverage, a valid live setup, local recorder persistence or Order Flow OOS performance.
+- Actual local recorder coverage remains unverified because the GitHub runner does not share the user's local application database. The backtest API reports order_flow_capture.status and observation_count; a local run with an active stream is still needed.
+- Binance Spot is the only verified crypto signal market. USDⓈ-M and COIN-M Futures are unsupported.
+
+### Next steps
+
+1. Pass the positive and negative replay fixtures on the PR head and verify Backend CI plus Backend/Web CI on Python 3.12 and 3.14.
+2. Run the backtest endpoint locally while a managed Spot stream is active and inspect actual snapshot count, train/OOS coverage, stale/missing/invalid counts and Order Flow candidate confirmations/rejections.
+3. Diagnose any sparse local capture through stream-cap, readiness, boundary alignment and recorder diagnostics; do not relax freshness or sequence requirements.
+4. Build an evidence-backed chronological comparison only after enough real aligned observations exist.

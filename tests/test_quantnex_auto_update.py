@@ -125,7 +125,7 @@ class AutomaticUpdateTests(unittest.TestCase):
 
     def test_full_source_updater_uses_complete_snapshot_and_preserves_user_data(self):
         source = (ROOT / "quantnex_updater.py").read_text(encoding="utf-8")
-        self.assertIn("_managed_paths_from_tree", source)
+        self.assertIn("_managed_paths_from_archive", source)
         self.assertIn("_stage_full_snapshot", source)
         self.assertIn("codeload.github.com/{REPOSITORY}/zip/{commit_sha}", source)
         self.assertIn("previous_managed_manifest", source)
@@ -146,10 +146,10 @@ class AutomaticUpdateTests(unittest.TestCase):
             staged = root / "staged"
             staged.mkdir()
             (staged / "README.md").write_text("official source copy", encoding="utf-8")
-            with patch.object(updater, "_request_json", return_value={"sha": commit}), \
+            with patch.object(updater, "_request_latest_commit_sha", return_value=commit), \
                  patch.object(updater, "_load_state", return_value={"commit_sha": commit}), \
                  patch.object(updater, "_load_managed_paths", return_value=["README.md"]), \
-                 patch.object(updater, "_managed_paths_from_tree", return_value=["README.md"]), \
+                 patch.object(updater, "_managed_paths_from_archive", return_value=["README.md"]), \
                  patch.object(updater, "_stage_full_snapshot", return_value=staged):
                 result = updater.check_and_apply(root, force_reconcile=True)
             self.assertEqual(result["status"], "updated")

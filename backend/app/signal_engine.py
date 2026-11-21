@@ -1307,6 +1307,7 @@ async def build_signal(
             "DETERMINISTIC_FIXTURE" if order_flow_override is not None else "PUBLIC_WEBSOCKET_STREAM"
         )
         order_flow_snapshot = None
+        stream_result = None
         try:
             if order_flow_override is not None:
                 order_flow_snapshot = order_flow_override
@@ -1368,6 +1369,25 @@ async def build_signal(
                 order_flow_payload = summarize_order_flow_snapshot(order_flow_snapshot, decision)
                 order_flow_payload["data_mode"] = order_flow_mode
                 quality_filters["order_flow_confirmation"] = bool(decision["accepted"])
+                if order_flow_mode == "PUBLIC_WEBSOCKET_STREAM" and order_flow_snapshot.get("depth_is_continuous") is True:
+                    from .order_flow_patterns import detect_order_flow_patterns
+                    from .order_flow_monitor import get_recent_trade_count_baseline
+                    pattern_snapshot = dict(order_flow_snapshot)
+                    if isinstance(stream_result, dict):
+                        pattern_snapshot["depth_age_seconds"] = stream_result.get("depth_age_seconds")
+                    baseline_trade_count = get_recent_trade_count_baseline(symbol)
+                    auction_patterns = detect_order_flow_patterns(
+                        side, candles[-1], pattern_snapshot,
+                        baseline_trade_count=baseline_trade_count,
+                    )
+                    order_flow_payload["auction_patterns"] = auction_patterns
+                    quality_filters["order_flow_pattern_confirmation"] = bool(auction_patterns["accepted_for_side"])
+                    if not auction_patterns["accepted_for_side"]:
+                        entry_rejection_reason = (
+                            f"Order Flow pattern {auction_patterns['status']} conflicts with {side}; "
+                            "the candidate remains WAIT until a non-conflicting setup forms."
+                        )
+                        side = None
                 if not decision["accepted"]:
                     status = str(decision["status"]).lower()
                     entry_rejection_reason = (

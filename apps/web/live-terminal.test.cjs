@@ -22,7 +22,7 @@ assert.match(html, /id="telegram-bot-connect"/, "Telegram connection panel ancho
 assert.doesNotMatch(html, /<\/?(?:code|pre)\b/i, "User-facing HTML must not expose code snippets");
 assert.doesNotMatch(html, /id="refreshSystemHealth"/, "System health must not require a manual refresh button");
 
-assert.match(app, /api\\/v1\\/order-flow\\/spot\\//, "Bookmap must consume the local validated Spot Order Flow API");
+assert.ok(app.includes("/api/v1/order-flow/spot/"), "Bookmap must consume the local validated Spot Order Flow API");
 assert.match(app, /sequence-validated Binance Spot L2/, "Bookmap must display sequence-validated backend depth");
 assert.doesNotMatch(app, /@depth20@100ms/, "Browser must not use the former unsequenced partial-depth feed");
 assert.match(app, /bookHistory\.length>120/, "Bookmap history must remain bounded");

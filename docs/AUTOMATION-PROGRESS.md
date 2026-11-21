@@ -1055,3 +1055,5 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 - CI caught a test-only cache-key mismatch: the stylesheet version correctly remains sequence-orderflow1 (its CSS last changed in the first toolkit merge), while app.js is sequence-orderflow3. Updated the toolkit contract test to check each asset's actual version; no application behavior changed by this correction.
 
 - CI caught a stale legacy assertion in live-terminal.test.cjs that required the old browser-side @depth20@100ms stream. Replaced it with assertions for the validated local Order Flow API and no partial-depth fallback; this reflects the intended architecture change.
+
+- CI caught a malformed regex escape in the updated legacy live-terminal contract assertion. Replaced it with a direct source-string assertion; the new Order Flow toolkit contract suite itself passed.

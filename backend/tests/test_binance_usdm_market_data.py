@@ -100,3 +100,19 @@ def test_usdm_chart_candles_route_rejects_unknown_contract(monkeypatch):
     monkeypatch.setattr(futures, "get_binance_usdm_symbols", fake_symbols)
     response = TestClient(app).get("/api/v1/charts/futures/candles?symbol=UNKNOWNUSDT")
     assert response.status_code == 422
+
+
+def test_usdm_rate_limit_does_not_fan_out_to_other_hosts(monkeypatch):
+    class FakeResponse:
+        status_code = 429
+        def raise_for_status(self):
+            raise AssertionError("rate limit should be handled before raise_for_status")
+    class FakeClient:
+        calls = 0
+        async def get(self, *args, **kwargs):
+            self.calls += 1
+            return FakeResponse()
+    client = FakeClient()
+    with pytest.raises(futures.BinanceUsdMDataError, match="rate-limited"):
+        asyncio.run(futures._request_json(client, "/fapi/v1/exchangeInfo"))
+    assert client.calls == 1

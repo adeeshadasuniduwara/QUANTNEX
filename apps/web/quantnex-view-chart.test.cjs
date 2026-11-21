@@ -124,3 +124,5 @@ assert.match(js, /\/api\/v1\/charts\/futures\/candles/, "Futures chart history m
 assert.match(js, /marketType==="BINANCE_USDM_FUTURES"/, "Futures selection must remain isolated from Spot feeds.");
 assert.match(js, /quantnex\.chart\.selection\.v1/, "Market type selection must persist across reloads.");
 console.log("QUANTNEX VIEW Spot/USDⓈ-M Futures market selector and .P ticker checks passed.");
+
+assert.match(html, /Futures chart-only; signal and Order Flow engines remain Spot-only/, "UI must disclose that Futures chart support does not imply Futures signal/order-flow support.");

@@ -49,6 +49,14 @@ async def _request_json(client: httpx.AsyncClient, path: str,
     for base in BASES:
         try:
             response = await client.get(base + path, params=params)
+            if response.status_code in {418, 429, 403, 451}:
+                raise BinanceUsdMDataError(
+                    f"Binance USDⓈ-M public endpoint blocked or rate-limited ({response.status_code}); retry later."
+                )
+            if 400 <= response.status_code < 500 and response.status_code not in {408, 425}:
+                raise BinanceUsdMDataError(
+                    f"Binance USDⓈ-M rejected the request ({response.status_code})."
+                )
             response.raise_for_status()
             payload = response.json()
             if isinstance(payload, dict) and payload.get("code", 0) not in (0, None):

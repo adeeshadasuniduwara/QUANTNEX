@@ -281,6 +281,31 @@ def quantnex_view_strategies():
             "note": "100 catalog variants across 10 transparent setup families; variants are not 100 independent proven edges."}
 
 
+
+@app.get("/api/v1/quantnex-view/analyze-futures")
+async def quantnex_view_analyze_futures(symbol: str = "BTCUSDT", interval: str = "15m",
+                                        min_score: int = 6, user: User = Depends(local_workspace),
+                                        db: Session = Depends(get_db)):
+    """Generate independent candle-validated USDⓈ-M perpetual signals; never place orders."""
+    from .binance_usdm_signal_engine import analyze_usdm_futures_signal, BinanceUsdMSignalError
+    from .signal_lifecycle import record_signal
+    if interval not in {"1m", "5m", "15m", "30m", "1h", "4h"} or not 4 <= min_score <= 20:
+        raise HTTPException(status_code=422, detail="Choose a supported Futures timeframe and confluence threshold 4–20.")
+    try:
+        result = await analyze_usdm_futures_signal(symbol, interval, min_score)
+        if result.get("signal"):
+            trade, created = record_signal(db, user.id, result["signal"], "QUANTNEX_VIEW_FUTURES")
+            db.commit()
+            if created:
+                event_hub.publish("signals.lifecycle.changed", "signal_trade", "created",
+                                  {"trade_id": trade.id, "symbol": trade.symbol})
+        return result
+    except BinanceUsdMSignalError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except (ValueError, KeyError, IndexError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
 @app.get("/api/v1/quantnex-view/analyze")
 async def quantnex_view_analyze(symbol: str = "BTCUSDT", interval: str = "15m", min_score: int = 6,
                                 user: User = Depends(local_workspace), db: Session = Depends(get_db)):

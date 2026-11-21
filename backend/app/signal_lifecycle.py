@@ -360,8 +360,13 @@ async def signal_lifecycle_worker() -> None:
                 for symbol in symbols:
                     if symbol not in cached_candles or now - last_fetch.get(symbol, 0) >= 30:
                         try:
-                            candles, _provider = await fetch_candles_with_provider("1min", 3200, symbol)
-                            cached_candles[symbol] = closed_candles(candles, "1min")
+                            if symbol.endswith(".P"):
+                                from .binance_usdm_market_data import fetch_binance_usdm_candles
+                                candles = await fetch_binance_usdm_candles(symbol[:-2], "1m", 1000)
+                                cached_candles[symbol] = candles
+                            else:
+                                candles, _provider = await fetch_candles_with_provider("1min", 3200, symbol)
+                                cached_candles[symbol] = closed_candles(candles, "1min")
                             last_fetch[symbol] = now
                         except (MarketDataError, Exception) as exc:
                             logger.warning("Signal lifecycle feed unavailable for %s: %s", symbol, type(exc).__name__)

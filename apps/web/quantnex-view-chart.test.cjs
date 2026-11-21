@@ -174,3 +174,14 @@ assert.match(css, /\.qx-indicator-table/);
 assert.match(css, /\.qx-live-signals-table/);
 assert.match(css, /\.qx-collapsible-heading/);
 console.log("QUANTNEX compact chart layout, collapsed live sheets, live signals table and position risk table checks passed.");
+
+
+assert.ok(intel.includes("/api/v1/quantnex-view/analyze-futures"), "Futures selection must call its independent signal endpoint.");
+assert.ok(intel.includes('s.marketType==="BINANCE_USDM_FUTURES"?"/api/v1/quantnex-view/analyze-futures"'), "Market type must route Futures away from the Spot signal endpoint.");
+assert.ok(!intel.includes("A separate validated Futures signal engine is not enabled"), "The retired Futures chart-only signal block must not return.");
+assert.ok(intel.includes('selection.symbol+".P"'), "Futures signal history must use the isolated .P symbol namespace.");
+console.log("QUANTNEX USDⓈ-M Futures signal routing and Spot/Futures isolation checks passed.");
+
+assert.match(js, /data\.market_type==="BINANCE_USDM_FUTURES"/, "Futures chart intelligence must identify the isolated Futures feed.");
+assert.ok(js.includes('["Order Flow","NOT INTEGRATED"]'), "Futures chart must not imply Spot Order Flow is valid for Futures.");
+assert.ok(js.includes('["Execution","OFF"]'), "Futures signals must remain monitor-only.");

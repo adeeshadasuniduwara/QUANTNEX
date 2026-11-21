@@ -23,7 +23,7 @@ assert.match(html,/Aggressor-side inferred trade delta is not consolidated quote
 assert.match(html,/Full UTC session coverage is not yet verified/);
 assert.match(css,/\.qx-orderflow-flow-grid/);
 assert.match(html,/quantnex-view-chart\.css\?v=20261121-compact-layout2/);
-assert.match(html,/app\.js\?v=20261121-compact-layout2/);
+assert.match(html,/app\.js\?v=20261121-orderflow-suite1/);
 assert.match(app,/apiRequest\("\/api\/v1\/signals\/markets"\)/);
 assert.match(app,/if\(symbol==="XAUUSD"\)/);
 assert.doesNotMatch(app,/!symbol\.endsWith\("USDT"\)/);

@@ -98,7 +98,6 @@ def test_smoke_run_skips_new_pairs_without_enough_closed_history(monkeypatch, ca
     assert "1 insufficient-history skip(s)" in output
 
 
-
 def test_order_flow_diagnostic_formatter_handles_missing_and_non_finite_values():
     from smoke_signal_engine import _format_order_flow_diagnostics
 

@@ -52,7 +52,9 @@ def test_smoke_run_scans_dynamic_sample_without_hardcoded_symbols(monkeypatch, c
                 "trade_count": 18,
                 "delta": -3.5,
                 "delta_ratio": -0.25,
+                "cvd_value": 24.0,
                 "cvd_status": "COMPLETE_SINCE_STATE_SEED",
+                "session_delta": 11.5,
                 "trade_data_age_seconds": 0.7,
                 "session_delta_coverage_complete": False,
                 "order_book": {"spread_bps": 2.1, "depth_imbalance": -0.14},
@@ -69,6 +71,8 @@ def test_smoke_run_scans_dynamic_sample_without_hardcoded_symbols(monkeypatch, c
     assert calls == rotating_symbol_sample(universe, 4, day_index=0)
     assert "Order Flow: status=CONTRADICTED | accepted=no" in output
     assert "delta=-3.5" in output
+    assert "cvd_value=24" in output
+    assert "session_delta=11.5" in output
     assert "spread_bps=2.1" in output
     assert "wss://" not in output
 

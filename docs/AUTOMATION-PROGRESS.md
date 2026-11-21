@@ -1149,4 +1149,12 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 - Removed the unused Live Trade Results Calculator UI and its browser-side market-tick listeners.
 - Removed the separate Live Strategy Engine / catalogue / backtest panel from QUANTNEX VIEW. The existing read-only chart analysis path remains in place only to feed the Live Signals table, chart sheet and lifecycle history; this UI cleanup does not claim a new strategy or improve signal accuracy.
 - Upgraded the manual Position Tool's calculated summary from separate metric cards to a readable table with side, entry, stop distance, targets, equity, risk amount, estimated lots and gross target-profit estimates. Broker contract/tick value assumptions still require user verification; estimates exclude execution costs.
-- Validation status: deterministic UI contract tests were extended. CI and browser/device rendering must pass before this phase is described as merged or deployed. No live-money execution, order placement, Futures signals or Futures Order Flow were added.
+- Pre-merge validation: Web CI and Backend/Web CI passed on PR #256 head fac7ef3a4c804d30edb1c236383989bca3ddfd99; the web contract suite and Python 3.12 / 3.14 backend suites passed. Post-merge Web CI and Backend/Web CI also passed on main commit a77f57107bb936b4e3b884059f5b80311c13fc77. Browser/device visual rendering was not independently verified in this run. No live-money execution, order placement, Futures signals or Futures Order Flow were added.
+
+
+### Phase C16 merge record — PR #256
+
+- Squash-merged PR #256 into main: a77f57107bb936b4e3b884059f5b80311c13fc77.
+- Post-merge verification: QUANTNEX Web CI passed; QUANTNEX Backend and Web CI passed, including Python 3.12, Python 3.14 and the Web check.
+- Separate Telegram Update Notifications workflow did not send: its configured TELEGRAM_CHAT_ID resolves to the bot itself. This is a notification configuration issue and did not affect the merge or CI results; the notification workflow correctly reported the configuration error.
+- Local supervisor auto-update will apply the merged version on its next normal update cycle / next app launch. Browser-device rendering still needs user-side confirmation.

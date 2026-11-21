@@ -270,7 +270,7 @@
           <div class="qx-orderflow-actions"><span id="p7BookLiveStatus" role="status">Waiting for QUANTNEX VIEW…</span><button class="secondary-btn compact-btn" id="qxOrderFlowReconnect" type="button">Reconnect depth</button></div>
         </div>
         <div class="qx-orderflow-tab-panel" id="qxOrderFlowBookmapTab" role="tabpanel">
-          <div class="p7-bookmap-wrap"><div class="p7-bookmap-head"><strong>Rolling sequence-validated Binance Spot L2 heatmap · backend stream up to 100ms</strong><span>500ms UI samples · resting liquidity</span></div><div class="p7-bookmap" id="p7Bookmap"><canvas id="p7BookmapCanvas" role="img" aria-label="Rolling Binance Spot partial-depth liquidity heatmap with bid and ask levels"></canvas></div><div class="p7-bookmap-legend"><span>BUY liquidity · Bids</span><span>SELL liquidity · Asks</span></div></div>
+          <div class="p7-bookmap-wrap"><div class="p7-bookmap-head"><strong>Rolling sequence-validated Binance Spot L2 heatmap · backend stream up to 100ms</strong><span>500ms UI samples · resting liquidity</span></div><div class="p7-bookmap" id="p7Bookmap"><canvas id="p7BookmapCanvas" role="img" aria-label="Rolling Binance Spot sequence-validated liquidity heatmap with bid and ask levels"></canvas></div><div class="p7-bookmap-legend"><span>BUY liquidity · Bids</span><span>SELL liquidity · Asks</span></div></div>
           <p class="p7-note" id="p7BookNote">Waiting for Binance Spot depth. Waiting for the backend sequence-validated depth stream.</p>
         </div>
         <div class="qx-orderflow-tab-panel" id="qxOrderFlowDepthTab" role="tabpanel" hidden><div class="p7-book-grid"><div><h4>Bids · Buy orders</h4><div class="p7-table-wrap"><table><thead><tr><th>Price</th><th>Quantity</th></tr></thead><tbody id="p7Bids"><tr><td colspan="2" class="empty-row">Waiting for depth snapshot.</td></tr></tbody></table></div></div><div><h4>Asks · Sell orders</h4><div class="p7-table-wrap"><table><thead><tr><th>Price</th><th>Quantity</th></tr></thead><tbody id="p7Asks"><tr><td colspan="2" class="empty-row">Waiting for depth snapshot.</td></tr></tbody></table></div></div></div></div>
@@ -284,7 +284,6 @@
           <p class="qx-orderflow-footnote" id="qxOrderFlowProvenance">Aggressor-side inferred trade delta is not consolidated quoted bid/ask volume. Candle volume is not used to fabricate delta.</p>
         </div>
         <div class="qx-orderflow-footnote">Data scope: Binance Spot only. Gold/Forex depth is not simulated. Bookmap uses the backend's sequence-validated Spot diff-depth book; resting orders are not executed volume or guaranteed executable liquidity.</div>
-        <select id="p7BookSymbol" hidden aria-hidden="true"><option value="BTCUSDT">BTCUSDT</option><option value="ETHUSDT">ETHUSDT</option><option value="SOLUSDT">SOLUSDT</option></select><button id="p7LoadBook" type="button" hidden>Load depth</button>
       </section>
 
       <section class="panel qx-signal-ledger" id="qxSignalLedger" aria-label="Signal outcome history">
@@ -936,7 +935,7 @@
   </div>
   <script src="shared-news-config.js?v=20261113-shared-news1"></script>
   <script src="journal-export.js?v=20261114-csvsafe1"></script>
-  <script src="app.js?v=20261121-sequence-orderflow2"></script>
+  <script src="app.js?v=20261121-sequence-orderflow3"></script>
   <script src="realtime-events.js"></script>
   <script src="workspace-pages.js"></script>
   <script src="phase12-20.js"></script>

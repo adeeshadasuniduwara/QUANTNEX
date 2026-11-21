@@ -1049,3 +1049,5 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 - Trade Flow UI consumes actual AggTrade-derived delta/CVD/footprint with provenance; full UTC session delta remains unavailable until independently anchored.
 - Depth readiness and trade-flow readiness are separate; no stale/unsequenced depth fallback is rendered.
 - Pending PR checks and post-merge local device/live stream verification.
+
+- Follow-up C14 integration: the chart symbol selector now refreshes all current eligible Binance Spot symbols on entry and every 15 minutes while the chart is active; the Bookmap uses the backend sequence-validated L2 stream and the Trade Flow panel displays AggTrade delta/CVD, footprint, volume-profile POC/VAH/VAL, microprice and honest UTC session coverage. Price formatting follows each pair's exchange tick size.

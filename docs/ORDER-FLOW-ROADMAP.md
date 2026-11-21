@@ -597,3 +597,5 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 - Keep session delta explicitly unavailable unless full UTC-session trade-ID coverage is anchored; CVD scope is only since the bounded stream seed.
 - Endpoint remains public-market-data read-only and local-workspace protected; no orders or live-money execution.
 - Deterministic API tests use a fake manager and verify symbol rejection, metadata tick-size use, sequence validation, stale-depth veto, independent readiness, CVD scope and session limitations. Local browser/live-stream smoke remains required.
+
+- The QUANTNEX VIEW chart market selector now loads the complete current Binance Spot symbol list from the exchangeInfo-backed /api/v1/signals/markets endpoint at view entry and refreshes it every 15 minutes while the chart is active. It retains XAUUSD as a separate non-Binance market and uses each selected symbol's authoritative PRICE_FILTER tick size for Order Flow price formatting.

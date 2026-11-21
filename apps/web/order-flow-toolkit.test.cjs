@@ -28,4 +28,8 @@ assert.match(app,/apiRequest\("\/api\/v1\/signals\/markets"\)/);
 assert.match(app,/if\(symbol==="XAUUSD"\)/);
 assert.doesNotMatch(app,/!symbol\.endsWith\("USDT"\)/);
 assert.match(app,/profile\.poc/);
+assert.match(app,/apiRequest\("\/api\/v1\/signals\/markets"\)/);
+assert.match(app,/900000\);/);
+assert.match(app,/pricePrecision:apiData\.price_precision/);
+assert.doesNotMatch(html,/id="p7BookSymbol"|id="p7LoadBook"/);
 console.log("QUANTNEX VIEW sequence-validated Order Flow toolkit checks passed.");

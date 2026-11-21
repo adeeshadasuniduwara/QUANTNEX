@@ -734,7 +734,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
 
 // Phase 07 — multi-market intelligence and paper-only trading UI.
 (function initPhase07(){
-  const ids=["p7RefreshMarkets","p7RunScan","p7LoadBook","p7LoadNews","p7OpenPaper","p7CalculateRisk"];
+  const ids=["p7RefreshMarkets","p7RunScan","p7LoadNews","p7OpenPaper","p7CalculateRisk"];
   if(!$(ids[0]))return;
   const fmt=(value,digits=2)=>value==null||!Number.isFinite(Number(value))?"—":Number(value).toLocaleString(undefined,{maximumFractionDigits:digits});
   const priceDigits=symbol=>symbol==="XAUUSD"?2:["EURUSD","GBPUSD","USDJPY"].includes(symbol)?5:symbol==="BTCUSDT"?2:4;
@@ -824,7 +824,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     if(tickerSocket){tickerSocket.onclose=null;tickerSocket.close();tickerSocket=null;}
   }
   function renderBookmap(symbol,bids,asks,apiData){
-    latestBookData={symbol,bids:bids.slice(0,100).map(row=>[Number(row[0]),Number(row[1])]),asks:asks.slice(0,100).map(row=>[Number(row[0]),Number(row[1])]),liquidity:apiData.liquidity||{},receivedAt:Date.now(),quoteAsset:apiData.quote_asset||""};
+    latestBookData={symbol,bids:bids.slice(0,100).map(row=>[Number(row[0]),Number(row[1])]),asks:asks.slice(0,100).map(row=>[Number(row[0]),Number(row[1])]),liquidity:apiData.liquidity||{},receivedAt:Date.now(),quoteAsset:apiData.quote_asset||"",pricePrecision:apiData.price_precision};
     bookHistory.push(latestBookData);
     if(bookHistory.length>120)bookHistory.shift();
     if(bookRenderTimer===null)bookRenderTimer=setTimeout(drawBookmap,90);
@@ -877,7 +877,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
       const book=latestBookData.liquidity||{},bestBid=Number(book.best_bid??bids[0]?.[0]),bestAsk=Number(book.best_ask??asks[0]?.[0]),spread=bestAsk-bestBid;
       const setMetric=(id,value)=>{const el=$(id);if(el)el.textContent=value;};
       $("p7BookImbalance").textContent=Number.isFinite(Number(book.depth_imbalance))?(Number(book.depth_imbalance)*100).toFixed(1)+"%":"—";
-      setMetric("qxOrderFlowBestBid",Number.isFinite(bestBid)?fmt(bestBid,priceDigits(latestBookData.symbol)):"—");
+      setMetric("qxOrderFlowBestBid",Number.isFinite(bestBid)?fmt(bestBid,(Number.isInteger(latestBookData.pricePrecision)?latestBookData.pricePrecision:priceDigits(latestBookData.symbol))):"—");
       setMetric("qxOrderFlowBestAsk",Number.isFinite(bestAsk)?fmt(bestAsk,priceDigits(latestBookData.symbol)):"—");
       setMetric("qxOrderFlowSpread",Number.isFinite(spread)?fmt(spread,priceDigits(latestBookData.symbol))+" · "+fmt(book.spread_bps,2)+" bps":"—");
       setMetric("qxOrderFlowBidDepth",fmt(book.bid_depth_quote,2)+" "+latestBookData.quoteAsset);
@@ -915,7 +915,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     set("qxOrderFlowSessionDelta",sessionValue==null?"—":fmt(sessionValue,6));
     set("qxOrderFlowSessionScope",flow.session_delta_coverage_complete===true?"COMPLETE UTC SESSION":"INCOMPLETE UTC SESSION · SAMPLE ONLY · "+String(flow.session_delta_scope||"incomplete"));
     const profile=flow.volume_profile||{};
-    set("qxOrderFlowProfile",[["POC",profile.poc],["VAH",profile.vah],["VAL",profile.val]].filter(item=>Number.isFinite(Number(item[1]))).map(item=>item[0]+" "+fmt(item[1],priceDigits(result.symbol))).join(" · ")||"Not available");
+    set("qxOrderFlowProfile",[["POC",profile.poc],["VAH",profile.vah],["VAL",profile.val]].filter(item=>Number.isFinite(Number(item[1]))).map(item=>item[0]+" "+fmt(item[1],(Number.isInteger(result.price_precision)?result.price_precision:priceDigits(result.symbol)))).join(" · ")||"Not available");
     set("qxOrderFlowMicroprice",result.liquidity?.microprice==null?"—":fmt(result.liquidity.microprice,priceDigits(result.symbol)));
     const body=$("qxOrderFlowFootprintRows");
     if(body){
@@ -1148,7 +1148,6 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   }
   $("p7RefreshMarkets").addEventListener("click",loadMarkets);
   $("p7RunScan").addEventListener("click",scan);
-  $("p7LoadBook").addEventListener("click",loadBook);
   $("p7LoadNews").addEventListener("click",loadNews);
   $("p7OpenPaper").addEventListener("click",openPaper);
   $("p7RefreshPaper").addEventListener("click",refreshAnalytics);
@@ -1193,6 +1192,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   });
   // Keep network work scoped to the visible workspace. Hidden panels stay idle.
   setInterval(()=>{if(isWorkspaceViewActive("market-intelligence"))loadMarkets();},60000);
+  setInterval(()=>{if(isWorkspaceViewActive("tradingview")){spotUniverseLoaded=false;loadSpotUniverse();}},900000);
   setInterval(()=>{if(isWorkspaceViewActive("paper-trading"))loadPaper();},20000);
   setInterval(()=>{if(isWorkspaceViewActive("performance-lab"))loadPerformance();},30000);
   setInterval(()=>{if(isWorkspaceViewActive("news-intelligence"))loadNews();},900000);

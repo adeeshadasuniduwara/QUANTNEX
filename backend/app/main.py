@@ -1415,6 +1415,9 @@ async def spot_order_flow_snapshot(symbol: str, wait_seconds: float = 0.0, user:
         tick_size = price_filter.get("tickSize") if isinstance(price_filter, dict) else None
         if not tick_size:
             raise HTTPException(status_code=422, detail="Binance Spot symbol metadata has no valid PRICE_FILTER tickSize.")
+        from decimal import Decimal
+        tick_decimal = Decimal(str(tick_size))
+        price_precision = max(0, -tick_decimal.normalize().as_tuple().exponent)
         snapshot = await get_binance_spot_order_flow_manager().get_snapshot(
             normalized, str(tick_size), wait_seconds=wait_seconds,
             max_trade_age_seconds=15.0, max_depth_age_seconds=5.0,
@@ -1468,6 +1471,7 @@ async def spot_order_flow_snapshot(symbol: str, wait_seconds: float = 0.0, user:
             reason = str((trade_state or {}).get("cvd_status") or snapshot.get("status") or "TRADE_FLOW_WARMING_UP")
         return {
             "symbol": normalized, "market_type": "BINANCE_SPOT", "quote_asset": info.get("quote_asset"),
+            "price_precision": price_precision,
             "status": snapshot.get("status", "NOT_READY"),
             "signal_ready": trade_ready and depth_ready, "depth_ready": depth_ready,
             "trade_flow_ready": trade_ready, "reason": reason, "liquidity": liquidity,

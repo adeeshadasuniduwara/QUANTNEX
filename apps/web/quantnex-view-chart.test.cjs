@@ -170,6 +170,7 @@ for (const toggle of ["qxSignalSettingsToggle", "qxSignalLedgerToggle", "qxIndic
   assert.ok(js.includes(`bindDisclosure("${toggle}"`), `Missing toggle handler for ${toggle}`);
 }
 assert.doesNotMatch(intel, /bindDisclosure\(/, "Disclosure handlers must have one owner to prevent double-toggle cancellation.");
+assert.doesNotMatch(js, /qxChartSignalSheetToggle/, "Removed Live Signal Sheet must not retain a dead disclosure handler.");
 assert.match(intel, /qxLiveSignalsRows/, "Automatic chart analysis must render into the live signals table.");
 assert.doesNotMatch(intel, /qxStrategyList|qxRunBacktest|function backtest\(|function renderBacktest\(/, "Retired Live Strategy Engine UI/controller code must not remain.");
 assert.match(intel, /setInterval\(\(\)=>\{if\(isTradingViewActive\(\)\)analyze\(\);\},60000\)/,

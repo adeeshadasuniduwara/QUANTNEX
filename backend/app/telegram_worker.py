@@ -983,26 +983,26 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
             ai_state = "CREDENTIAL ERROR · reconnect in Integrations"
         auto = _normalise_auto_signal_settings(_get(db, user_id, "auto_signal_settings", "{}"))
         return (
-            "🩺 QUANTNEX SYSTEM HEALTH\\n"
-            "Backend worker: RUNNING (this reply came from the worker)\\n"
-            "Crypto market source: Binance Spot public data\\n"
-            "Gold history: " + (gold_feed_provider() or "NOT CONFIGURED") + "\\n"
-            "Order Flow streams: " + str(manager.active_stream_count) + "/" + str(manager.max_streams) + "\\n"
-            "Last saved Order Flow sample: " + str(manager.last_capture_at or "none yet") + "\\n"
-            "Automatic signal alerts: " + ("ON" if auto["enabled"] else "OFF") + "\\n"
-            "OpenAI: " + ai_state + "\\n"
+            "🩺 QUANTNEX SYSTEM HEALTH\n"
+            "Backend worker: RUNNING (this reply came from the worker)\n"
+            "Crypto market source: Binance Spot public data\n"
+            "Gold history: " + (gold_feed_provider() or "NOT CONFIGURED") + "\n"
+            "Order Flow streams: " + str(manager.active_stream_count) + "/" + str(manager.max_streams) + "\n"
+            "Last saved Order Flow sample: " + str(manager.last_capture_at or "none yet") + "\n"
+            "Automatic signal alerts: " + ("ON" if auto["enabled"] else "OFF") + "\n"
+            "OpenAI: " + ai_state + "\n"
             "Broker execution: OFF · This command does not test broker order placement."
         )
     if command == "/signals":
         auto = _normalise_auto_signal_settings(_get(db, user_id, "auto_signal_settings", "{}"))
         return (
-            "🧠 SIGNAL OPERATIONS\\n"
-            "Automatic alerts: " + ("ON" if auto["enabled"] else "OFF") + "\\n"
-            "Scan universe: " + auto["universe_mode"] + "\\n"
-            "Selected pairs: " + (", ".join(auto["symbols"]) if auto["symbols"] else "All eligible Binance Spot pairs") + "\\n"
-            "Scan interval: " + str(auto["interval_seconds"]) + " seconds\\n"
-            "Primary TF: " + names.get(str(settings.get("primary")), str(settings.get("primary"))) + "\\n"
-            "Trend TF: " + names.get(str(settings.get("trend")), str(settings.get("trend"))) + "\\n"
+            "🧠 SIGNAL OPERATIONS\n"
+            "Automatic alerts: " + ("ON" if auto["enabled"] else "OFF") + "\n"
+            "Scan universe: " + auto["universe_mode"] + "\n"
+            "Selected pairs: " + (", ".join(auto["symbols"]) if auto["symbols"] else "All eligible Binance Spot pairs") + "\n"
+            "Scan interval: " + str(auto["interval_seconds"]) + " seconds\n"
+            "Primary TF: " + names.get(str(settings.get("primary")), str(settings.get("primary"))) + "\n"
+            "Trend TF: " + names.get(str(settings.get("trend")), str(settings.get("trend"))) + "\n"
             "Analysis TFs: " + ", ".join(names.get(str(value), str(value)) for value in settings.get("enabled", []))
         )
     if command in {"/signals_on", "/signals_off"}:
@@ -1018,8 +1018,8 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
     if command == "/watchlist":
         auto = _normalise_auto_signal_settings(_get(db, user_id, "auto_signal_settings", "{}"))
         if auto["universe_mode"] == "ALL_BINANCE_SPOT":
-            return "📋 WATCHLIST\\nMode: ALL ELIGIBLE BINANCE SPOT PAIRS\\nUse /watchlist_set BTCUSDT,ETHUSDT to select specific pairs."
-        return "📋 SELECTED WATCHLIST\\n" + (", ".join(auto["symbols"]) if auto["symbols"] else "No pairs selected") + "\\nUse /watchlist_set BTCUSDT,ETHUSDT to replace it."
+            return "📋 WATCHLIST\nMode: ALL ELIGIBLE BINANCE SPOT PAIRS\nUse /watchlist_set BTCUSDT,ETHUSDT to select specific pairs."
+        return "📋 SELECTED WATCHLIST\n" + (", ".join(auto["symbols"]) if auto["symbols"] else "No pairs selected") + "\nUse /watchlist_set BTCUSDT,ETHUSDT to replace it."
     if command == "/watchlist_set":
         if len(parts) < 2:
             return "Usage: /watchlist_set BTCUSDT,ETHUSDT,SOLUSDT (up to 20 pairs)."
@@ -1040,14 +1040,14 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
         auto["symbols"] = requested
         _set(db, user_id, "auto_signal_settings", json.dumps(auto, separators=(",", ":")))
         db.commit()
-        return "✅ Watchlist saved: " + ", ".join(requested) + "\\nAutomatic alerts: " + ("ON" if auto["enabled"] else "OFF; use /signals_on to enable.")
+        return "✅ Watchlist saved: " + ", ".join(requested) + "\nAutomatic alerts: " + ("ON" if auto["enabled"] else "OFF; use /signals_on to enable.")
     if command == "/risk":
         risk = settings.get("risk_percent", 1)
         score = settings.get("min_score", 8)
         return (
-            "🛡 SIGNAL RISK SETTINGS\\n"
-            "Configured risk reference: " + str(risk) + "%\\n"
-            "Minimum confluence: " + str(score) + "/10\\n"
+            "🛡 SIGNAL RISK SETTINGS\n"
+            "Configured risk reference: " + str(risk) + "%\n"
+            "Minimum confluence: " + str(score) + "/10\n"
             "These are analysis preferences, not a verified account balance or broker-side risk limit. No order is placed."
         )
     if command == "/orderflow":
@@ -1063,15 +1063,15 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
             flow = snapshot.get("order_flow") if isinstance(snapshot.get("order_flow"), dict) else {}
             book = flow.get("order_book") if isinstance(flow.get("order_book"), dict) else {}
             if snapshot.get("signal_ready") is not True:
-                return "⏳ ORDER FLOW · " + symbol + "\\nStatus: " + str(snapshot.get("status") or "WARMING_UP") + "\\n" + str(snapshot.get("last_error") or "Waiting for a fresh, sequence-validated trade and depth stream. No confirmation is issued yet.")
+                return "⏳ ORDER FLOW · " + symbol + "\nStatus: " + str(snapshot.get("status") or "WARMING_UP") + "\n" + str(snapshot.get("last_error") or "Waiting for a fresh, sequence-validated trade and depth stream. No confirmation is issued yet.")
             return (
-                "📊 LIVE ORDER FLOW · " + symbol + "\\n"
-                "Feed: " + str(flow.get("feed_mode") or snapshot.get("status")) + "\\n"
-                "Aggressor trades: " + str(flow.get("trade_count")) + "\\n"
-                "Delta: " + str(flow.get("delta")) + " · Delta ratio: " + str(flow.get("delta_ratio")) + "\\n"
-                "CVD: " + str(flow.get("cvd_value")) + " · " + str(flow.get("cvd_status")) + "\\n"
-                "L2 imbalance: " + str(book.get("depth_imbalance")) + " · Spread: " + str(book.get("spread_bps")) + " bps\\n"
-                "Data ages: trades " + str(flow.get("trade_data_age_seconds")) + "s · depth " + str(snapshot.get("depth_age_seconds")) + "s\\n"
+                "📊 LIVE ORDER FLOW · " + symbol + "\n"
+                "Feed: " + str(flow.get("feed_mode") or snapshot.get("status")) + "\n"
+                "Aggressor trades: " + str(flow.get("trade_count")) + "\n"
+                "Delta: " + str(flow.get("delta")) + " · Delta ratio: " + str(flow.get("delta_ratio")) + "\n"
+                "CVD: " + str(flow.get("cvd_value")) + " · " + str(flow.get("cvd_status")) + "\n"
+                "L2 imbalance: " + str(book.get("depth_imbalance")) + " · Spread: " + str(book.get("spread_bps")) + " bps\n"
+                "Data ages: trades " + str(flow.get("trade_data_age_seconds")) + "s · depth " + str(snapshot.get("depth_age_seconds")) + "s\n"
                 "Observed Binance Spot data only. This is not a trade signal or a win-probability estimate."
             )
         except Exception as exc:
@@ -1087,20 +1087,20 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
             signal = result.get("signal")
             if not signal:
                 return (
-                    "📉 USDⓈ-M FUTURES · " + symbol + " · " + interval + "\\n"
+                    "📉 USDⓈ-M FUTURES · " + symbol + " · " + interval + "\n"
                     + str(result.get("message") or "WAIT — no qualifying setup.")
-                    + "\\nConfluence: " + str(result.get("confluence_score", 0)) + "/10"
-                    + "\\nFresh closed Futures candles only. Futures Order Flow and execution are OFF."
+                    + "\nConfluence: " + str(result.get("confluence_score", 0)) + "/10"
+                    + "\nFresh closed Futures candles only. Futures Order Flow and execution are OFF."
                 )
             record_signal(db, user_id, signal, "TELEGRAM_USDM_FUTURES")
             db.commit()
             return (
-                "🚀 USDⓈ-M FUTURES · " + symbol + " " + str(signal.get("side")) + "\\n"
-                "Timeframe: " + interval + " · Entry ref: " + str(signal.get("entry")) + "\\n"
-                "SL: " + str(signal.get("stop_loss")) + "\\n"
-                "TP1: " + str(signal.get("tp1")) + " · TP2: " + str(signal.get("tp2")) + " · TP3: " + str(signal.get("tp3")) + "\\n"
-                "Confluence: " + str(signal.get("score")) + "/10 (not win probability)\\n"
-                "Market: Binance USDⓈ-M perpetual · Data: " + str(result.get("data_health")) + "\\n"
+                "🚀 USDⓈ-M FUTURES · " + symbol + " " + str(signal.get("side")) + "\n"
+                "Timeframe: " + interval + " · Entry ref: " + str(signal.get("entry")) + "\n"
+                "SL: " + str(signal.get("stop_loss")) + "\n"
+                "TP1: " + str(signal.get("tp1")) + " · TP2: " + str(signal.get("tp2")) + " · TP3: " + str(signal.get("tp3")) + "\n"
+                "Confluence: " + str(signal.get("score")) + "/10 (not win probability)\n"
+                "Market: Binance USDⓈ-M perpetual · Data: " + str(result.get("data_health")) + "\n"
                 "Monitor-only. Futures Order Flow is not integrated and no order was placed."
             )
         except Exception as exc:
@@ -1110,7 +1110,7 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
         try:
             from .ai_assistant import ask_openai
             answer, model = await ask_openai(db, user_id, "Reply with exactly: QUANTNEX AI connection verified.")
-            return "✅ OpenAI response received · " + model + "\\n" + answer[:500]
+            return "✅ OpenAI response received · " + model + "\n" + answer[:500]
         except Exception as exc:
             logger.warning("Telegram OpenAI test failed for local user %s: %s", user_id, type(exc).__name__)
             return "❌ OpenAI test failed. Check the API key, model access, project billing and Connections & Integrations settings."

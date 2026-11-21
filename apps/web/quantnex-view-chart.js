@@ -322,7 +322,6 @@ function bindDisclosure(buttonId,contentId,onExpand){
  });
 }
 bindDisclosure("qxSignalSettingsToggle","qxSignalSettingsPanel");
-bindDisclosure("qxChartSignalSheetToggle","qxChartSignalSheetContent");
 bindDisclosure("qxSignalLedgerToggle","qxSignalLedgerContent");
 bindDisclosure("qxIndicatorsToggle","qxIndicatorsContent",()=>renderIndicatorPanels());
 setupCanvas();

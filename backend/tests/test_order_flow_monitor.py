@@ -39,3 +39,47 @@ def test_capture_status_discloses_minute_alignment_and_no_raw_tick_archive():
     assert status["capture_alignment"] == "ONE_OBSERVATION_PER_UTC_1M_CANDLE"
     assert status["raw_tick_archive"] is False
     assert status["refresh_seconds"] >= 2
+
+
+
+def test_trade_count_baseline_uses_only_stored_minute_observations(monkeypatch):
+    from datetime import datetime, timezone
+    from app import order_flow_monitor, order_flow_recorder
+
+    class FakeDB:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(order_flow_monitor, "SessionLocal", FakeDB)
+    monkeypatch.setattr(
+        order_flow_recorder,
+        "load_order_flow_observations",
+        lambda *_args, **_kwargs: [
+            {"order_flow": {"trade_count": value}}
+            for value in [10, 20, 30, 40, 50, "bad", None]
+        ],
+    )
+    baseline = order_flow_monitor.get_recent_trade_count_baseline(
+        "BTCUSDT", now=datetime(2026, 11, 21, 12, 0, tzinfo=timezone.utc)
+    )
+    assert baseline == 30.0
+
+
+def test_trade_count_baseline_waits_for_minimum_historical_coverage(monkeypatch):
+    from datetime import datetime, timezone
+    from app import order_flow_monitor, order_flow_recorder
+
+    class FakeDB:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(order_flow_monitor, "SessionLocal", FakeDB)
+    monkeypatch.setattr(
+        order_flow_recorder,
+        "load_order_flow_observations",
+        lambda *_args, **_kwargs: [{"order_flow": {"trade_count": value}} for value in [10, 20, 30, 40]],
+    )
+    baseline = order_flow_monitor.get_recent_trade_count_baseline(
+        "BTCUSDT", now=datetime(2026, 11, 21, 12, 0, tzinfo=timezone.utc)
+    )
+    assert baseline is None

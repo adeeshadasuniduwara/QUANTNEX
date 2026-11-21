@@ -15,7 +15,7 @@ assert.match(html,/Trade-side Delta \/ CVD is not connected/);
 assert.match(html,/Partial-depth snapshots are not a sequence-validated full order book/i);
 assert.match(app,/String\(\$\("qxSymbol"\)\?\.value\|\|"BTCUSDT"\)/);
 assert.match(app,/if\(isWorkspaceViewActive\("tradingview"\)\)loadBook\(\)/);
-assert.match(app,/isWorkspaceViewActive\("tradingview"\)loadBook\(\);\s*else stopBookFeed\(\)/);
+assert.match(app,/if\(isWorkspaceViewActive\("tradingview"\)\)loadBook\(\);\s*else stopBookFeed\(\)/);
 assert.match(app,/symbol==="xauusd"\|\|!symbol\.endsWith\("usdt"\)/);
 assert.match(app,/@depth20@100ms/);
 assert.match(app,/setMetric\("qxOrderFlowSpread"/);

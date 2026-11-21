@@ -1010,3 +1010,8 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 2. Verify the next main-branch source update installs the new assets and cache keys; the user can restart the local launcher if they want the update immediately.
 3. On the user's local app, select BTCUSDT/ETHUSDT/SOLUSDT in QUANTNEX VIEW and verify heatmap/depth metrics; switch to XAUUSD and confirm the UI reports Binance Spot depth unavailable.
 4. Implement browser-side AggTrade Delta/CVD only after exposing the existing validated backend observations through a read-only API with provenance, freshness and gap status; do not infer it from candles or partial depth.
+
+
+### CI correction
+
+- Initial Web CI correctly caught a defect in the new contract test (the regex omitted the leading `if(` token); the application code itself passed syntax and preceding contract assertions. Corrected the assertion to match the actual active-view conditional. Re-run all Web CI checks before merge.

@@ -476,3 +476,29 @@ Historical replay selects only a snapshot captured at or before a candle decisio
 1. Compare actual stored-snapshot coverage at 1m/5m/15m/30m/50m/1h decision timestamps against the previous arbitrary-minute capture, using unchanged strict source-age limits.
 2. Verify the backtest endpoint returns real observation counts and separate baseline/order-flow-gated metrics for a symbol with active streams; zero observations must remain an explicit no-data result.
 3. Collect representative chronological out-of-sample sessions before interpreting expectancy, profit factor, win rate or drawdown changes.
+
+
+## Phase C11 — deterministic end-to-end long/short replay fixtures (PR pending)
+
+### Purpose
+
+The prior replay tests verified causal snapshot selection, freshness recomputation, fail-closed behavior and mode provenance, while the live pipeline tests separately verified synthetic long/short setups. This phase closes the gap between those two layers: prove that the historical replay loop can select a prior stored-style order-flow snapshot and generate a real directional signal through the existing `build_signal` engine.
+
+### Implementation
+
+- Make the deterministic replay observation fixture side-aware: BUY scenarios carry positive aggressor delta and positive L2 quote-notional depth imbalance; SELL scenarios carry negative values.
+- Build deterministic, timestamped multi-timeframe candle contexts with a confirmed trend, liquidity sweep and BOS/MSS breakout.
+- Run both directions through `signal_backtest._simulate_slice` without monkeypatching `build_signal`; use a prior snapshot with fresh source timestamps, sequence-validated depth and complete-since-seed CVD status.
+- Include next-minute execution candles so the existing replay fill simulator evaluates the generated MARKET entry.
+- Assert exactly one replay signal/trade, matching direction, a prior snapshot match and explicit order-flow confirmation.
+
+### Evidence boundary
+
+- The scenarios are synthetic fixtures designed to prove engine capability and chronological wiring. They are not downloaded historical trades, not live market signals and not an out-of-sample performance sample.
+- Passing this test does not establish win rate, expectancy, profit factor, drawdown improvement or profitability.
+- Live stored-row coverage remains a separate operational check. The GitHub smoke workflow runs a rotating read-only pair sample and does not inspect the local app database.
+
+### Verification
+
+- PR and CI status will be recorded after the test workflow completes.
+- No live scoring thresholds, entry rules, freshness limits, data provenance rules or order execution permissions are changed.

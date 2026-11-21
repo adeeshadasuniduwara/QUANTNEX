@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from github_api_cache import github_json_cached
+from backend.app.github_api_cache import github_json_cached
 
 
 class _Headers(dict):
@@ -25,7 +25,7 @@ class GithubApiCacheTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             cache = Path(directory) / "cache.json"
             url = "https://api.github.com/repos/example/repo/commits/main"
-            with patch("github_api_cache.urllib.request.urlopen", return_value=_Response(
+            with patch("backend.app.github_api_cache.urllib.request.urlopen", return_value=_Response(
                 {"sha": "a" * 40}, {"ETag": '"abc"'}
             )) as request:
                 first = github_json_cached(url, cache, "test", fresh_seconds=0)
@@ -43,14 +43,14 @@ class GithubApiCacheTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             cache = Path(directory) / "cache.json"
             url = "https://api.github.com/repos/example/repo/commits/main"
-            with patch("github_api_cache.urllib.request.urlopen", return_value=_Response(
+            with patch("backend.app.github_api_cache.urllib.request.urlopen", return_value=_Response(
                 {"sha": "b" * 40}, {"ETag": '"latest"'}
             )):
                 first = github_json_cached(url, cache, "test", fresh_seconds=0)
             from urllib.error import HTTPError
             rate_limit = HTTPError(url, 403, "Forbidden",
                 _Headers({"X-RateLimit-Remaining": "0", "Retry-After": "120"}), None)
-            with patch("github_api_cache.urllib.request.urlopen", side_effect=rate_limit) as request:
+            with patch("backend.app.github_api_cache.urllib.request.urlopen", side_effect=rate_limit) as request:
                 second = github_json_cached(url, cache, "test", fresh_seconds=0)
                 third = github_json_cached(url, cache, "test", fresh_seconds=0)
                 self.assertEqual(second, first)

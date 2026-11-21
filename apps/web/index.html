@@ -206,6 +206,12 @@
           <div class="signal-warning">Gold and Forex analysis require a supported market-data provider configured on this computer. Keep provider credentials private; QUANTNEX never displays secret values in the website. Provider plan limits and market-data entitlements apply.</div>
           <div id="signalBacktestResult" class="signal-result-empty">Historical validation: run a chronological training / out-of-sample test for the selected Binance Spot pair. Spread, depth, fees and slippage are modeled assumptions, not historical order-book data.</div>
         </section>
+        <section class="panel signal-panel signal-results-panel">
+          <div class="signal-intro"><div><strong>Manual multi-timeframe signal scan</strong><p>Run the configured market scan from these settings. Automatic chart signals are shown in the Live Signals table below the chart.</p></div><span class="signal-pill" id="signalEngineState">NOT SCANNED</span></div>
+          <div id="signalResult" class="signal-result-empty">Choose a Binance Spot pair or configured Gold market, then run a manual scan.</div>
+          <div id="indicatorReadout" class="indicator-readout"></div>
+          <p class="signal-feed-note">The 0–10 score counts matching rules; it is not a measured win rate or probability. Reaper is not represented as a working confirmation without a verified formula.</p>
+        </section>
         </div>
         <div class="qx-chart-options">
           <label><input type="checkbox" id="qxVolume" checked> Volume</label>

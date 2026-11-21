@@ -552,7 +552,7 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 ### Changes
 
 - Print a compact Order Flow diagnostic for every successful symbol scan, including WAIT results.
-- Include status/accepted, feed mode, stream readiness, trade count, aggressor delta/ratio, CVD status, trade age, session-delta completeness, spread and depth imbalance when present.
+- Include status/accepted, feed mode, stream readiness, trade count, aggressor delta/ratio, CVD value/status, UTC session delta/completeness, trade age, spread and depth imbalance when present.
 - Sanitize and bound scalar strings; omit non-finite numeric values and never dump raw source URLs, full footprints or complete order-book levels.
 - Add deterministic tests for contradictory Order Flow output and missing/non-finite diagnostics.
 

@@ -1017,3 +1017,5 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 - Initial Web CI correctly caught a defect in the new contract test (the regex omitted the leading `if(` token); the application code itself passed syntax and preceding contract assertions. Corrected the assertion to match the actual active-view conditional. Re-run all Web CI checks before merge.
 
 - Follow-up safety hardening: clear the previous symbol's heatmap, depth tables and metrics before opening a new stream or returning early for Gold/non-USDT instruments, preventing stale BTC/ETH/SOL depth from remaining visible after a chart-market switch.
+
+- CI found the existing app.js cache-key contract in `live-terminal.test.cjs`; updated it to the new app asset version. Added a regression assertion and code guard ensuring a BTC/ETH/SOL heatmap, ladder and metrics are cleared before switching to Gold/non-USDT instruments, so old crypto liquidity is never left on screen as if it belonged to the new market.

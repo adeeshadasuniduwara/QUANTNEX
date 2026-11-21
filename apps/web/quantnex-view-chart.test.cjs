@@ -18,7 +18,7 @@ assert.ok(!js.includes("candles.length<210)throw Error"), "A valid short history
 assert.ok(js.includes("INDICATORS WARMING UP"), "Short histories must clearly disclose indicator warm-up instead of failing chart preview.");
 assert.ok(js.includes("c.high>=Math.max(c.open,c.close,c.low)"), "Malformed OHLC candles must be filtered before canvas rendering.");
 assert.ok(css.includes(".qx-native-chart-canvas"), "Native chart canvas styles are missing.");
-for (const symbol of ["BNBUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT"]) assert.ok(html.includes(`value="${symbol}"`), `Missing market selector option: ${symbol}`);
+assert.match(js, /loadChartMarkets\(true\)/, "Market selector must load the live symbol universe dynamically instead of relying on a hard-coded shortlist.");
 console.log("QUANTNEX native canvas chart, live feed, indicators and market selector checks passed.");
 
 assert.match(js, /Math\.min\(30000,1000\*Math\.pow\(2,/ , "Live feed reconnect must use capped exponential backoff.");

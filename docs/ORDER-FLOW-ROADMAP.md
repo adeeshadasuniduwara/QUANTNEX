@@ -633,3 +633,14 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 - Signal-engine isolation: the chart intelligence controller must not call Spot analyze/replay/backtest or display Spot signal ledger entries while a Futures market is selected. Current UI guard labels USDⓈ-M Futures as chart-only until a separate Futures strategy engine and replay evidence exist.
 
 - Newly listed perpetual pairs with fewer than 210 closed candles remain chartable; the native chart already labels indicator warm-up. A missing/empty candle response still fails closed.
+
+
+## Phase C15 merge verification — PR #254
+
+- Merged to main as `28071b133d02169f1391ae7b8823d45a3a0cd632`.
+- Pre-merge and post-merge CI successful. Python 3.12: 500 passed; Python 3.14: 500 passed; Web CI passed.
+- Active Spot and USDⓈ-M perpetual pairs are discovered separately from their authoritative exchangeInfo endpoints. Display labels are `[EX-SYMBOL]` and `[EX-SYMBOL.P]`.
+- USDⓈ-M chart uses Futures REST klines and Futures kline WebSocket. Only closed valid OHLC bars are charted. Newly listed pairs with short candle history remain viewable with indicator warm-up disclosure.
+- Spot analysis/replay/backtest/ledger are explicitly blocked while Futures is selected. Futures signals and Order Flow are not yet supported.
+- COIN-M remains excluded. External live Futures API/browser verification remains pending; tests use deterministic mocked exchange metadata and candles.
+- Telegram announce failure is unrelated: configured Telegram destination points to the bot itself.

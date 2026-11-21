@@ -93,3 +93,35 @@ def test_extract_response_text_rejects_empty_or_malformed_payload():
         ai_assistant.extract_response_text({"status": "completed", "output": []})
     with pytest.raises(ValueError, match="invalid response payload"):
         ai_assistant.extract_response_text(["not", "an", "object"])
+
+
+
+def test_openai_http_error_messages_distinguish_auth_permissions_model_and_quota():
+    import httpx
+
+    cases = {
+        401: "rejected the saved API key",
+        403: "does not have permission",
+        404: "model was not found",
+        429: "rate limit or project quota",
+        500: "temporarily experiencing a service problem",
+    }
+    for status, expected in cases.items():
+        request = httpx.Request("POST", ai_assistant.OPENAI_RESPONSES_URL)
+        response = httpx.Response(status, request=request)
+        error = httpx.HTTPStatusError("provider error", request=request, response=response)
+        assert expected in ai_assistant.openai_http_error_message(error)
+
+
+def test_openai_http_error_message_never_echoes_provider_payload_or_credentials():
+    import httpx
+
+    request = httpx.Request("POST", ai_assistant.OPENAI_RESPONSES_URL)
+    response = httpx.Response(
+        401, request=request,
+        json={"error": {"message": "Invalid key sk-secret-must-not-be-returned"}},
+    )
+    error = httpx.HTTPStatusError("provider error", request=request, response=response)
+    message = ai_assistant.openai_http_error_message(error)
+    assert "sk-secret" not in message
+    assert "API key" in message

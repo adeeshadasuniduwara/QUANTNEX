@@ -100,19 +100,13 @@ def queue_supervisor_check() -> None:
 
 
 def github_json(url: str) -> dict:
-    request = urllib.request.Request(
-        url,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "QUANTNEX-Web-Updater",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
+    # Shared persistent ETag cache prevents repeated update-status requests from
+    # exhausting the unauthenticated GitHub API quota.
+    from github_api_cache import github_json_cached
+    return github_json_cached(
+        url, DATA / "updates" / "github-api-cache.json", "QUANTNEX-Web-Updater",
+        fresh_seconds=60, stale_seconds=24 * 60 * 60, timeout=25,
     )
-    with urllib.request.urlopen(request, timeout=25) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    if not isinstance(payload, dict):
-        raise RuntimeError("GitHub returned an invalid update response.")
-    return payload
 
 
 def latest_commit() -> dict:

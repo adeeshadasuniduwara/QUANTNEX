@@ -7,7 +7,7 @@ account access, order placement, or Spot order-flow substitution is performed.
 from __future__ import annotations
 
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
 from .binance_usdm_market_data import (
@@ -63,7 +63,7 @@ async def analyze_usdm_futures_signal(
                     or min(op, high, low, close) <= 0 or volume < 0
                     or high < max(op, close, low) or low > min(op, close, high)):
                 raise ValueError
-            if previous is not None and stamp - previous != __import__("datetime").timedelta(seconds=INTERVAL_SECONDS[interval]):
+            if previous is not None and stamp - previous != timedelta(seconds=INTERVAL_SECONDS[interval]):
                 raise ValueError
         except (KeyError, TypeError, ValueError, OverflowError) as exc:
             raise BinanceUsdMSignalError("Futures candles failed OHLC, timestamp or ordering validation.") from exc

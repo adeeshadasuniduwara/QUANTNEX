@@ -700,3 +700,19 @@ def test_historical_order_flow_replay_generates_real_long_and_short_signals(side
     assert result["market_entries"] == 1
     assert result["trades"][0]["side"] == side
     assert result["trades"][0]["entry_type"] == "MARKET"
+
+
+def test_replay_execution_quotes_are_tick_aligned_uncrossed_and_cost_conservative():
+    from decimal import Decimal
+    from app.signal_backtest import _replay_execution_quotes
+
+    quotes = _replay_execution_quotes(100.003, "0.01", 5.0)
+    tick = Decimal("0.01")
+    assert quotes["best_bid"] < quotes["best_ask"]
+    assert Decimal(str(quotes["best_bid"])) % tick == 0
+    assert Decimal(str(quotes["best_ask"])) % tick == 0
+    assert quotes["spread_bps"] >= quotes["assumed_spread_bps"]
+
+    zero_spread = _replay_execution_quotes(100.0, "0.01", 0.0)
+    assert zero_spread["best_ask"] - zero_spread["best_bid"] == pytest.approx(0.01)
+    assert zero_spread["spread_bps"] > 0

@@ -58,3 +58,31 @@
 .qx-native-chart-canvas{overflow:visible}
 
 /* Live market-session clock is a chart-side panel on desktop and stacks below on mobile. */
+
+/* Integrated Order Flow & Liquidity package inside QUANTNEX VIEW. */
+.qx-orderflow-toolkit{margin:14px 0;padding:16px;border:1px solid var(--border,#30343c);border-radius:14px;background:var(--panel,#101318);min-width:0}
+.qx-orderflow-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:13px}
+.qx-orderflow-kicker{font-size:9px;letter-spacing:.12em;color:var(--muted,#9299a5);font-weight:700}
+.qx-orderflow-heading h3{margin:5px 0;color:var(--text,#e8edf5);font-size:16px}
+.qx-orderflow-heading p{margin:0;color:var(--muted,#9299a5);font-size:11px;line-height:1.5}
+.qx-orderflow-market-badge{display:flex;flex-direction:column;gap:4px;padding:8px 11px;border:1px solid var(--border,#30343c);border-radius:9px;background:rgba(0,0,0,.14);font-variant-numeric:tabular-nums}
+.qx-orderflow-market-badge strong{font-size:12px;color:var(--text,#e8edf5)}
+.qx-orderflow-market-badge span{font-size:9px;color:var(--muted,#9299a5)}
+.qx-orderflow-metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px;margin:10px 0 13px}
+.qx-orderflow-metrics article{min-width:0;padding:9px;border:1px solid var(--border,#30343c);border-radius:8px;background:rgba(0,0,0,.12)}
+.qx-orderflow-metrics article span{display:block;color:var(--muted,#9299a5);font-size:9px}
+.qx-orderflow-metrics article strong{display:block;margin-top:5px;color:var(--text,#e8edf5);font-size:11px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.qx-orderflow-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0}
+.qx-orderflow-tabs,.qx-orderflow-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.qx-orderflow-tab{border:1px solid var(--border,#30343c);border-radius:8px;padding:8px 11px;background:transparent;color:var(--muted,#9299a5);font:600 10px system-ui;cursor:pointer}
+.qx-orderflow-tab.is-active{border-color:#63a9ff;color:#e8f1ff;background:rgba(99,169,255,.12)}
+.qx-orderflow-actions span{font-size:9px;color:var(--muted,#9299a5)}
+.qx-orderflow-tab-panel[hidden]{display:none!important}
+.qx-orderflow-toolkit .p7-bookmap-wrap{margin:10px 0;padding:12px;background:rgba(0,0,0,.16)}
+.qx-orderflow-toolkit .p7-book-grid h4{margin:4px 0 8px;font-size:11px;color:var(--text,#e8edf5)}
+.qx-orderflow-unavailable{padding:16px;border:1px dashed var(--border,#454b56);border-radius:10px;background:rgba(0,0,0,.12)}
+.qx-orderflow-unavailable strong{font-size:12px;color:var(--text,#e8edf5)}
+.qx-orderflow-unavailable p,.qx-orderflow-unavailable small{display:block;color:var(--muted,#9299a5);font-size:10px;line-height:1.6}
+.qx-orderflow-footnote{margin-top:12px;color:var(--muted,#9299a5);font-size:9px;line-height:1.55}
+@media(max-width:900px){.qx-orderflow-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:560px){.qx-orderflow-toolkit{padding:11px}.qx-orderflow-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.qx-orderflow-tab{padding:7px 8px}.qx-orderflow-actions{width:100%;justify-content:space-between}}

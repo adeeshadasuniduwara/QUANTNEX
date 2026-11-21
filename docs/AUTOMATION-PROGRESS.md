@@ -878,14 +878,17 @@ Branch: `test/orderflow-replay-long-short-fixtures`.
 
 ### Verification status
 
-- PR creation and CI verification are pending at the time of this checkpoint.
+- Initial replay fixtures exposed a real historical-execution modeling defect: synthetic bid/ask prices were derived from candle open plus an assumed spread but were not rounded to the symbol tick. The entry selector correctly enforced `PRICE_FILTER` before the later entry-price rounding, so both otherwise-valid replay setups were rejected.
+- `backend/app/signal_backtest.py` now rounds the modeled bid down and ask up to the authoritative tick, enforces at least one tick of separation for a zero-spread/locked synthetic book, and recalculates the effective spread after rounding. Cost estimates therefore use the effective tick-aware spread, which can be wider than the requested assumption.
+- Added a focused test proving modeled quotes are tick-aligned, uncrossed and never narrower than the requested spread, including the zero-spread edge case.
+- PR [#244](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/244) final head `a7b16c9d155867bfb9816d1a07277437ed230a6c` passed Backend CI and Backend/Web CI: 481 tests passed on Python 3.12, 481 on Python 3.14, schema checks passed and Web CI passed.
+- The earlier failing attempts were not merged. The failure was retained as evidence, diagnosed and corrected before merge.
 - No signal thresholds, production scoring, order-flow freshness limits, live execution settings, or order-placement behavior were changed.
 - No API keys or live-money execution were introduced.
 
 ### Exact next steps
 
-1. Run Backend CI on Python 3.12 and 3.14 plus Backend/Web and Web checks; fix any fixture failures without weakening production gates.
-2. Review the complete diff and merge only if all relevant checks pass, the PR is current with main, and no unrelated or secret changes exist.
-3. Verify post-merge checks on main.
-4. Separately inspect real `order_flow_observations` counts for active local streams through the backtest endpoint. GitHub smoke success alone cannot prove that the local recorder has stored rows.
-5. Keep baseline candle replay separate from order-flow-gated replay; collect representative chronological out-of-sample observations before interpreting any performance delta.
+1. Re-review the final three-file diff and confirm the PR still targets the current main SHA with all checks green.
+2. Merge PR #244 only after the mergeability and security review; then verify the merge commit and post-merge checks on main.
+3. Separately inspect real `order_flow_observations` counts for active local streams through the backtest endpoint. GitHub smoke success alone cannot prove that the local recorder has stored rows.
+4. Keep baseline candle replay separate from order-flow-gated replay; collect representative chronological out-of-sample observations before interpreting any performance delta.

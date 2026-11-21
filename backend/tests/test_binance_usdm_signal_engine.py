@@ -93,7 +93,8 @@ def test_futures_engine_rejects_missing_candle_intervals(monkeypatch):
 
 def test_futures_engine_rejects_future_candle_timestamp(monkeypatch):
     rows = candles()
-    rows[-1]["time"] = (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat()
+    for row in rows:
+        row["time"] = (datetime.fromisoformat(row["time"]) + timedelta(minutes=2)).isoformat()
     async def fake_fetch(*_args):
         return rows
     monkeypatch.setattr(engine, "fetch_binance_usdm_candles", fake_fetch)

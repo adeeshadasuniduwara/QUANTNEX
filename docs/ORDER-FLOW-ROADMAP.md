@@ -586,3 +586,14 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 2. Run the backtest endpoint on the user's local app while a managed Spot stream is active to inspect actual recorder row count and train/OOS coverage.
 3. Diagnose any low capture coverage without relaxing source-age or order-book sequence checks.
 4. Gather real chronological Order Flow history before measuring OOS edge or changing the strategy.
+
+
+## Phase C14 — QUANTNEX VIEW validated Spot Order Flow API
+
+- Add a local read-only GET /api/v1/order-flow/spot/{symbol} endpoint. Validate each symbol against live Binance Spot exchange metadata and use the authoritative PRICE_FILTER tickSize; never invent a tick size.
+- Return sequence-validated depth readiness independently from trade-flow readiness. A valid depth book can be displayed while the trade stream/CVD is still warming up; stale or unsequenced depth is withheld.
+- Expose best bid/ask, spread, quote-notional top-10 depth, depth imbalance, microprice, up to 100 L2 levels, aggregate-trade buy/sell volume and delta, CVD scope/status, UTC session delta completeness, bounded footprint buckets, freshness and source provenance.
+- Replace the browser's separate @depth20@100ms partial-depth socket with 500ms polling of the local manager snapshot. The backend manager owns Binance WebSockets, reconnect/backfill and update-ID sequence validation; the browser does not open a second unsequenced depth stream.
+- Keep session delta explicitly unavailable unless full UTC-session trade-ID coverage is anchored; CVD scope is only since the bounded stream seed.
+- Endpoint remains public-market-data read-only and local-workspace protected; no orders or live-money execution.
+- Deterministic API tests use a fake manager and verify symbol rejection, metadata tick-size use, sequence validation, stale-depth veto, independent readiness, CVD scope and session limitations. Local browser/live-stream smoke remains required.

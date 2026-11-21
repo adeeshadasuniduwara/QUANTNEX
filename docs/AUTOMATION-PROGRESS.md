@@ -1039,3 +1039,13 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 3. USDⓈ-M/COIN-M Futures, Gold and Forex depth are not claimed as supported.
 4. Next UI/order-flow phase: expose validated Spot AggTrade-derived delta/CVD and session coverage to QUANTNEX VIEW; keep partial-depth and executed-trade metrics distinct.
 5. Independently continue the primary signal-engine milestone: dynamic Binance symbol universe, deterministic long/short replay and chronological OOS validation.
+
+
+## 2026-11-21 — Phase C14: validated Spot Order Flow API (implementation branch)
+
+- Main baseline: 450194b8a750273cf8734e4d5f2a81bd629d4c41; branch feat/quantnex-view-sequence-validated-orderflow.
+- Backend already owns a bounded Binance Spot AggTrade + diff-depth manager with trade-ID gap backfill, sequence-validated L2, CVD since stream seed and explicit UTC session coverage. The previous browser Bookmap bypassed it and opened an unsequenced depth20@100ms partial stream.
+- Add a local read-only API to expose the validated manager snapshot and replace the browser partial-depth socket with bounded polling.
+- Trade Flow UI consumes actual AggTrade-derived delta/CVD/footprint with provenance; full UTC session delta remains unavailable until independently anchored.
+- Depth readiness and trade-flow readiness are separate; no stale/unsequenced depth fallback is rendered.
+- Pending PR checks and post-merge local device/live stream verification.

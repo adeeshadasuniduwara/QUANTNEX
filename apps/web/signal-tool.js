@@ -59,9 +59,9 @@
       ["Risk per trade",p.risk.toFixed(2)+"%"],
       ["Risk amount",money(riskCash)],
       ["Estimated position size",lots.toFixed(3)+" lots"],
-      ["TP1 potential profit",money(lots*Math.abs(p.t1-p.entry)*p.value)],
-      ["TP2 potential profit",money(lots*Math.abs(p.t2-p.entry)*p.value)],
-      ["TP3 potential profit",money(lots*Math.abs(p.t3-p.entry)*p.value)],
+      ["TP1 estimated reward",money(lots*Math.abs(p.t1-p.entry)*p.value)],
+      ["TP2 estimated reward",money(lots*Math.abs(p.t2-p.entry)*p.value)],
+      ["TP3 estimated reward",money(lots*Math.abs(p.t3-p.entry)*p.value)],
       ["TP1 / TP2 / TP3 R:R","1:"+rrs.map(value=>value.toFixed(2)).join(" · 1:")]
     ];
     rows.forEach(([label,value])=>{const tr=document.createElement("tr"),name=document.createElement("th"),resultCell=document.createElement("td");name.scope="row";name.textContent=label;resultCell.textContent=String(value);tr.append(name,resultCell);result.append(tr);});

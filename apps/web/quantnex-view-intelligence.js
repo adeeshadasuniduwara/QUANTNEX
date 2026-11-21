@@ -75,17 +75,30 @@
       return;
     }
     if(!signal){
-      addEmpty(state==="ERROR"?"Live analysis is temporarily unavailable. Retrying automatically…":"WAIT · No confirmed setup passed the current filters. The engine keeps monitoring.");
-      if(status)status.textContent=state==="ERROR"?"RETRYING":"WAITING · LIVE";
+      addEmpty(state==="ERROR"?"Live analysis is temporarily unavailable. Retrying automatically…":
+        (data?.message||"WAIT · No confirmed setup passed the current filters. The engine keeps monitoring."));
+      if(status)status.textContent=state==="ERROR"?"RETRYING":(data?.status||"WAIT · NO QUALIFIED SETUP");
       return;
     }
-    const market=selection.marketType==="BINANCE_USDM_FUTURES"?signal.symbol+".P":signal.symbol;
+    const market=signal.symbol||data.symbol||selection.symbol;
     const entry=signal.entry_type==="MARKET"?"MARKET ("+price(signal.entry)+")":"LIMIT ("+price(signal.limit_price||signal.entry)+")";
-    const values=[market,signal.side,signal.timeframe||selection.interval,entry,price(signal.stop_loss),price(signal.tp1),price(signal.tp2),price(signal.tp3),String(signal.score)+"/20","SIGNAL READY"];
+    const values=[market,signal.side,signal.timeframe||data.interval||selection.interval,entry,price(signal.stop_loss),price(signal.tp1),price(signal.tp2),price(signal.tp3),
+      String(signal.score??data.confluence_score??"—")+"/20",data.status||"SIGNAL"];
     const tr=document.createElement("tr");
-    values.forEach((value,index)=>{const td=document.createElement("td");td.textContent=String(value);if(index===1)td.dataset.side=signal.side;if(index===9)td.className="qx-live-signal-ready";tr.append(td);});
+    values.forEach((value,index)=>{
+      const td=document.createElement("td");td.textContent=String(value??"—");
+      if(index===1)td.dataset.side=signal.side;
+      if(index===9)td.dataset.status=data.status||"SIGNAL";
+      tr.append(td);
+    });
     rows.append(tr);
-    if(status)status.textContent="LIVE · "+new Date(data.generated_at||Date.now()).toLocaleTimeString();
+    const detailRow=document.createElement("tr"),detail=document.createElement("td");
+    detail.colSpan=10;detail.className="qx-live-signal-note";
+    detail.textContent="Setup: "+(signal.confirmations||[]).join(" + ")+
+      (signal.entry_reference_note?" · "+signal.entry_reference_note:"")+
+      (signal.reasons?.length?" · "+signal.reasons.join(" · "):"");
+    detailRow.append(detail);rows.append(detailRow);
+    if(status)status.textContent="LIVE · "+signal.side+" · "+market;
   }
   function renderBacktest(data){
     const host=$("qxBacktestMetrics");host.replaceChildren();

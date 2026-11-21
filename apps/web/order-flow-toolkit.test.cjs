@@ -25,7 +25,7 @@ assert.match(css,/\.qx-orderflow-flow-grid/);
 assert.match(html,/quantnex-view-chart\.css\?v=20261121-compact-layout2/);
 assert.match(html,/app\.js\?v=20261121-orderflow-suite1/);
 assert.match(app,/apiRequest\("\/api\/v1\/signals\/markets"\)/);
-assert.match(app,/if\(symbol==="XAUUSD"\)/);
+assert.match(app,/symbol==="XAUUSD"\|\|marketType!=="BINANCE_SPOT"/);
 assert.doesNotMatch(app,/!symbol\.endsWith\("USDT"\)/);
 assert.match(app,/profile\.poc/);
 assert.match(app,/apiRequest\("\/api\/v1\/signals\/markets"\)/);

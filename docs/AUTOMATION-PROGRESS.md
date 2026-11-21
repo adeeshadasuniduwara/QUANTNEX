@@ -1053,3 +1053,5 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 - Follow-up C14 integration: the chart symbol selector now refreshes all current eligible Binance Spot symbols on entry and every 15 minutes while the chart is active; the Bookmap uses the backend sequence-validated L2 stream and the Trade Flow panel displays AggTrade delta/CVD, footprint, volume-profile POC/VAH/VAL, microprice and honest UTC session coverage. Price formatting follows each pair's exchange tick size.
 
 - CI caught a test-only cache-key mismatch: the stylesheet version correctly remains sequence-orderflow1 (its CSS last changed in the first toolkit merge), while app.js is sequence-orderflow3. Updated the toolkit contract test to check each asset's actual version; no application behavior changed by this correction.
+
+- CI caught a stale legacy assertion in live-terminal.test.cjs that required the old browser-side @depth20@100ms stream. Replaced it with assertions for the validated local Order Flow API and no partial-depth fallback; this reflects the intended architecture change.

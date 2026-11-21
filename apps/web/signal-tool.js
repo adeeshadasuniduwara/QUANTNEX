@@ -37,7 +37,7 @@
   function renderPosition() {
     const p=readPlan(),status=$("signalCalcStatus"),result=$("positionSummary");
     if(!p){status.textContent="Check price order: BUY needs SL < Entry < TP1 < TP2 < TP3; SELL needs TP3 < TP2 < TP1 < Entry < SL.";
-      result.replaceChildren();const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=2;td.textContent="Enter a valid setup to calculate.";tr.append(td);result.append(tr);
+      result.replaceChildren();const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=2;td.textContent="Enter a valid setup.";tr.append(td);result.append(tr);
       $("riskRewardVisual").hidden=true;currentPlan=null;return;}
     currentPlan=p;
     const distance=Math.abs(p.entry-p.sl),riskCash=p.equity*p.risk/100,lots=riskCash/(distance*p.value);
@@ -47,21 +47,24 @@
     $("lossZone").textContent="LOSS / SL "+priceText(p.sl);
     $("profitZone").textContent="PROFIT · TP1 "+priceText(p.t1)+" · TP2 "+priceText(p.t2)+" · TP3 "+priceText(p.t3);
     $("entryMarker").textContent="ENTRY "+priceText(p.entry);result.replaceChildren();
-    const stopDistance=Math.abs(p.entry-p.sl),stopPercent=100*stopDistance/p.entry;
-    const addPositionRow=(label,value)=>{
-      const tr=document.createElement("tr"),name=document.createElement("td"),amount=document.createElement("td");
-      name.textContent=label;amount.textContent=value;tr.append(name,amount);result.append(tr);
-    };
-    addPositionRow("Account equity",money(p.equity));
-    addPositionRow("Risk setting",p.risk.toFixed(2)+"%");
-    addPositionRow("Maximum planned risk",money(riskCash));
-    addPositionRow("Stop distance",priceText(stopDistance)+" · "+stopPercent.toFixed(3)+"%");
-    addPositionRow("Estimated position size",lots.toFixed(3)+" lots");
-    [["TP1",p.t1,rrs[0]],["TP2",p.t2,rrs[1]],["TP3",p.t3,rrs[2]]].forEach(([name,target,rr])=>{
-      const reward=Math.abs(target-p.entry)*lots*p.value;
-      addPositionRow(name+" risk : reward","1 : "+rr.toFixed(2));
-      addPositionRow(name+" estimated reward",money(reward));
-    });
+    const rows=[
+      ["Position side",p.side==="BUY"?"BUY / LONG":"SELL / SHORT"],
+      ["Entry price",priceText(p.entry)],
+      ["Stop Loss",priceText(p.sl)],
+      ["Stop distance",priceText(distance)],
+      ["Take Profit 1",priceText(p.t1)],
+      ["Take Profit 2",priceText(p.t2)],
+      ["Take Profit 3",priceText(p.t3)],
+      ["Account equity",money(p.equity)],
+      ["Risk per trade",p.risk.toFixed(2)+"%"],
+      ["Risk amount",money(riskCash)],
+      ["Estimated position size",lots.toFixed(3)+" lots"],
+      ["TP1 potential profit",money(lots*Math.abs(p.t1-p.entry)*p.value)],
+      ["TP2 potential profit",money(lots*Math.abs(p.t2-p.entry)*p.value)],
+      ["TP3 potential profit",money(lots*Math.abs(p.t3-p.entry)*p.value)],
+      ["TP1 / TP2 / TP3 R:R","1:"+rrs.map(value=>value.toFixed(2)).join(" · 1:")]
+    ];
+    rows.forEach(([label,value])=>{const tr=document.createElement("tr"),name=document.createElement("th"),resultCell=document.createElement("td");name.scope="row";name.textContent=label;resultCell.textContent=String(value);tr.append(name,resultCell);result.append(tr);});
     status.textContent="Risk estimate ready. Verify contract size, tick value and lot sizing with your broker.";
   }
   ["side","entry","stopLoss","tp1","tp2","tp3","signalEquity","riskPct","usdPerDollarMove"].forEach(id=>$(id).addEventListener("input",renderPosition));

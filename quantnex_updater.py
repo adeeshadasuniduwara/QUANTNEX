@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import urllib.request
 import zipfile
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
@@ -32,17 +33,28 @@ class UpdateError(RuntimeError):
     pass
 
 
-def _request_json(url: str) -> dict:
+def _request_latest_commit_sha() -> str:
+    """Resolve only the current main tip through GitHub's Atom feed (not the rate-limited REST API)."""
+    url = f"https://github.com/{REPOSITORY}/commits/{BRANCH}.atom"
     request = urllib.request.Request(url, headers={
-        "Accept": "application/vnd.github+json",
+        "Accept": "application/atom+xml, application/xml, text/xml",
         "User-Agent": "QUANTNEX-Automatic-Updater",
-        "X-GitHub-Api-Version": "2022-11-28",
+        "Cache-Control": "no-cache",
     })
     with urllib.request.urlopen(request, timeout=30) as response:
-        result = json.loads(response.read().decode("utf-8"))
-    if not isinstance(result, dict):
-        raise UpdateError("GitHub returned an invalid response.")
-    return result
+        payload = response.read(2 * 1024 * 1024 + 1)
+    if len(payload) > 2 * 1024 * 1024:
+        raise UpdateError("GitHub returned an unexpectedly large commit feed.")
+    try:
+        root = ET.fromstring(payload)
+    except ET.ParseError as exc:
+        raise UpdateError("GitHub returned an invalid main-branch commit feed.") from exc
+    for element in root.iter():
+        if element.tag.rsplit("}", 1)[-1] == "id":
+            match = re.search(r"/([0-9a-f]{40})$", (element.text or "").strip())
+            if match:
+                return match.group(1)
+    raise UpdateError("GitHub's main-branch feed did not contain a valid commit SHA.")
 
 
 def _valid_sha(value: object) -> bool:
@@ -307,26 +319,36 @@ MAX_SNAPSHOT_FILES = 1500
 MAX_SNAPSHOT_BYTES = 100 * 1024 * 1024
 
 
-def _managed_paths_from_tree(commit_sha: str) -> list[str]:
-    """Read the complete tracked source-file list for a commit, not a truncated compare diff."""
-    tree = _request_json(
-        f"https://api.github.com/repos/{REPOSITORY}/git/trees/{commit_sha}?recursive=1"
-    )
-    if tree.get("truncated"):
-        raise UpdateError("GitHub returned a truncated source tree; no files were changed.")
-    entries = tree.get("tree")
-    if not isinstance(entries, list):
-        raise UpdateError("GitHub did not return a valid source tree.")
-    paths = []
-    for item in entries:
-        if item.get("type") != "blob" or item.get("mode") not in ("100644", "100755"):
-            continue
-        relative = _safe_relative(item.get("path", ""))
-        if relative is not None:
-            paths.append(relative.as_posix())
+def _managed_paths_from_archive(commit_sha: str) -> list[str]:
+    """Read the full safe source-file list from the pinned archive without REST API calls."""
+    url = f"https://codeload.github.com/{REPOSITORY}/zip/{commit_sha}"
+    request = urllib.request.Request(url, headers={"User-Agent": "QUANTNEX-Automatic-Updater"})
+    with urllib.request.urlopen(request, timeout=120) as response:
+        archive_bytes = response.read(300 * 1024 * 1024 + 1)
+    if len(archive_bytes) > 300 * 1024 * 1024:
+        raise UpdateError("The source archive exceeds the 300 MB download safety limit.")
+    paths = set()
+    try:
+        with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
+            for info in archive.infolist():
+                if info.is_dir():
+                    continue
+                parts = PurePosixPath(info.filename).parts
+                if len(parts) < 2:
+                    continue
+                relative = _safe_relative("/".join(parts[1:]))
+                if relative is None:
+                    continue
+                mode = (info.external_attr >> 16) & 0o170000
+                if mode != 0o120000:
+                    paths.add(relative.as_posix())
+    except zipfile.BadZipFile as exc:
+        raise UpdateError("GitHub returned an invalid source archive.") from exc
     if len(paths) > MAX_SNAPSHOT_FILES:
         raise UpdateError("The source snapshot exceeds the 1,500-file safety limit.")
-    return sorted(set(paths))
+    if "run_quantnex_services.py" not in paths:
+        raise UpdateError("The pinned archive is not a valid QUANTNEX source workspace.")
+    return sorted(paths)
 
 
 def _load_managed_paths(root: Path, fallback_sha: str) -> list[str]:
@@ -342,7 +364,7 @@ def _load_managed_paths(root: Path, fallback_sha: str) -> list[str]:
         pass
     # Older installations did not record a managed-file manifest. Reconstruct
     # the previous exact source set from its Git tree before syncing the new one.
-    return _managed_paths_from_tree(fallback_sha)
+    return _managed_paths_from_archive(fallback_sha)
 
 
 def _save_managed_paths(root: Path, commit_sha: str, paths: list[str]) -> None:
@@ -411,11 +433,10 @@ def _stage_full_snapshot(root: Path, commit_sha: str, expected_paths: list[str])
         raise
 
 
-def check_and_apply(root: Path, force_reconcile: bool = False) -> dict:
-    """Reconcile the full source snapshot, optionally repairing a same-SHA local install."""
+def check_and_apply(root: Path, force_reconcile: bool = False, _latest_retry: int = 0) -> dict:
+    """Install only the newest main snapshot; intermediate commits are never queued."""
     root = root.resolve()
-    latest = _request_json(f"https://api.github.com/repos/{REPOSITORY}/commits/{BRANCH}")
-    latest_sha = latest.get("sha")
+    latest_sha = _request_latest_commit_sha()
     if not _valid_sha(latest_sha):
         raise UpdateError("GitHub did not provide a valid commit SHA.")
 
@@ -430,8 +451,17 @@ def check_and_apply(root: Path, force_reconcile: bool = False) -> dict:
     # Resolve the complete tracked source set for both revisions. This avoids
     # GitHub Compare API's 300-file response ceiling and catches stale/deleted files.
     previous_paths = _load_managed_paths(root, installed_sha)
-    latest_paths = _managed_paths_from_tree(latest_sha)
+    latest_paths = _managed_paths_from_archive(latest_sha)
     staged_root = _stage_full_snapshot(root, latest_sha, latest_paths)
+    # main can advance while a large ZIP is downloading. Discard that staged
+    # revision and resolve again before touching the installed workspace.
+    confirmed_latest_sha = _request_latest_commit_sha()
+    if confirmed_latest_sha != latest_sha:
+        shutil.rmtree(staged_root, ignore_errors=True)
+        if _latest_retry >= 4:
+            raise UpdateError("main kept changing during update download; the installer will retry on the next check.")
+        print(f"[AUTO UPDATE] A newer main revision appeared during download ({latest_sha[:7]} -> {confirmed_latest_sha[:7]}). Skipping the older snapshot.", flush=True)
+        return check_and_apply(root, force_reconcile=force_reconcile, _latest_retry=_latest_retry + 1)
     latest_set = set(latest_paths)
     removed_paths = sorted(set(previous_paths) - latest_set)
     changed_paths = []

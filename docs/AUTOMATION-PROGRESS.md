@@ -972,3 +972,50 @@ The last scheduled live smoke run successfully scanned 20 dynamically selected B
 2. Verify actual local recorder coverage through the backtest endpoint while a managed Spot stream is active.
 3. Use local backtest API diagnostics to establish actual recorder row coverage and keep the candle-only baseline separate from Order Flow replay.
 4. Only after representative real chronological observations exist, calculate comparative OOS expectancy, win rate, profit factor and drawdown.
+
+
+## 2026-11-21 — QUANTNEX VIEW Order Flow & Liquidity Toolkit (implementation branch)
+
+### User request
+
+Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-style liquidity heatmap into QUANTNEX VIEW as a distinct integrated tool package. Keep the existing native chart as the primary chart and share its selected symbol/timeframe.
+
+### Repository audit
+
+- Existing UI had a separate sidebar route `#orderflow-liquidity` with a Binance Spot `<symbol>@depth20@100ms` partial-depth stream, a rolling heatmap and top-12 bid/ask tables.
+- The heatmap retained at most 120 snapshots (approximately 12 seconds at 100ms) and explicitly showed resting liquidity, not executed volume.
+- The stream is partial-depth snapshots, not a sequence-validated full depth-diff reconstruction. No full footprint or trade-side Delta/CVD browser widget was present.
+- QUANTNEX VIEW is a first-party native canvas chart with its own market and timeframe selectors. The UI can share these selectors without introducing a second chart.
+- Existing source auto-updater downloads verified main-branch Web/Backend source with backup and rollback; cache keys must be advanced when Web assets change.
+
+### Implementation on branch `feat/quantnex-view-orderflow-toolkit`
+
+- Remove the standalone sidebar navigation entry and old standalone page.
+- Add an Order Flow & Liquidity Toolkit package below the QUANTNEX VIEW chart intelligence section.
+- Add three tool tabs: Liquidity Bookmap, Depth Ladder and Trade Flow diagnostics.
+- Reuse the existing live Spot partial-depth heatmap and bid/ask tables; add best bid/ask, quoted spread in price/bps, top-20 displayed quantity totals and depth imbalance.
+- Bind the toolkit to QUANTNEX VIEW's selected symbol/timeframe. Do not request Binance depth for XAUUSD/non-USDT chart symbols.
+- Preserve browser visibility/active-view socket lifecycle. Show the package only on QUANTNEX VIEW; stop the depth socket when leaving the view.
+- Explicitly disclose that browser Trade-side Delta/CVD is not connected and that the Bookmap visual is partial-depth resting liquidity, not a sequence-validated full book or executed footprint.
+
+### Verification boundary
+
+- Web CI contract tests cover placement/navigation, selected chart market linkage, tab structure, capability disclosures and lifecycle wiring.
+- The source diff must not change signal scoring, backend order-flow validation, broker execution, API credentials or live-money settings.
+- Real browser rendering and live WebSocket verification still require a running local QUANTNEX instance. The UI cannot be declared device-verified from static CI alone.
+
+### Next steps
+
+1. Run Web CI and inspect the complete diff/security surface before merging.
+2. Verify the next main-branch source update installs the new assets and cache keys; the user can restart the local launcher if they want the update immediately.
+3. On the user's local app, select BTCUSDT/ETHUSDT/SOLUSDT in QUANTNEX VIEW and verify heatmap/depth metrics; switch to XAUUSD and confirm the UI reports Binance Spot depth unavailable.
+4. Implement browser-side AggTrade Delta/CVD only after exposing the existing validated backend observations through a read-only API with provenance, freshness and gap status; do not infer it from candles or partial depth.
+
+
+### CI correction
+
+- Initial Web CI correctly caught a defect in the new contract test (the regex omitted the leading `if(` token); the application code itself passed syntax and preceding contract assertions. Corrected the assertion to match the actual active-view conditional. Re-run all Web CI checks before merge.
+
+- Follow-up safety hardening: clear the previous symbol's heatmap, depth tables and metrics before opening a new stream or returning early for Gold/non-USDT instruments, preventing stale BTC/ETH/SOL depth from remaining visible after a chart-market switch.
+
+- CI found the existing app.js cache-key contract in `live-terminal.test.cjs`; updated it to the new app asset version. Added a regression assertion and code guard ensuring a BTC/ETH/SOL heatmap, ladder and metrics are cleared before switching to Gold/non-USDT instruments, so old crypto liquidity is never left on screen as if it belonged to the new market.

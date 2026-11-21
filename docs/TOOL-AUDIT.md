@@ -207,3 +207,16 @@ Do not convert static code inspection or CI success into a claim that a real ext
 - P&L is intentionally shown in R, not USD: the chart SignalTrade ledger does not contain a reliable account balance, position sizing or broker-fill ledger from which USD P&L could be calculated.
 - Automated coverage added for period filtering, per-symbol breakdown, resolved-only win-rate calculation and PDF generation. External Telegram delivery, live provider availability and Windows auto-update handoff still require runtime verification.
 - Evidence level: source and CI tests only until the PR checks and a connected Telegram runtime are verified.
+
+
+## Update 032 — Order Flow & Liquidity integrated into QUANTNEX VIEW
+
+- Removed the standalone Order Flow & Liquidity sidebar destination and moved the existing Bookmap/partial-depth and bid/ask ladder tools into a dedicated Order Flow & Liquidity Toolkit package beneath the native QUANTNEX VIEW chart and intelligence panel.
+- The toolkit follows the selected QUANTNEX VIEW symbol and timeframe; switching to Gold or a non-USDT chart symbol stops the Binance Spot depth request and clearly reports that depth is unavailable instead of simulating it.
+- Added Liquidity Bookmap, Depth Ladder and Trade Flow tabs. The first two use the existing Binance Spot top-20 partial-depth WebSocket stream. Added best bid/ask, quoted spread (price and bps), top-20 bid/ask quantity totals and depth imbalance.
+- The Trade Flow tab explicitly reports that browser-side trade-side Delta/CVD is not connected yet. It does not synthesize executed bid/ask volume from candle volume or mistake resting depth for executed trades.
+- Important data limitation retained and made more visible: `@depth20@100ms` is a partial-depth snapshot stream, not a sequence-validated full order-book diff reconstruction. The heatmap is a rolling visual history of observed resting liquidity, not a full Bookmap-equivalent feed or execution guarantee.
+- Browser tab visibility and active-view lifecycle remain scoped: the depth socket starts only while QUANTNEX VIEW is active and stops when leaving the view or hiding the browser tab.
+- Added responsive toolkit styling and a Web CI contract test for navigation removal, package placement, selected-market wiring, capability disclosures and safe feed lifecycle.
+- Source updater already installs the latest verified `main` Web/Backend source on its configured polling cycle with backup/rollback; the new HTML/CSS/JS are part of the existing source update package. Asset cache keys were advanced to force the new UI assets to load.
+- Visual rendering on the user's desktop/mobile device and real live browser stream verification remain device/runtime checks. No backend signal logic, API credentials, order placement or real-money execution was changed.

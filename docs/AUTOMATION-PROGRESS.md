@@ -1090,3 +1090,14 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 3. Extend deterministic API/replay coverage for reconnects, trade gaps, book sequence gaps and stale snapshots at the UI boundary.
 4. Continue primary signal-engine validation: dynamic universe end-to-end scans, valid long/short replay, walk-forward OOS and paper execution costs.
 5. Resolve Telegram notification destination by setting a valid private/group chat ID; do not expose bot token in chat.
+
+
+### Live smoke result after PR #250 — run 44884113669
+
+- Workflow completed successfully on the updated main commit.
+- Binance Spot exchangeInfo reported 1,376 eligible pairs.
+- The rotating read-only sample scanned 20 pairs, including non-USDT quote pairs (for example XRPIDR, XRPJPY and XRPUSDC).
+- Result: 20 successful scans, 0 insufficient-history skips, 0 provider/error failures.
+- All 20 returned WAIT with reason NOT_EVALUATED_NO_DIRECTIONAL_SETUP. This means no directional strategy setup qualified; it is not evidence of a generated signal or profitability.
+- Order Flow was correctly marked NOT_EVALUATED_NO_DIRECTIONAL_SETUP / accepted=n/a because no directional candidate reached the Order Flow gate. This run therefore does not validate the new UI stream or prove Order Flow confirmation behavior.
+- This remains a 20-pair rotating smoke subset, not full-universe coverage. Full dynamic-universe scan scheduling and realistic long/short replay remain separate acceptance items.

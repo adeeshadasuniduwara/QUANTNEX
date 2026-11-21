@@ -610,3 +610,12 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 - Live smoke 44884113669 was still in progress at the time of this record. Device/browser rendering remains unverified.
 - Telegram announce failed because the configured TELEGRAM_CHAT_ID points to the bot itself; requires a valid private/group destination.
 - Supervisor source auto-update interval verified at 300 seconds with rollback. Local supervisor must be running.
+
+
+### Live smoke after C14 merge — run 44884113669
+
+- Completed successfully; exchangeInfo eligible Spot universe count 1,376.
+- Rotating sample size 20; 20 successful scans, zero insufficient-history skips, zero provider errors.
+- All 20 were WAIT / NOT_EVALUATED_NO_DIRECTIONAL_SETUP. No live signal was fabricated; Order Flow was not evaluated because there was no directional candidate.
+- Sample included non-USDT quote pairs, confirming the smoke selector can rotate beyond BTC/ETH/SOL and beyond USDT quote pairs. It is still only a 20-pair sample, not full-universe coverage.
+- This run validates public market-data scan health, not signal quality, browser UI streaming, or profitability.

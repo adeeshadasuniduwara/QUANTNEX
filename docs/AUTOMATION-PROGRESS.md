@@ -1116,3 +1116,23 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 - Additional safety review: QUANTNEX VIEW's intelligence controller previously auto-called the Spot analyze/replay/backtest endpoints for any selected symbol. Added an explicit USDⓈ-M Futures guard so Futures charts cannot silently show Spot signals/ledger/backtests for the same raw ticker. Futures chart selection now displays a clear "Futures chart only" status and clears the Spot trade plan.
 
 - Chart history accepts any non-empty set of valid closed Futures candles (rather than requiring 210), so recently listed eligible perpetual contracts can still display; indicator warm-up is disclosed by the existing chart renderer.
+
+
+### Phase C15 merge and post-merge verification — PR #254
+
+- PR [#254](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/254) squash-merged to main as `28071b133d02169f1391ae7b8823d45a3a0cd632` on 2026-11-21.
+- Branch was 21 commits ahead and 0 behind main at final review; PR was mergeable; 11 changed files were within the Futures chart, tests and documentation scope; secret-pattern review found no credentials or private keys.
+- Pre-merge CI passed on head `3e98caa56f8cf94834290e56aad365ee75f416aa`: Backend Python 3.12 (500 passed), Python 3.14 (500 passed), Web CI and Backend/Web CI all successful.
+- Post-merge CI passed on exact main commit `28071b133d02169f1391ae7b8823d45a3a0cd632`: Backend Python 3.12, Python 3.14 and Web CI successful. Each Python suite reported 500 passed.
+- Main ref verified equal to the merge SHA.
+- Telegram update notification workflow failed at the separate announce step; previously identified `TELEGRAM_CHAT_ID` points to the bot itself. Source deployment and code CI are unaffected.
+- Futures endpoint tests are deterministic/mocked; no external live Binance Futures endpoint check or user-device browser rendering has been claimed.
+
+### Phase C15 final capability boundary
+
+- QUANTNEX VIEW now charts Binance Spot and Binance USDⓈ-M PERPETUAL instruments with dynamically refreshed exchange metadata.
+- Display labels: `[EX-BTCUSDT]` for Spot and `[EX-BTCUSDT.P]` for USDⓈ-M perpetual. The raw symbol sent to Binance remains `BTCUSDT`.
+- Futures candles: `/fapi/v1/klines`; live stream: `wss://fstream.binance.com/ws/{symbol}@kline_{interval}`. Only valid closed candles are used; non-empty short histories are allowed and chart indicators show warm-up.
+- Futures chart selection is isolated from Spot signal analysis, Spot replay, Spot backtest and Spot signal ledger. It is chart-only and read-only.
+- COIN-M, Futures Order Flow, Futures signal generation, funding/open-interest/liquidation confluence and execution remain unsupported. No live orders or margin actions.
+- Next: add independent USDⓈ-M Order Flow state/stream validation and Futures signal engine only after market-type-specific historical replay and execution-cost tests exist; keep Spot and Futures semantics separate.

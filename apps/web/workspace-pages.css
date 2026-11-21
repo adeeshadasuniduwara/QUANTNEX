@@ -162,3 +162,24 @@ html{transition:zoom 180ms cubic-bezier(.2,.75,.25,1)}
 .telegram-development-copy p{margin:0;color:#c9c5bb;font-size:12px;line-height:1.7}
 .telegram-development-copy p strong{color:#f2dfb5;letter-spacing:.04em}
 @media(max-width:560px){.telegram-development-notice{padding:13px}.telegram-development-copy{padding-left:0}.telegram-development-pill{margin-left:45px}}
+
+
+/* Goal image cards: preserve the source image's intrinsic dimensions and orientation. */
+.goal-image-link{display:grid;place-items:center;min-height:110px;max-height:300px;background:#090909}
+.goal-image{width:100%;height:auto;max-height:280px;object-fit:contain;object-position:center;border-radius:9px}
+.goal-image[data-orientation="portrait"]{max-width:min(100%,220px);max-height:300px}
+.goal-image[data-orientation="landscape"]{max-width:100%;max-height:240px}
+.goal-image-preview{padding:8px}
+.goal-image-preview img{width:auto;height:auto;max-width:100%;max-height:280px;object-fit:contain}
+.goal-image-preview img[data-orientation="portrait"]{max-width:min(100%,220px)}
+.goal-section-title{margin:18px 0 10px;color:#eee;font-size:14px}
+.goal-archive-section{display:grid;gap:12px;margin-top:24px;padding-top:18px;border-top:1px solid #303030}
+.goal-archive-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.goal-archive-heading h3{margin:0;color:#eee;font-size:14px}
+.goal-archive-heading p{margin:5px 0 0;color:#999;font-size:11px;line-height:1.5}
+.goal-archive-heading>span,.goal-archived-label{padding:5px 8px;border:1px solid #625638;border-radius:20px;color:#d8c58f;font-size:9px;letter-spacing:.08em;white-space:nowrap}
+.goal-archive-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:5px}
+.goal-delete-button{min-height:32px;padding:7px 10px;border:1px solid #744747;border-radius:7px;background:#241414;color:#ffb1b1;font:inherit;font-size:10px;cursor:pointer}
+.goal-delete-button:hover{background:#351919;border-color:#a65c5c}
+.goal-delete-button:disabled{opacity:.55;cursor:wait}
+@media(max-width:560px){.goal-archive-heading{align-items:flex-start;flex-direction:column}.goal-image{max-height:240px}}

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from .signal_engine import build_signal
+from .signal_engine import build_signal, round_price_to_tick
 
 TIMEFRAME_MINUTES = {"1": 1, "5": 5, "15": 15, "30": 30, "50": 50, "60": 60, "240": 240}
 
@@ -147,6 +147,51 @@ def _select_order_flow_snapshot(
         return replay_snapshot, "AVAILABLE"
     except (TypeError, ValueError, OverflowError):
         return {}, "INVALID"
+
+
+
+def _replay_execution_quotes(
+    mid_price: float,
+    tick_size: str,
+    assumed_spread_bps: float,
+) -> dict[str, float]:
+    """Build an uncrossed, exchange-tick-aligned synthetic replay top of book.
+
+    Historical candles do not contain historical bid/ask quotes. The replay
+    therefore models a spread around the next candle open, rounds the bid down
+    and ask up to the symbol tick, and reports the resulting (possibly wider)
+    executable spread. This avoids rejecting valid replay entries merely
+    because a synthetic unrounded quote is off tick.
+    """
+    if isinstance(mid_price, bool) or isinstance(assumed_spread_bps, bool):
+        raise ValueError("Replay quote inputs must be numeric, not boolean.")
+    try:
+        mid = float(mid_price)
+        spread = float(assumed_spread_bps)
+        tick = Decimal(str(tick_size))
+    except (InvalidOperation, TypeError, ValueError, OverflowError):
+        raise ValueError("Replay quote mid, spread and tick size must be valid numbers.") from None
+    if (
+        not math.isfinite(mid) or mid <= 0
+        or not math.isfinite(spread) or spread < 0
+        or not tick.is_finite() or tick <= 0
+    ):
+        raise ValueError("Replay quote mid/tick must be positive and spread must be finite and non-negative.")
+
+    half_spread = spread / 20000.0
+    best_bid = round_price_to_tick(mid * (1.0 - half_spread), str(tick), round_up=False)
+    best_ask = round_price_to_tick(mid * (1.0 + half_spread), str(tick), round_up=True)
+    if best_ask <= best_bid:
+        best_ask = round_price_to_tick(best_bid + float(tick), str(tick), round_up=True)
+    replay_mid = (best_bid + best_ask) / 2.0
+    actual_spread_bps = (best_ask - best_bid) / replay_mid * 10000.0
+    return {
+        "best_bid": best_bid,
+        "best_ask": best_ask,
+        "mid_price": replay_mid,
+        "spread_bps": actual_spread_bps,
+        "assumed_spread_bps": spread,
+    }
 
 
 def _limit_fill_price(side: str, limit_price: float, candle: dict[str, Any]) -> float | None:
@@ -349,14 +394,11 @@ async def _simulate_slice(
         if not math.isfinite(mid) or mid <= 0:
             index += 1
             continue
-        half_spread = assumed_spread_bps / 20000
+        modeled_quotes = _replay_execution_quotes(mid, tick_size, assumed_spread_bps)
         execution = {
             "symbol": symbol,
             "provider": "Historical Binance Spot replay",
-            "best_bid": mid * (1 - half_spread),
-            "best_ask": mid * (1 + half_spread),
-            "mid_price": mid,
-            "spread_bps": assumed_spread_bps,
+            **modeled_quotes,
             "bid_depth_quote": assumed_depth_usd,
             "ask_depth_quote": assumed_depth_usd,
             "bid_depth_usd": assumed_depth_usd,

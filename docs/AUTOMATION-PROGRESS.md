@@ -848,3 +848,47 @@ Phase C9 replays only the latest snapshot captured at or before each candle deci
 1. Compare actual stored-snapshot coverage at 1m/5m/15m/30m/50m/1h decision timestamps against the previous arbitrary-minute capture, using unchanged strict source-age limits.
 2. Verify the backtest endpoint returns real observation counts and separate baseline/order-flow-gated metrics for a symbol with active streams; zero observations must remain an explicit no-data result.
 3. Collect representative chronological out-of-sample sessions before interpreting expectancy, profit factor, win rate or drawdown changes.
+
+
+## 2026-11-21 — Automation run 6: end-to-end historical Order Flow long/short fixtures (PR pending)
+
+### Start-of-run repository audit
+
+- Latest verified `main` before this phase: `cc3437c56a35bf0c59ccdf61c522803b38fe3d30`.
+- Open repository issues: none.
+- Open PRs: #239 (GitHub updater rate-limit cache), #206 (Telegram Gold reports), #201 (mobile cloud gateway), #185 (signal ledger/reporting), #172 (layout), #170 (MT5 Gold), #110 (workspace polling), #76 (Android parity), and #57 (Telegram UI polish). No open PR directly targeted the Binance signal/replay core. PR #239's recorded base SHA predates the current main head, so it is not merge-ready without a fresh-base review.
+- Latest scheduled `QUANTNEX Live Crypto Signal Smoke`: [run #44703341723](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/44703341723), created 2026-11-20 08:32:20 UTC, completed successfully. All workflow steps completed; this run's inspected metadata does not expose per-symbol console output, so no new WAIT/signal counts are claimed here.
+- The smoke workflow still uses a rotating 20-symbol sample from the dynamic Binance Spot exchangeInfo universe. It is not a same-cycle full-universe scan and does not persist order-flow observations into the user's local database.
+- Binance Spot remains the only verified crypto signal market. USDⓈ-M and COIN-M Futures remain unsupported by the signal engine.
+
+### Phase C11 — deterministic historical replay signal proof
+
+Branch: `test/orderflow-replay-long-short-fixtures`.
+
+- Extend the persisted order-flow replay fixture builder to support both directional sides with correctly signed aggressor delta and L2 depth imbalance.
+- Add deterministic multi-timeframe candle scenarios containing a qualifying trend, confirmed liquidity sweep and BOS/MSS event, then pass them through the actual `_simulate_slice` replay path and the actual `build_signal` engine.
+- Supply a prior, fresh, sequence-validated feature snapshot with complete-since-seed CVD provenance; replay recomputes source age at the decision timestamp.
+- Assert that one BUY and one SELL replay signal are generated, the order-flow gate confirms each, and the modeled MARKET entry is filled by the next execution candle.
+- These are deterministic synthetic replay fixtures only. They are not live signals, historical-market performance results, or evidence of profitability.
+
+### Changed files
+
+- `backend/tests/test_signal_backtest.py`: directional snapshot fixture, synthetic multi-timeframe setup generator, replay execution bars, and parameterized long/short tests through the real signal engine.
+- This progress document and `docs/ORDER-FLOW-ROADMAP.md`: record the new acceptance test and remaining live-data blocker.
+
+### Verification status
+
+- Initial replay fixtures exposed a real historical-execution modeling defect: synthetic bid/ask prices were derived from candle open plus an assumed spread but were not rounded to the symbol tick. The entry selector correctly enforced `PRICE_FILTER` before the later entry-price rounding, so both otherwise-valid replay setups were rejected.
+- `backend/app/signal_backtest.py` now rounds the modeled bid down and ask up to the authoritative tick, enforces at least one tick of separation for a zero-spread/locked synthetic book, and recalculates the effective spread after rounding. Cost estimates therefore use the effective tick-aware spread, which can be wider than the requested assumption.
+- Added a focused test proving modeled quotes are tick-aligned, uncrossed and never narrower than the requested spread, including the zero-spread edge case.
+- PR [#244](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/244) passed Backend CI and Backend/Web CI: 481 tests passed on Python 3.12, 481 on Python 3.14, schema checks passed and Web CI passed.
+- The earlier failing attempts were not merged. The failure was retained as evidence, diagnosed and corrected before merge.
+- No signal thresholds, production scoring, order-flow freshness limits, live execution settings, or order-placement behavior were changed.
+- No API keys or live-money execution were introduced.
+
+### Exact next steps
+
+1. Re-review the final four-file diff and confirm the PR still targets the current main SHA with all checks green.
+2. Merge PR #244 only after the mergeability and security review; then verify the merge commit and post-merge checks on main.
+3. Separately inspect real `order_flow_observations` counts for active local streams through the backtest endpoint. GitHub smoke success alone cannot prove that the local recorder has stored rows.
+4. Keep baseline candle replay separate from order-flow-gated replay; collect representative chronological out-of-sample observations before interpreting any performance delta.

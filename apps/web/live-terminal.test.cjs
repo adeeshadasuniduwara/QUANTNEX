@@ -150,7 +150,7 @@ assert.match(nativeChart, /if\(!isChartViewActive\(\)\|\|selected\(\)\.symbol!==
 assert.match(chartIntel, /isTradingViewActive/, "Chart intelligence analysis and backtests must pause outside QUANTNEX VIEW.");
 assert.match(chartIntel, /backtestBusy/, "Chart intelligence must prevent overlapping backtest requests.");
 assert.match(html, /quantnex-view-chart\.js\?v=20261121-usdm-futures1/, "Chart lifecycle fix must invalidate the cached chart bundle.");
-assert.match(html, /quantnex-view-intelligence\.js\?v=20261120-overall-pnl1/, "Chart intelligence assets must be refreshed when the overall signal P&L UI changes.");
+assert.match(html, /quantnex-view-intelligence\.js\?v=20261121-futures-isolation1/, "Chart intelligence assets must be refreshed when the overall signal P&L UI changes.");
 console.log("QUANTNEX VIEW active-page lifecycle checks passed.");
 
 

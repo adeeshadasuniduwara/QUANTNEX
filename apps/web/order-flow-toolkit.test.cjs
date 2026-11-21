@@ -17,6 +17,8 @@ assert.match(app,/String\(\$\("qxSymbol"\)\?\.value\|\|"BTCUSDT"\)/);
 assert.match(app,/if\(isWorkspaceViewActive\("tradingview"\)\)loadBook\(\)/);
 assert.match(app,/if\(isWorkspaceViewActive\("tradingview"\)\)loadBook\(\);\s*else stopBookFeed\(\)/);
 assert.match(app,/symbol==="xauusd"\|\|!symbol\.endsWith\("usdt"\)/);
+const loadBookStart=app.indexOf("function loadBook(reconnect=false)"),nonSpotGuard=app.indexOf('if(symbol==="xauusd"||!symbol.endsWith("usdt"))',loadBookStart),canvasReset=app.indexOf('const canvas=$("p7BookmapCanvas")',loadBookStart);
+assert.ok(canvasReset>=0&&canvasReset<nonSpotGuard,"Switching to Gold must clear stale crypto heatmap data before the non-Spot early return.");
 assert.match(app,/@depth20@100ms/);
 assert.match(app,/setMetric\("qxOrderFlowSpread"/);
 assert.match(app,/setMetric\("qxOrderFlowBidDepth"/);

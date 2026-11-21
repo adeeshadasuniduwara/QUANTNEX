@@ -912,6 +912,10 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     $("p7BookLiveStatus").textContent="Connecting to "+symbol.toUpperCase()+" depth stream…";
     const marketLabel=$("qxOrderFlowMarket");if(marketLabel)marketLabel.textContent=symbol.toUpperCase();
     const timeframeLabel=$("qxOrderFlowTimeframe");if(timeframeLabel)timeframeLabel.textContent=($("qxInterval")?.value||"15m")+" · SPOT";
+    const canvas=$("p7BookmapCanvas");if(canvas){const ctx=canvas.getContext("2d");if(ctx)ctx.clearRect(0,0,canvas.width,canvas.height);}
+    $("p7BookImbalance").textContent="Waiting for book";
+    ["qxOrderFlowBestBid","qxOrderFlowBestAsk","qxOrderFlowSpread","qxOrderFlowBidDepth","qxOrderFlowAskDepth"].forEach(id=>{const el=$(id);if(el)el.textContent="—";});
+    ["p7Bids","p7Asks"].forEach(id=>{const body=$(id);if(body){body.replaceChildren();const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=2;td.className="empty-row";td.textContent="Waiting for depth snapshot.";tr.append(td);body.append(tr);}});
     if(symbol==="xauusd"||!symbol.endsWith("usdt")){
       $("p7BookLiveStatus").textContent="Binance Spot depth is unavailable for "+symbol.toUpperCase();
       $("p7BookNote").textContent="No depth is simulated. Select a Binance Spot crypto pair in the QUANTNEX VIEW market selector.";
@@ -919,8 +923,6 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
       ["qxOrderFlowBestBid","qxOrderFlowBestAsk","qxOrderFlowSpread","qxOrderFlowBidDepth","qxOrderFlowAskDepth"].forEach(id=>{const el=$(id);if(el)el.textContent="—";});
       return;
     }
-    const canvas=$("p7BookmapCanvas");
-    if(canvas){const ctx=canvas.getContext("2d");if(ctx)ctx.clearRect(0,0,canvas.width,canvas.height);}
     if(!window.WebSocket||document.hidden)return;
     try{
       bookSocket=new WebSocket("wss://stream.binance.com:9443/ws/"+symbol+"@depth20@100ms");

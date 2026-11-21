@@ -1015,3 +1015,5 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 ### CI correction
 
 - Initial Web CI correctly caught a defect in the new contract test (the regex omitted the leading `if(` token); the application code itself passed syntax and preceding contract assertions. Corrected the assertion to match the actual active-view conditional. Re-run all Web CI checks before merge.
+
+- Follow-up safety hardening: clear the previous symbol's heatmap, depth tables and metrics before opening a new stream or returning early for Gold/non-USDT instruments, preventing stale BTC/ETH/SOL depth from remaining visible after a chart-market switch.

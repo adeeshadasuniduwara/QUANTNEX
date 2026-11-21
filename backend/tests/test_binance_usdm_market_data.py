@@ -21,7 +21,7 @@ def test_usdm_universe_filters_to_trading_perpetuals(monkeypatch):
     monkeypatch.setattr(futures, "_request_json", fake_request)
     monkeypatch.setattr(futures, "_CACHE", None)
     info = asyncio.run(futures.get_binance_usdm_symbol_info(force_refresh=True))
-    assert set(info) == {"BTCUSDT", "ETHUSD_PERP"}
+    assert set(info) == {"BTCUSDT"}  # underscore-delimited COIN-M-style contract is intentionally excluded
     assert info["BTCUSDT"]["filters"]["PRICE_FILTER"]["tickSize"] == "0.10"
     assert info["ETHUSD_PERP"]["margin_asset"] == "BTC"
 

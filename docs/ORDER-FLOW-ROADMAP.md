@@ -631,3 +631,5 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 - Never interpret a Futures chart as a Spot chart or treat the display suffix as an exchange trading symbol.
 
 - Signal-engine isolation: the chart intelligence controller must not call Spot analyze/replay/backtest or display Spot signal ledger entries while a Futures market is selected. Current UI guard labels USDⓈ-M Futures as chart-only until a separate Futures strategy engine and replay evidence exist.
+
+- Newly listed perpetual pairs with fewer than 210 closed candles remain chartable; the native chart already labels indicator warm-up. A missing/empty candle response still fails closed.

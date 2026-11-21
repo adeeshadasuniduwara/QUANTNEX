@@ -116,3 +116,17 @@ def test_usdm_rate_limit_does_not_fan_out_to_other_hosts(monkeypatch):
     with pytest.raises(futures.BinanceUsdMDataError, match="rate-limited"):
         asyncio.run(futures._request_json(client, "/fapi/v1/exchangeInfo"))
     assert client.calls == 1
+
+
+def test_usdm_chart_accepts_short_history_for_newly_listed_pairs(monkeypatch):
+    now = int(datetime.now(timezone.utc).timestamp() * 1000)
+    row = [now-120000, "100", "103", "99", "102", "12", now-60001]
+    async def fake_info(force_refresh=False):
+        return {"NEWUSDT":{"symbol":"NEWUSDT"}}
+    async def fake_request(_client, path, params=None):
+        return [row]
+    monkeypatch.setattr(futures, "get_binance_usdm_symbol_info", fake_info)
+    monkeypatch.setattr(futures, "_request_json", fake_request)
+    rows = asyncio.run(futures.fetch_binance_usdm_candles("NEWUSDT", "1m", 210))
+    assert len(rows) == 1
+    assert rows[0]["close"] == 102

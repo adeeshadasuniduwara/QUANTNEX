@@ -1114,3 +1114,5 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 - Deterministic tests are added for metadata filtering, closed candle parsing and invalid symbols; local browser/live WebSocket verification remains pending.
 
 - Additional safety review: QUANTNEX VIEW's intelligence controller previously auto-called the Spot analyze/replay/backtest endpoints for any selected symbol. Added an explicit USDⓈ-M Futures guard so Futures charts cannot silently show Spot signals/ledger/backtests for the same raw ticker. Futures chart selection now displays a clear "Futures chart only" status and clears the Spot trade plan.
+
+- Chart history accepts any non-empty set of valid closed Futures candles (rather than requiring 210), so recently listed eligible perpetual contracts can still display; indicator warm-up is disclosed by the existing chart renderer.

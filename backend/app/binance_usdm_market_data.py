@@ -156,6 +156,6 @@ async def fetch_binance_usdm_candles(symbol: str, interval: str, limit: int = 10
         except (IndexError, TypeError, ValueError, OverflowError):
             continue
     rows.sort(key=lambda x: x["time"])
-    if len(rows) < 210:
-        raise BinanceUsdMDataError(f"Only {len(rows)} closed valid {normalized} Futures candles; 210 required.")
+    if not rows:
+        raise BinanceUsdMDataError(f"No closed valid {normalized} Futures candles were returned.")
     return rows[-int(limit):]

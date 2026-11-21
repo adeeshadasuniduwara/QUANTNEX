@@ -24,7 +24,7 @@ SKIP_PARTS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_c
 SKIP_NAMES = {".env", ".env.local", ".env.production"}
 SAFE_ROOTS = {".github", "apps", "backend", "docs", "scripts", "shared", "services", "tests"}
 SAFE_ROOT_FILES = {"README.md", "README_SI.md", "TODO.md", "FEATURE_STATUS_SI.md",
-                   "requirements.txt", "pyproject.toml", "quantnex_updater.py",
+                   "requirements.txt", "pyproject.toml", "github_api_cache.py", "quantnex_updater.py",
                    "run_quantnex.bat", "run_quantnex_services.py", "run_backend.bat", ".gitignore"}
 
 

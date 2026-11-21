@@ -86,3 +86,16 @@ def test_pattern_classifier_rejects_candle_volume_substitution():
     invalid["data_provenance"]["candle_volume_used"] = True
     with pytest.raises(ValueError, match="provenance"):
         detect_order_flow_patterns("SELL", {"time": "2026-11-21T12:00:00+00:00", "open": 100, "high": 101, "low": 99, "close": 100}, invalid)
+
+
+
+def test_pattern_classifier_skips_when_candle_and_exchange_trades_are_from_different_minutes():
+    observed = snapshot(0.60, -0.30)
+    observed["last_trade_at"] = "2026-11-21T12:01:05+00:00"
+    result = detect_order_flow_patterns(
+        "SELL",
+        {"time": "2026-11-21T12:00:00+00:00", "open": 100, "high": 103, "low": 99, "close": 99.5},
+        observed,
+    )
+    assert result["status"] == "NOT_ALIGNED"
+    assert result["accepted_for_side"] is True

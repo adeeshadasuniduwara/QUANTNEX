@@ -22,7 +22,7 @@ assert.match(html, /id="telegram-bot-connect"/, "Telegram connection panel ancho
 assert.doesNotMatch(html, /<\/?(?:code|pre)\b/i, "User-facing HTML must not expose code snippets");
 assert.doesNotMatch(html, /id="refreshSystemHealth"/, "System health must not require a manual refresh button");
 
-assert.match(app, /api\\/v1\\/order-flow\\/spot\\//, "Bookmap must use the backend sequence-validated Spot order-flow API instead of a browser partial-depth socket");
+assert.match(app, /api\/v1\/order-flow\/spot\//, "Bookmap must use the backend sequence-validated Spot order-flow API instead of a browser partial-depth socket");
 assert.match(app, /bookHistory\.length>120/, "Bookmap history must remain bounded");
 assert.match(app, /setTimeout\(drawBookmap,90\)/, "Bookmap drawing must be throttled");
 assert.match(app, /setInterval\(refresh,30000\)/, "Provider quotes must refresh at the cache-aware interval");

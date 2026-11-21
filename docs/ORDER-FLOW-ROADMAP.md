@@ -586,3 +586,17 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 2. Run the backtest endpoint on the user's local app while a managed Spot stream is active to inspect actual recorder row count and train/OOS coverage.
 3. Diagnose any low capture coverage without relaxing source-age or order-book sequence checks.
 4. Gather real chronological Order Flow history before measuring OOS edge or changing the strategy.
+
+
+## Phase C14 — QUANTNEX VIEW sequence-validated Order Flow toolkit
+
+- Expose GET /api/v1/order-flow/spot/{symbol}, protected by the existing local-workspace dependency and read-only.
+- Validate active Spot listing against Binance exchangeInfo and obtain the symbol PRICE_FILTER tickSize; do not use hard-coded symbol metadata.
+- Return independently gated depth/trade readiness. L2 is displayable only when sequence-validated and <=5s old; observed AggTrade flow is displayable only when <=15s old.
+- Include top-10 quote-notional depth, best bid/ask, spread, depth imbalance, microprice and up to 100 L2 levels; include observed aggressor buy/sell volume, delta, CVD scope/status, UTC session coverage, footprint buckets, provenance and freshness.
+- Replace the old browser @depth20@100ms partial-depth socket with 500ms polling of the backend manager snapshot. This removes the unsequenced browser-side depth feed and prevents false full-book claims.
+- Trade Flow displays AggTrade-derived aggressor-side delta and footprint. It does not relabel this as consolidated quoted bid/ask volume. Full UTC session delta remains blank unless coverage is complete; CVD is labeled since bounded stream seed.
+- Gold/Forex and non-Spot markets show unavailable, never simulated Binance data. No broker orders or live-money execution.
+
+## Auto-update
+- Existing local source supervisor checks the verified main branch every 300 seconds, installs through the snapshot/rollback and health-check path, then restarts services. The new UI assets use a fresh cache-busting version. Supervisor must be running; if QUANTNEX is closed, the update is picked up on next launch.

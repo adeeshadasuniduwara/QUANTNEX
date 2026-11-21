@@ -1039,3 +1039,26 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 3. USDⓈ-M/COIN-M Futures, Gold and Forex depth are not claimed as supported.
 4. Next UI/order-flow phase: expose validated Spot AggTrade-derived delta/CVD and session coverage to QUANTNEX VIEW; keep partial-depth and executed-trade metrics distinct.
 5. Independently continue the primary signal-engine milestone: dynamic Binance symbol universe, deterministic long/short replay and chronological OOS validation.
+
+
+## 2026-11-21 — Phase C14: sequence-validated Order Flow in QUANTNEX VIEW (PR pending)
+
+### Audit
+- Latest main: 450194b8a750273cf8734e4d5f2a81bd629d4c41. PR #248 is merged; no open issues were returned. Open PRs include #239, #206, #201, #185, #172, #170, #110, #76 and #57; none targets this toolkit.
+- Latest Web CI and Backend/Web CI succeeded on merge commit 177ddecc0d5104b2bfd324fa03b607271f8d70d5. Optional Telegram update announce workflow failed separately.
+- The already merged toolkit had a browser-side Binance @depth20@100ms partial-depth socket and an unconnected Trade Flow placeholder. Backend already has a bounded combined AggTrade/diff-depth manager with sequence validation, CVD scope and session provenance.
+- New branch: feat/quantnex-view-sequence-validated-orderflow-v2, based on latest main.
+
+### Implementation
+- Add local read-only GET /api/v1/order-flow/spot/{symbol}; validate live Spot symbol metadata and exact PRICE_FILTER tickSize.
+- Return sequence-validated L2 separately from observed AggTrade flow; stale/unsequenced L2 is withheld. Depth <=5 seconds, trades <=15 seconds.
+- Replace browser partial-depth WebSocket with 500ms polling of backend manager; feed Bookmap, Depth Ladder and Trade Flow from the same validated snapshot.
+- Populate best bid/ask, spread, quote-notional depth, depth imbalance, microprice, AggTrade buy/sell volume, delta, CVD status/scope, UTC session completeness and footprint buckets.
+- Keep CVD since-stream-seed scope explicit and UTC session delta blank unless full coverage is proven. Never infer aggressor delta from candle volume or call it consolidated bid/ask volume.
+- Binance Spot only. Gold, Forex, USD-M and COIN-M Futures are not represented as supported by this UI endpoint.
+- No signal scoring, live execution, broker orders or private credentials changed.
+
+### Verification pending
+- Added API tests for active-symbol metadata/tick-size, invalid symbols, separate readiness, stale/unsequenced depth and provenance.
+- Updated Web contract tests to reject browser partial-depth sockets and require real API-driven Trade Flow elements.
+- PR CI, diff/security review and local browser/live-stream verification remain pending.

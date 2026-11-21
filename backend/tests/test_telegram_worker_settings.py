@@ -193,7 +193,7 @@ def test_telegram_operations_commands_are_registered_once():
     assert len(commands) == len(set(commands))
     expected = {
         "health", "signals", "signals_on", "signals_off",
-        "watchlist", "watchlist_set", "orderflow",
+        "watchlist", "watchlist_set", "orderflow", "orderflow_watchlist",
         "futures_scan", "risk", "ai_test",
     }
     assert expected.issubset(set(commands))

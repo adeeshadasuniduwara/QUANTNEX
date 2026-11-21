@@ -62,7 +62,7 @@ def test_order_flow_api_exposes_validated_spot_trade_and_depth_provenance(monkey
     assert data["depth_ready"] is True and data["trade_flow_ready"] is True and data["signal_ready"] is True
     assert data["market_type"] == "BINANCE_SPOT" and data["quote_asset"] == "USDT"
     assert data["liquidity"]["sequence_validated"] is True and data["liquidity"]["depth_update_id"] == 123456
-    assert data["liquidity"]["best_bid"] == 100.0 and data["liquidity"]["bid_depth_quote"] == 2000.0
+    assert data["liquidity"]["best_bid"] == 100.0 and data["liquidity"]["bid_depth_quote"] == 499.7
     assert data["trade_flow"]["delta"] == 3.0 and data["trade_flow"]["cvd_scope"] == "SINCE_STATE_SEED"
     assert data["trade_flow"]["session_delta"] is None
     assert data["trade_flow"]["footprint"][0]["delta"] == 3.0

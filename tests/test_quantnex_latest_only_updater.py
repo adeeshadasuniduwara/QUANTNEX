@@ -44,11 +44,12 @@ class LatestCommitFeedTests(unittest.TestCase):
                 quantnex_updater._request_latest_commit_sha()
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class UpdateIntervalTests(unittest.TestCase):
     def test_supervisor_checks_every_thirty_minutes(self) -> None:
         import run_quantnex_services
         self.assertEqual(run_quantnex_services.UPDATE_INTERVAL_SECONDS, 30 * 60)
+
+if __name__ == "__main__":
+    unittest.main()

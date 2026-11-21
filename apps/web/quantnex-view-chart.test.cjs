@@ -167,6 +167,7 @@ for (const toggle of ["qxSignalSettingsToggle", "qxChartSignalSheetToggle", "qxS
   assert.ok(js.includes(`bindDisclosure("${toggle}"`), `Missing toggle handler for ${toggle}`);
 }
 assert.match(intel, /qxLiveSignalsRows/, "Automatic chart analysis must render into the live signals table.");
+assert.doesNotMatch(intel, /qxStrategyList|qxRunBacktest|function backtest\(|function renderBacktest\(/, "Retired Live Strategy Engine UI/controller code must not remain.");
 assert.match(intel, /setInterval\(\(\)=>\{if\(isTradingViewActive\(\)\)analyze\(\);\},60000\)/,
   "Live signal analysis must continue on its timer while the display panels are collapsed.");
 assert.match(css, /\.qx-indicator-table/);

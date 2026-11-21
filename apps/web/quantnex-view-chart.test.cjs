@@ -96,7 +96,7 @@ assert.ok(js.includes("function drawingsStorageKey"), "Chart drawings must persi
 assert.ok(js.includes("restoreChartSelection") && js.includes("quantnex.chart.selection.v1"), "Chart symbol/timeframe selection must be restored on next application start.");
 assert.ok(intel.includes("replayHistory(selected())"), "Selected-market historical replay must begin on application startup, not only after manually opening QUANTNEX VIEW.");
 assert.ok(js.includes("saveDrawings()"), "Drawing edits and clear actions must save to local chart storage.");
-assert.ok(intel.includes("ENTRY · MARKET") && intel.includes("MARKET ("), "Scalp entry must display MARKET with its reference price.");
+assert.ok(intel.includes("MARKET (") && intel.includes("entry_type"), "Live signal table must preserve MARKET entry labels and reference prices.");
 
 assert.match(js, /view=\{start:0,count:120/, "The chart must keep a right-side future-bar gutter in live and historical views.");
 assert.match(js, /plotSlots=Math\.max\(24,view\.count\+12\)/, "Candle spacing must reserve room for future bars instead of stretching the last candle to the edge.");

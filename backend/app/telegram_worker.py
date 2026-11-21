@@ -1356,7 +1356,7 @@ async def telegram_worker() -> None:
                                                     try:
                                                         logo_png = build_personal_logo_png(display_name, user_id)
                                                         caption = (
-                                                            "✨ Your personal QUANTNEX logo is ready, " + display_name + "!\n\n
+                                                            "✨ Your personal QUANTNEX logo is ready, " + display_name + "!\n\n"
                                                             + "To set it as your bot's profile photo:\n"
                                                             + "1. Open @BotFather\n"
                                                             + "2. Send /mybots and choose your bot\n"

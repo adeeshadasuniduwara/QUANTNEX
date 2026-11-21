@@ -125,7 +125,7 @@ assert.match(app, /Math\.min\(30000,1000\*Math\.pow\(2,Math\.min\(/, "Trading Ro
 assert.match(app, /Date\.now\(\)-tickerLastMessageAt>30000/, "A silent crypto ticker socket must be detected as stale.");
 assert.match(app, /result\.depth_ready/, "Bookmap must withhold stale or unsequenced backend depth.");
 assert.match(app, /feed:"crypto",status:"stale"/, "Ticker staleness must be exposed through the workspace stream-status event.");
-assert.match(app, /DEPTH_NOT_SEQUENCE_VALIDATED_OR_STALE/, "Order-book staleness and sequence failures must be visible.");
+assert.match(app, /String\(result\.reason/, "Backend sequence and freshness rejection reasons must be surfaced.");
 assert.match(app, /retry_in_ms:delay/, "Ticker reconnect status must expose its retry delay.");
 console.log("Trading Room ticker and order-book recovery checks passed.");
 

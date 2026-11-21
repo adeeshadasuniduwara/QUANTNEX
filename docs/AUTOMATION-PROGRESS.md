@@ -1059,3 +1059,5 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 - CI caught a malformed regex escape in the updated legacy live-terminal contract assertion. Replaced it with a direct source-string assertion; the new Order Flow toolkit contract suite itself passed.
 
 - CI found additional legacy live-terminal assertions for the removed browser-side Bookmap WebSocket reconnect logic. Replaced them with checks for the validated backend polling lifecycle, sequence/staleness veto and absence of browser depth sockets.
+
+- Updated the legacy live-terminal contract to assert that backend-provided freshness/sequence rejection reasons are surfaced, rather than expecting the backend enum string to be hard-coded in the browser.

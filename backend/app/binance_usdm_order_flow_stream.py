@@ -262,7 +262,7 @@ class BinanceUsdmOrderFlowStream:
             try:
                 self.status = "CONNECTING"; self.sequence_valid = False
                 self.last_update_id = None; self.bids = {}; self.asks = {}
-                self.recent_trades.clear(); self.last_trade = None; self.last_trade_at = None
+                self.recent_trades.clear(); self.last_trade = None; self.last_trade_at = None; self.last_mark_price = None; self.last_mark_price_at = None; self.recent_liquidations.clear()
                 self.session_id = uuid.uuid4().hex
                 async with self.websocket_factory(self.stream_url,ping_interval=20,ping_timeout=60,
                     close_timeout=10,open_timeout=10,max_size=1048576,max_queue=256) as websocket:

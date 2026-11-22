@@ -24,9 +24,12 @@ python .\smoke_signal_engine.py --symbols XAUUSD
 
 ## Expected output
 
-- `[SIGNAL]`: fresh candles were loaded and the current strategy rules produced a candidate. Review the reported provider, timestamp and Entry/SL/TP levels.
-- `[WAIT]`: data loaded successfully, but the current market conditions did not meet the minimum confluence/quality filters. This is not a feed failure.
-- `[ERROR]`: a provider, configuration or data-validation problem prevented the scan. The error text identifies the market and failure.
+- `[SIGNAL]`: fresh Spot candles were loaded and the current Spot strategy rules produced a candidate. Review the provider, timestamp and Entry/SL/TP levels.
+- `[WAIT]`: Spot data loaded successfully, but the current market conditions did not meet the minimum confluence/quality filters. This is not a feed failure.
+- `[FUTURES CANDLE SIGNAL]`: the separate USDⓈ-M Futures candle-only monitor produced a candidate. The printed levels are references, not executable orders.
+- `[FUTURES WAIT]`: USDⓈ-M candles loaded successfully but no qualifying candle-confluence setup exists.
+- `[SKIP]` / `[FUTURES SKIP]`: the pair/contract is valid but does not yet have enough fully closed history.
+- `[ERROR]` / `[FUTURES ERROR]`: a provider, configuration or data-validation problem prevented the scan. The error text identifies the market and failure.
 
 Crypto uses public Binance Spot candles with Coinbase fallback for BTC/ETH/SOL. Gold uses the local read-only MT5 feed when enabled, then Twelve Data when configured as fallback.
 
@@ -36,6 +39,19 @@ A successful smoke test proves that the selected provider returned usable data a
 
 ## Automated public-crypto check
 
-GitHub Actions runs the read-only **QUANTNEX Live Crypto Signal Smoke** workflow daily. The updated workflow discovers the eligible Binance Spot universe from current `exchangeInfo` and scans a deterministic rotating sample of 20 pairs per run. This is a rate-conscious smoke subset, not a full-universe scan in one run. Use `python smoke_signal_engine.py --universe-sample-size 20` for the same mode, or pass `--symbols BTCUSDT,ETHUSDT` for an explicit sample. Pairs without enough fully closed candle history are reported as `[SKIP]`; provider/data failures remain `[ERROR]` and fail the job. Coinbase fallback remains limited to BTC/ETH/SOL. This cloud check does not test the local MT5 terminal or Gold feed. Binance USDⓈ-M and COIN-M Futures are not included.
+GitHub Actions runs the read-only **QUANTNEX Live Crypto Signal Smoke** workflow daily. It independently discovers the current Binance Spot and USDⓈ-M Futures universes from their authoritative `exchangeInfo` endpoints, then scans deterministic rotating samples of 20 instruments per market type. Each sample rotates daily and is a rate-conscious smoke subset, not a full-universe scan in one run.
 
-The scheduled run on 2026-11-16 failed before scanning because the GitHub runner could not retrieve Binance Spot `exchangeInfo` metadata from the single configured REST host. A separate read-only Binance connector check later returned live Spot metadata and BTCUSDT trade/depth data, but that does not prove the GitHub runner can reach the API. The `fix/binance-public-data-endpoint-failover` branch is adding official public REST host fallback; verify the next scheduled run before treating this provider path as reliable.
+- Spot: `/api/v3/exchangeInfo` → active Spot-eligible pairs → multi-timeframe Spot signal engine, execution-quality checks and mandatory sequence-validated Spot Order Flow when a directional setup qualifies.
+- USDⓈ-M: `/fapi/v1/exchangeInfo` → active `TRADING` `PERPETUAL` contracts → separate closed 5m candle-only monitor engine. This Futures path does **not** include Futures Order Flow, adaptive MARKET/LIMIT execution, quantity/filter validation for an order, or order placement. A Futures candle signal is not an executable trade instruction.
+- COIN-M remains unsupported and is not scanned.
+- Newly listed Spot pairs or Futures contracts without enough closed history are reported as skips; provider/data failures remain errors and fail the job.
+
+Run both dynamic samples locally with:
+
+```powershell
+python .\\smoke_signal_engine.py --universe-sample-size 20 --usdm-universe-sample-size 20
+```
+
+Use `--skip-usdm` to omit the Futures sample, or pass `--symbols BTCUSDT,ETHUSDT` to constrain only the Spot sample. Coinbase fallback remains limited to BTC/ETH/SOL. This cloud check does not test the local MT5 terminal or Gold feed.
+
+The scheduled run on 2026-11-16 failed before scanning because the GitHub runner could not retrieve Binance Spot `exchangeInfo` metadata from the single configured REST host. The shared public REST host failover was merged separately; successful provider smoke runs must still be checked independently from replay/strategy performance. A live WAIT is not proof of strategy quality, and a successful data scan is not proof of profitability.

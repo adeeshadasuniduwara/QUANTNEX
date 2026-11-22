@@ -57,3 +57,16 @@ def test_usdm_stream_raw_queue_overflow_fails_closed():
         stream._queue({"event_key":"overflow"})
     assert stream.sequence_valid is False
     assert stream.dropped_events==1
+
+def test_usdm_stream_exposes_separate_60_second_aggressor_delta_window():
+    import time
+    stream=BinanceUsdmOrderFlowStream("BTCUSDT")
+    stamp=int(time.time()*1000)
+    stream._apply_trade({"a":11,"p":"90000","q":"2","T":stamp,"m":False},stamp)
+    stream._apply_trade({"a":12,"p":"90001","q":"0.5","T":stamp+1,"m":True},stamp+1)
+    flow=stream.snapshot()["trade_flow_60s"]
+    assert flow["trade_count"]==2
+    assert flow["buy_volume"]==pytest.approx(2.0)
+    assert flow["sell_volume"]==pytest.approx(0.5)
+    assert flow["delta"]==pytest.approx(1.5)
+    assert flow["coverage"]=="OBSERVED_STREAM_WINDOW_NOT_PROVEN_COMPLETE"

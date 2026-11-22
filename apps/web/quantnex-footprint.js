@@ -50,9 +50,7 @@
     try{
       const end=Date.now(),start=end-minutes*60_000;
       const url="/api/v1/order-flow/footprint/"+encodeURIComponent(symbol)+"?start_ms="+start+"&end_ms="+end+"&price_step="+encodeURIComponent(String(tick))+"&interval_ms="+interval+"&max_levels=250&imbalance_ratio=3";
-      const response=await fetch(url,{headers:{"Accept":"application/json"},cache:"no-store"});
-      const data=await response.json();
-      if(!response.ok)throw new Error(data.detail||("HTTP "+response.status));
+      const data=await apiRequest(url);
       const rows=$("qaFootprintRows");rows.replaceChildren();
       const flattened=[];
       (data.candles||[]).forEach(candle=>(candle.levels||[]).forEach(level=>flattened.push({time:candle.open_time_ms,...level})));

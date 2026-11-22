@@ -1139,6 +1139,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     else location.hash="#paper-trading";
   });
   $("qxOrderFlowReconnect").addEventListener("click",()=>loadQuantnexAdvancedOrderFlow());
+  $("qxOpenAdvancedWorkspace")?.addEventListener("click",()=>{if(typeof window.quantnexNavigate==="function")window.quantnexNavigate("quantnex-advanced");});
   $("qaSymbol")?.addEventListener("change",()=>{if(isWorkspaceViewActive("quantnex-advanced"))loadQuantnexAdvancedOrderFlow();});
   $("qaInterval")?.addEventListener("change",()=>{const label=$("qxOrderFlowTimeframe");if(label)label.textContent=$("qaInterval").value+" · "+($("qaMarketType")?.value==="BINANCE_USDM_FUTURES"?"FUTURES":"SPOT");});
   $("qaMarketType")?.addEventListener("change",()=>{if(isWorkspaceViewActive("quantnex-advanced"))loadQuantnexAdvancedOrderFlow();});

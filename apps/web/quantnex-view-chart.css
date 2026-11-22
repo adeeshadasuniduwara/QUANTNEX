@@ -145,3 +145,13 @@
 }
 
 .qx-chart-sessions{margin-top:20px}
+
+
+/* Inline workspace switch directly below the QUANTNEX VIEW chart. */
+.qx-chart-workspace-tabs{display:flex;align-items:center;gap:8px;margin:10px 0 18px;padding:6px;border:1px solid var(--border);border-radius:12px;background:rgba(13,17,23,.58)}
+.qx-chart-workspace-tab{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:38px;padding:0 16px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--muted);font:inherit;font-size:11px;font-weight:800;letter-spacing:.045em}
+.qx-chart-workspace-tab.is-active{border-color:rgba(65,150,255,.28);background:rgba(65,150,255,.12);color:var(--text)}
+.qx-chart-workspace-tab-link{cursor:pointer;color:var(--text)}
+.qx-chart-workspace-tab-link:hover{border-color:rgba(65,150,255,.4);background:rgba(65,150,255,.1);color:#83bfff}
+.qx-chart-workspace-tab-link span{font-size:16px}
+@media(max-width:520px){.qx-chart-workspace-tabs{display:grid;grid-template-columns:1fr 1fr}.qx-chart-workspace-tab{padding:0 8px;font-size:10px}}

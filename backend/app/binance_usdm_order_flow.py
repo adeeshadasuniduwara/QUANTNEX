@@ -42,6 +42,8 @@ def normalize_usdm_agg_trade(symbol: str, payload: dict[str, Any], *, received_a
         event_ms = _timestamp(payload["T"], "trade time"); maker = payload["m"]
     except (KeyError, TypeError, ValueError, OverflowError): raise FuturesOrderFlowError("Futures aggTrade is missing required Binance fields.") from None
     receive_ms = _timestamp(received_at_ms, "receive time")
+    if event_ms > receive_ms + 2_000:
+        raise FuturesOrderFlowError("Futures aggTrade event time is ahead of receive time.")
     if trade_id < 0 or not math.isfinite(price) or not math.isfinite(quantity) or price <= 0 or quantity <= 0 or not isinstance(maker, bool):
         raise FuturesOrderFlowError("Futures aggTrade failed ID, price, quantity or side validation.")
     return {"market_type":MARKET_TYPE,"symbol":symbol,"event_type":"aggTrade","event_key":str(trade_id),
@@ -58,6 +60,8 @@ def normalize_usdm_depth_update(symbol: str, payload: dict[str, Any], *, receive
         event_ms=_timestamp(payload["E"],"event time"); bids=payload["b"]; asks=payload["a"]
     except (KeyError, TypeError, ValueError, OverflowError): raise FuturesOrderFlowError("Futures depth update requires U, u, pu, E, b and a.") from None
     receive_ms=_timestamp(received_at_ms,"receive time")
+    if event_ms > receive_ms + 2_000:
+        raise FuturesOrderFlowError("Futures depth event time is ahead of receive time.")
     if first<=0 or previous<0 or last<first or not isinstance(bids,list) or not isinstance(asks,list):
         raise FuturesOrderFlowError("Futures depth update failed sequence or side-array validation.")
     for side in (bids,asks):

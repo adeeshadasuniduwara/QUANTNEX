@@ -395,6 +395,10 @@ def get_order_flow_capture_status() -> dict[str, Any]:
                 len(getattr(slot.stream, "capture_events", ()))
                 for slot in getattr(manager, "_slots", {}).values()
             ),
+            "capture_gap_detected": any(
+                getattr(slot.stream, "capture_gap_detected", False)
+                for slot in getattr(manager, "_slots", {}).values()
+            ),
         }
     except Exception as exc:
         manager_status = {"status": "UNAVAILABLE", "error_type": type(exc).__name__}

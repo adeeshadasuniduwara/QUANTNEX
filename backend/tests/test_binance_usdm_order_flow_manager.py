@@ -11,7 +11,7 @@ class FakeStream:
 
 def test_usdm_manager_enforces_bounded_unique_capture_symbols():
     with pytest.raises(ValueError):
-        BinanceUsdmOrderFlowManager(symbols=["BTCUSDT"]*6)
+        BinanceUsdmOrderFlowManager(symbols=["BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT","ADAUSDT"])
     manager=BinanceUsdmOrderFlowManager(symbols=["BTCUSDT","ETHUSDT"])
     with pytest.raises(UsdmStreamError):
         manager.get_snapshot("SOLUSDT")

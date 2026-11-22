@@ -35,7 +35,7 @@ def _event_identity(event: dict[str, Any]) -> tuple[str, str, int, int, str, int
     if not re.fullmatch(r"[A-Z0-9]{5,25}", symbol):
         raise OrderFlowRawEventError("Raw market event symbol is invalid.")
     event_type = str(event.get("event_type") or "")
-    if event_type not in {"aggTrade", "depthUpdate", "depthSnapshot"}:
+    if event_type not in {"aggTrade", "depthUpdate", "depthSnapshot", "captureGap"}:
         raise OrderFlowRawEventError("Raw market event type is unsupported.")
     source = str(event.get("source") or "")
     if source not in {"WEBSOCKET", "WEBSOCKET_BUFFER", "REST_BOOTSTRAP", "REST_GAP_BACKFILL"}:
@@ -88,6 +88,13 @@ def _event_identity(event: dict[str, Any]) -> tuple[str, str, int, int, str, int
             raise OrderFlowRawEventError("Depth snapshot failed validation.")
         key = str(last)
         normalized_payload = {"lastUpdateId": last, "bids": bids, "asks": asks}
+    else:
+        gap_id = str(payload.get("gap_id") or "")
+        reason = str(payload.get("reason") or "")
+        if not re.fullmatch(r"[0-9a-f]{32}", gap_id) or reason != "RAW_CAPTURE_QUEUE_OVERFLOW":
+            raise OrderFlowRawEventError("Capture-gap marker is invalid.")
+        key = gap_id
+        normalized_payload = {"gap_id": gap_id, "reason": reason}
     try:
         encoded = json.dumps(normalized_payload, separators=(",", ":"), allow_nan=False)
     except (TypeError, ValueError, OverflowError):
@@ -218,11 +225,14 @@ def summarize_order_flow_candles(db, symbol: str, start_ms: int, end_ms: int, *,
             row["last_depth_update_id"] = max(row["last_depth_update_id"] or 0, event["sequence_last"] or 0)
         elif event["event_type"] == "depthSnapshot":
             row["depth_snapshot_count"] += 1
+        elif event["event_type"] == "captureGap":
+            row["capture_gap_count"] += 1
+            row["gap_detected"] = True
     result = []
     for bucket in sorted(buckets):
         row = buckets[bucket]
         row["sources"] = sorted(row["sources"])
         row["stream_sessions"] = sorted(row["stream_sessions"])
-        row["coverage_status"] = "RECOVERED_WITH_REST_BACKFILL" if row["backfill_used"] else "OBSERVED_PARTIAL_NOT_PROVEN_COMPLETE"
+        row["coverage_status"] = "CAPTURE_GAP_DETECTED" if row["gap_detected"] else "RECOVERED_WITH_REST_BACKFILL" if row["backfill_used"] else "OBSERVED_PARTIAL_NOT_PROVEN_COMPLETE"
         result.append(row)
     return result[-limit:]

@@ -238,6 +238,7 @@ def test_manager_drains_raw_events_and_persists_them_outside_websocket_callback(
         result = await manager.get_snapshot("BTCUSDT", "0.01", wait_seconds=0.1)
         assert result["signal_ready"] is True
         await manager.stop()
+        await asyncio.sleep(0)
         assert len(captured) == 1
         assert captured[0]["event_type"] == "aggTrade"
         assert manager.last_raw_event_count == 1

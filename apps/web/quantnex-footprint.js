@@ -44,12 +44,13 @@
     const tick=Number($("qaFootprintTick").value);
     const interval=Number($("qaFootprintInterval").value);
     const minutes=Number($("qaFootprintHistory").value);
-    if(market!=="BINANCE_SPOT"){setText("qaFootprintStatus","Footprint archive is Binance Spot only. Futures needs its own validated trade archive.");return;}
-    if(!Number.isFinite(tick)||tick<=0){setText("qaFootprintStatus","Enter a valid positive exchange price tick.");return;}
-    button.disabled=true;button.textContent="Loading…";setText("qaFootprintStatus","Reading archived events for "+symbol+"…");
+    if(!["BINANCE_SPOT","BINANCE_USDM_FUTURES"].includes(market)){setText("qaFootprintStatus","Choose Binance Spot or USD-M Futures.");return;}
+    if(!Number.isFinite(tick)||tick<=0){setText("qaFootprintStatus","Enter a valid exchange price tick for the selected market.");return;}
+    button.disabled=true;button.textContent="Loading…";setText("qaFootprintStatus","Reading "+(market==="BINANCE_SPOT"?"Spot":"USD-M Futures")+" archived events for "+symbol+"…");
     try{
       const end=Date.now(),start=end-minutes*60_000;
-      const url="/api/v1/order-flow/footprint/"+encodeURIComponent(symbol)+"?start_ms="+start+"&end_ms="+end+"&price_step="+encodeURIComponent(String(tick))+"&interval_ms="+interval+"&max_levels=250&imbalance_ratio=3";
+      const route=market==="BINANCE_USDM_FUTURES"?"/api/v1/order-flow/futures/"+encodeURIComponent(symbol)+"/footprint":"/api/v1/order-flow/footprint/"+encodeURIComponent(symbol);
+      const url=route+"?start_ms="+start+"&end_ms="+end+"&price_step="+encodeURIComponent(String(tick))+"&interval_ms="+interval+"&max_levels=250&imbalance_ratio=3";
       const data=await apiRequest(url);
       const rows=$("qaFootprintRows");rows.replaceChildren();
       const flattened=[];
@@ -66,8 +67,8 @@
       renderList("qaFootprintAbsorption",absorption,x=>x.price+" · vol "+x.volume+" · delta "+x.delta+" · "+x.confidence+" confidence");
       renderList("qaFootprintIceberg",icebergs,x=>x.price+" · "+x.trade_count+" executions · "+x.confidence+" confidence (not confirmed iceberg)");
       renderList("qaFootprintPulls",pulls,x=>x.price+" · "+x.pulls+" zero-quantity updates / "+x.updates+" changes (not proof of spoofing)");
-      setText("qaFootprintStatus",totalTrades+" archived trades · "+flattened.length+" price levels · "+data.coverage);
-      setText("qaFootprintDisclaimer",(data.delta_divergence?.note||"")+" "+(data.spoofing_detection?.note||"")+" Data source: archived Binance Spot events only.");
+      setText("qaFootprintStatus",(market==="BINANCE_SPOT"?"Spot":"USD-M Futures")+" · "+totalTrades+" archived trades · "+flattened.length+" price levels · "+data.coverage);
+      setText("qaFootprintDisclaimer",(data.delta_divergence?.note||"")+" "+(data.spoofing_detection?.note||"")+" Data source: "+(market==="BINANCE_SPOT"?"Binance Spot":"Binance USD-M Futures")+" archive only; market datasets are never combined.");
     }catch(error){setText("qaFootprintStatus","Footprint unavailable: "+error.message);}
     finally{button.disabled=false;button.textContent="Load footprint";}
   }

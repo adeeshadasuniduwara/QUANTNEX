@@ -699,7 +699,7 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 - Branch: `feat/dynamic-usdm-live-signal-smoke-post-walkforward`, based on post-PR-#274 main `5c6ad689eaecbb050d38367285412bda5b3a3076`.
 - The scheduled public smoke workflow now independently discovers Spot and USDⓈ-M universes and rotates 20 symbols/contracts per market type per run.
 - Spot remains the multi-timeframe Spot signal + mandatory sequence-validated Spot Order Flow path. USDⓈ-M uses its own dynamic `TRADING` `PERPETUAL` metadata and a closed-5m-candle monitor only. It has no Futures Order Flow, adaptive execution or order placement. COIN-M remains unsupported.
-- Added mocked tests for dynamic Futures sample rotation, distinct market routing, read-only status and insufficient-history skips. CI and live workflow execution are pending; the 10-minute workflow timeout must be observed before changing scan size.
+- Added mocked tests for dynamic Futures sample rotation, distinct market routing, read-only status, insufficient-history skips and independent Futures scanning during Spot metadata failure. Initial CI exposed a keyword-argument mismatch in one test stub; it was fixed. The live smoke workflow is configured to run on PRs touching the smoke/provider path as well as daily, so the actual public Binance scan can be verified before merge. The 10-minute workflow timeout must be observed before changing scan size.
 - The smoke subsets do not imply full-universe coverage. A Futures candle candidate is a reference/monitor result, not an executable order.
 
 ## Next

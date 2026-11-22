@@ -32,7 +32,7 @@ class FakeStream:
             "last_error": None,
         }
 
-    async def run(self, _client, stop_event, on_update):
+    async def run(self, _client, stop_event, on_update, on_event=None):
         self.run_count += 1
         self.status = "LIVE" if self.ready else "BOOTSTRAPPING"
         await on_update(self.snapshot())

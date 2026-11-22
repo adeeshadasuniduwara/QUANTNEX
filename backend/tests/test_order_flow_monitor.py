@@ -155,13 +155,14 @@ def _recorded_minute_snapshot():
         "market_type": "BINANCE_SPOT",
         "captured_at": captured.isoformat(),
         "storage": {"sample_bucket": bucket, "captured_at": captured.isoformat()},
-        "trade_state": {"coverage_complete": True, "gap_detected": False},
-        "depth_book": {"valid": True, "sequence_validated": True},
+        "trade_state": {"coverage_complete": True, "gap_detected": False, "last_agg_trade_id": 123456},
+        "depth_book": {"valid": True, "sequence_validated": True, "last_update_id": 654321},
         "data_provenance": {"candle_volume_used": False, "trade_side": "Binance aggregate trade buyer-is-maker"},
         "order_flow": {
             "market_type": "BINANCE_SPOT",
             "feed_mode": "PUBLIC_WEBSOCKET_STREAM",
             "depth_is_continuous": True,
+            "depth_snapshot_update_id": 654321,
             "trade_count": 120,
             "delta_ratio": 0.42,
             "delta": 24.0,
@@ -225,6 +226,20 @@ def test_minute_aligned_snapshot_rejects_future_stale_or_cross_minute_data(monke
     ) is None
 
     payload["order_flow"]["last_trade_at"] = "2026-11-21T12:01:01+00:00"
+    assert get_minute_aligned_order_flow_snapshot(
+        "BTCUSDT", candle,
+        now=datetime(2026, 11, 21, 12, 1, 2, tzinfo=timezone.utc),
+    ) is None
+
+    payload = _recorded_minute_snapshot()
+    payload["order_flow"]["depth_observed_at"] = "2026-11-21T12:01:01+00:00"
+    assert get_minute_aligned_order_flow_snapshot(
+        "BTCUSDT", candle,
+        now=datetime(2026, 11, 21, 12, 1, 2, tzinfo=timezone.utc),
+    ) is None
+
+    payload = _recorded_minute_snapshot()
+    payload["storage"]["captured_at"] = "2026-11-21T12:00:55+00:00"
     assert get_minute_aligned_order_flow_snapshot(
         "BTCUSDT", candle,
         now=datetime(2026, 11, 21, 12, 1, 2, tzinfo=timezone.utc),

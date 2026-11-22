@@ -280,6 +280,17 @@ BOT_COMMANDS = [
     {"command":"binance","description":"Open Binance demo connection setup guide"},
     {"command":"binance_status","description":"Check Binance Spot and Futures testnet status"},
     {"command":"binance_off","description":"Emergency stop: keep Binance auto trading OFF"},
+    {"command":"health","description":"Show local service, feed and AI diagnostics"},
+    {"command":"signals","description":"Show automatic signal and timeframe settings"},
+    {"command":"signals_on","description":"Enable automatic signal alerts"},
+    {"command":"signals_off","description":"Pause automatic signal alerts"},
+    {"command":"watchlist","description":"Show the active signal watchlist"},
+    {"command":"watchlist_set","description":"Set selected pairs, e.g. /watchlist_set BTCUSDT,ETHUSDT"},
+    {"command":"orderflow","description":"Inspect live Binance Spot order flow, e.g. /orderflow BTCUSDT"},
+    {"command":"orderflow_watchlist","description":"Choose up to 8 pairs for continuous Order Flow capture"},
+    {"command":"futures_scan","description":"Analyze USD-M Futures, e.g. /futures_scan BTCUSDT 15m"},
+    {"command":"risk","description":"Show signal risk and confluence settings"},
+    {"command":"ai_test","description":"Test the connected OpenAI assistant"},
 ]
 
 MENU = {"inline_keyboard": [
@@ -898,7 +909,13 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
             "Signals are analysis only. Paper mode is simulated. No live broker orders are placed by this Telegram assistant. Always verify market data, spread and risk yourself.\n"
             "Signals යනු විශ්ලේෂණ තොරතුරු පමණයි. මෙය profit හෝ win-rate සහතිකයක් නොවේ.\n\n"
             "👇 TAP A BUTTON BELOW TO OPEN YOUR WORKSPACE\n"
-            "👇 පහත Button එකක් තෝරාගෙන ආරම්භ කරන්න."
+            "👇 පහත Button එකක් තෝරාගෙන ආරම්භ කරන්න.\n\n"
+            "🛠 OPERATIONS COMMANDS\n"
+            "/health · /signals · /signals_on · /signals_off\n"
+            "/watchlist · /watchlist_set BTCUSDT,ETHUSDT\n"
+            "/orderflow BTCUSDT · /orderflow_watchlist · /futures_scan BTCUSDT 15m\n"
+            "/risk · /ai_status · /ai_test\n"
+            "Existing controls: /scan · /report · /gold · /binance_status · /timeframes"
         )
     if command=="/timeframes":
         enabled=", ".join(names.get(str(x),str(x)) for x in settings.get("enabled",[]))
@@ -962,6 +979,177 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
     if command=="/binance_off":
         _set(db,user_id,"binance_auto_trading_enabled","false");db.commit()
         return "🛑 Binance Auto Trading: OFF.\\n🇱🇰 Binance ස්වයංක්‍රීය ගනුදෙනු අක්‍රිය කර ඇත. No orders are submitted."
+    if command == "/health":
+        from .binance_order_flow_manager import get_binance_spot_order_flow_manager
+        manager = get_binance_spot_order_flow_manager()
+        from .order_flow_monitor import get_order_flow_capture_status
+        capture = get_order_flow_capture_status()
+        try:
+            from .ai_assistant import get_openai_config
+            ai_key, ai_model = get_openai_config(db, user_id)
+            ai_state = "CONFIGURED · " + ai_model if ai_key else "NOT CONFIGURED"
+        except ValueError:
+            ai_state = "CREDENTIAL ERROR · reconnect in Integrations"
+        auto = _normalise_auto_signal_settings(_get(db, user_id, "auto_signal_settings", "{}"))
+        return (
+            "🩺 QUANTNEX SYSTEM HEALTH\n"
+            "Backend worker: RUNNING (this reply came from the worker)\n"
+            "Crypto market source: Binance Spot public data\n"
+            "Gold history: " + (gold_feed_provider() or "NOT CONFIGURED") + "\n"
+            "Order Flow streams: " + str(manager.active_stream_count) + "/" + str(manager.max_streams) + "\n"
+            "Last saved Order Flow sample: " + str(manager.last_capture_at or "none yet") + "\n"
+            "Minute capture worker: " + ("ON" if capture["running"] else "OFF") + " · " + ", ".join(capture["symbols"]) + "\n"
+            "Capture worker error: " + str(capture["last_error"] or "none") + "\n"
+            "Automatic signal alerts: " + ("ON" if auto["enabled"] else "OFF") + "\n"
+            "OpenAI: " + ai_state + "\n"
+            "Broker execution: OFF · This command does not test broker order placement."
+        )
+    if command == "/signals":
+        auto = _normalise_auto_signal_settings(_get(db, user_id, "auto_signal_settings", "{}"))
+        return (
+            "🧠 SIGNAL OPERATIONS\n"
+            "Automatic alerts: " + ("ON" if auto["enabled"] else "OFF") + "\n"
+            "Scan universe: " + auto["universe_mode"] + "\n"
+            "Selected pairs: " + (", ".join(auto["symbols"]) if auto["symbols"] else "All eligible Binance Spot pairs") + "\n"
+            "Scan interval: " + str(auto["interval_seconds"]) + " seconds\n"
+            "Primary TF: " + names.get(str(settings.get("primary")), str(settings.get("primary"))) + "\n"
+            "Trend TF: " + names.get(str(settings.get("trend")), str(settings.get("trend"))) + "\n"
+            "Analysis TFs: " + ", ".join(names.get(str(value), str(value)) for value in settings.get("enabled", []))
+        )
+    if command in {"/signals_on", "/signals_off"}:
+        auto = _normalise_auto_signal_settings(_get(db, user_id, "auto_signal_settings", "{}"))
+        auto["enabled"] = command == "/signals_on"
+        _set(db, user_id, "auto_signal_settings", json.dumps(auto, separators=(",", ":")))
+        db.commit()
+        return (
+            "✅ Automatic signal alerts are ON. Use /signals_off to pause."
+            if auto["enabled"] else
+            "⏸ Automatic signal alerts are OFF. Existing saved signals are preserved; use /signals_on to resume."
+        )
+    if command == "/watchlist":
+        auto = _normalise_auto_signal_settings(_get(db, user_id, "auto_signal_settings", "{}"))
+        if auto["universe_mode"] == "ALL_BINANCE_SPOT":
+            return "📋 WATCHLIST\nMode: ALL ELIGIBLE BINANCE SPOT PAIRS\nUse /watchlist_set BTCUSDT,ETHUSDT to select specific pairs."
+        return "📋 SELECTED WATCHLIST\n" + (", ".join(auto["symbols"]) if auto["symbols"] else "No pairs selected") + "\nUse /watchlist_set BTCUSDT,ETHUSDT to replace it."
+    if command == "/watchlist_set":
+        if len(parts) < 2:
+            return "Usage: /watchlist_set BTCUSDT,ETHUSDT,SOLUSDT (up to 20 pairs)."
+        requested = list(dict.fromkeys(value.strip().upper() for value in " ".join(parts[1:]).split(",") if value.strip()))
+        if not requested or len(requested) > AUTO_SIGNAL_MAX_BATCH_SIZE:
+            return "Choose between 1 and 20 comma-separated Binance Spot pairs."
+        if any(not value.isalnum() or not 5 <= len(value) <= 25 for value in requested):
+            return "One or more pair symbols are invalid. Example: /watchlist_set BTCUSDT,ETHUSDT."
+        try:
+            eligible = set(await get_binance_spot_symbols())
+        except Exception:
+            return "Binance exchange metadata is unavailable. The watchlist was not changed; retry when the feed recovers."
+        invalid = [value for value in requested if value not in eligible]
+        if invalid:
+            return "Not active Binance Spot pairs: " + ", ".join(invalid) + ". No settings were changed."
+        auto = _normalise_auto_signal_settings(_get(db, user_id, "auto_signal_settings", "{}"))
+        auto["universe_mode"] = "SELECTED"
+        auto["symbols"] = requested
+        _set(db, user_id, "auto_signal_settings", json.dumps(auto, separators=(",", ":")))
+        db.commit()
+        return "✅ Watchlist saved: " + ", ".join(requested) + "\nAutomatic alerts: " + ("ON" if auto["enabled"] else "OFF; use /signals_on to enable.")
+    if command == "/risk":
+        risk = settings.get("risk_percent", 1)
+        score = settings.get("min_score", 8)
+        return (
+            "🛡 SIGNAL RISK SETTINGS\n"
+            "Configured risk reference: " + str(risk) + "%\n"
+            "Minimum confluence: " + str(score) + "/10\n"
+            "These are analysis preferences, not a verified account balance or broker-side risk limit. No order is placed."
+        )
+    if command == "/orderflow_watchlist":
+        from .order_flow_monitor import MAX_ORDER_FLOW_MONITOR_SYMBOLS, normalize_order_flow_monitor_symbols
+        current = normalize_order_flow_monitor_symbols(_get(db, user_id, "order_flow_monitor_symbols", "[]"))
+        if len(parts) < 2:
+            return (
+                "📡 CONTINUOUS ORDER FLOW WATCHLIST\n"
+                + ", ".join(current)
+                + "\nUp to " + str(MAX_ORDER_FLOW_MONITOR_SYMBOLS) + " Binance Spot pairs are captured at 1-minute boundaries."
+                + "\nSet: /orderflow_watchlist BTCUSDT,ETHUSDT,SOLUSDT"
+            )
+        requested = list(dict.fromkeys(value.strip().upper() for value in " ".join(parts[1:]).split(",") if value.strip()))
+        if not requested or len(requested) > MAX_ORDER_FLOW_MONITOR_SYMBOLS:
+            return "Choose between 1 and " + str(MAX_ORDER_FLOW_MONITOR_SYMBOLS) + " comma-separated Binance Spot pairs."
+        if any(not value.isalnum() or not 5 <= len(value) <= 25 for value in requested):
+            return "One or more pair symbols are invalid. Example: /orderflow_watchlist BTCUSDT,ETHUSDT."
+        try:
+            eligible = set(await get_binance_spot_symbols())
+        except Exception:
+            return "Binance exchange metadata is unavailable. The Order Flow watchlist was not changed."
+        invalid = [value for value in requested if value not in eligible]
+        if invalid:
+            return "Not active Binance Spot pairs: " + ", ".join(invalid) + ". No settings were changed."
+        _set(db, user_id, "order_flow_monitor_symbols", json.dumps(requested, separators=(",", ":")))
+        db.commit()
+        return "✅ Continuous Order Flow watchlist saved: " + ", ".join(requested) + "\nCapture is minute-aligned; stream warm-up may take a short time."
+    if command == "/orderflow":
+        symbol = parts[1].upper() if len(parts) > 1 else "BTCUSDT"
+        if not symbol.isalnum() or not 5 <= len(symbol) <= 25:
+            return "Use a Binance Spot pair, e.g. /orderflow BTCUSDT."
+        try:
+            from .signal_engine import get_binance_spot_symbol_info
+            from .binance_order_flow_manager import get_binance_spot_order_flow_manager
+            info = await get_binance_spot_symbol_info(symbol)
+            tick_size = info["filters"]["PRICE_FILTER"]["tickSize"]
+            snapshot = await get_binance_spot_order_flow_manager().get_snapshot(symbol, tick_size, wait_seconds=1.5)
+            flow = snapshot.get("order_flow") if isinstance(snapshot.get("order_flow"), dict) else {}
+            book = flow.get("order_book") if isinstance(flow.get("order_book"), dict) else {}
+            if snapshot.get("signal_ready") is not True:
+                return "⏳ ORDER FLOW · " + symbol + "\nStatus: " + str(snapshot.get("status") or "WARMING_UP") + "\n" + str(snapshot.get("last_error") or "Waiting for a fresh, sequence-validated trade and depth stream. No confirmation is issued yet.")
+            return (
+                "📊 LIVE ORDER FLOW · " + symbol + "\n"
+                "Feed: " + str(flow.get("feed_mode") or snapshot.get("status")) + "\n"
+                "Aggressor trades: " + str(flow.get("trade_count")) + "\n"
+                "Delta: " + str(flow.get("delta")) + " · Delta ratio: " + str(flow.get("delta_ratio")) + "\n"
+                "CVD: " + str(flow.get("cvd_value")) + " · " + str(flow.get("cvd_status")) + "\n"
+                "L2 imbalance: " + str(book.get("depth_imbalance")) + " · Spread: " + str(book.get("spread_bps")) + " bps\n"
+                "Data ages: trades " + str(flow.get("trade_data_age_seconds")) + "s · depth " + str(snapshot.get("depth_age_seconds")) + "s\n"
+                "Observed Binance Spot data only. This is not a trade signal or a win-probability estimate."
+            )
+        except Exception as exc:
+            logger.warning("Telegram Order Flow query failed for %s: %s", symbol, type(exc).__name__)
+            return "Order Flow is unavailable for " + symbol + ". Confirm it is an active Binance Spot pair and retry after the stream warms up."
+    if command == "/futures_scan":
+        symbol = parts[1].upper() if len(parts) > 1 else "BTCUSDT"
+        interval = parts[2].lower() if len(parts) > 2 else "15m"
+        try:
+            from .binance_usdm_signal_engine import analyze_usdm_futures_signal
+            from .signal_lifecycle import record_signal
+            result = await analyze_usdm_futures_signal(symbol, interval, 6)
+            signal = result.get("signal")
+            if not signal:
+                return (
+                    "📉 USDⓈ-M FUTURES · " + symbol + " · " + interval + "\n"
+                    + str(result.get("message") or "WAIT — no qualifying setup.")
+                    + "\nConfluence: " + str(result.get("confluence_score", 0)) + "/10"
+                    + "\nFresh closed Futures candles only. Futures Order Flow and execution are OFF."
+                )
+            record_signal(db, user_id, signal, "TELEGRAM_USDM_FUTURES")
+            db.commit()
+            return (
+                "🚀 USDⓈ-M FUTURES · " + symbol + " " + str(signal.get("side")) + "\n"
+                "Timeframe: " + interval + " · Entry ref: " + str(signal.get("entry")) + "\n"
+                "SL: " + str(signal.get("stop_loss")) + "\n"
+                "TP1: " + str(signal.get("tp1")) + " · TP2: " + str(signal.get("tp2")) + " · TP3: " + str(signal.get("tp3")) + "\n"
+                "Confluence: " + str(signal.get("score")) + "/10 (not win probability)\n"
+                "Market: Binance USDⓈ-M perpetual · Data: " + str(result.get("data_health")) + "\n"
+                "Monitor-only. Futures Order Flow is not integrated and no order was placed."
+            )
+        except Exception as exc:
+            logger.warning("Telegram Futures scan failed for local user %s: %s", user_id, type(exc).__name__)
+            return "USDⓈ-M Futures scan unavailable. Check the symbol, timeframe (1m/5m/15m/30m/1h/4h) and Binance public feed."
+    if command == "/ai_test":
+        try:
+            from .ai_assistant import ask_openai
+            answer, model = await ask_openai(db, user_id, "Reply with exactly: QUANTNEX AI connection verified.")
+            return "✅ OpenAI response received · " + model + "\n" + answer[:500]
+        except Exception as exc:
+            logger.warning("Telegram OpenAI test failed for local user %s: %s", user_id, type(exc).__name__)
+            return "❌ OpenAI test failed. Check the API key, model access, project billing and Connections & Integrations settings."
     if command=="/ai_status":
         try:
             from .ai_assistant import get_openai_config

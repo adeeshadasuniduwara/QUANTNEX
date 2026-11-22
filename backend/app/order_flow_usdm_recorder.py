@@ -20,7 +20,7 @@ def _validate_event(event):
     if not re.fullmatch(r"[A-Z0-9]{5,25}", symbol):
         raise UsdmRawEventError("Invalid USDⓈ-M Futures symbol.")
     kind = event.get("event_type")
-    if kind not in {"aggTrade", "depthUpdate"}:
+    if kind not in {"aggTrade", "depthUpdate", "markPriceUpdate", "forceOrder"}:
         raise UsdmRawEventError("Unsupported USDⓈ-M Futures event type.")
     key = str(event.get("event_key") or "")
     payload = event.get("payload")
@@ -36,6 +36,27 @@ def _validate_event(event):
     first, last = event.get("sequence_first"), event.get("sequence_last")
     if kind == "depthUpdate" and (not isinstance(first, int) or not isinstance(last, int) or first <= 0 or last < first):
         raise UsdmRawEventError("Futures depth event requires a valid sequence range.")
+    if kind == "markPriceUpdate":
+        try:
+            mark, index, funding = float(payload["p"]), float(payload["i"]), float(payload["r"])
+            next_funding = int(payload["T"])
+        except (KeyError, TypeError, ValueError, OverflowError):
+            raise UsdmRawEventError("Futures mark-price event is missing required fields.") from None
+        if not all(map(__import__("math").isfinite, (mark, index, funding))) or mark <= 0 or index <= 0 or next_funding <= 0:
+            raise UsdmRawEventError("Futures mark-price values are invalid.")
+    if kind == "forceOrder":
+        order = payload.get("o")
+        try:
+            side = str(order["S"]).upper()
+            qty, price, avg, filled = (float(order[key]) for key in ("q", "p", "ap", "z"))
+            trade_ms = int(order["T"])
+        except (KeyError, TypeError, ValueError, OverflowError, TypeError):
+            raise UsdmRawEventError("Futures force-order event is missing required fields.") from None
+        if (not isinstance(order, dict) or str(order.get("s") or "").upper() != symbol
+                or side not in {"BUY", "SELL"} or trade_ms <= 0
+                or not all(map(__import__("math").isfinite, (qty, price, avg, filled)))
+                or qty <= 0 or price < 0 or avg < 0 or filled < 0 or filled > qty + 1e-12):
+            raise UsdmRawEventError("Futures force-order fields are invalid.")
     return symbol, kind, key, event_ms, received_ms, source, session, first, last, payload
 
 def record_usdm_market_events(db, events, *, now=None, retention_days=RETENTION_DAYS):

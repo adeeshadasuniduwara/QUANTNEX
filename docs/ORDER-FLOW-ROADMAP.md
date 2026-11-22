@@ -684,3 +684,27 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 4. Extend the signal method registry only with causal, source-attributed methods and fixtures; keep OHLCV VWAP/volume-profile proxies separate from observed aggressor flow.
 5. Add a separate USDⓈ-M Order Flow capability investigation only after Spot capture/replay is reliable; never reuse Spot streams or semantics for Futures.
 
+
+
+## Phase C17 — sequential OOS walk-forward validation (merged PR #274)
+
+- PR #274 merged as `5c6ad689eaecbb050d38367285412bda5b3a3076`.
+- Spot replay now uses a fixed-rule initial training segment and 2–6 sequential OOS folds (default 3), with open positions and pending LIMIT orders carried across fold boundaries.
+- Metrics include Wilson 95% win-rate intervals, descriptive expectancy uncertainty, costs, drawdown, LIMIT expiry/censoring and OOS fold aggregation. The intervals are caveated for serial dependence and strategy selection.
+- This is a stronger validation harness, not evidence of profitability. Historical spread/depth and fee/slippage are assumptions; partial TP exits, funding and full raw tick replay remain limitations.
+
+## Phase C18 — dynamic USDⓈ-M smoke coverage (merged PR #277) and reliability follow-up (PR #278)
+
+- PR #277 merged to main as `b4daeb862f90ad142f485035d5eb9422724edc70`. The smoke runner discovers Binance Spot and USDⓈ-M universes separately from their exchangeInfo endpoints and scans independent rotating samples. Spot supports the full eligible exchangeInfo universe over rotation; the daily sample is not a full-universe scan in one run.
+- USDⓈ-M eligibility is limited to active `TRADING` `PERPETUAL` contracts. The monitor uses closed 5m candles only and does not reuse Spot Order Flow, select executable MARKET/LIMIT entries, or place orders. COIN-M remains unsupported.
+- PR #277's first main CI exposed a test-stub keyword mismatch. PR #278 corrects the stub, adds a regression test and ensures the USDⓈ-M scan continues when Spot metadata fails, without suppressing the Spot failure in the final exit status.
+- PR #278 head `62afa85e39072113277e6b8f3eb6763ca3dd0190` passed Backend CI (542 tests), Backend/Web CI (542 tests on Python 3.12 and 542 on Python 3.14) and Web check. Merge/post-merge verification is pending.
+- The 2026-11-22 PR live smoke attempt returned HTTP 451 from `/fapi/v1/exchangeInfo` on the GitHub-hosted runner. Keep this as a provider/access failure; do not turn it into a WAIT or success. A local-network USDⓈ-M provider check is still required before claiming live Futures coverage.
+
+## Phase C19 — Order-Flow-aware Spot MARKET/LIMIT selection (next)
+
+- Current Spot flow hard-gates directional candidates using recent Binance aggregate-trade aggressor delta and sequence-validated L2 quote-notional depth imbalance. It separately checks same-closed-minute absorption/exhaustion context where aligned snapshots exist.
+- The current entry selector chooses MARKET/LIMIT using spread, depth, signal-close drift, favorable OB/FVG/Breaker/IFVG zone distance and exchange filters, but its first decision occurs before the Order Flow snapshot is evaluated. Therefore Order Flow can veto a candidate but does not yet directly choose the entry type.
+- Move the final entry selection after the live/replay Order Flow gate. MARKET urgency should require both observed aggressor delta and sequence-validated L2 depth imbalance to be directionally supportive, in addition to existing spread/depth/drift and exchange constraints. A confirmed candidate with one neutral component should prefer a valid favorable LIMIT retracement; if no such LIMIT exists, return WAIT. A contradictory, stale, missing or invalid stream remains a hard WAIT.
+- Do not introduce uncalibrated magnitude thresholds or change the legacy strategy score/min_score. Report the two observed components, provenance and selection reason; identify the rule as an execution heuristic, not a probability.
+- Add deterministic long/short fixtures for both-aligned, one-neutral, contradictory, stale, missing and sequence-gap states. Re-run the existing replay suite to ensure the same logic is used for captured-feature OOS replay. Measure incremental value only through later chronological ablations with adequate coverage.

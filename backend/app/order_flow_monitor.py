@@ -14,10 +14,10 @@ import math
 import re
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from .database import SessionLocal
-from .models import Preference
+from .models import OrderFlowObservation, Preference
 
 logger = logging.getLogger("quantnex.order_flow_monitor")
 
@@ -360,6 +360,51 @@ async def stop_order_flow_capture_worker() -> None:
 
 
 def get_order_flow_capture_status() -> dict[str, Any]:
+    from datetime import datetime, timedelta, timezone
+
+    manager_status: dict[str, Any]
+    try:
+        from .binance_order_flow_manager import get_binance_spot_order_flow_manager
+
+        manager = get_binance_spot_order_flow_manager()
+        manager_status = {
+            "active_streams": manager.active_stream_count,
+            "max_streams": manager.max_streams,
+            "last_captured_at": manager.last_capture_at,
+            "last_capture_error": manager.last_capture_error,
+        }
+    except Exception as exc:
+        manager_status = {"status": "UNAVAILABLE", "error_type": type(exc).__name__}
+
+    observation_count = 0
+    latest_observation_at = None
+    recorder_error = None
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        cutoff_ms = int((now - timedelta(hours=24)).timestamp() * 1000)
+        observation_count = int(
+            db.query(func.count(OrderFlowObservation.id))
+            .filter(
+                OrderFlowObservation.market_type == "BINANCE_SPOT",
+                OrderFlowObservation.captured_at_epoch_ms >= cutoff_ms,
+            )
+            .scalar() or 0
+        )
+        latest_epoch_ms = db.query(func.max(
+            OrderFlowObservation.captured_at_epoch_ms
+        )).filter(
+            OrderFlowObservation.market_type == "BINANCE_SPOT"
+        ).scalar()
+        if latest_epoch_ms is not None:
+            latest_observation_at = datetime.fromtimestamp(
+                int(latest_epoch_ms) / 1000, timezone.utc
+            ).isoformat()
+    except Exception as exc:
+        recorder_error = type(exc).__name__
+    finally:
+        db.close()
+
     return {
         "running": _WORKER._task is not None and not _WORKER._task.done(),
         "symbols": list(_WORKER.monitored_symbols),
@@ -368,4 +413,8 @@ def get_order_flow_capture_status() -> dict[str, Any]:
         "last_error": _WORKER.last_error,
         "capture_alignment": "ONE_OBSERVATION_PER_UTC_1M_CANDLE",
         "raw_tick_archive": False,
+        "manager": manager_status,
+        "observations_last_24h": observation_count,
+        "latest_observation_at": latest_observation_at,
+        "recorder_error_type": recorder_error,
     }

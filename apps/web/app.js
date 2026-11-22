@@ -926,7 +926,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     try{await spotUniversePromise;}catch(error){console.warn("QUANTNEX Spot symbol universe refresh failed:",error.message);}finally{spotUniversePromise=null;}
   }
   async function pollBook(generation,symbol){
-    if(generation!==bookGeneration||document.hidden||!isWorkspaceViewActive("tradingview"))return;
+    if(generation!==bookGeneration||document.hidden||!isWorkspaceViewActive("quantnex-advanced"))return;
     try{
       const result=await apiRequest("/api/v1/order-flow/spot/"+encodeURIComponent(symbol)+"?wait_seconds=0.75");
       if(generation!==bookGeneration)return;
@@ -946,22 +946,22 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
         renderTradeFlow(null);
       }
     }finally{
-      if(generation===bookGeneration&&!document.hidden&&isWorkspaceViewActive("tradingview")){
+      if(generation===bookGeneration&&!document.hidden&&isWorkspaceViewActive("quantnex-advanced")){
         bookRetry=setTimeout(()=>pollBook(generation,symbol),500);
       }
     }
   }
-  function loadQuantnexViewOrderFlow(){
-    const symbol=String($("qxSymbol")?.value||"BTCUSDT").toUpperCase();
-    const marketType=String($("qxMarketType")?.value||"BINANCE_SPOT");
+  function loadQuantnexAdvancedOrderFlow(){
+    const symbol=String($("qaSymbol")?.value||"BTCUSDT").toUpperCase();
+    const marketType=String($("qaMarketType")?.value||"BINANCE_SPOT");
     const generation=++bookGeneration;
     clearTimeout(bookRetry);bookRetry=null;
     if(bookRenderTimer!==null){clearTimeout(bookRenderTimer);bookRenderTimer=null;}
     bookHistory=[];latestBookData=null;lastBookTableAt=0;
     $("p7BookLiveStatus").className="";
-    $("p7BookLiveStatus").textContent="Connecting to validated "+symbol+" Spot order-flow stream…";
+    $("p7BookLiveStatus").textContent="Connecting to validated "+symbol+" order-flow stream…";
     const marketLabel=$("qxOrderFlowMarket");if(marketLabel)marketLabel.textContent=symbol;
-    const timeframeLabel=$("qxOrderFlowTimeframe");if(timeframeLabel)timeframeLabel.textContent=($("qxInterval")?.value||"15m")+" · SPOT";
+    const timeframeLabel=$("qxOrderFlowTimeframe");if(timeframeLabel)timeframeLabel.textContent=($("qaInterval")?.value||"15m")+" · "+($("qaMarketType")?.value==="BINANCE_USDM_FUTURES"?"FUTURES":"SPOT");
     const canvas=$("p7BookmapCanvas");if(canvas){const ctx=canvas.getContext("2d");if(ctx)ctx.clearRect(0,0,canvas.width,canvas.height);}
     $("p7BookImbalance").textContent="Waiting for validated book";
     ["qxOrderFlowBestBid","qxOrderFlowBestAsk","qxOrderFlowBestBidSize","qxOrderFlowBestAskSize","qxOrderFlowSpread","qxOrderFlowBidDepth","qxOrderFlowAskDepth"].forEach(id=>{const el=$(id);if(el)el.textContent="—";});
@@ -1137,9 +1137,10 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     if(typeof window.quantnexNavigate==="function")window.quantnexNavigate("paper-trading");
     else location.hash="#paper-trading";
   });
-  $("qxOrderFlowReconnect").addEventListener("click",()=>loadQuantnexViewOrderFlow());
-  $("qxSymbol")?.addEventListener("change",()=>{if(isWorkspaceViewActive("tradingview"))loadQuantnexViewOrderFlow();});
-  $("qxInterval")?.addEventListener("change",()=>{const label=$("qxOrderFlowTimeframe");if(label)label.textContent=$("qxInterval").value+" · SPOT";});
+  $("qxOrderFlowReconnect").addEventListener("click",()=>loadQuantnexAdvancedOrderFlow());
+  $("qaSymbol")?.addEventListener("change",()=>{if(isWorkspaceViewActive("quantnex-advanced"))loadQuantnexAdvancedOrderFlow();});
+  $("qaInterval")?.addEventListener("change",()=>{const label=$("qxOrderFlowTimeframe");if(label)label.textContent=$("qaInterval").value+" · "+($("qaMarketType")?.value==="BINANCE_USDM_FUTURES"?"FUTURES":"SPOT");});
+  $("qaMarketType")?.addEventListener("change",()=>{if(isWorkspaceViewActive("quantnex-advanced"))loadQuantnexAdvancedOrderFlow();});
   document.querySelectorAll("[data-qx-orderflow-tab]").forEach(button=>button.addEventListener("click",()=>{
     const tab=button.dataset.qxOrderflowTab;
     document.querySelectorAll("[data-qx-orderflow-tab]").forEach(item=>{const active=item===button;item.classList.toggle("is-active",active);item.setAttribute("aria-selected",active?"true":"false");});
@@ -1157,7 +1158,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
     // Keep one shared crypto ticker alive across workspace views. Only a hidden browser tab
     // pauses the socket; returning to any view reconnects it and resumes the common market feed.
     connectCryptoTicker();
-    if(isWorkspaceViewActive("tradingview")){loadSpotUniverse();loadQuantnexViewOrderFlow();}
+    if(isWorkspaceViewActive("quantnex-advanced")){loadQuantnexAdvancedOrderFlow();}
     else stopBookFeed();
     if(isWorkspaceViewActive("paper-trading"))refreshAnalytics();
     if(isWorkspaceViewActive("performance-lab"))loadPerformance();
@@ -1170,7 +1171,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   });
   // Keep network work scoped to the visible workspace. Hidden panels stay idle.
   setInterval(()=>{if(isWorkspaceViewActive("market-intelligence"))loadMarkets();},60000);
-  setInterval(()=>{if(isWorkspaceViewActive("tradingview")){spotUniverseLoaded=false;loadSpotUniverse();}},900000);
+  setInterval(()=>{if(isWorkspaceViewActive("quantnex-advanced")){spotUniverseLoaded=false;loadSpotUniverse();}},900000);
   setInterval(()=>{if(isWorkspaceViewActive("paper-trading"))loadPaper();},20000);
   setInterval(()=>{if(isWorkspaceViewActive("performance-lab"))loadPerformance();},30000);
   setInterval(()=>{if(isWorkspaceViewActive("news-intelligence"))loadNews();},900000);

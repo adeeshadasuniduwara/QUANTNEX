@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="signal-tool.css?v=20261121-position-table2">
   <link rel="stylesheet" href="quantnex-view-intelligence.css?v=20261120-overall-pnl1">
   <link rel="stylesheet" href="quantnex-view-chart.css?v=20261121-compact-layout2">
+  <link rel="stylesheet" href="quantnex-advanced.css?v=20261122-phase1">
   <link rel="stylesheet" href="market-sessions.css?v=20261118-chart-sessions1">
   <link rel="stylesheet" href="workspace-pages.css?v=20261118-distinct-certificate100">
   <link rel="stylesheet" href="workspace-polish.css?v=20261116-sidebar-compact1">
@@ -28,6 +29,7 @@
         <div class="side-caption">WORKSPACE</div>
         <a class="nav-link active" href="#overview">Overview</a>
         <a class="nav-link" href="#tradingview">QUANTNEX VIEW</a>
+        <a class="nav-link" href="#quantnex-advanced">QUANTNEX Advanced</a>
         <a class="nav-link" href="#paper-trading">Trading Desk</a>
         <a class="nav-link" href="#tools">Position calculator</a>
         <a class="nav-link" href="#journal">Trade journal</a>
@@ -238,7 +240,7 @@
           <span class="qx-chart-status" id="qxChartStatus" role="status">Connecting to local market data…</span>
         </div>
         <div id="qxChartHost" class="qx-chart-host"><div class="qx-chart-loading">Loading live candles…</div></div>
-        <div class="qx-chart-footer"><span id="qxChartProvider">Market feed: waiting</span><span>Native QUANTNEX canvas engine · Binance live WebSocket · Futures chart-only; signal and Order Flow engines remain Spot-only</span></div>
+        <div class="qx-chart-footer"><span id="qxChartProvider">Market feed: waiting</span><span>Native QUANTNEX canvas engine · Binance Spot and USDⓈ-M Futures live market feeds</span></div>
       </section>
       <section class="panel qx-live-signals-panel" id="qxLiveSignalsPanel" aria-label="Live signals">
         <div class="qx-live-signals-heading">
@@ -252,38 +254,7 @@
           </table>
         </div>
       </section>
-      <section class="qx-orderflow-toolkit" id="qxOrderFlowToolkit" aria-label="Order Flow and Liquidity Toolkit">
-        <div class="qx-orderflow-heading">
-          <div><span class="qx-orderflow-kicker">QUANTNEX VIEW · MARKET MICROSTRUCTURE</span><h3>Order Flow &amp; Liquidity Toolkit</h3><p>Live Binance Spot liquidity tools linked to the market and timeframe selected above.</p></div>
-          <div class="qx-orderflow-market-badge"><strong id="qxOrderFlowMarket">BTCUSDT</strong><span id="qxOrderFlowTimeframe">15m · SPOT</span></div>
-        </div>
-        <div class="qx-orderflow-metrics" aria-live="polite">
-          <article><span>Best bid</span><strong id="qxOrderFlowBestBid">—</strong><small id="qxOrderFlowBestBidSize">—</small></article><article><span>Best ask</span><strong id="qxOrderFlowBestAsk">—</strong><small id="qxOrderFlowBestAskSize">—</small></article><article><span>Spread</span><strong id="qxOrderFlowSpread">—</strong></article><article><span>Top-10 bid notional</span><strong id="qxOrderFlowBidDepth">—</strong></article><article><span>Top-10 ask notional</span><strong id="qxOrderFlowAskDepth">—</strong></article><article><span>Depth imbalance</span><strong id="p7BookImbalance">Waiting for book</strong></article>
-        </div>
-        <div class="qx-orderflow-toolbar">
-          <div class="qx-orderflow-tabs" role="tablist" aria-label="Order Flow tools">
-            <button type="button" class="qx-orderflow-tab is-active" role="tab" aria-selected="true" aria-controls="qxOrderFlowBookmapTab" data-qx-orderflow-tab="bookmap">Liquidity Bookmap</button>
-            <button type="button" class="qx-orderflow-tab" role="tab" aria-selected="false" aria-controls="qxOrderFlowDepthTab" data-qx-orderflow-tab="depth">Depth Ladder</button>
-            <button type="button" class="qx-orderflow-tab" role="tab" aria-selected="false" aria-controls="qxOrderFlowTradeTab" data-qx-orderflow-tab="tradeflow">Trade Flow</button>
-          </div>
-          <div class="qx-orderflow-actions"><span id="p7BookLiveStatus" role="status">Waiting for QUANTNEX VIEW…</span><button class="secondary-btn compact-btn" id="qxOrderFlowReconnect" type="button">Reconnect depth</button></div>
-        </div>
-        <div class="qx-orderflow-tab-panel" id="qxOrderFlowBookmapTab" role="tabpanel">
-          <div class="p7-bookmap-wrap"><div class="p7-bookmap-head"><strong>Rolling sequence-validated Binance Spot L2 heatmap · backend stream up to 100ms</strong><span>500ms UI samples · resting liquidity</span></div><div class="p7-bookmap" id="p7Bookmap"><canvas id="p7BookmapCanvas" role="img" aria-label="Rolling Binance Spot sequence-validated liquidity heatmap with bid and ask levels"></canvas></div><div class="p7-bookmap-legend"><span>BUY liquidity · Bids</span><span>SELL liquidity · Asks</span></div></div>
-          <p class="p7-note" id="p7BookNote">Waiting for Binance Spot depth. Waiting for the backend sequence-validated depth stream.</p>
-        </div>
-        <div class="qx-orderflow-tab-panel" id="qxOrderFlowDepthTab" role="tabpanel" hidden><div class="p7-book-grid"><div><h4>Bids · Buy orders</h4><div class="p7-table-wrap"><table><thead><tr><th>Price</th><th>Quantity</th></tr></thead><tbody id="p7Bids"><tr><td colspan="2" class="empty-row">Waiting for depth snapshot.</td></tr></tbody></table></div></div><div><h4>Asks · Sell orders</h4><div class="p7-table-wrap"><table><thead><tr><th>Price</th><th>Quantity</th></tr></thead><tbody id="p7Asks"><tr><td colspan="2" class="empty-row">Waiting for depth snapshot.</td></tr></tbody></table></div></div></div></div>
-        <div class="qx-orderflow-tab-panel" id="qxOrderFlowTradeTab" role="tabpanel" hidden>
-          <div class="qx-orderflow-flow-status" id="qxOrderFlowTradeStatus">Waiting for validated Binance aggregate-trade stream…</div>
-          <div class="qx-orderflow-flow-grid">
-            <article><span>Trades in window</span><strong id="qxOrderFlowTradeCount">—</strong></article><article><span>Aggressor buy volume</span><strong id="qxOrderFlowBuyVolume">—</strong></article><article><span>Aggressor sell volume</span><strong id="qxOrderFlowSellVolume">—</strong></article><article><span>Net delta</span><strong id="qxOrderFlowDelta">—</strong></article><article><span>Delta ratio</span><strong id="qxOrderFlowDeltaRatio">—</strong></article><article><span>CVD since stream seed</span><strong id="qxOrderFlowCvd">—</strong><small id="qxOrderFlowCvdScope">Waiting for stream seed</small></article>
-          </div>
-          <div class="qx-orderflow-session"><div><span>UTC session delta</span><strong id="qxOrderFlowSessionDelta">—</strong></div><small id="qxOrderFlowSessionScope">Full UTC session coverage is not yet verified.</small></div><div class="qx-orderflow-session"><div><span>Observed volume profile</span><strong id="qxOrderFlowProfile">—</strong></div><small>Microprice: <span id="qxOrderFlowMicroprice">—</span></small></div>
-          <div class="p7-table-wrap"><table><thead><tr><th>Price bucket</th><th>Buy volume</th><th>Sell volume</th><th>Delta</th><th>Imbalance</th></tr></thead><tbody id="qxOrderFlowFootprintRows"><tr><td colspan="5" class="empty-row">Waiting for validated trade buckets.</td></tr></tbody></table></div>
-          <p class="qx-orderflow-footnote" id="qxOrderFlowProvenance">Aggressor-side inferred trade delta is not consolidated quoted bid/ask volume. Candle volume is not used to fabricate delta.</p>
-        </div>
-        <div class="qx-orderflow-footnote">Data scope: Binance Spot only. Gold/Forex depth is not simulated. Bookmap uses the backend's sequence-validated Spot diff-depth book; resting orders are not executed volume or guaranteed executable liquidity.</div>
-      </section>
+      
 
       <section class="qx-chart-sessions" aria-label="Live global market sessions">
         <div class="qx-chart-sessions-intro">
@@ -500,6 +471,82 @@
         </div>
         <p class="p7-note" id="paperWalkForwardResult">No validation run yet. Results are historical simulations, not evidence of future profitability.</p>
         <p class="p7-note">Safety limits: paper-only, no broker API, no real-money orders. Automatic mode is disabled by default. FX/Gold auto-sizing is not enabled because contract multipliers and tick-value assumptions are not yet verified.</p>
+      </section>
+      <section class="section-heading" id="quantnex-advanced"><div><div class="overline">MARKET MICROSTRUCTURE LAB · PHASE 01</div><h2>QUANTNEX Advanced</h2><p>A dedicated chart workspace for professional Order Flow analysis.</p></div><span class="pill live-pill">PHASE 01 · FOUNDATION</span></section>
+      <section class="panel qa-workspace-intro"><div><span class="qx-orderflow-kicker">QUANTNEX ADVANCED · ORDER FLOW WORKSPACE</span><h3>Market Structure Meets Order Flow</h3><p>Dedicated chart and exchange-native market data. Phase 1 establishes the chart, live candle feed, depth stream and trade-flow foundation. Advanced footprint, absorption and exhaustion modules will be added in later phases.</p></div><div class="qa-phase-status"><strong>PHASE 01</strong><span>Chart + live data foundation</span><small>Spot Order Flow · Futures chart feed · No synthetic depth</small></div></section>
+      <section class="panel chart-panel qx-chart-panel" aria-label="QUANTNEX Advanced live chart">
+        <div class="qx-chart-topbar">
+          <div class="qx-chart-market">
+            <label>Market<select id="qaMarketType"><option value="BINANCE_SPOT" selected>SPOT</option><option value="BINANCE_USDM_FUTURES">FUTURES · PERPETUAL</option></select></label>
+            <label>Pair<select id="qaSymbol"><option value="BTCUSDT">[EX-BTCUSDT]</option></select></label>
+            <div><strong id="qaChartLastPrice">—</strong><small id="qaChartTicker">[EX-BTCUSDT]</small><small id="qaChartChange">Waiting for market data</small></div>
+          </div>
+          <div class="qx-chart-toolbar">
+            <label>Timeframe<select id="qaInterval"><option value="1m">1m</option><option value="5m">5m</option><option value="15m" selected>15m</option><option value="30m">30m</option><option value="1h">1H</option><option value="4h">4H</option></select></label>
+            <label>Chart type<select id="qaChartType"><option value="candles">Candles</option><option value="heikin">Heikin Ashi</option><option value="line">Line</option><option value="area">Area</option><option value="bar">Bars</option></select></label>
+            <label>Theme<select id="qaChartTheme"><option value="dark">Dark</option><option value="light">Light</option></select></label>
+            <button class="secondary-btn compact-btn" id="qaFitChart" type="button">Fit</button>
+            <button class="secondary-btn compact-btn" id="qaScreenshot" type="button">Snapshot</button>
+          </div>
+        </div>
+        <div class="qx-chart-options">
+          <label><input type="checkbox" id="qaVolume" checked> Volume</label>
+          <label><input type="checkbox" id="qaEma20" checked> EMA 20</label>
+          <label><input type="checkbox" id="qaEma50" checked> EMA 50</label>
+          <label><input type="checkbox" id="qaEma200" checked> EMA 200</label>
+          <label><input type="checkbox" id="qaSma20"> SMA 20</label>
+          <label><input type="checkbox" id="qaBollinger"> Bollinger Bands</label>
+          <label><input type="checkbox" id="qaVwap"> VWAP</label>
+          <label><input type="checkbox" id="qaLogScale"> Log scale</label>
+          <label><input type="checkbox" id="qaGrid" checked> Grid</label>
+          <label>Up candle <input type="color" id="qaUpColor" value="#20c997"></label>
+          <label>Down candle <input type="color" id="qaDownColor" value="#f05d68"></label>
+        </div>
+        <div class="qx-drawing-toolbar">
+          <span>Draw</span>
+          <button class="secondary-btn compact-btn active" type="button" data-qa-draw="cursor">Cursor</button>
+          <button class="secondary-btn compact-btn" type="button" data-qa-draw="horizontal">Horizontal</button>
+          <button class="secondary-btn compact-btn" type="button" data-qa-draw="trend">Trend line</button>
+          <button class="secondary-btn compact-btn" type="button" data-qa-draw="vertical">Vertical</button>
+          <button class="secondary-btn compact-btn" type="button" data-qa-draw="rectangle">Rectangle</button>
+          <button class="secondary-btn compact-btn" type="button" data-qa-draw="fib">Fib retracement</button>
+          <button class="secondary-btn compact-btn" type="button" id="qaClearDrawings">Clear drawings</button>
+          <span class="qx-chart-status" id="qaChartStatus" role="status">Connecting to local market data…</span>
+        </div>
+        <div id="qaChartHost" class="qx-chart-host"><div class="qx-chart-loading">Loading live candles…</div></div>
+        <div class="qx-chart-footer"><span id="qaChartProvider">Market feed: waiting</span><span>Native QUANTNEX canvas engine · Binance live WebSocket · Independent chart workspace · validated exchange feeds only</span></div>
+      </section>
+<section class="qx-orderflow-toolkit" id="qxOrderFlowToolkit" aria-label="Order Flow and Liquidity Toolkit">
+        <div class="qx-orderflow-heading">
+          <div><span class="qx-orderflow-kicker">QUANTNEX VIEW · MARKET MICROSTRUCTURE</span><h3>Order Flow &amp; Liquidity Toolkit</h3><p>Live Binance Spot liquidity tools linked to the market and timeframe selected above.</p></div>
+          <div class="qx-orderflow-market-badge"><strong id="qxOrderFlowMarket">BTCUSDT</strong><span id="qxOrderFlowTimeframe">15m · SPOT</span></div>
+        </div>
+        <div class="qx-orderflow-metrics" aria-live="polite">
+          <article><span>Best bid</span><strong id="qxOrderFlowBestBid">—</strong><small id="qxOrderFlowBestBidSize">—</small></article><article><span>Best ask</span><strong id="qxOrderFlowBestAsk">—</strong><small id="qxOrderFlowBestAskSize">—</small></article><article><span>Spread</span><strong id="qxOrderFlowSpread">—</strong></article><article><span>Top-10 bid notional</span><strong id="qxOrderFlowBidDepth">—</strong></article><article><span>Top-10 ask notional</span><strong id="qxOrderFlowAskDepth">—</strong></article><article><span>Depth imbalance</span><strong id="p7BookImbalance">Waiting for book</strong></article>
+        </div>
+        <div class="qx-orderflow-toolbar">
+          <div class="qx-orderflow-tabs" role="tablist" aria-label="Order Flow tools">
+            <button type="button" class="qx-orderflow-tab is-active" role="tab" aria-selected="true" aria-controls="qxOrderFlowBookmapTab" data-qx-orderflow-tab="bookmap">Liquidity Bookmap</button>
+            <button type="button" class="qx-orderflow-tab" role="tab" aria-selected="false" aria-controls="qxOrderFlowDepthTab" data-qx-orderflow-tab="depth">Depth Ladder</button>
+            <button type="button" class="qx-orderflow-tab" role="tab" aria-selected="false" aria-controls="qxOrderFlowTradeTab" data-qx-orderflow-tab="tradeflow">Trade Flow</button>
+          </div>
+          <div class="qx-orderflow-actions"><span id="p7BookLiveStatus" role="status">Waiting for QUANTNEX VIEW…</span><button class="secondary-btn compact-btn" id="qxOrderFlowReconnect" type="button">Reconnect depth</button></div>
+        </div>
+        <div class="qx-orderflow-tab-panel" id="qxOrderFlowBookmapTab" role="tabpanel">
+          <div class="p7-bookmap-wrap"><div class="p7-bookmap-head"><strong>Rolling sequence-validated Binance Spot L2 heatmap · backend stream up to 100ms</strong><span>500ms UI samples · resting liquidity</span></div><div class="p7-bookmap" id="p7Bookmap"><canvas id="p7BookmapCanvas" role="img" aria-label="Rolling Binance Spot sequence-validated liquidity heatmap with bid and ask levels"></canvas></div><div class="p7-bookmap-legend"><span>BUY liquidity · Bids</span><span>SELL liquidity · Asks</span></div></div>
+          <p class="p7-note" id="p7BookNote">Waiting for Binance Spot depth. Waiting for the backend sequence-validated depth stream.</p>
+        </div>
+        <div class="qx-orderflow-tab-panel" id="qxOrderFlowDepthTab" role="tabpanel" hidden><div class="p7-book-grid"><div><h4>Bids · Buy orders</h4><div class="p7-table-wrap"><table><thead><tr><th>Price</th><th>Quantity</th></tr></thead><tbody id="p7Bids"><tr><td colspan="2" class="empty-row">Waiting for depth snapshot.</td></tr></tbody></table></div></div><div><h4>Asks · Sell orders</h4><div class="p7-table-wrap"><table><thead><tr><th>Price</th><th>Quantity</th></tr></thead><tbody id="p7Asks"><tr><td colspan="2" class="empty-row">Waiting for depth snapshot.</td></tr></tbody></table></div></div></div></div>
+        <div class="qx-orderflow-tab-panel" id="qxOrderFlowTradeTab" role="tabpanel" hidden>
+          <div class="qx-orderflow-flow-status" id="qxOrderFlowTradeStatus">Waiting for validated Binance aggregate-trade stream…</div>
+          <div class="qx-orderflow-flow-grid">
+            <article><span>Trades in window</span><strong id="qxOrderFlowTradeCount">—</strong></article><article><span>Aggressor buy volume</span><strong id="qxOrderFlowBuyVolume">—</strong></article><article><span>Aggressor sell volume</span><strong id="qxOrderFlowSellVolume">—</strong></article><article><span>Net delta</span><strong id="qxOrderFlowDelta">—</strong></article><article><span>Delta ratio</span><strong id="qxOrderFlowDeltaRatio">—</strong></article><article><span>CVD since stream seed</span><strong id="qxOrderFlowCvd">—</strong><small id="qxOrderFlowCvdScope">Waiting for stream seed</small></article>
+          </div>
+          <div class="qx-orderflow-session"><div><span>UTC session delta</span><strong id="qxOrderFlowSessionDelta">—</strong></div><small id="qxOrderFlowSessionScope">Full UTC session coverage is not yet verified.</small></div><div class="qx-orderflow-session"><div><span>Observed volume profile</span><strong id="qxOrderFlowProfile">—</strong></div><small>Microprice: <span id="qxOrderFlowMicroprice">—</span></small></div>
+          <div class="p7-table-wrap"><table><thead><tr><th>Price bucket</th><th>Buy volume</th><th>Sell volume</th><th>Delta</th><th>Imbalance</th></tr></thead><tbody id="qxOrderFlowFootprintRows"><tr><td colspan="5" class="empty-row">Waiting for validated trade buckets.</td></tr></tbody></table></div>
+          <p class="qx-orderflow-footnote" id="qxOrderFlowProvenance">Aggressor-side inferred trade delta is not consolidated quoted bid/ask volume. Candle volume is not used to fabricate delta.</p>
+        </div>
+        <div class="qx-orderflow-footnote">Data scope: Binance Spot only. Gold/Forex depth is not simulated. Bookmap uses the backend's sequence-validated Spot diff-depth book; resting orders are not executed volume or guaranteed executable liquidity.</div>
       </section>
       <section class="section-heading" id="tools"><div><div class="overline">RISK MANAGEMENT</div><h2>Position size calculator</h2><p>Estimate position size using your broker's pip value.</p></div></section>
       <section class="panel calculator-panel">
@@ -910,7 +957,7 @@
   </div>
   <script src="shared-news-config.js?v=20261113-shared-news1"></script>
   <script src="journal-export.js?v=20261114-csvsafe1"></script>
-  <script src="app.js?v=20261122-view-update-flow1"></script>
+  <script src="app.js?v=20261122-advanced-phase1"></script>
   <script src="realtime-events.js"></script>
   <script src="workspace-pages.js"></script>
   <script src="phase12-20.js"></script>
@@ -918,6 +965,7 @@
 
   <script src="signal-tool.js?v=20261121-position-table2"></script>
   <script src="quantnex-view-chart.js?v=20261121-usdm-signal1"></script>
+  <script src="quantnex-advanced-chart.js?v=20261122-phase1"></script>
   <script src="market-sessions.js?v=20261118-live-sessions1"></script>
   <script src="quantnex-view-intelligence.js?v=20261121-usdm-signals1"></script>
   <script src="workspace-polish.js?v=20261114-single-icon2"></script>

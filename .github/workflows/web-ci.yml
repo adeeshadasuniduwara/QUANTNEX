@@ -47,6 +47,7 @@ jobs:
           node --check apps/web/prop-challenge.js
           node --check apps/web/quantnex-view-intelligence.js
           node --check apps/web/quantnex-view-chart.js
+          node --check apps/web/quantnex-advanced-chart.js
           node --check apps/web/market-sessions.js
           node --check apps/web/workspace-pages.js
           node --check apps/web/binance-center.js
@@ -55,6 +56,7 @@ jobs:
           node apps/web/goals.test.cjs
           node apps/web/journal-export.test.cjs
           node apps/web/quantnex-view-chart.test.cjs
+          node apps/web/quantnex-advanced.test.cjs
           node apps/web/order-flow-toolkit.test.cjs
           node apps/web/market-sessions.test.cjs
           node apps/web/live-terminal.test.cjs
@@ -76,8 +78,11 @@ jobs:
           grep -q 'quantnex-view-chart.js' apps/web/index.html
           grep -q 'quantnex-view-chart.css' apps/web/index.html
           grep -q 'auto-refresh.js' apps/web/index.html
-          grep -q 'id="qxChartIntelSummary"' apps/web/index.html
-          grep -q 'id="qxOverlayZones"' apps/web/index.html
+          grep -q 'id="qxSignalLedgerContent"' apps/web/index.html
+          grep -q 'href="#quantnex-advanced">QUANTNEX Advanced</a>' apps/web/index.html
+          grep -q 'id="qaChartHost"' apps/web/index.html
+          grep -q 'id="qxOrderFlowToolkit"' apps/web/index.html
+          grep -q 'quantnex-advanced-chart.js' apps/web/index.html
           grep -q 'id="account"' apps/web/index.html
           grep -q 'id="walletDeposit"' apps/web/index.html
           grep -q 'id="walletWithdraw"' apps/web/index.html

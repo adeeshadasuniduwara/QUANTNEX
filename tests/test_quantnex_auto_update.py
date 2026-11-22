@@ -156,14 +156,16 @@ class AutomaticUpdateTests(unittest.TestCase):
             self.assertEqual((root / "README.md").read_text(encoding="utf-8"), "official source copy")
             self.assertEqual(result["changed_files"], ["README.md"])
 
-    def test_manual_check_forces_full_source_reconciliation_even_when_sha_matches(self):
+    def test_updates_tab_only_queues_reconciliation_when_a_newer_commit_exists(self):
         self.assertIn("force_reconcile: bool = False", SOURCE_UPDATER)
         self.assertIn("installed_sha == latest_sha and not force_reconcile", SOURCE_UPDATER)
         self.assertIn("check_and_apply(ROOT, force_reconcile=force_reconcile)", LAUNCHER)
         self.assertIn("force_reconcile=manual_check_requested", LAUNCHER)
         self.assertIn("check_in_progress.json", UPDATER)
         self.assertIn("state.syncing", APP)
-        self.assertIn("if(result.update_available||!silent)", APP)
+        self.assertIn("if(result.update_available)", APP)
+        self.assertNotIn("if(result.update_available||!silent)", APP)
+        self.assertIn("QUANTNEX source is up to date.", APP)
 
     def test_binance_demo_forms_match_backend_key_length_limits_and_labels(self):
         self.assertIn("Binance Spot Demo Trading", HTML)

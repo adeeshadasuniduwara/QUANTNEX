@@ -6,7 +6,7 @@ const intel = fs.readFileSync("apps/web/quantnex-view-intelligence.js", "utf8");
 const css = fs.readFileSync("apps/web/quantnex-view-chart.css", "utf8");
 const app = fs.readFileSync("apps/web/app.js", "utf8");
 const signalTool = fs.readFileSync("apps/web/signal-tool.js", "utf8");
-for (const id of ["qxRsiChart", "qxMacdChart", "qxAdxChart", "qxAtrChart", "qxStochChart", "qxCciChart", "qxRsiValue", "qxMacdValue", "qxAdxValue", "qxAtrValue", "qxStochValue", "qxCciValue", "qxConfidenceMeter", "qxConfidenceFill"]) assert.ok(html.includes(`id="${id}"`), `Missing chart element: ${id}`);
+for (const id of ["qxChartHost", "qxLiveSignalsRows", "qxSignalLedgerContent", "qxIndicatorsContent"]) assert.ok(html.includes(`id="${id}"`), `Missing current QUANTNEX VIEW element: ${id}`);
 for (const token of ["function rsiSeries", "function adxSeries", "function atrSeries", "function stochSeries", "function cciSeries", "function renderIndicatorPanels", "new WebSocket", "kline_", "function pointerDown", "function wheel", "function mergeCandle", "window.quantnexViewSetAnalysis"]) assert.ok(js.includes(token), `Native chart/live path missing: ${token}`);
 assert.ok(!js.includes("window.LightweightCharts"), "Chart must not depend on the TradingView Lightweight Charts runtime.");
 assert.ok(!html.includes("lightweight-charts@"), "No external Lightweight Charts runtime may be loaded.");
@@ -127,7 +127,11 @@ assert.match(js, /marketType==="BINANCE_USDM_FUTURES"/, "Futures selection must 
 assert.match(js, /quantnex\.chart\.selection\.v1/, "Market type selection must persist across reloads.");
 console.log("QUANTNEX VIEW Spot/USDⓈ-M Futures market selector and .P ticker checks passed.");
 
-assert.match(html, /Futures chart-only; signal and Order Flow engines remain Spot-only/, "UI must disclose that Futures chart support does not imply Futures signal/order-flow support.");
+assert.match(html, /Native QUANTNEX canvas engine · Binance Spot and USDⓈ-M Futures live market feeds/, "QUANTNEX VIEW must describe its chart feeds without advertising the relocated Order Flow tools.");
+const tradingViewStart = html.indexOf('id="tradingview"');
+const advancedStart = html.indexOf('id="quantnex-advanced"');
+assert.ok(tradingViewStart >= 0 && advancedStart > tradingViewStart);
+assert.doesNotMatch(html.slice(tradingViewStart, advancedStart), /Order Flow/i, "Order Flow UI belongs in QUANTNEX Advanced, not QUANTNEX VIEW.");
 
 const intelligence = fs.readFileSync("apps/web/quantnex-view-intelligence.js", "utf8");
 assert.match(intelligence, /marketType:\$\("qxMarketType"\)\?\.value\|\|"BINANCE_SPOT"/, "Intelligence selection must include the selected market type.");

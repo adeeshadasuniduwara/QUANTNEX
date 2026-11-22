@@ -206,3 +206,42 @@ def test_usdm_smoke_counts_new_contracts_without_history_as_skips(monkeypatch, c
     assert "[FUTURES SKIP] NEWUSDT.P" in output
     assert "1 insufficient-history skip(s)" in output
 
+def test_usdm_smoke_runs_even_when_spot_exchange_info_is_unavailable(monkeypatch, capsys):
+    import smoke_signal_engine as smoke
+
+    calls = []
+
+    async def fail_spot_universe():
+        raise smoke.MarketDataError("Binance Spot exchangeInfo unavailable")
+
+    async def fake_usdm_universe():
+        return ["BTCUSDT"]
+
+    async def fake_usdm_analyze(symbol, interval, min_score):
+        calls.append((symbol, interval, min_score))
+        return {
+            "market_type": "BINANCE_USDM_FUTURES",
+            "status": "WAIT",
+            "signal": None,
+            "confluence_score": 0,
+            "message": "No qualifying Futures setup.",
+        }
+
+    monkeypatch.setattr(smoke, "get_binance_spot_symbols", fail_spot_universe)
+    monkeypatch.setattr(smoke, "get_binance_usdm_symbols", fake_usdm_universe)
+    monkeypatch.setattr(smoke, "analyze_usdm_futures_signal", fake_usdm_analyze)
+
+    result = asyncio.run(_run(
+        None, 8,
+        include_usdm=True,
+        usdm_universe_sample_size=1,
+        sample_day=0,
+    ))
+
+    output = capsys.readouterr().out
+    assert result == 1  # Spot provider failure remains visible to CI.
+    assert calls == [("BTCUSDT", "5m", 8)]
+    assert "Binance Spot symbol discovery failed" in output
+    assert "[FUTURES WAIT] BTCUSDT.P" in output
+    assert "1 provider/error failure(s)" in output
+

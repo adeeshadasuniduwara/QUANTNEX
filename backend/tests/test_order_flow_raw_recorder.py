@@ -160,3 +160,20 @@ def test_recorder_prunes_only_by_received_time_retention_window(db):
     later_now = datetime.fromtimestamp((later_events[0]["received_at_ms"] + 1000) / 1000, timezone.utc)
     record_order_flow_market_events(db, later_events, now=later_now, retention_days=1)
     assert db.query(OrderFlowMarketEvent).count() == 3
+
+
+def test_candle_summary_marks_explicit_capture_gap_as_incomplete(db):
+    event = {
+        "symbol": "BTCUSDT", "event_type": "captureGap",
+        "event_time_ms": 1_795_248_000_000, "received_at_ms": 1_795_248_000_100,
+        "source": "WEBSOCKET", "stream_session_id": "0123456789abcdef0123456789abcdef",
+        "payload": {"gap_id": "abcdef0123456789abcdef0123456789", "reason": "RAW_CAPTURE_QUEUE_OVERFLOW"},
+    }
+    now = datetime.fromtimestamp((event["received_at_ms"] + 1000) / 1000, timezone.utc)
+    record_order_flow_market_events(db, [event], now=now)
+    rows = summarize_order_flow_candles(
+        db, "BTCUSDT", event["event_time_ms"] - 1, event["event_time_ms"] + 60_000,
+    )
+    assert rows[0]["capture_gap_count"] == 1
+    assert rows[0]["gap_detected"] is True
+    assert rows[0]["coverage_status"] == "CAPTURE_GAP_DETECTED"

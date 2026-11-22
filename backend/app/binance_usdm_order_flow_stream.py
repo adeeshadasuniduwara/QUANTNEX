@@ -106,6 +106,7 @@ class BinanceUsdmOrderFlowStream:
         self.last_update_id = p["u"]
         self.sequence_valid = True
         self.last_depth_at = datetime.now(timezone.utc)
+        self.last_message_at = self.last_depth_at
         self._queue({**event, "source":"WEBSOCKET", "stream_session_id":self.session_id})
         return True
 
@@ -184,6 +185,10 @@ class BinanceUsdmOrderFlowStream:
                     self.status = "LIVE"; self.last_error = None; attempt = 0
                     if on_update: await on_update(self.snapshot())
                     while not stop_event.is_set():
+                        if receiver.done():
+                            error = receiver.exception()
+                            if error is not None: raise error
+                            raise UsdmStreamError("Futures WebSocket receiver stopped unexpectedly.")
                         try: kind,data,received_ms = await asyncio.wait_for(queue.get(),timeout=1.0)
                         except asyncio.TimeoutError:
                             if on_update: await on_update(self.snapshot())
@@ -200,8 +205,9 @@ class BinanceUsdmOrderFlowStream:
                 if receiver: receiver.cancel()
                 raise
             except Exception as exc:
-                if receiver: receiver.cancel()
-                await asyncio.gather(receiver,return_exceptions=True) if receiver else asyncio.sleep(0)
+                if receiver:
+                    receiver.cancel()
+                    await asyncio.gather(receiver,return_exceptions=True)
                 self.sequence_valid = False; self.status = "RECONNECTING"
                 self.last_error = f"{type(exc).__name__}: {exc}"
                 if on_update: await on_update(self.snapshot())

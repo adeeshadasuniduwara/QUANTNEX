@@ -213,3 +213,33 @@ def test_manager_skips_capture_outside_utc_boundary_alignment_window(monkeypatch
         assert captures == []
 
     asyncio.run(run())
+
+
+def test_manager_drains_raw_events_and_persists_them_outside_websocket_callback(monkeypatch):
+    async def run():
+        captured = []
+        class EventStream(FakeStream):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.capture_events = [{
+                    "symbol": self.symbol, "event_type": "aggTrade",
+                    "event_time_ms": 1_795_248_000_000,
+                    "received_at_ms": 1_795_248_000_100,
+                    "source": "WEBSOCKET",
+                    "stream_session_id": "0123456789abcdef0123456789abcdef",
+                    "payload": {"a": 1, "p": "100", "q": "1", "T": 1_795_248_000_000, "m": False},
+                }]
+            def drain_capture_events(self, limit=256):
+                batch = self.capture_events[:limit]
+                del self.capture_events[:limit]
+                return batch
+        manager = BinanceSpotOrderFlowManager(max_streams=1, stream_factory=EventStream)
+        monkeypatch.setattr(manager, "_persist_market_events", lambda rows: captured.extend(rows) or {"stored": len(rows)})
+        result = await manager.get_snapshot("BTCUSDT", "0.01", wait_seconds=0.1)
+        assert result["signal_ready"] is True
+        await manager.stop()
+        assert len(captured) == 1
+        assert captured[0]["event_type"] == "aggTrade"
+        assert manager.last_raw_event_count == 1
+        assert manager.last_raw_event_error is None
+    asyncio.run(run())

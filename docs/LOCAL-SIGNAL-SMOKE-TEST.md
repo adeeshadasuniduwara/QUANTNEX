@@ -55,3 +55,10 @@ python .\\smoke_signal_engine.py --universe-sample-size 20 --usdm-universe-sampl
 Use `--skip-usdm` to omit the Futures sample, or pass `--symbols BTCUSDT,ETHUSDT` to constrain only the Spot sample. Coinbase fallback remains limited to BTC/ETH/SOL. This cloud check does not test the local MT5 terminal or Gold feed.
 
 The scheduled run on 2026-11-16 failed before scanning because the GitHub runner could not retrieve Binance Spot `exchangeInfo` metadata from the single configured REST host. The shared public REST host failover was merged separately; successful provider smoke runs must still be checked independently from replay/strategy performance. A live WAIT is not proof of strategy quality, and a successful data scan is not proof of profitability.
+
+
+### Latest verified public scan and current provider limitation (2026-11-22)
+
+- Scheduled main run [#45000648674](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45000648674) discovered 1,376 eligible Spot pairs and scanned 20 rotating pairs: 20 WAIT, zero provider errors and zero insufficient-history skips. No directional candidate passed, so Order Flow correctly reported `NOT_EVALUATED_NO_DIRECTIONAL_SETUP`. This is not a signal-quality or profitability result.
+- The USDⓈ-M PR smoke attempt [#45002095522](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45002095522) received HTTP 451 from Binance `/fapi/v1/exchangeInfo` on the GitHub-hosted runner. Keep the failure visible. Do not report Futures scan success until a live request succeeds from an allowed network. The Futures monitor remains a separate candle-only path; COIN-M and Futures Order Flow are unsupported.
+- The smoke runner now continues the independent USDⓈ-M sample when Spot metadata discovery fails, but still exits non-zero if either provider fails. A successful Spot leg must not conceal a failed Futures leg.

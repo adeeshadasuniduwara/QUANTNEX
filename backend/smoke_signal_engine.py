@@ -197,47 +197,63 @@ async def _run(
     usdm_universe_sample_size: int = 20,
 ) -> int:
     settings = {**DEFAULT_SETTINGS, "min_score": max(8, min(10, min_score))}
+    spot_successful = 0
+    spot_skipped = 0
+    spot_failures = 0
+    config_error = False
+    spot_universe: list[str] = []
+
     try:
-        universe = await get_binance_spot_symbols()
+        spot_universe = await get_binance_spot_symbols()
+        if not spot_universe:
+            raise MarketDataError("No eligible Binance Spot pairs were returned by exchangeInfo.")
     except MarketDataError as exc:
+        # Keep the independent Futures monitor running when only Spot metadata
+        # is unavailable. The Spot failure still makes the overall run fail.
+        spot_failures += 1
         print(f"[ERROR] Binance Spot symbol discovery failed: {exc}", file=sys.stderr)
-        return 1
 
-    if not universe:
-        print("No eligible Binance Spot pairs were returned by exchangeInfo.", file=sys.stderr)
-        return 1
+    spot_symbols: list[str] = []
+    if spot_universe:
+        if symbols is None:
+            try:
+                spot_symbols = rotating_symbol_sample(
+                    spot_universe, universe_sample_size, day_index=sample_day
+                )
+                print(f"Eligible Binance Spot pairs from exchangeInfo: {len(spot_universe)}")
+                print(
+                    f"Rotating smoke sample: {len(spot_symbols)} pairs "
+                    f"(sample day={sample_day if sample_day is not None else datetime.now(timezone.utc).date().toordinal()})"
+                )
+            except ValueError as exc:
+                config_error = True
+                spot_failures += 1
+                print(f"[ERROR] Invalid Spot smoke sample: {exc}", file=sys.stderr)
+        else:
+            spot_symbols = list(dict.fromkeys(
+                str(symbol).strip().upper() for symbol in symbols if str(symbol).strip()
+            ))
+            if not spot_symbols:
+                config_error = True
+                spot_failures += 1
+                print("Invalid or empty Spot symbol list.", file=sys.stderr)
+            else:
+                allowed = set(spot_universe) | {"XAUUSD"}
+                invalid = [symbol for symbol in spot_symbols if symbol not in allowed]
+                if invalid:
+                    config_error = True
+                    spot_failures += 1
+                    print(
+                        "Unsupported/non-tradable Spot or Gold symbol(s): " + ", ".join(invalid),
+                        file=sys.stderr,
+                    )
+                    spot_symbols = []
 
-    if symbols is None:
-        try:
-            symbols = rotating_symbol_sample(
-                universe, universe_sample_size, day_index=sample_day
-            )
-        except ValueError as exc:
-            print(f"[ERROR] {exc}", file=sys.stderr)
-            return 2
-        print(f"Eligible Binance Spot pairs from exchangeInfo: {len(universe)}")
-        print(
-            f"Rotating smoke sample: {len(symbols)} pairs "
-            f"(sample day={sample_day if sample_day is not None else datetime.now(timezone.utc).date().toordinal()})"
-        )
-    else:
-        symbols = list(dict.fromkeys(str(symbol).strip().upper() for symbol in symbols if str(symbol).strip()))
-        if not symbols:
-            print("Invalid or empty symbol list.", file=sys.stderr)
-            return 2
-        allowed = set(universe) | {"XAUUSD"}
-        invalid = [symbol for symbol in symbols if symbol not in allowed]
-        if invalid:
-            print("Unsupported/non-tradable market symbol(s): " + ", ".join(invalid), file=sys.stderr)
-            return 2
-
-    failures = 0
-    skipped = 0
     print("QUANTNEX read-only signal smoke test")
     print("No Telegram messages are sent and no broker orders are placed.")
     print("-" * 72)
 
-    for index, symbol in enumerate(symbols):
+    for index, symbol in enumerate(spot_symbols):
         try:
             result = await build_signal(settings, symbol)
             provider = result.get("provider", "Unknown")
@@ -261,48 +277,51 @@ async def _run(
                 )
                 print(f"  Candle={signal['signal_candle_time']}")
             print(_format_order_flow_diagnostics(result))
+            spot_successful += 1
         except MarketDataError as exc:
             detail = str(exc)
             if any(marker in detail for marker in (
                 "Not enough CLOSED", "Not enough valid CLOSED", "Not enough fully closed"
             )):
-                skipped += 1
+                spot_skipped += 1
                 print(f"[SKIP] {symbol} | insufficient closed history for current indicators: {detail}")
             else:
-                failures += 1
+                spot_failures += 1
                 print(f"[ERROR] {symbol} | {type(exc).__name__}: {exc}")
         except (ValueError, TypeError, KeyError) as exc:
-            failures += 1
+            spot_failures += 1
             print(f"[ERROR] {symbol} | {type(exc).__name__}: {exc}")
         except Exception as exc:  # keep checking other symbols if one provider fails
-            failures += 1
+            spot_failures += 1
             print(f"[ERROR] {symbol} | unexpected {type(exc).__name__}: {exc}")
-        if index + 1 < len(symbols):
+        if index + 1 < len(spot_symbols):
             await asyncio.sleep(0.1)
 
-    spot_successful = len(symbols) - failures - skipped
     usdm_successful = 0
     usdm_skipped = 0
+    usdm_failures = 0
     if include_usdm:
         usdm_successful, usdm_skipped, usdm_failures = await _run_usdm(
             universe_sample_size=usdm_universe_sample_size,
             min_score=settings["min_score"],
             sample_day=sample_day,
         )
-        failures += usdm_failures
-        skipped += usdm_skipped
 
+    total_failures = spot_failures + usdm_failures
+    total_skipped = spot_skipped + usdm_skipped
     print("-" * 72)
     print(
         f"Finished: {spot_successful} successful Spot scan(s), "
         f"{usdm_successful} successful USDⓈ-M scan(s), "
-        f"{skipped} insufficient-history skip(s), {failures} provider/error failure(s)."
+        f"{total_skipped} insufficient-history skip(s), {total_failures} provider/error failure(s)."
     )
     print(
         "Coverage note: Spot and USDⓈ-M each use independent rotating smoke subsets. "
         "Neither sample means every eligible contract was scanned in this run."
     )
-    return 1 if failures else 0
+    if config_error:
+        return 2
+    return 1 if total_failures else 0
 
 
 def main() -> int:

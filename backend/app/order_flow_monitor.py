@@ -386,6 +386,15 @@ def get_order_flow_capture_status() -> dict[str, Any]:
             "max_streams": manager.max_streams,
             "last_captured_at": manager.last_capture_at,
             "last_capture_error": manager.last_capture_error,
+            "raw_event_archive": True,
+            "raw_event_retention_days": getattr(manager, "capture_retention_days", 7),
+            "last_raw_event_capture_at": getattr(manager, "last_raw_event_capture_at", None),
+            "raw_events_persisted": getattr(manager, "last_raw_event_count", 0),
+            "raw_event_error": getattr(manager, "last_raw_event_error", None),
+            "pending_raw_events": sum(
+                len(getattr(slot.stream, "capture_events", ()))
+                for slot in getattr(manager, "_slots", {}).values()
+            ),
         }
     except Exception as exc:
         manager_status = {"status": "UNAVAILABLE", "error_type": type(exc).__name__}

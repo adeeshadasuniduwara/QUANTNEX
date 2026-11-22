@@ -548,6 +548,20 @@
         </div>
         <div class="qx-orderflow-footnote">Data scope: Binance Spot only. Gold/Forex depth is not simulated. Bookmap uses the backend's sequence-validated Spot diff-depth book; resting orders are not executed volume or guaranteed executable liquidity.</div>
       </section>
+      <section class="section-heading" id="qa-footprint"><div><div class="overline">ORDER FLOW INTELLIGENCE · PHASE 03</div><h3>Footprint &amp; Microstructure Analytics</h3><p>Observed Binance Spot executions aggregated by price and time. Candidate context is descriptive, not a trade signal.</p></div><span class="pill">OBSERVED DATA</span></section>
+      <section class="panel qa-footprint-panel">
+        <div class="qa-footprint-controls">
+          <label>Price tick <input id="qaFootprintTick" type="number" min="0.00000001" step="any" value="0.01" inputmode="decimal"></label>
+          <label>Interval <select id="qaFootprintInterval"><option value="60000">1 minute</option><option value="300000">5 minutes</option><option value="900000">15 minutes</option></select></label>
+          <label>History <select id="qaFootprintHistory"><option value="15">15 minutes</option><option value="60" selected>1 hour</option><option value="240">4 hours</option></select></label>
+          <button class="primary-btn" id="qaFootprintLoad" type="button">Load footprint</button>
+          <span id="qaFootprintStatus" role="status">Select a Binance Spot symbol to load archived events.</span>
+        </div>
+        <div class="qa-footprint-kpis" id="qaFootprintKpis"><article><span>Observed trades</span><strong>—</strong></article><article><span>Stacked imbalance</span><strong>—</strong></article><article><span>Delta divergence</span><strong>—</strong></article><article><span>Absorption candidates</span><strong>—</strong></article></div>
+        <div class="qa-footprint-table-wrap"><table><thead><tr><th>UTC interval</th><th>Price</th><th>Buy volume</th><th>Sell volume</th><th>Delta</th><th>Buy imbalance</th><th>Sell imbalance</th></tr></thead><tbody id="qaFootprintRows"><tr><td colspan="7" class="empty-row">No footprint loaded.</td></tr></tbody></table></div>
+        <div class="qa-footprint-context"><article><strong>Stacked imbalance</strong><div id="qaFootprintStacked">—</div></article><article><strong>Absorption candidates</strong><div id="qaFootprintAbsorption">—</div></article><article><strong>Iceberg candidates</strong><div id="qaFootprintIceberg">—</div></article><article><strong>Liquidity pull context</strong><div id="qaFootprintPulls">—</div></article></div>
+        <p class="p7-note" id="qaFootprintDisclaimer">Iceberg replenishment and spoofing intent cannot be proven from aggregated public trades/depth updates. All candidate flags require independent confirmation.</p>
+      </section>
       <section class="section-heading" id="tools"><div><div class="overline">RISK MANAGEMENT</div><h2>Position size calculator</h2><p>Estimate position size using your broker's pip value.</p></div></section>
       <section class="panel calculator-panel">
         <div class="field-grid">

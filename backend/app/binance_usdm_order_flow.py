@@ -65,12 +65,18 @@ def validate_usdm_depth_sequence(snapshot_last_update_id: int, updates: list[dic
     if isinstance(snapshot_last_update_id,bool) or not isinstance(snapshot_last_update_id,int) or snapshot_last_update_id<0:
         raise FuturesOrderFlowError("Snapshot update ID must be a non-negative integer.")
     if not isinstance(updates,list) or not updates: raise FuturesOrderFlowError("At least one Futures depth update is required.")
-    first=updates[0].get("payload",{})
+    first_event=updates[0]
+    if not isinstance(first_event,dict) or first_event.get("market_type")!=MARKET_TYPE or first_event.get("event_type")!="depthUpdate":
+        raise FuturesOrderFlowError("Only normalized USD-M Futures depth events are accepted.")
+    symbol=first_event.get("symbol")
+    first=first_event.get("payload",{})
     if not isinstance(first,dict) or not (int(first.get("U",-1))<=snapshot_last_update_id<=int(first.get("u",-1))):
         raise FuturesOrderFlowError("First Futures depth event does not bridge the REST snapshot.")
     previous=int(first["u"]); accepted=1
     for event in updates[1:]:
-        payload=event.get("payload",{}) if isinstance(event,dict) else {}
+        if not isinstance(event,dict) or event.get("market_type")!=MARKET_TYPE or event.get("event_type")!="depthUpdate" or event.get("symbol")!=symbol:
+            raise FuturesOrderFlowError("Futures depth sequence cannot mix market types, event types or symbols.")
+        payload=event.get("payload",{})
         if not isinstance(payload,dict) or int(payload.get("pu",-1))!=previous:
             raise FuturesOrderFlowError("Futures depth pu sequence gap detected; discard book and resnapshot.")
         current=int(payload.get("u",-1))

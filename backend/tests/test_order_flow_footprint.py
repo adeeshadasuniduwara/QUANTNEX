@@ -54,7 +54,7 @@ def test_footprint_flags_delta_divergence_as_observed_context():
 def test_footprint_context_labels_absorption_and_iceberg_as_unconfirmed_candidates():
     events = [
         _trade(60001, "100.00", "5", False),
-        _trade(60002, "100.00", "4", True),
+        _trade(60002, "100.00", "5", True),
         _trade(60003, "100.00", "1", False),
         _trade(60004, "100.00", "1", True),
         _trade(60005, "100.00", "1", False),

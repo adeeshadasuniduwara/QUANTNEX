@@ -1197,3 +1197,5 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 - Web test follow-up: the same stale `workspace-pages.test.cjs` block also expected the removed `qxChartIntelMetrics` container. It now targets the retained `qxIndicatorsContent` table; the indicator table itself remains in the DOM and continues updating independently of its collapsed presentation.
 
 - Web test follow-up 2: after the obsolete sheet and metric-container checks were corrected, Web CI exposed a third stale assertion for `qxOverlayZones`. PR #279 removed the old chart-intelligence overlay controls; the test now stops requiring that removed DOM ID. This remains test-only; the chart renderer's existing structure/zone analysis is untouched.
+
+- Web test follow-up 3: the chart-specific test also required the removed `qxConfidenceMeter` / `qxConfidenceFill` nodes from the retired intelligence sheet. The indicator readout IDs remain; only those obsolete confidence-meter expectations were removed. No chart runtime code changed.

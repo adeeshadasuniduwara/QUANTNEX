@@ -30,3 +30,50 @@ def test_footprint_rejects_bad_precision_and_unsafe_limits():
     with pytest.raises(OrderFlowFootprintError): build_order_flow_footprint([],price_step="0")
     with pytest.raises(OrderFlowFootprintError): build_order_flow_footprint([],price_step="0.01",interval_ms=123)
     with pytest.raises(OrderFlowFootprintError): build_order_flow_footprint([],price_step="0.01",max_levels=1001)
+
+
+def test_footprint_reports_stacked_imbalance_only_on_adjacent_price_ticks():
+    events = []
+    for price in ("100.00", "100.01", "100.02"):
+        events.append(_trade(180001, price, "9", False))
+        events.append(_trade(180002, f"{float(price)-0.01:.2f}", "1", True))
+    result = build_order_flow_footprint(events, price_step="0.01")
+    assert any(item["side"] == "BUY" and item["count"] >= 3 for item in result["stacked_imbalances"])
+
+
+def test_footprint_flags_delta_divergence_as_observed_context():
+    events = [
+        _trade(60001, "100.00", "10", False), _trade(60002, "99.99", "1", True),
+        _trade(120001, "101.00", "6", False), _trade(120002, "100.99", "1", True),
+        _trade(180001, "102.00", "2", False), _trade(180002, "101.99", "1", True),
+    ]
+    result = build_order_flow_footprint(events, price_step="0.01")
+    assert result["delta_divergence"]["signal"] == "BEARISH"
+
+
+def test_footprint_context_labels_absorption_and_iceberg_as_unconfirmed_candidates():
+    events = [
+        _trade(60001, "100.00", "5", False),
+        _trade(60002, "100.00", "4", True),
+        _trade(60003, "100.00", "1", False),
+        _trade(60004, "100.00", "1", True),
+        _trade(60005, "100.00", "1", False),
+    ]
+    result = build_order_flow_footprint(events, price_step="0.01")
+    assert result["absorption_candidates"]
+    assert result["iceberg_candidates"]
+    assert result["iceberg_candidates"][0]["confidence"] == "LOW"
+    assert result["spoofing_detection"]["status"] == "NOT_PROVEN"
+
+
+def test_footprint_reports_depth_pull_context_without_counting_it_as_traded_volume():
+    events = [
+        {"event_type":"depthUpdate","event_time_ms":60001,"payload":{"b":[["100.00","2"]],"a":[]}},
+        {"event_type":"depthUpdate","event_time_ms":60002,"payload":{"b":[["100.00","0"]],"a":[]}},
+        {"event_type":"depthUpdate","event_time_ms":60003,"payload":{"b":[["100.00","3"]],"a":[]}},
+        {"event_type":"depthUpdate","event_time_ms":60004,"payload":{"b":[["100.00","0"]],"a":[]}},
+    ]
+    result = build_order_flow_footprint(events, price_step="0.01")
+    assert result["accepted_trade_events"] == 0
+    assert result["depth_level_updates"] == 4
+    assert result["liquidity_pull_context"][0]["pulls"] == 2

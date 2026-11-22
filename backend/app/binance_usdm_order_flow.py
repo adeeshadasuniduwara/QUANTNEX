@@ -18,11 +18,18 @@ def _symbol(value: str) -> str:
     if not re.fullmatch(r"[A-Z0-9]{5,25}", symbol): raise FuturesOrderFlowError("Invalid USD-M Futures symbol.")
     return symbol
 
+def _integer(value: Any, name: str, *, minimum: int = 0) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise FuturesOrderFlowError(f"{name} must be an integer.")
+    try: number = int(value)
+    except (TypeError, ValueError, OverflowError):
+        raise FuturesOrderFlowError(f"{name} must be an integer.") from None
+    if str(value).strip() != str(number) or number < minimum:
+        raise FuturesOrderFlowError(f"{name} is outside valid integer bounds.")
+    return number
+
 def _timestamp(value: Any, name: str) -> int:
-    if isinstance(value, bool): raise FuturesOrderFlowError(f"{name} must be integer milliseconds.")
-    try: stamp = int(value)
-    except (TypeError, ValueError, OverflowError): raise FuturesOrderFlowError(f"{name} must be integer milliseconds.") from None
-    if stamp <= 0: raise FuturesOrderFlowError(f"{name} must be positive.")
+    stamp = _integer(value, name, minimum=1)
     return stamp
 
 def normalize_usdm_agg_trade(symbol: str, payload: dict[str, Any], *, received_at_ms: int) -> dict[str, Any]:
@@ -30,7 +37,8 @@ def normalize_usdm_agg_trade(symbol: str, payload: dict[str, Any], *, received_a
     symbol = _symbol(symbol)
     if not isinstance(payload, dict): raise FuturesOrderFlowError("Futures aggTrade payload must be an object.")
     try:
-        trade_id = int(payload["a"]); price = float(payload["p"]); quantity = float(payload["q"])
+        trade_id = _integer(payload["a"], "aggregate trade ID")
+        price = float(payload["p"]); quantity = float(payload["q"])
         event_ms = _timestamp(payload["T"], "trade time"); maker = payload["m"]
     except (KeyError, TypeError, ValueError, OverflowError): raise FuturesOrderFlowError("Futures aggTrade is missing required Binance fields.") from None
     receive_ms = _timestamp(received_at_ms, "receive time")
@@ -44,7 +52,9 @@ def normalize_usdm_depth_update(symbol: str, payload: dict[str, Any], *, receive
     symbol = _symbol(symbol)
     if not isinstance(payload, dict): raise FuturesOrderFlowError("Futures depth payload must be an object.")
     try:
-        first=int(payload["U"]); last=int(payload["u"]); previous=int(payload["pu"])
+        first=_integer(payload["U"], "first update ID", minimum=1)
+        last=_integer(payload["u"], "last update ID", minimum=1)
+        previous=_integer(payload["pu"], "previous update ID")
         event_ms=_timestamp(payload["E"],"event time"); bids=payload["b"]; asks=payload["a"]
     except (KeyError, TypeError, ValueError, OverflowError): raise FuturesOrderFlowError("Futures depth update requires U, u, pu, E, b and a.") from None
     receive_ms=_timestamp(received_at_ms,"receive time")

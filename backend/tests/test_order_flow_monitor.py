@@ -89,6 +89,10 @@ def test_capture_status_reports_manager_stream_and_database_counts(monkeypatch):
     assert status["observations_last_24h"] == 7
     assert status["latest_observation_at"] is not None
     assert status["recorder_error_type"] is None
+    assert status["raw_event_archive"] is True
+    assert status["raw_event_retention_days"] == 7
+    assert status["raw_events_last_24h"] == 0
+    assert status["raw_event_coverage"] == "OBSERVED_EVENTS_ONLY_NOT_PROVEN_COMPLETE"
 
 
 

@@ -1199,3 +1199,5 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 - Web test follow-up 2: after the obsolete sheet and metric-container checks were corrected, Web CI exposed a third stale assertion for `qxOverlayZones`. PR #279 removed the old chart-intelligence overlay controls; the test now stops requiring that removed DOM ID. This remains test-only; the chart renderer's existing structure/zone analysis is untouched.
 
 - Web test follow-up 3: the chart-specific test also required the removed `qxConfidenceMeter` / `qxConfidenceFill` nodes from the retired intelligence sheet. The indicator readout IDs remain; only those obsolete confidence-meter expectations were removed. No chart runtime code changed.
+
+- Web test follow-up 4: the remaining Order Flow toolkit test still expected the pre-PR-#279 `app.js` cache version. It now expects the current `20261122-view-update-flow1` asset revision; no application code changed.

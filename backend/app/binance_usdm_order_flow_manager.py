@@ -25,6 +25,7 @@ class BinanceUsdmOrderFlowManager:
         self.client=None; self.closed=False; self._lock=asyncio.Lock()
         self._persist_tasks=set(); self.last_persist_error=None; self.last_persist_at=None
         self.persisted_events=0; self._prune_lock=threading.Lock(); self._last_prune=0.0
+        self._last_flush: dict[str, float] = {}
 
     async def start(self):
         async with self._lock:
@@ -52,9 +53,15 @@ class BinanceUsdmOrderFlowManager:
         self.snapshots[symbol]=snapshot
         stream=self.streams.get(symbol)
         if stream is None: return
+        now=time.monotonic()
+        flush_due=(len(stream.capture_events)>=64 or symbol not in self._last_flush
+                   or now-self._last_flush.get(symbol,0.0)>=1.0
+                   or snapshot.get("status") in {"RECONNECTING","STOPPED"})
+        if not flush_due: return
         batch=[]
         while stream.capture_events and len(batch)<256: batch.append(stream.capture_events.popleft())
         if batch:
+            self._last_flush[symbol]=now
             task=asyncio.create_task(asyncio.to_thread(self._persist,batch),
                 name=f"quantnex-usdm-persist-{symbol.lower()}")
             self._persist_tasks.add(task)
@@ -91,7 +98,7 @@ class BinanceUsdmOrderFlowManager:
         return stream.snapshot()
 
     def status(self):
-        return {"market_type":"BINANCE_USDM_FUTURES","enabled":not self.closed,
+        return {"market_type":"BINANCE_USDM_FUTURES","enabled":self.client is not None and not self.closed,
             "configured_symbols":list(self.symbols),"max_streams":self.max_streams,
             "active_streams":sum(not t.done() for t in self.tasks.values()),
             "streams":{s:self.get_snapshot(s) for s in self.symbols},

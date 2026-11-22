@@ -234,3 +234,25 @@ class OrderFlowObservation(Base):
     spread_bps: Mapped[float] = mapped_column(Float)
     depth_imbalance: Mapped[float] = mapped_column(Float)
     snapshot_json: Mapped[str] = mapped_column(Text)
+
+
+class OrderFlowMarketEvent(Base):
+    """Append-only, deduplicated Binance Spot raw trade and validated depth event."""
+    __tablename__ = "order_flow_market_events"
+    __table_args__ = (
+        UniqueConstraint("market_type", "symbol", "event_type", "event_key", name="uq_order_flow_market_event_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    market_type: Mapped[str] = mapped_column(String(24), index=True)
+    symbol: Mapped[str] = mapped_column(String(30), index=True)
+    event_type: Mapped[str] = mapped_column(String(24), index=True)
+    event_key: Mapped[str] = mapped_column(String(80))
+    event_time_ms: Mapped[int] = mapped_column(BigInteger, index=True)
+    received_at_ms: Mapped[int] = mapped_column(BigInteger, index=True)
+    candle_bucket_ms: Mapped[int] = mapped_column(BigInteger, index=True)
+    source: Mapped[str] = mapped_column(String(32))
+    stream_session_id: Mapped[str] = mapped_column(String(40), index=True)
+    sequence_first: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    sequence_last: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    payload_json: Mapped[str] = mapped_column(Text)

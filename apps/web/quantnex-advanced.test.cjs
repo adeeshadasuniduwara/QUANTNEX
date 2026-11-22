@@ -5,12 +5,14 @@ const app = fs.readFileSync("apps/web/app.js", "utf8");
 const chart = fs.readFileSync("apps/web/quantnex-advanced-chart.js", "utf8");
 const viewChart = fs.readFileSync("apps/web/quantnex-view-chart.js", "utf8");
 const css = fs.readFileSync("apps/web/quantnex-advanced.css", "utf8");
+const main = fs.readFileSync("backend/app/main.py", "utf8");
+const recorder = fs.readFileSync("backend/app/order_flow_raw_recorder.py", "utf8");
 
 assert.ok(html.includes('href="#quantnex-advanced">QUANTNEX Advanced</a>'), "Advanced workspace must appear in the sidebar.");
 assert.ok(html.includes('id="quantnex-advanced"'), "Advanced workspace must have a navigation target.");
 assert.ok(html.includes('id="qaChartHost"') && html.includes('id="qaSymbol"') && html.includes('id="qaMarketType"') && html.includes('id="qaInterval"'), "Advanced must have an independent native chart and market selectors.");
 assert.ok(html.includes('id="qxChartHost"'), "Original QUANTNEX VIEW chart must remain available.");
-assert.ok(html.includes('src="quantnex-advanced-chart.js?v=20261122-phase1"'), "Advanced chart engine must be loaded.");
+assert.ok(html.includes('src="quantnex-advanced-chart.js?v=20261122-phase2-raw1"'), "Advanced chart engine must be loaded.");
 assert.ok(html.includes('href="quantnex-advanced.css?v=20261122-phase1"'), "Advanced workspace styles must be loaded.");
 const viewStart = html.indexOf('id="tradingview"');
 const advancedStart = html.indexOf('id="quantnex-advanced"');
@@ -26,4 +28,8 @@ assert.ok(app.includes('isWorkspaceViewActive("quantnex-advanced")') && !app.inc
 assert.ok(app.includes('api/v1/order-flow/spot/'), "Moved Order Flow tools must retain the validated Spot endpoint.");
 assert.ok(app.includes('qaSymbol') && app.includes('qaMarketType') && app.includes('qaInterval'), "Order Flow must follow the Advanced chart market and timeframe.");
 assert.ok(css.includes('.qa-workspace-intro'), "Advanced workspace phase header styles must exist.");
-console.log("QUANTNEX Advanced Phase 1 workspace, chart isolation and Order Flow relocation checks passed.");
+assert.ok(html.includes("PHASE 02") && html.includes("qaRawCaptureStatus"), "Advanced workspace must expose Phase 2 raw archive status.");
+assert.ok(chart.includes("/api/v1/order-flow/capture-status") && chart.includes("rawCaptureStatusTimer"), "Advanced workspace must poll and display raw capture health.");
+assert.ok(main.includes('/api/v1/order-flow/recorded-events/{symbol}') && main.includes('/api/v1/order-flow/recorded-candles/{symbol}'), "Read-only raw event and candle archive endpoints must be available.");
+assert.ok(recorder.includes("REST_GAP_BACKFILL") && recorder.includes("OBSERVED_PARTIAL_NOT_PROVEN_COMPLETE"), "Recorder must preserve backfill provenance and never claim unproven complete candle coverage.");
+console.log("QUANTNEX Advanced Phase 2 workspace, raw archive visibility and Order Flow relocation checks passed.");

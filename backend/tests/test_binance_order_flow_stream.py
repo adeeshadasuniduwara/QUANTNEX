@@ -157,3 +157,44 @@ def test_bootstrap_buffers_live_trade_and_depth_events_until_rest_snapshot_is_re
         await asyncio.gather(recv_task, return_exceptions=True)
 
     asyncio.run(run_bootstrap())
+
+
+def test_stream_queues_only_applied_raw_trade_and_depth_events_with_session_provenance():
+    now = datetime.now(timezone.utc)
+    stream = BinanceSpotOrderFlowStream("BTCUSDT", "0.1", max_buffered_events=8)
+    first = trade(700, 100, 2, now - timedelta(seconds=2), False)
+    stream.trade_state.begin_stream_seed(first["a"], first["T"])
+    assert asyncio.run(stream._apply_trade_row(object(), first, source="REST_BOOTSTRAP")) == "APPLIED"
+    stream.depth_book.load_snapshot(900, [["100", "2"]], [["100.1", "2"]])
+    stream.depth_observed_at = now
+    depth_event = {
+        "U": 901, "u": 902, "E": int(now.timestamp() * 1000),
+        "b": [["100", "3"]], "a": [],
+    }
+    assert stream._apply_depth_event(depth_event) == "APPLIED"
+    rows = stream.drain_capture_events(limit=8)
+    assert [row["event_type"] for row in rows] == ["aggTrade", "depthUpdate"]
+    assert rows[0]["source"] == "REST_BOOTSTRAP"
+    assert rows[0]["payload"]["a"] == 700
+    assert rows[1]["payload"]["U"] == 901
+    assert rows[1]["payload"]["u"] == 902
+    assert rows[0]["stream_session_id"] == stream.stream_session_id
+    assert rows[1]["stream_session_id"] == stream.stream_session_id
+    assert stream.drain_capture_events(limit=8) == []
+
+
+def test_stream_raw_event_queue_fails_closed_on_overflow():
+    now = datetime.now(timezone.utc)
+    stream = BinanceSpotOrderFlowStream("BTCUSDT", "0.1", max_buffered_events=1)
+    first = trade(701, 100, 1, now - timedelta(seconds=1), False)
+    stream.trade_state.begin_stream_seed(first["a"], first["T"])
+    asyncio.run(stream._apply_trade_row(object(), first))
+    second = trade(702, 100, 1, now, False)
+    with pytest.raises(BinanceSpotOrderFlowStreamError, match="queue overflowed"):
+        asyncio.run(stream._apply_trade_row(object(), second))
+    assert stream.capture_gap_detected is True
+    assert stream.drain_capture_events(limit=8)[0]["event_type"] == "aggTrade"
+    marker = stream.drain_capture_events(limit=8)
+    assert len(marker) == 1
+    assert marker[0]["event_type"] == "captureGap"
+    assert marker[0]["payload"]["reason"] == "RAW_CAPTURE_QUEUE_OVERFLOW"

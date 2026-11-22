@@ -297,6 +297,19 @@ function renderAnalysis(data){analysis=data;const f=data.features||{},st=f.struc
 window.quantnexAdvancedSetAnalysis=renderAnalysis;
 window.quantnexAdvancedSetTradePlan=function(plan){tradePlan=plan||null;draw();};
 
+async function refreshRawCaptureStatus(){
+ if(!isChartViewActive())return;
+ const target=$("qaRawCaptureStatus");if(!target)return;
+ try{
+  const data=await apiRequest("/api/v1/order-flow/capture-status");
+  const count=Number(data.raw_events_last_24h||0);
+  const retention=Number(data.raw_event_retention_days||7);
+  const manager=data.manager||{};
+  const error=manager.raw_event_error||data.last_error||(manager.capture_gap_detected?"RAW CAPTURE GAP DETECTED":null);
+  target.textContent=error?"RAW ARCHIVE · CAPTURE WARNING · "+String(error).slice(0,100):"RAW ARCHIVE · "+count.toLocaleString()+" EVENTS / 24H · "+retention+"D RETENTION · OBSERVED DATA";
+  target.dataset.state=error?"error":"ok";
+ }catch(error){target.textContent="RAW ARCHIVE STATUS UNAVAILABLE · "+String(error.message||error).slice(0,80);target.dataset.state="error";}
+}
 async function refresh(){if(!isChartViewActive())return;const pick=selected(),ticker=$("qaChartTicker");if(ticker)ticker.textContent=chartTicker(pick.symbol,pick.marketType);loadDrawings();candles=[];candleRevision++;analysis=null;tradePlan=null;view.start=0;view.count=120;view.priceZoom=1;view.priceShift=0;reconnectAttempts=0;stopFeed();feedState=pick.symbol==="XAUUSD"?"polling":"connecting";setStatus("LOADING "+pick.symbol+" · "+pick.interval.toUpperCase());await loadHistory();if(pick.symbol!=="XAUUSD")connectLive();else{setStatus(candles.length?"GOLD FEED · MATCHING HISTORY PROVIDER":"GOLD HISTORY UNAVAILABLE · CHECK FEED SETTINGS","error");await loadGoldQuote();}}
 function rebuild(){draw();}
 $("qaMarketType")?.addEventListener("change",async()=>{await loadChartMarkets(false);saveChartSelection();refresh();});
@@ -328,6 +341,8 @@ bindDisclosure("qaIndicatorsToggle","qaIndicatorsContent",()=>renderIndicatorPan
 setupCanvas();
 loadChartMarkets(true).then(()=>{if(isChartViewActive())refresh();});
 const marketUniverseTimer=setInterval(()=>{if(!document.hidden&&isChartViewActive())loadChartMarkets(true);},900000);
+refreshRawCaptureStatus();
+const rawCaptureStatusTimer=setInterval(refreshRawCaptureStatus,30000);
 const goldQuoteTimer=setInterval(()=>{if(!document.hidden&&isChartViewActive()&&selected().symbol==="XAUUSD")loadGoldQuote();},30000);
-window.addEventListener("beforeunload",()=>{clearInterval(goldQuoteTimer);clearInterval(marketUniverseTimer);stopFeed();window.removeEventListener("quantnex:market-tick",onTradingRoomTick);resize?.disconnect();});
+window.addEventListener("beforeunload",()=>{clearInterval(goldQuoteTimer);clearInterval(marketUniverseTimer);clearInterval(rawCaptureStatusTimer);stopFeed();window.removeEventListener("quantnex:market-tick",onTradingRoomTick);resize?.disconnect();});
 })();

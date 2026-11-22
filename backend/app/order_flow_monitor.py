@@ -1,9 +1,9 @@
 """Continuous, bounded capture of Binance Spot order-flow observations.
 
-The worker keeps a small configured set of read-only streams warm so the
-sequence-validated manager can persist one observation aligned to each UTC
-one-minute candle. It does not archive every raw tick or claim full-session
-coverage; stored snapshots remain bounded by the recorder retention policy.
+The worker keeps a small configured set of read-only streams warm. The manager
+archives validated raw aggTrade and diff-depth events in bounded batches and
+also stores one sequence-validated feature snapshot near each UTC minute close.
+Raw event buckets remain explicitly partial unless coverage can be proven.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from typing import Any
 from sqlalchemy import func, select
 
 from .database import SessionLocal
-from .models import OrderFlowObservation, Preference
+from .models import OrderFlowMarketEvent, OrderFlowObservation, Preference
 
 logger = logging.getLogger("quantnex.order_flow_monitor")
 
@@ -386,6 +386,19 @@ def get_order_flow_capture_status() -> dict[str, Any]:
             "max_streams": manager.max_streams,
             "last_captured_at": manager.last_capture_at,
             "last_capture_error": manager.last_capture_error,
+            "raw_event_archive": True,
+            "raw_event_retention_days": getattr(manager, "capture_retention_days", 7),
+            "last_raw_event_capture_at": getattr(manager, "last_raw_event_capture_at", None),
+            "raw_events_persisted": getattr(manager, "last_raw_event_count", 0),
+            "raw_event_error": getattr(manager, "last_raw_event_error", None),
+            "pending_raw_events": sum(
+                len(getattr(slot.stream, "capture_events", ()))
+                for slot in getattr(manager, "_slots", {}).values()
+            ),
+            "capture_gap_detected": any(
+                getattr(slot.stream, "capture_gap_detected", False)
+                for slot in getattr(manager, "_slots", {}).values()
+            ),
         }
     except Exception as exc:
         manager_status = {"status": "UNAVAILABLE", "error_type": type(exc).__name__}
@@ -393,6 +406,8 @@ def get_order_flow_capture_status() -> dict[str, Any]:
     observation_count = 0
     latest_observation_at = None
     recorder_error = None
+    raw_events_24h = 0
+    latest_raw_event_at = None
     db = SessionLocal()
     try:
         now = datetime.now(timezone.utc)
@@ -414,6 +429,19 @@ def get_order_flow_capture_status() -> dict[str, Any]:
             latest_observation_at = datetime.fromtimestamp(
                 int(latest_epoch_ms) / 1000, timezone.utc
             ).isoformat()
+        raw_events_24h = int(
+            db.query(func.count(OrderFlowMarketEvent.id)).filter(
+                OrderFlowMarketEvent.market_type == "BINANCE_SPOT",
+                OrderFlowMarketEvent.received_at_ms >= cutoff_ms,
+            ).scalar() or 0
+        )
+        latest_raw_epoch_ms = db.query(func.max(
+            OrderFlowMarketEvent.received_at_ms
+        )).filter(OrderFlowMarketEvent.market_type == "BINANCE_SPOT").scalar()
+        if latest_raw_epoch_ms is not None:
+            latest_raw_event_at = datetime.fromtimestamp(
+                int(latest_raw_epoch_ms) / 1000, timezone.utc
+            ).isoformat()
     except Exception as exc:
         recorder_error = type(exc).__name__
     finally:
@@ -426,7 +454,13 @@ def get_order_flow_capture_status() -> dict[str, Any]:
         "last_cycle_at": _WORKER.last_cycle_at,
         "last_error": _WORKER.last_error,
         "capture_alignment": "ONE_OBSERVATION_PER_UTC_1M_CANDLE",
-        "raw_tick_archive": False,
+        "raw_tick_archive": True,
+        "raw_event_archive": True,
+        "raw_event_retention_days": 7,
+        "raw_events_last_24h": raw_events_24h,
+        "latest_raw_event_at": latest_raw_event_at,
+        "raw_event_bucket_interval": "UTC_1M",
+        "raw_event_coverage": "OBSERVED_EVENTS_ONLY_NOT_PROVEN_COMPLETE",
         "manager": manager_status,
         "observations_last_24h": observation_count,
         "latest_observation_at": latest_observation_at,

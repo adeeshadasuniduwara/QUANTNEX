@@ -16,11 +16,19 @@ Implemented in this change:
 
 ## Phase 2 — Candle-aligned market-data recorder
 
-- Persist timestamped exchange-native aggregate trades and sequence-validated depth updates.
-- Align raw events to UTC candle windows without treating partial candles as closed.
-- Store per-candle buy/sell aggressor volume, trade count, delta, quote turnover, spread, depth snapshots, and provenance/coverage metadata.
-- Detect gaps, reconnects, sequence resets, stale feeds, and incomplete windows; mark them incomplete rather than filling them with invented values.
-- Add bounded retention, replay, and backfill where the venue actually provides historical data.
+Implemented in this change:
+- Append-only archive for Binance Spot raw aggregate trades, sequence-validated diff-depth updates, and REST depth bootstrap snapshots.
+- Preserve exchange event time, local receive time, UTC 1-minute bucket, event IDs / depth sequence ranges, source type, and stream-session ID.
+- Idempotent event keys prevent duplicate aggregate-trade IDs and depth update IDs from being stored twice.
+- Bounded asynchronous writes, bounded event queues, explicit backpressure errors, and seven-day retention.
+- Read-only API endpoints expose raw events and per-minute event counts for later replay/analytics.
+- Archive health is visible in the Advanced workspace and capture-status endpoint.
+- Event buckets are explicitly labelled observed/partial or recovered-with-backfill; they are never advertised as complete candles. A sequence-valid event archive alone cannot prove full candle coverage.
+
+Not included yet:
+- Persisted bid/ask footprint per price level and candle analytics.
+- A strict complete-candle certification pipeline across every subscription and reconnect window.
+- Futures, Gold, or Forex raw feeds; current raw event archive is Binance Spot only.
 
 ## Phase 3 — Footprint and volume analytics
 

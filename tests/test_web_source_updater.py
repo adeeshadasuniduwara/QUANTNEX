@@ -5,6 +5,7 @@ import importlib.util
 import io
 import json
 import tempfile
+import time
 import unittest
 import urllib.error
 from pathlib import Path
@@ -135,11 +136,14 @@ class GitHubApiCacheTests(unittest.TestCase):
                 self.assertEqual(UPDATER.github_json(url), {"sha": "fresh"})
                 request.assert_called_once()
 
-    def test_stale_cache_fallback_handles_403_and_429(self):
+    def test_stale_cache_fallback_handles_403_and_429_within_retention(self):
         url = "https://api.github.com/repos/example/project/commits/main"
         for status_code in (403, 429):
             self.cache_file.write_text(json.dumps({
-                url: {"fetched_at": 1, "data": {"sha": "last-known-good"}}
+                url: {
+                    "fetched_at": time.time() - UPDATER.API_CACHE_MAX_AGE_SECONDS + 60,
+                    "data": {"sha": "last-known-good"},
+                }
             }), encoding="utf-8")
 
             def rate_limited(request, timeout):
@@ -152,6 +156,26 @@ class GitHubApiCacheTests(unittest.TestCase):
                     UPDATER.github_json(url),
                     {"sha": "last-known-good"},
                 )
+
+    def test_stale_cache_fallback_rejects_entries_beyond_retention(self):
+        url = "https://api.github.com/repos/example/project/commits/main"
+        for status_code in (403, 429):
+            self.cache_file.write_text(json.dumps({
+                url: {
+                    "fetched_at": time.time() - UPDATER.API_CACHE_MAX_AGE_SECONDS - 1,
+                    "data": {"sha": "too-old"},
+                }
+            }), encoding="utf-8")
+
+            def rate_limited(request, timeout):
+                raise urllib.error.HTTPError(
+                    request.full_url, status_code, "rate limit exceeded", {}, None
+                )
+
+            with patch.object(UPDATER.urllib.request, "urlopen", side_effect=rate_limited):
+                with self.assertRaises(urllib.error.HTTPError) as caught:
+                    UPDATER.github_json(url)
+                self.assertEqual(caught.exception.code, status_code)
 
 
 if __name__ == "__main__":

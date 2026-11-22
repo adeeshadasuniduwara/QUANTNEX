@@ -1307,6 +1307,7 @@ async def build_signal(
             "DETERMINISTIC_FIXTURE" if order_flow_override is not None else "PUBLIC_WEBSOCKET_STREAM"
         )
         order_flow_snapshot = None
+        stream_result = None
         try:
             if order_flow_override is not None:
                 order_flow_snapshot = order_flow_override
@@ -1368,6 +1369,79 @@ async def build_signal(
                 order_flow_payload = summarize_order_flow_snapshot(order_flow_snapshot, decision)
                 order_flow_payload["data_mode"] = order_flow_mode
                 quality_filters["order_flow_confirmation"] = bool(decision["accepted"])
+                if order_flow_mode == "PUBLIC_WEBSOCKET_STREAM" and order_flow_snapshot.get("depth_is_continuous") is True:
+                    from .order_flow_patterns import detect_order_flow_patterns
+                    from .order_flow_monitor import (
+                        get_minute_aligned_order_flow_snapshot,
+                        get_recent_trade_count_baseline,
+                    )
+                    # Match the persisted pre-close Spot sample to the exact
+                    # fully closed UTC M1 candle. The newest live stream sample
+                    # may already belong to the next minute and is not valid
+                    # candle-response evidence for this setup.
+                    one_minute = closed_candles(candles.get("1", []), "1min") if candles.get("1") else []
+                    if one_minute:
+                        pattern_snapshot = None
+                        pattern_unavailable_reason = None
+                        try:
+                            pattern_snapshot = get_minute_aligned_order_flow_snapshot(
+                                symbol,
+                                one_minute[-1],
+                                max_trade_age_seconds=float(settings.get("max_order_flow_trade_age_seconds", 15.0)),
+                                max_depth_age_seconds=float(settings.get("max_order_book_snapshot_age_seconds", 5.0)),
+                            )
+                        except Exception as exc:
+                            pattern_unavailable_reason = (
+                                "Persisted minute-aligned Order Flow history is unavailable "
+                                f"({type(exc).__name__}); the auction-pattern gate was skipped."
+                            )
+                        if pattern_snapshot is not None:
+                            try:
+                                candle_time = datetime.fromisoformat(
+                                    str(one_minute[-1].get("time") or one_minute[-1].get("open_time") or "").replace("Z", "+00:00")
+                                )
+                                if candle_time.tzinfo is None:
+                                    raise ValueError("M1 candle timestamp is not timezone-aware.")
+                                candle_time = candle_time.astimezone(timezone.utc)
+                                baseline_trade_count = get_recent_trade_count_baseline(
+                                    symbol, now=candle_time
+                                )
+                            except Exception:
+                                # A missing or discontinuous baseline disables
+                                # exhaustion only; absorption still uses the
+                                # directly observed, same-minute data.
+                                baseline_trade_count = None
+                            auction_patterns = detect_order_flow_patterns(
+                                side,
+                                one_minute[-1],
+                                pattern_snapshot,
+                                baseline_trade_count=baseline_trade_count,
+                            )
+                            order_flow_payload["auction_patterns"] = auction_patterns
+                            quality_filters["order_flow_pattern_confirmation"] = bool(
+                                auction_patterns["accepted_for_side"]
+                            )
+                            if not auction_patterns["accepted_for_side"]:
+                                entry_rejection_reason = (
+                                    f"Order Flow pattern {auction_patterns['status']} conflicts with {side}; "
+                                    "the candidate remains WAIT until a non-conflicting setup forms."
+                                )
+                                side = None
+                        else:
+                            order_flow_payload["auction_patterns"] = {
+                                "status": "NOT_AVAILABLE",
+                                "accepted_for_side": True,
+                                "reason": pattern_unavailable_reason or (
+                                    "No fresh, sequence-validated Spot observation was recorded for the exact "
+                                    "closed M1 candle minute; the auction-pattern gate was skipped."
+                                ),
+                            }
+                    else:
+                        order_flow_payload["auction_patterns"] = {
+                            "status": "NOT_AVAILABLE",
+                            "accepted_for_side": True,
+                            "reason": "A fully closed M1 candle is required to align price response with the minute order-flow sample.",
+                        }
                 if not decision["accepted"]:
                     status = str(decision["status"]).lower()
                     entry_rejection_reason = (

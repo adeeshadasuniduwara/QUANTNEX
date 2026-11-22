@@ -33,6 +33,17 @@ def test_fastapi_lifespan_starts_and_stops_all_background_workers(monkeypatch):
     async def stop_telegram():
         calls.append("telegram-stop")
 
+    from app import order_flow_monitor
+
+    async def start_order_flow_capture():
+        calls.append("order-flow-capture-start")
+
+    async def stop_order_flow_capture():
+        calls.append("order-flow-capture-stop")
+
+    monkeypatch.setattr(order_flow_monitor, "start_order_flow_capture_worker", start_order_flow_capture)
+    monkeypatch.setattr(order_flow_monitor, "stop_order_flow_capture_worker", stop_order_flow_capture)
+
     monkeypatch.setattr(main, "prepare_local_workspace", prepare)
     monkeypatch.setattr(main, "start_telegram_background_worker", start_telegram)
     monkeypatch.setattr(main, "start_prop_challenge_guardian", start_guardian)
@@ -51,6 +62,7 @@ def test_fastapi_lifespan_starts_and_stops_all_background_workers(monkeypatch):
 
     assert calls == [
         "prepare",
+        "order-flow-capture-start",
         "telegram-start",
         "guardian-start",
         "backup-start",
@@ -60,6 +72,7 @@ def test_fastapi_lifespan_starts_and_stops_all_background_workers(monkeypatch):
         "backup-stop",
         "guardian-stop",
         "telegram-stop",
+        "order-flow-capture-stop",
     ]
 
 

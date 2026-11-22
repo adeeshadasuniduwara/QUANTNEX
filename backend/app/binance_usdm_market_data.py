@@ -1,7 +1,8 @@
-"""Read-only Binance USDⓈ-M perpetual market data for QUANTNEX VIEW.
+"""Read-only Binance USDⓈ-M perpetual market data for QUANTNEX.
 
-This adapter is chart-only. It does not enable Futures signal generation or order
-execution. COIN-M delivery/perpetual contracts are intentionally not included.
+This adapter supplies active perpetual metadata and closed candles to the
+separate monitor-only Futures signal engine and chart. It does not place orders
+or provide Futures Order Flow. COIN-M contracts are intentionally excluded.
 """
 from __future__ import annotations
 

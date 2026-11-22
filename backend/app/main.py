@@ -37,9 +37,14 @@ async def lifespan(app: FastAPI):
         start_binance_spot_order_flow_manager,
         stop_binance_spot_order_flow_manager,
     )
+    from .order_flow_monitor import (
+        start_order_flow_capture_worker,
+        stop_order_flow_capture_worker,
+    )
     await prepare_local_workspace()
     try:
         await start_binance_spot_order_flow_manager()
+        await start_order_flow_capture_worker()
         await start_signal_lifecycle_worker()
         await start_telegram_background_worker()
         await start_prop_challenge_guardian()
@@ -53,6 +58,7 @@ async def lifespan(app: FastAPI):
         await stop_daily_backup_worker()
         await stop_prop_challenge_guardian()
         await stop_telegram_background_worker()
+        await stop_order_flow_capture_worker()
         await stop_binance_spot_order_flow_manager()
         await stop_signal_lifecycle_worker()
 
@@ -1474,6 +1480,13 @@ async def intelligence_orderbook(symbol: str, user: User = Depends(local_workspa
         raise HTTPException(status_code=422,detail=str(exc))
     except httpx.HTTPError:
         raise HTTPException(status_code=502,detail="Order-book provider is temporarily unavailable.")
+
+@app.get("/api/v1/order-flow/capture-status")
+def order_flow_capture_status(user: User = Depends(local_workspace)):
+    """Report bounded minute-aligned public Spot order-flow capture health."""
+    from .order_flow_monitor import get_order_flow_capture_status
+    return get_order_flow_capture_status()
+
 
 @app.get("/api/v1/order-flow/spot/{symbol}")
 async def spot_order_flow_snapshot(symbol: str, wait_seconds: float = 0.0, user: User = Depends(local_workspace)):

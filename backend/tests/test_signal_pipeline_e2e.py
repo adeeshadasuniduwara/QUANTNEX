@@ -616,3 +616,70 @@ def test_live_candidate_waits_until_sequence_validated_orderflow_stream_is_ready
     assert result["order_flow"]["status"] == "BOOTSTRAPPING"
     assert result["order_flow"]["data_mode"] == "PUBLIC_WEBSOCKET_STREAM"
     assert "sequence-validated" in result["message"].lower()
+
+def test_live_signal_waits_when_same_minute_recorded_auction_pattern_conflicts(monkeypatch):
+    now = datetime.now(timezone.utc)
+
+    async def fake_fetch(interval, _outputsize, _symbol):
+        rows = _synthetic_setup("BUY", interval, now)
+        if interval == "1min":
+            last_open = now.replace(second=0, microsecond=0) - timedelta(minutes=1)
+            first_open = last_open - timedelta(minutes=len(rows) - 1)
+            for index, row in enumerate(rows):
+                row["time"] = (first_open + timedelta(minutes=index)).isoformat()
+            rows[-1].update({"open": 102.0, "high": 103.0, "low": 99.0, "close": 99.5})
+        return rows, "Binance Spot"
+
+    async def fake_execution(_symbol):
+        close = _synthetic_setup("BUY", "5min", now)[-1]["close"]
+        return {
+            "best_bid": close - 0.005, "best_ask": close + 0.005, "mid_price": close,
+            "spread_bps": 0.9, "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
+            "tick_size": "0.01", "step_size": "0.001", "min_quantity": "0.001",
+            "min_notional": "5", "order_types": ["LIMIT", "MARKET"],
+            "limit_order_constraints_valid": True, "market_order_constraints_valid": True,
+            "observed_at": now.isoformat(), "provider": "Binance Spot",
+        }
+
+    async def valid_symbol(candidate):
+        return candidate == "BTCUSDT"
+
+    from app import order_flow_monitor
+    observed_candles = []
+
+    def aligned_snapshot(_symbol, candle, **_kwargs):
+        observed_candles.append(candle)
+        candle_time = datetime.fromisoformat(candle["time"].replace("Z", "+00:00"))
+        return {
+            "market_type": "BINANCE_SPOT",
+            "feed_mode": "PUBLIC_WEBSOCKET_STREAM",
+            "depth_is_continuous": True,
+            "data_provenance": {"candle_volume_used": False},
+            "trade_count": 120,
+            "delta_ratio": 0.60,
+            "trade_data_age_seconds": 1.0,
+            "last_trade_at": (candle_time + timedelta(seconds=55)).isoformat(),
+            "depth_observed_at": (candle_time + timedelta(seconds=54)).isoformat(),
+            "depth_age_seconds": 1.0,
+            "order_book": {"depth_imbalance": -0.30},
+        }
+
+    monkeypatch.setattr(signal_engine, "is_binance_spot_symbol", valid_symbol)
+    monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
+    monkeypatch.setattr(signal_engine, "get_binance_spot_execution_context", fake_execution)
+    monkeypatch.setattr(order_flow_monitor, "get_minute_aligned_order_flow_snapshot", aligned_snapshot)
+    monkeypatch.setattr(order_flow_monitor, "get_recent_trade_count_baseline", lambda *_a, **_k: None)
+    _install_order_flow_fixture(monkeypatch, "BUY")
+
+    result = asyncio.run(signal_engine.build_signal({
+        "primary": "5", "trend": "60",
+        "enabled": ["60", "30", "15", "5", "1"], "min_score": 8,
+    }, "BTCUSDT"))
+
+    assert observed_candles
+    assert result["status"] == "WAIT"
+    assert result["signal"] is None
+    assert result["quality_filters"]["order_flow_pattern_confirmation"] is False
+    assert result["order_flow"]["auction_patterns"]["status"] == "SELL_ABSORPTION"
+    assert "conflicts with BUY" in result["message"]
+

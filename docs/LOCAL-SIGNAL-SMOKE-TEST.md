@@ -39,7 +39,7 @@ A successful smoke test proves that the selected provider returned usable data a
 
 ## Automated public-crypto check
 
-GitHub Actions runs the read-only **QUANTNEX Live Crypto Signal Smoke** workflow daily. It independently discovers the current Binance Spot and USDⓈ-M Futures universes from their authoritative `exchangeInfo` endpoints, then scans deterministic rotating samples of 20 instruments per market type. Each sample rotates daily and is a rate-conscious smoke subset, not a full-universe scan in one run.
+GitHub Actions runs the read-only **QUANTNEX Live Crypto Signal Smoke** workflow daily and on pull requests that change the smoke runner, USDⓈ-M signal/provider adapters or this workflow. It independently discovers the current Binance Spot and USDⓈ-M Futures universes from their authoritative `exchangeInfo` endpoints, then scans deterministic rotating samples of 20 instruments per market type. Each sample rotates daily and is a rate-conscious smoke subset, not a full-universe scan in one run.
 
 - Spot: `/api/v3/exchangeInfo` → active Spot-eligible pairs → multi-timeframe Spot signal engine, execution-quality checks and mandatory sequence-validated Spot Order Flow when a directional setup qualifies.
 - USDⓈ-M: `/fapi/v1/exchangeInfo` → active `TRADING` `PERPETUAL` contracts → separate closed 5m candle-only monitor engine. This Futures path does **not** include Futures Order Flow, adaptive MARKET/LIMIT execution, quantity/filter validation for an order, or order placement. A Futures candle signal is not an executable trade instruction.

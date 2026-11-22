@@ -15,6 +15,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: live-signal-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   live-crypto-smoke:
     name: Read-only Binance Spot and USDⓈ-M smoke scan

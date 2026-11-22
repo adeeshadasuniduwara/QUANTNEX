@@ -1541,6 +1541,37 @@ def recorded_order_flow_candles(
         db.close()
 
 
+@app.get("/api/v1/order-flow/footprint/{symbol}")
+def recorded_order_flow_footprint(
+    symbol: str, start_ms: int, end_ms: int, price_step: str,
+    interval_ms: int = 60_000, max_levels: int = 250, imbalance_ratio: float = 3.0,
+    user: User = Depends(local_workspace),
+):
+    """Build a deterministic trade footprint from archived Binance Spot aggTrade events."""
+    from .order_flow_raw_recorder import load_order_flow_market_events
+    from .order_flow_footprint import build_order_flow_footprint, OrderFlowFootprintError
+    db = SessionLocal()
+    try:
+        try:
+            events = load_order_flow_market_events(db, symbol, start_ms, end_ms, limit=5000)
+            result = build_order_flow_footprint(
+                events, price_step=price_step, interval_ms=interval_ms,
+                max_levels=max_levels, imbalance_ratio=imbalance_ratio,
+            )
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {
+            **result,
+            "symbol": symbol.strip().upper(),
+            "window_start_ms": start_ms,
+            "window_end_ms": end_ms,
+            "event_limit": 5000,
+            "coverage_note": "Footprint uses archived aggTrade events only. Depth events are excluded from traded volume; missing or unrecorded trades are not synthesized.",
+        }
+    finally:
+        db.close()
+
+
 @app.get("/api/v1/order-flow/spot/{symbol}")
 async def spot_order_flow_snapshot(symbol: str, wait_seconds: float = 0.0, user: User = Depends(local_workspace)):
     """Expose validated public Binance Spot AggTrade + sequence-validated L2 data to QUANTNEX VIEW."""

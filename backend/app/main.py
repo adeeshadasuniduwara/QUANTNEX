@@ -41,9 +41,14 @@ async def lifespan(app: FastAPI):
         start_order_flow_capture_worker,
         stop_order_flow_capture_worker,
     )
+    from .binance_usdm_order_flow_manager import (
+        start_binance_usdm_order_flow_manager,
+        stop_binance_usdm_order_flow_manager,
+    )
     await prepare_local_workspace()
     try:
         await start_binance_spot_order_flow_manager()
+        await start_binance_usdm_order_flow_manager()
         await start_order_flow_capture_worker()
         await start_signal_lifecycle_worker()
         await start_telegram_background_worker()
@@ -59,6 +64,7 @@ async def lifespan(app: FastAPI):
         await stop_prop_challenge_guardian()
         await stop_telegram_background_worker()
         await stop_order_flow_capture_worker()
+        await stop_binance_usdm_order_flow_manager()
         await stop_binance_spot_order_flow_manager()
         await stop_signal_lifecycle_worker()
 
@@ -1567,6 +1573,71 @@ def recorded_order_flow_footprint(
             "window_end_ms": end_ms,
             "event_limit": 5000,
             "coverage_note": "Footprint uses archived aggTrade events only. Depth events are excluded from traded volume; missing or unrecorded trades are not synthesized.",
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/v1/order-flow/futures/status")
+def usdm_order_flow_status(user: User = Depends(local_workspace)):
+    """Health and capture status for the isolated USDⓈ-M Futures stream set."""
+    from .binance_usdm_order_flow_manager import get_binance_usdm_order_flow_manager
+    return get_binance_usdm_order_flow_manager().status()
+
+
+@app.get("/api/v1/order-flow/futures/{symbol}")
+def usdm_order_flow_snapshot(symbol: str, user: User = Depends(local_workspace)):
+    """Return the current Futures book only after its snapshot/pu chain is valid and fresh."""
+    from .binance_usdm_order_flow_manager import (
+        get_binance_usdm_order_flow_manager, UsdmStreamError,
+    )
+    normalized = str(symbol or "").strip().upper()
+    try:
+        snapshot = get_binance_usdm_order_flow_manager().get_snapshot(normalized)
+    except UsdmStreamError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    trade_age = snapshot.get("trade_age_seconds")
+    trade_ready = isinstance(trade_age, (int, float)) and not isinstance(trade_age, bool) and math.isfinite(float(trade_age)) and 0 <= float(trade_age) <= 15
+    depth_ready = snapshot.get("depth_ready") is True and snapshot.get("sequence_valid") is True
+    return {
+        **snapshot,
+        "trade_flow_ready": trade_ready,
+        "signal_ready": trade_ready and depth_ready,
+        "reason": None if trade_ready and depth_ready else "FUTURES_TRADE_OR_SEQUENCE_VALIDATED_DEPTH_NOT_READY",
+        "provenance": "Binance USDⓈ-M Futures public aggTrade + REST-bridged diff-depth; isolated from Spot",
+        "execution_enabled": False,
+    }
+
+
+@app.get("/api/v1/order-flow/futures/{symbol}/footprint")
+def recorded_usdm_order_flow_footprint(
+    symbol: str, start_ms: int, end_ms: int, price_step: str,
+    interval_ms: int = 60_000, max_levels: int = 250, imbalance_ratio: float = 3.0,
+    user: User = Depends(local_workspace),
+):
+    """Build a Futures-only footprint from the isolated USDⓈ-M raw event archive."""
+    from .order_flow_usdm_recorder import load_usdm_market_events
+    from .order_flow_footprint import build_order_flow_footprint
+    db = SessionLocal()
+    try:
+        try:
+            events = load_usdm_market_events(db, symbol, start_ms, end_ms, limit=5000)
+            result = build_order_flow_footprint(
+                events, price_step=price_step, interval_ms=interval_ms,
+                max_levels=max_levels, imbalance_ratio=imbalance_ratio,
+            )
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {
+            **result,
+            "market_type": "BINANCE_USDM_FUTURES",
+            "source": "ARCHIVED_BINANCE_USDM_FUTURES_EVENTS",
+            "symbol": symbol.strip().upper(),
+            "window_start_ms": start_ms,
+            "window_end_ms": end_ms,
+            "event_limit": 5000,
+            "coverage_note": "USDⓈ-M Futures aggTrade archive only. Spot data is never reused; depth events are excluded from traded volume; capture gaps are not filled with synthetic events.",
+            "execution_enabled": False,
         }
     finally:
         db.close()

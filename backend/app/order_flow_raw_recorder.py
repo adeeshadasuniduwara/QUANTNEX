@@ -78,7 +78,7 @@ def _event_identity(event: dict[str, Any]) -> tuple[str, str, int, int, str, int
             raise OrderFlowRawEventError("Depth update failed sequence or payload validation.")
         key = str(last)
         normalized_payload = {"U": first, "u": last, "E": event_time, "b": bids, "a": asks}
-    else:
+    elif event_type == "depthSnapshot":
         try:
             last = int(payload["lastUpdateId"])
             bids, asks = payload["bids"], payload["asks"]

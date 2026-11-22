@@ -183,7 +183,7 @@ def test_usdm_smoke_counts_new_contracts_without_history_as_skips(monkeypatch, c
     async def fake_usdm_universe():
         return ["NEWUSDT"]
 
-    async def fake_usdm_analyze(*_args):
+    async def fake_usdm_analyze(*_args, **_kwargs):
         raise smoke.BinanceUsdMSignalError(
             "At least 210 fully closed 5m USDⓈ-M candles are required; received 80."
         )

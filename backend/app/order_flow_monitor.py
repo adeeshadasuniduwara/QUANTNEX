@@ -112,7 +112,7 @@ def get_minute_aligned_order_flow_snapshot(
             max_depth_age_seconds = numeric
 
     candle_end = candle_start + timedelta(minutes=1)
-    if candle_end > instant + timedelta(seconds=2):
+    if candle_end > instant:
         return None
 
     db = SessionLocal()

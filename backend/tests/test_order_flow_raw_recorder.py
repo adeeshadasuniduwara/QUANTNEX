@@ -177,3 +177,27 @@ def test_candle_summary_marks_explicit_capture_gap_as_incomplete(db):
     assert rows[0]["capture_gap_count"] == 1
     assert rows[0]["gap_detected"] is True
     assert rows[0]["coverage_status"] == "CAPTURE_GAP_DETECTED"
+
+
+def test_raw_event_recorder_accepts_full_binance_1000_level_depth_snapshot(db):
+    events = _events()
+    snapshot = events[2]
+    snapshot["payload"]["bids"] = [
+        [f"{90_000 - index * 0.01:.2f}", f"{1 + index * 0.001:.6f}"]
+        for index in range(1000)
+    ]
+    snapshot["payload"]["asks"] = [
+        [f"{90_001 + index * 0.01:.2f}", f"{1 + index * 0.001:.6f}"]
+        for index in range(1000)
+    ]
+    import json
+    assert len(json.dumps(snapshot["payload"], separators=(",", ":")).encode("utf-8")) > 16_384
+    now = datetime.fromtimestamp((snapshot["received_at_ms"] + 1000) / 1000, timezone.utc)
+    result = record_order_flow_market_events(db, [snapshot], now=now)
+    assert result["stored"] == 1
+    rows = load_order_flow_market_events(
+        db, "BTCUSDT", snapshot["event_time_ms"] - 1, snapshot["event_time_ms"] + 60_000,
+    )
+    assert len(rows) == 1
+    assert len(rows[0]["payload"]["bids"]) == 1000
+    assert len(rows[0]["payload"]["asks"]) == 1000

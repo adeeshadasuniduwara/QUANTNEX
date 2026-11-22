@@ -102,14 +102,19 @@ class LauncherRuntimeTests(unittest.TestCase):
 
     def test_pre_update_launcher_passes_browser_suppression_to_new_source(self):
         from types import SimpleNamespace
-        fake_updater = SimpleNamespace(check_and_apply=lambda _root, force_reconcile=False: {
-            "status": "updated", "message": "updated", "version": "main@abc1234",
-            "changed_files": ["run_quantnex_services.py"], "restart_required": True,
-        })
+        fake_updater = SimpleNamespace(
+            _request_latest_commit_sha=lambda: "abc1234",
+            _load_state=lambda _root: {"commit_sha": "old-sha"},
+            check_and_apply=lambda _root, force_reconcile=False: {
+                "status": "updated", "message": "updated", "version": "main@abc1234",
+                "changed_files": ["run_quantnex_services.py"], "restart_required": True,
+            },
+        )
         with patch.dict(launcher.os.environ, {}, clear=False):
             launcher.os.environ.pop("QUANTNEX_SUPPRESS_BROWSER_OPEN", None)
             with patch.dict("sys.modules", {"quantnex_updater": fake_updater}):
-                self.assertTrue(launcher.check_for_automatic_update())
+                with patch.object(launcher, "notify_telegram_update_pending"):
+                    self.assertTrue(launcher.check_for_automatic_update())
             self.assertEqual(launcher.os.environ.get("QUANTNEX_SUPPRESS_BROWSER_OPEN"), "1")
             launcher.os.environ.pop("QUANTNEX_SUPPRESS_BROWSER_OPEN", None)
 

@@ -181,9 +181,9 @@ assert.ok(html.includes('href="#watchlist-desk">Market Desks</a>'), "Forex, Cryp
 console.log("Consolidated workspace destination checks passed.");
 
 
-assert.ok(!html.includes('id="webCheckUpdate"'), "Manual Check for updates button must be removed.");
+assert.ok(html.includes('id="webCheckUpdate"'), "Manual Check for Updates button must remain available in the Updates workspace.");
 assert.match(app, /function syncUpdatesTab\(\)/, "Updates must be checked when entering the Updates tab.");
 assert.match(app, /window\.addEventListener\("hashchange",syncUpdatesTab\)/, "Updates-tab entry must be detected from navigation.");
 assert.doesNotMatch(app, /checkLocalUpdate\(\{silent:true\}\)[\s\S]{0,100}300000/, "The browser must not poll the updater every five minutes.");
-assert.match(html, /every 30 minutes/, "The Updates page must explain the 30-minute automatic update schedule.");
-console.log("Updates tab entry-only check and 30-minute automatic update notice checks passed.");
+assert.match(html, /daily at 02:00 Sri Lanka time/i, "The Updates page must describe the automatic schedule currently present in main.");
+console.log("Updates tab entry-only check and current automatic update notice checks passed.");

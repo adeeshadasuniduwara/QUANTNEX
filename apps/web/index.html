@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="quantnex-view-intelligence.css?v=20261120-overall-pnl1">
   <link rel="stylesheet" href="quantnex-view-chart.css?v=20261121-compact-layout2">
   <link rel="stylesheet" href="quantnex-advanced.css?v=20261122-phase1">
+  <link rel="stylesheet" href="quantnex-footprint.css?v=20261122-phase3">
   <link rel="stylesheet" href="market-sessions.css?v=20261118-chart-sessions1">
   <link rel="stylesheet" href="workspace-pages.css?v=20261118-distinct-certificate100">
   <link rel="stylesheet" href="workspace-polish.css?v=20261116-sidebar-compact1">
@@ -472,8 +473,8 @@
         <p class="p7-note" id="paperWalkForwardResult">No validation run yet. Results are historical simulations, not evidence of future profitability.</p>
         <p class="p7-note">Safety limits: paper-only, no broker API, no real-money orders. Automatic mode is disabled by default. FX/Gold auto-sizing is not enabled because contract multipliers and tick-value assumptions are not yet verified.</p>
       </section>
-      <section class="section-heading" id="quantnex-advanced"><div><div class="overline">MARKET MICROSTRUCTURE LAB · PHASE 02</div><h2>QUANTNEX Advanced</h2><p>A dedicated chart workspace for professional Order Flow analysis.</p></div><span class="pill live-pill">PHASE 02 · RAW DATA</span></section>
-      <section class="panel qa-workspace-intro"><div><span class="qx-orderflow-kicker">QUANTNEX ADVANCED · ORDER FLOW WORKSPACE</span><h3>Market Structure Meets Order Flow</h3><p>Dedicated chart and exchange-native market data. Phase 2 archives exchange-timestamped Binance Spot aggregate trades and sequence-validated depth events into UTC one-minute buckets for later footprint and liquidity research.</p></div><div class="qa-phase-status"><strong>PHASE 02</strong><span>Raw market event recorder</span><small id="qaRawCaptureStatus">RAW ARCHIVE · CONNECTING TO CAPTURE STATUS</small></div></section>
+      <section class="section-heading" id="quantnex-advanced"><div><div class="overline">MARKET MICROSTRUCTURE LAB · PHASE 03</div><h2>QUANTNEX Advanced</h2><p>A dedicated chart workspace for professional Order Flow analysis.</p></div><span class="pill live-pill">PHASE 03 · FOOTPRINT INTELLIGENCE</span></section>
+      <section class="panel qa-workspace-intro"><div><span class="qx-orderflow-kicker">QUANTNEX ADVANCED · ORDER FLOW WORKSPACE</span><h3>Market Structure Meets Order Flow</h3><p>Dedicated chart and exchange-native market data. Phase 2 raw event archives now power Phase 3 price-level footprints, stacked imbalance and conservative microstructure context analytics.</p></div><div class="qa-phase-status"><strong>PHASE 03</strong><span>Footprint &amp; microstructure intelligence</span><small id="qaRawCaptureStatus">RAW ARCHIVE · CONNECTING TO CAPTURE STATUS</small></div></section>
       <section class="panel chart-panel qx-chart-panel" aria-label="QUANTNEX Advanced live chart">
         <div class="qx-chart-topbar">
           <div class="qx-chart-market">
@@ -547,6 +548,22 @@
           <p class="qx-orderflow-footnote" id="qxOrderFlowProvenance">Aggressor-side inferred trade delta is not consolidated quoted bid/ask volume. Candle volume is not used to fabricate delta.</p>
         </div>
         <div class="qx-orderflow-footnote">Data scope: Binance Spot only. Gold/Forex depth is not simulated. Bookmap uses the backend's sequence-validated Spot diff-depth book; resting orders are not executed volume or guaranteed executable liquidity.</div>
+      </section>
+      <section class="section-heading" id="qa-footprint"><div><div class="overline">ORDER FLOW INTELLIGENCE · PHASE 03</div><h3>Footprint &amp; Microstructure Analytics</h3><p>Observed Binance Spot executions aggregated by price and time. Candidate context is descriptive, not a trade signal.</p></div><span class="pill">OBSERVED DATA</span></section>
+      <section class="panel qa-footprint-panel">
+        <div class="qa-footprint-controls">
+          <label>Price tick <input id="qaFootprintTick" type="number" min="0.00000001" step="any" value="0.01" inputmode="decimal"></label>
+          <label>Interval <select id="qaFootprintInterval"><option value="60000">1 minute</option><option value="300000">5 minutes</option><option value="900000">15 minutes</option></select></label>
+          <label>History <select id="qaFootprintHistory"><option value="15">15 minutes</option><option value="60" selected>1 hour</option><option value="240">4 hours</option></select></label>
+          <button class="primary-btn" id="qaFootprintLoad" type="button">Load footprint</button>
+          <span id="qaFootprintStatus" role="status">Select a Binance Spot symbol to load archived events.</span>
+        </div>
+        <div class="qa-footprint-kpis" id="qaFootprintKpis"><article><span>Observed trades</span><strong>—</strong></article><article><span>Stacked imbalance</span><strong>—</strong></article><article><span>Delta divergence</span><strong>—</strong></article><article><span>Absorption candidates</span><strong>—</strong></article></div>
+        <div class="qa-footprint-chart-wrap"><div class="qa-footprint-chart-title">Price ladder · buy / sell traded volume by interval</div><canvas id="qaFootprintCanvas" role="img" aria-label="Footprint chart with buy and sell volume by price and time"></canvas></div>
+        <div class="qa-footprint-table-wrap"><table><thead><tr><th>UTC interval</th><th>Price</th><th>Buy volume</th><th>Sell volume</th><th>Delta</th><th>Buy imbalance</th><th>Sell imbalance</th></tr></thead><tbody id="qaFootprintRows"><tr><td colspan="7" class="empty-row">No footprint loaded.</td></tr></tbody></table></div>
+        <div class="qa-footprint-context"><article><strong>Stacked imbalance</strong><div id="qaFootprintStacked">—</div></article><article><strong>Absorption candidates</strong><div id="qaFootprintAbsorption">—</div></article><article><strong>Iceberg candidates</strong><div id="qaFootprintIceberg">—</div></article><article><strong>Liquidity pull context</strong><div id="qaFootprintPulls">—</div></article></div>
+        <div class="qa-footprint-context" id="qaFootprintDerivatives" hidden><article><strong>Futures derivatives context</strong><div class="qa-footprint-kpis" id="qaFootprintDerivativesGrid"><article><span>Funding rate</span><strong>—</strong></article><article><span>Mark / index basis</span><strong>—</strong></article><article><span>Open interest</span><strong>—</strong></article><article><span>OI change</span><strong>—</strong></article></div><small id="qaFootprintDerivativesMeta">Funding and OI context is loaded from public USD-M Futures endpoints.</small></article></div>
+        <p class="p7-note" id="qaFootprintDisclaimer">Iceberg replenishment and spoofing intent cannot be proven from aggregated public trades/depth updates. All candidate flags require independent confirmation.</p>
       </section>
       <section class="section-heading" id="tools"><div><div class="overline">RISK MANAGEMENT</div><h2>Position size calculator</h2><p>Estimate position size using your broker's pip value.</p></div></section>
       <section class="panel calculator-panel">
@@ -967,6 +984,7 @@
   <script src="signal-tool.js?v=20261121-position-table2"></script>
   <script src="quantnex-view-chart.js?v=20261121-usdm-signal1"></script>
   <script src="quantnex-advanced-chart.js?v=20261122-phase2-raw1"></script>
+  <script src="quantnex-footprint.js?v=20261122-phase5"></script>
   <script src="market-sessions.js?v=20261118-live-sessions1"></script>
   <script src="quantnex-view-intelligence.js?v=20261121-usdm-signals1"></script>
   <script src="workspace-polish.js?v=20261114-single-icon2"></script>

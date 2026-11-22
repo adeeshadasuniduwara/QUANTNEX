@@ -1201,3 +1201,5 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 - Web test follow-up 3: the chart-specific test also required the removed `qxConfidenceMeter` / `qxConfidenceFill` nodes from the retired intelligence sheet. The indicator readout IDs remain; only those obsolete confidence-meter expectations were removed. No chart runtime code changed.
 
 - Web test follow-up 4: the remaining Order Flow toolkit test still expected the pre-PR-#279 `app.js` cache version. It now expects the current `20261122-view-update-flow1` asset revision; no application code changed.
+
+- Web test follow-up 5: the combined Backend/Web suite then exposed a stale Python assertion for the old `if(result.update_available||!silent)` updater branch. The current supervisor flow queues the pinned source update and watches the supervisor status; the test now asserts that behavior and the silent-status guard rather than the retired expression. Production updater code is unchanged.

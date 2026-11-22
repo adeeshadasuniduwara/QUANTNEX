@@ -13,7 +13,7 @@ import httpx
 from websockets.asyncio.client import connect
 from .binance_usdm_order_flow import (
     MARKET_TYPE, FuturesOrderFlowError, normalize_usdm_agg_trade,
-    normalize_usdm_depth_update,
+    normalize_usdm_depth_update, normalize_usdm_mark_price, normalize_usdm_force_order,
 )
 
 WS_BASE = "wss://fstream.binance.com/stream"
@@ -53,7 +53,11 @@ class BinanceUsdmOrderFlowStream:
         self.gap_count = 0
         self.trade_count = 0
         self.dropped_events = 0
-        self.stream_url = f"{WS_BASE}?streams={self.symbol.lower()}@aggTrade/{self.symbol.lower()}@depth@100ms"
+        self.last_mark_price = None
+        self.last_mark_price_at = None
+        self.recent_liquidations: deque[dict[str, Any]] = deque(maxlen=5000)
+        self.liquidation_count = 0
+        self.stream_url = f"{WS_BASE}?streams={self.symbol.lower()}@aggTrade/{self.symbol.lower()}@depth@100ms/{self.symbol.lower()}@markPrice@1s/{self.symbol.lower()}@forceOrder"
 
     def _queue(self, event):
         if len(self.capture_events) >= self.max_buffered_events:
@@ -70,13 +74,18 @@ class BinanceUsdmOrderFlowStream:
             except (UnicodeDecodeError, json.JSONDecodeError, TypeError) as exc:
                 raise UsdmStreamError("Invalid Futures WebSocket JSON.") from exc
             data = msg.get("data") if isinstance(msg, dict) else None
-            if not isinstance(data, dict) or str(data.get("s") or "").upper() != self.symbol:
+            if not isinstance(data, dict):
+                raise UsdmStreamError("Futures stream payload is invalid.")
+            kind = data.get("e")
+            event_symbol = data.get("s")
+            if kind == "forceOrder" and isinstance(data.get("o"), dict):
+                event_symbol = data["o"].get("s")
+            if str(event_symbol or "").upper() != self.symbol:
                 raise UsdmStreamError("Futures stream symbol mismatch.")
             stream_name = str(msg.get("stream") or "").lower()
             if stream_name and not stream_name.startswith(self.symbol.lower() + "@"):
                 raise UsdmStreamError("Futures combined-stream name mismatch.")
-            kind = data.get("e")
-            if kind not in {"aggTrade", "depthUpdate"}:
+            if kind not in {"aggTrade", "depthUpdate", "markPriceUpdate", "forceOrder"}:
                 continue
             if queue.full():
                 raise UsdmStreamError("Futures bootstrap queue overflow.")
@@ -126,6 +135,36 @@ class BinanceUsdmOrderFlowStream:
         self.trade_count += 1
         self._queue(event)
 
+    def _apply_mark_price(self, data, received_ms):
+        event = normalize_usdm_mark_price(self.symbol, data, received_at_ms=received_ms)
+        event.update({"source": "WEBSOCKET", "stream_session_id": self.session_id})
+        payload = event["payload"]
+        self.last_mark_price = {"mark_price": payload["p"], "index_price": payload["i"],
+            "funding_rate": payload["r"], "next_funding_time_ms": payload["T"],
+            "event_time_ms": event["event_time_ms"]}
+        self.last_mark_price_at = datetime.fromtimestamp(event["event_time_ms"] / 1000, tz=timezone.utc)
+        self._queue(event)
+
+    def _apply_force_order(self, data, received_ms):
+        event = normalize_usdm_force_order(self.symbol, data, received_at_ms=received_ms)
+        event.update({"source": "WEBSOCKET", "stream_session_id": self.session_id})
+        order = event["payload"]["o"]
+        self.recent_liquidations.append({"event_time_ms": event["event_time_ms"],
+            "side": order["S"], "quantity": float(order["z"]), "price": float(order["ap"])})
+        self.liquidation_count += 1
+        self._queue(event)
+
+    def _apply_market_event(self, kind, data, received_ms):
+        if kind == "aggTrade":
+            self._apply_trade(data, received_ms)
+        elif kind == "depthUpdate":
+            normalized = normalize_usdm_depth_update(self.symbol, data, received_at_ms=received_ms)
+            self._apply_depth(normalized)
+        elif kind == "markPriceUpdate":
+            self._apply_mark_price(data, received_ms)
+        elif kind == "forceOrder":
+            self._apply_force_order(data, received_ms)
+
     async def _bootstrap(self, websocket, client, stop_event):
         queue = asyncio.Queue(maxsize=2048)
         receiver = asyncio.create_task(self._receive_to_queue(websocket, queue, stop_event))
@@ -162,11 +201,11 @@ class BinanceUsdmOrderFlowStream:
                 if remaining <= 0: raise UsdmStreamError("Timed out waiting for Futures snapshot bridge.")
                 try: kind,data,received_ms = await asyncio.wait_for(queue.get(), timeout=min(1.0,remaining))
                 except asyncio.TimeoutError: continue
-                if kind == "aggTrade":
-                    self._apply_trade(data, received_ms)
-                else:
+                if kind == "depthUpdate":
                     normalized = normalize_usdm_depth_update(self.symbol,data,received_at_ms=received_ms)
                     self._apply_depth(normalized)
+                else:
+                    self._apply_market_event(kind, data, received_ms)
             if not self.sequence_valid:
                 raise UsdmStreamError("Futures snapshot bridge was not validated.")
             return receiver, queue
@@ -182,6 +221,9 @@ class BinanceUsdmOrderFlowStream:
         valid = self.sequence_valid and depth_age is not None and 0 <= depth_age <= 5
         window_start_ms = int(now.timestamp() * 1000) - 60_000
         recent = [trade for trade in self.recent_trades if trade["event_time_ms"] >= window_start_ms]
+        recent_liquidations = [item for item in self.recent_liquidations if item["event_time_ms"] >= window_start_ms]
+        liq_buy = sum(item["quantity"] for item in recent_liquidations if item["side"] == "BUY")
+        liq_sell = sum(item["quantity"] for item in recent_liquidations if item["side"] == "SELL")
         buy_volume = sum(trade["quantity"] for trade in recent if not trade["buyer_is_maker"])
         sell_volume = sum(trade["quantity"] for trade in recent if trade["buyer_is_maker"])
         total_volume = buy_volume + sell_volume
@@ -192,6 +234,15 @@ class BinanceUsdmOrderFlowStream:
             "sequence_valid":bool(valid),"depth_ready":bool(valid and bids and asks),
             "snapshot_update_id":getattr(self,"snapshot_update_id",None),"last_update_id":self.last_update_id,
             "trade_count":self.trade_count,"last_trade":self.last_trade,
+            "mark_price":self.last_mark_price,
+            "mark_price_age_seconds":round((now-self.last_mark_price_at).total_seconds(),3) if self.last_mark_price_at else None,
+            "liquidation_flow_60s":{"event_count":len(recent_liquidations),"buy_side_quantity":liq_buy,
+                "sell_side_quantity":liq_sell,"observed_quantity":liq_buy+liq_sell,
+                "coverage":"OBSERVED_FORCE_ORDER_STREAM_SAMPLE_NOT_TOTAL_MARKET_LIQUIDATIONS"},
+            "last_liquidation":({"event_time_ms":recent_liquidations[-1]["event_time_ms"],
+                "side":recent_liquidations[-1]["side"],"quantity":recent_liquidations[-1]["quantity"],
+                "average_price":recent_liquidations[-1]["price"]} if recent_liquidations else None),
+            "liquidation_event_count":self.liquidation_count,
             "trade_flow_60s":{"window_start_ms":window_start_ms,"window_seconds":60,
                 "trade_count":len(recent),"buy_volume":buy_volume,"sell_volume":sell_volume,
                 "total_volume":total_volume,"delta":delta,
@@ -211,7 +262,7 @@ class BinanceUsdmOrderFlowStream:
             try:
                 self.status = "CONNECTING"; self.sequence_valid = False
                 self.last_update_id = None; self.bids = {}; self.asks = {}
-                self.recent_trades.clear(); self.last_trade = None; self.last_trade_at = None
+                self.recent_trades.clear(); self.last_trade = None; self.last_trade_at = None; self.last_mark_price = None; self.last_mark_price_at = None; self.recent_liquidations.clear()
                 self.session_id = uuid.uuid4().hex
                 async with self.websocket_factory(self.stream_url,ping_interval=20,ping_timeout=60,
                     close_timeout=10,open_timeout=10,max_size=1048576,max_queue=256) as websocket:
@@ -229,10 +280,7 @@ class BinanceUsdmOrderFlowStream:
                             if on_update: await on_update(self.snapshot())
                             continue
                         self.last_message_at = datetime.now(timezone.utc)
-                        if kind == "aggTrade": self._apply_trade(data,received_ms)
-                        else:
-                            normalized = normalize_usdm_depth_update(self.symbol,data,received_at_ms=received_ms)
-                            self._apply_depth(normalized)
+                        self._apply_market_event(kind, data, received_ms)
                         if on_update: await on_update(self.snapshot())
                     receiver.cancel()
                     await asyncio.gather(receiver,return_exceptions=True)

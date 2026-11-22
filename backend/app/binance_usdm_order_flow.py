@@ -4,6 +4,7 @@ This module normalizes public exchange payloads only. It does not start a stream
 claim capture completeness, or merge Futures data with Spot observations.
 """
 from __future__ import annotations
+import hashlib
 import math
 import re
 from typing import Any
@@ -73,6 +74,71 @@ def normalize_usdm_depth_update(symbol: str, payload: dict[str, Any], *, receive
     return {"market_type":MARKET_TYPE,"symbol":symbol,"event_type":"depthUpdate","event_key":str(last),
         "event_time_ms":event_ms,"received_at_ms":receive_ms,"sequence_first":first,"sequence_last":last,
         "payload":{"U":first,"u":last,"pu":previous,"E":event_ms,"b":bids,"a":asks}}
+
+def normalize_usdm_mark_price(symbol: str, payload: dict[str, Any], *, received_at_ms: int) -> dict[str, Any]:
+    """Normalize one public USDⓈ-M mark-price/funding update."""
+    symbol = _symbol(symbol)
+    if not isinstance(payload, dict) or str(payload.get("e") or "") != "markPriceUpdate":
+        raise FuturesOrderFlowError("USDⓈ-M mark-price event type is invalid.")
+    try:
+        event_ms = _timestamp(payload["E"], "mark-price event time")
+        mark = float(payload["p"]); index = float(payload["i"]); funding = float(payload["r"])
+        next_funding = _timestamp(payload["T"], "next funding time")
+        event_symbol = _symbol(payload["s"])
+    except (KeyError, TypeError, ValueError, OverflowError):
+        raise FuturesOrderFlowError("USDⓈ-M mark-price event is missing required fields.") from None
+    receive_ms = _timestamp(received_at_ms, "receive time")
+    if event_symbol != symbol or event_ms > receive_ms + 2_000:
+        raise FuturesOrderFlowError("USDⓈ-M mark-price symbol or timestamp is invalid.")
+    if not all(math.isfinite(value) for value in (mark, index, funding)) or mark <= 0 or index <= 0:
+        raise FuturesOrderFlowError("USDⓈ-M mark-price values are outside valid bounds.")
+    return {"market_type": MARKET_TYPE, "symbol": symbol, "event_type": "markPriceUpdate",
+        "event_key": str(event_ms), "event_time_ms": event_ms, "received_at_ms": receive_ms,
+        "payload": {"e": "markPriceUpdate", "s": symbol, "E": event_ms,
+                    "p": str(payload["p"]), "i": str(payload["i"]), "r": str(payload["r"]),
+                    "T": next_funding}}
+
+
+def normalize_usdm_force_order(symbol: str, payload: dict[str, Any], *, received_at_ms: int) -> dict[str, Any]:
+    """Normalize a symbol-scoped public force-order event; this is not total market liquidations."""
+    symbol = _symbol(symbol)
+    if not isinstance(payload, dict) or str(payload.get("e") or "") != "forceOrder":
+        raise FuturesOrderFlowError("USDⓈ-M force-order event type is invalid.")
+    order = payload.get("o")
+    if not isinstance(order, dict):
+        raise FuturesOrderFlowError("USDⓈ-M force-order order payload is missing.")
+    try:
+        event_ms = _timestamp(payload["E"], "force-order event time")
+        trade_ms = _timestamp(order["T"], "force-order trade time")
+        event_symbol = _symbol(order["s"])
+        side = str(order["S"]).upper()
+        order_type = str(order["o"]).upper()
+        quantity = float(order["q"]); price = float(order["p"])
+        average_price = float(order["ap"]); filled_quantity = float(order["z"])
+        status = str(order["X"]).upper()
+        time_in_force = str(order.get("f") or "")
+    except (KeyError, TypeError, ValueError, OverflowError):
+        raise FuturesOrderFlowError("USDⓈ-M force-order event is missing required fields.") from None
+    receive_ms = _timestamp(received_at_ms, "receive time")
+    if event_symbol != symbol or side not in {"BUY", "SELL"} or not order_type or not status:
+        raise FuturesOrderFlowError("USDⓈ-M force-order symbol, side or status is invalid.")
+    if event_ms > receive_ms + 2_000 or trade_ms > receive_ms + 2_000:
+        raise FuturesOrderFlowError("USDⓈ-M force-order timestamp is ahead of receive time.")
+    if (not all(math.isfinite(value) for value in (quantity, price, average_price, filled_quantity))
+            or quantity <= 0 or price < 0 or average_price < 0 or filled_quantity < 0
+            or filled_quantity > quantity + 1e-12):
+        raise FuturesOrderFlowError("USDⓈ-M force-order quantities or prices are outside valid bounds.")
+    normalized = {"e": "forceOrder", "E": event_ms, "o": {
+        "s": symbol, "S": side, "o": order_type, "f": time_in_force, "q": str(order["q"]),
+        "p": str(order["p"]), "ap": str(order["ap"]), "X": status,
+        "z": str(order["z"]), "T": trade_ms}}
+    identity = "|".join((symbol, str(trade_ms), side, order_type, str(order["q"]),
+                         str(order["p"]), str(order["ap"]), str(order["z"])))
+    key = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    return {"market_type": MARKET_TYPE, "symbol": symbol, "event_type": "forceOrder",
+        "event_key": key, "event_time_ms": event_ms, "received_at_ms": receive_ms,
+        "payload": normalized}
+
 
 def validate_usdm_depth_sequence(snapshot_last_update_id: int, updates: list[dict[str, Any]]) -> dict[str, Any]:
     """Require the first diff event to bridge the snapshot and pu continuity thereafter."""

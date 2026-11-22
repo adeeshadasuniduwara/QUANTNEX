@@ -11,15 +11,20 @@
 - Advanced Footprint UI panel shows funding rate, mark/index basis, current open interest and bounded OI change when USDⓈ-M Futures is selected.
 - Deterministic tests for valid calculations, invalid symbol/interval/limit, symbol mismatch and non-finite price data.
 
+## Phase 5.1 — mark-price and liquidation event capture (this PR)
+
+- Subscribe each bounded USDⓈ-M symbol stream to its own `@markPrice@1s` and `@forceOrder` channels alongside aggTrade and diff-depth. In-memory mark-price and liquidation windows are reset on reconnect so old-session samples are not presented as current.
+- Validate symbol, event type, exchange/receive timestamps, finite mark/index/funding values, next-funding time, liquidation side, quantity and price fields before accepting events.
+- Persist mark-price and force-order observations in the existing isolated USDⓈ-M event archive with deterministic event keys, idempotency and seven-day retention.
+- Expose the latest mark-price sample and observed 60-second force-order side quantities through the existing read-only Futures snapshot.
+- Label liquidation observations as sampled public force-order messages, not total market liquidations. No order placement or account data is used.
+
 ## Remaining Phase 5
 
-1. Futures mark-price WebSocket event capture and persistence.
-2. Force-order/liquidation WebSocket adapter with side, observed quantity and price context.
-3. Liquidation flow aggregation with explicit sampled/partial coverage.
-4. Persist funding and OI snapshots with bounded retention and idempotency.
-5. Futures-only replay fixtures for funding/OI/mark/liquidation context.
-6. UI panels for funding countdown, basis, OI change and liquidation observations.
-7. Validate rate limits, endpoint availability and freshness under reconnect/load tests.
+1. Persist funding and open-interest snapshots with bounded retention and idempotency (current REST values are fetched on demand).
+2. Futures-only replay fixtures for funding/OI/mark/liquidation context.
+3. Dedicated UI panels for funding countdown, basis, OI change and observed liquidation flow.
+4. Validate rate limits, endpoint availability and freshness under reconnect/load tests.
 
 ## Integrity requirements
 

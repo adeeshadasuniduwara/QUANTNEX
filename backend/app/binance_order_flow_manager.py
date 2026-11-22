@@ -290,7 +290,8 @@ class BinanceSpotOrderFlowManager:
             # Drain every validated raw trade/depth event independently of the
             # once-per-minute feature snapshot alignment window.
             if len(self._capture_tasks) < MAX_PENDING_CAPTURE_TASKS:
-                raw_events = stream.drain_capture_events(limit=256)
+                drain_events = getattr(stream, "drain_capture_events", None)
+                raw_events = drain_events(limit=256) if callable(drain_events) else []
                 if raw_events:
                     raw_task = asyncio.create_task(
                         asyncio.to_thread(self._persist_market_events, raw_events),
@@ -419,8 +420,8 @@ class BinanceSpotOrderFlowManager:
                 "last_raw_event_capture_at": self.last_raw_event_capture_at,
                 "raw_events_persisted": self.last_raw_event_count,
                 "raw_event_error": self.last_raw_event_error,
-                "pending_raw_events": len(slot.stream.capture_events),
-                "raw_capture_rejected_events": slot.stream.capture_rejected_events,
+                "pending_raw_events": len(getattr(slot.stream, "capture_events", ())),
+                "raw_capture_rejected_events": getattr(slot.stream, "capture_rejected_events", 0),
             },
         }
         return snapshot

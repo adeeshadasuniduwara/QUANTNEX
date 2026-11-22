@@ -2,10 +2,12 @@
 
 ## Current verified boundary
 
-- The signal engine supports Binance Spot pair discovery from `exchangeInfo`, candle-based multi-timeframe confluence, confirmed market-structure/SMC zones, sequence-validated public WebSocket trade/depth streams for live Spot order-flow confirmation, adaptive MARKET/LIMIT selection, exchange filter checks, estimated spread/fee/slippage gates, and chronological Binance Spot candle replay. Telegram Auto Signals now has a full dynamic Spot-universe mode with fair rotating batches.
-- Binance USDⓈ-M Futures and COIN-M Futures are **not verified as supported signal markets**. A Binance Spot SELL is an analytical Spot sell signal, not a Futures short.
-- Historical order-book depth, historical aggressor-side footprint and historical CVD are not currently available to the walk-forward engine.
-- A successful smoke scan or WAIT result does not establish profitability. Signal quality remains unproven until realistic out-of-sample and paper evidence is accumulated.
+- **Binance Spot:** the authoritative `/api/v3/exchangeInfo` universe supplies every currently eligible active Spot symbol (not a static BTC/ETH/SOL list). The Spot engine uses closed multi-timeframe candles, the existing SMC/market-structure rules, a transparent method-evidence registry, adaptive analytical MARKET/LIMIT selection, symbol-specific filters and cost/liquidity gates. A Spot SELL is an analytical Spot sale, not a Futures short.
+- **Binance USDⓈ-M Futures:** a separate engine is now merged. It dynamically discovers active `TRADING` `PERPETUAL` contracts from `/fapi/v1/exchangeInfo` and evaluates fresh closed Futures candles. It is candle-only and monitor-only: no Spot order-flow substitution, no funding/open-interest/liquidation integration, no adaptive MARKET/LIMIT execution contract, no order placement and no COIN-M support.
+- **Binance COIN-M Futures:** unsupported. No COIN-M exchange metadata, candle, order-flow or signal adapter is verified.
+- Spot live Order Flow uses Binance aggregate-trade buyer-is-maker semantics for inferred aggressor delta and a sequence-validated diff-depth book. CVD is bounded to the current stream seed; full UTC-session delta is only reported when session-start trade-ID coverage is proven. This is venue-specific observed flow, not consolidated quoted bid/ask volume.
+- PR #272 adds bounded minute-aligned Spot feature capture and causal absorption/exhaustion context. The exact closed-M1 candle must be paired with a fresh persisted snapshot from the same UTC minute; if that observation is absent, stale or misaligned, the pattern gate is explicitly unavailable rather than guessed. This is not a raw tick archive or full historical footprint replay.
+- A successful smoke scan or WAIT result does not establish profitability. Signal quality remains unproven until realistic chronological out-of-sample and paper evidence is accumulated.
 
 Order-flow is measured evidence, not a promise of higher win rate. All calculations must be causal, time-stamped, source-attributed and fail closed when data is malformed, incomplete or stale.
 
@@ -100,27 +102,27 @@ Only after Spot order-flow is stable:
 - Replay must include realistic fees, spread, slippage, latency, partial/unfilled LIMIT behavior and chronological out-of-sample splits.
 - Compare baseline, each method and combinations using sample size, trade count, win rate, expectancy, profit factor, max drawdown and cost sensitivity. Higher win rate alone is not success.
 - Never invent data, force live signals, place real orders or enable live-money execution. Public feeds remain read-only; paper mode only.
-- Binance Spot is the only currently verified crypto signal market. Futures and true historical footprint/order-book replay remain unsupported/unverified.
+- Binance Spot and USDⓈ-M Futures have separate verified candle signal paths; only Spot has the live sequence-validated Order Flow gate. COIN-M and full historical tick/depth replay remain unsupported/unverified.
 
 
 ## Capability matrix (verified current state)
 
 | Capability | Binance Spot | USDⓈ-M Futures | COIN-M Futures | XAUUSD feed |
 |---|---|---|---|---|
-| Dynamic symbol/instrument metadata | Yes: `/api/v3/exchangeInfo`, active Spot permission/status, orderTypes, asset precision and full symbol filters | Not wired | Not wired | MT5/Twelve Data configuration, not Binance metadata |
-| OHLCV signal candles | Yes; public klines with closed-candle freshness checks | Not wired | Not wired | MT5 or Twelve Data |
-| Adaptive MARKET/LIMIT decision | Yes; analytical choice only, with spread/depth/ATR/zone gates plus orderTypes and validated exchange filters; quantity still not calculated | Not wired | Not wired | Reference price only; Binance execution not applicable |
-| Aggressor-side trade delta | Yes; recent `aggTrades`, buyer-is-maker semantics | Not wired | Not wired | Not available from current Gold candle/quote adapters |
+| Dynamic symbol/instrument metadata | Yes: `/api/v3/exchangeInfo`; active Spot permission/status, orderTypes, asset precision and full symbol filters | Yes: `/fapi/v1/exchangeInfo`; active `TRADING` `PERPETUAL` contracts only; metadata retains quote/margin assets, precision and filters | Not wired | MT5/Twelve Data configuration, not Binance metadata |
+| OHLCV signal candles | Yes; public klines with closed-candle freshness checks | Yes; public Futures klines, strictly closed/chronological/fresh; separate candle-confluence engine | Not wired | MT5 or Twelve Data |
+| Adaptive MARKET/LIMIT decision | Yes; analytical choice only, with spread/depth/ATR/zone gates plus orderTypes and validated exchange filters; quantity still not calculated | No; emits a last-closed-candle reference only, not an adaptive order instruction | Not wired | Reference price only; Binance execution not applicable |
+| Aggressor-side trade delta | Yes; recent `aggTrades`, buyer-is-maker semantics | Not wired; Spot trades are never substituted | Not wired | Not available from current Gold candle/quote adapters |
 | UTC session delta | Only when the current response begins at the UTC session's first aggregate-trade ID and every subsequent ID is contiguous; otherwise unavailable/sample only | Not wired | Not wired | Not available |
-| Persistent CVD | In-memory stream-seeded CVD is available from the bounded bootstrap; scope is only since the seed, it is not persisted, and full UTC-session delta remains unavailable without an independent session anchor | Not wired | Not wired | Not available |
+| Persistent CVD | In-memory stream-seeded CVD is available from the bounded bootstrap; scope is only since the seed. Minute feature snapshots are retained for monitored symbols, but reconnect-safe persistent/full-session CVD is not claimed | Not wired | Not wired | Not available |
 | Observed trade volume profile (POC/VAH/VAL) | Yes: tick-bucketed base-quantity profile over the latest bounded aggTrade input window; not full-session or historical | Not wired | Not wired | Not available |
-| Footprint buckets / imbalance | Recent-window price buckets from observed aggTrades | Not wired | Not wired | Not available |
-| Order-book depth | Sequence-validated Spot WebSocket stream is required by the live signal gate; on-demand manager owns at most eight active symbol streams. Auto scanner rotates across the dynamic pair universe; it does not subscribe to every pair simultaneously | Not wired | Not wired | Not available |
+| Footprint buckets / imbalance | Recent-window price buckets from observed aggTrades; minute recorder stores a bounded top-bucket sample for selected symbols | Not wired | Not wired | Not available |
+| Order-book depth | Sequence-validated Spot WebSocket stream is required by the live gate; manager owns at most eight active symbol streams. Auto scanner rotates across the dynamic pair universe; minute capture watches at most eight configured symbols, not every pair simultaneously | Not wired | Not wired | Not available |
 | Funding / open interest / liquidations | Not applicable to Spot | Not wired | Not wired | Not available |
-| Historical trade/depth replay | Not yet; current walk-forward uses candles and assumed execution costs | Not wired | Not wired | Not available |
-| Exchange order constraints | PRICE_FILTER, LOT_SIZE, MARKET_LOT_SIZE (including disabled sub-rules), NOTIONAL/MIN_NOTIONAL and orderTypes preserved; quantity itself is not validated because no size is emitted | Not wired | Not wired | Not applicable |
+| Historical trade/depth replay | Seven-day bounded minute feature snapshots are stored for monitored symbols; raw tick/depth replay and full order-flow walk-forward/ablation are not yet verified | Not wired | Not wired | Not available |
+| Exchange order constraints | PRICE_FILTER, LOT_SIZE, MARKET_LOT_SIZE (including disabled sub-rules), NOTIONAL/MIN_NOTIONAL and orderTypes preserved; quantity itself is not validated because no size is emitted | Metadata filters/precision are retained, but the candle-only signal engine does not calculate quantity or validate an executable order | Not wired | Not applicable |
 
-The current supported crypto signal market is Binance Spot only. A Spot SELL is not a Futures short. The current order-flow feed does not claim true consolidated quoted bid/ask volume: it infers aggressor side from Binance aggregate trades. The REST depth response's local receive timestamp is not an exchange event timestamp and does not replace a WebSocket sequence bridge. The live gate rejects snapshots whose local receive age exceeds five seconds, but this is not a substitute for exchange-event sequencing.
+The supported crypto signal markets are Binance Spot and USDⓈ-M perpetual Futures through separate adapters and decision paths. Spot SELL is not a Futures short; USDⓈ-M BUY/SELL is evaluated only inside its Futures candle engine. Spot order flow does not claim consolidated quoted bid/ask volume: it infers aggressor side from Binance aggregate trades. The live Spot gate requires a sequence-validated WebSocket depth bridge; a REST snapshot timestamp alone is not sufficient.
 
 ## Phase C0 — order-flow-aware live signal gate (merged PR #189)
 
@@ -627,10 +629,10 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 - Display convention: Spot `[EX-BTCUSDT]`; USDⓈ-M perpetual `[EX-BTCUSDT.P]`. The `.P` suffix is a UI identity label only; API/WebSocket requests use the exchange's actual symbol `BTCUSDT`.
 - Futures universe uses Binance `/fapi/v1/exchangeInfo`; only active `TRADING` `PERPETUAL` contracts are included. Delivery contracts are excluded. Metadata retains quote/margin assets, precision and filters.
 - Historical candles use `/fapi/v1/klines`; open/incomplete candles and malformed OHLC rows are rejected. Live chart klines use `wss://fstream.binance.com/ws/{symbol}@kline_{interval}`.
-- This is a read-only chart integration. It does not extend the Spot signal engine or Spot Order Flow manager to Futures. USDⓈ-M Futures Order Flow, funding/OI/liquidations integration, Futures signal quality/replay, and COIN-M remain separate future work.
+- The chart integration was initially chart-only. PR #269 subsequently added a separate USDⓈ-M candle signal engine using the same transparent confluence catalogue. It uses only closed, fresh Futures candles; it does not extend the Spot Order Flow manager or Spot MARKET/LIMIT execution selector. Futures Order Flow, funding/OI/liquidations, historical Futures replay and COIN-M remain separate future work.
 - Never interpret a Futures chart as a Spot chart or treat the display suffix as an exchange trading symbol.
 
-- Signal-engine isolation: the chart intelligence controller must not call Spot analyze/replay/backtest or display Spot signal ledger entries while a Futures market is selected. Current UI guard labels USDⓈ-M Futures as chart-only until a separate Futures strategy engine and replay evidence exist.
+- Signal-engine isolation: the chart intelligence controller routes USDⓈ-M selections only to the independent Futures endpoint. Spot analyze/replay/backtest and Spot Order Flow remain blocked for Futures. The Futures engine is monitor-only; its rule score is not a probability and independent OOS performance is not yet established.
 
 - Newly listed perpetual pairs with fewer than 210 closed candles remain chartable; the native chart already labels indicator warm-up. A missing/empty candle response still fails closed.
 
@@ -641,6 +643,44 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 - Pre-merge and post-merge CI successful. Python 3.12: 500 passed; Python 3.14: 500 passed; Web CI passed.
 - Active Spot and USDⓈ-M perpetual pairs are discovered separately from their authoritative exchangeInfo endpoints. Display labels are `[EX-SYMBOL]` and `[EX-SYMBOL.P]`.
 - USDⓈ-M chart uses Futures REST klines and Futures kline WebSocket. Only closed valid OHLC bars are charted. Newly listed pairs with short candle history remain viewable with indicator warm-up disclosure.
-- Spot analysis/replay/backtest/ledger are explicitly blocked while Futures is selected. Futures signals and Order Flow are not yet supported.
+- Spot analysis/replay/backtest/ledger and Spot Order Flow are explicitly blocked while Futures is selected. The later PR #269 adds a separate USDⓈ-M candle-only monitor signal engine; Futures Order Flow and adaptive MARKET/LIMIT selection remain unsupported.
 - COIN-M remains excluded. External live Futures API/browser verification remains pending; tests use deterministic mocked exchange metadata and candles.
 - Telegram announce failure is unrelated: configured Telegram destination points to the bot itself.
+
+## Phase C16 — continuous Spot Order Flow capture and same-minute auction context (PR #272)
+
+### Implemented on the feature branch
+
+- Start a bounded local capture worker with the FastAPI lifespan. It keeps up to eight configured Binance Spot public streams warm; the default set is BTCUSDT, ETHUSDT, BNBUSDT, SOLUSDT and XRPUSDT. It does not subscribe to every eligible Spot pair simultaneously.
+- Reuse the existing sequence-validated Spot AggTrade + diff-depth manager and seven-day recorder. Store at most one compact observation per symbol per UTC minute near the minute boundary. This is a feature-snapshot recorder, not a raw tick archive.
+- Expose read-only capture health through `GET /api/v1/order-flow/capture-status`.
+- Classify absorption/exhaustion only from observed Binance Spot aggressor delta, sequence-validated L2 depth and a fully closed M1 candle. Candle volume is never substituted for trade-side volume.
+- **Correctness fix in this continuation:** the pattern gate now loads the persisted observation for the exact closed M1 candle minute. It recomputes trade/depth age at decision time and rejects missing, stale, cross-minute, naive-timezone or incomplete observations. It no longer compares the closed candle against whichever trade happens to be newest in the next live minute.
+- Exhaustion's trade-count baseline now requires at least five consecutive prior UTC minute observations. Gaps or missing coverage disable exhaustion classification rather than biasing the baseline.
+- Conflicting same-minute absorption/exhaustion context adds a WAIT veto. No pattern or unavailable recorder data does not fabricate a confirmation; the separate live order-flow gate still requires fresh trade and sequence-validated depth.
+
+### Data scope and limitations
+
+- Aggressor-side delta is inferred from Binance aggregate-trade buyer-is-maker semantics. It is not consolidated multi-venue quoted bid/ask volume.
+- CVD remains bounded to the stream bootstrap seed. Stored minute snapshots do not make it a continuous historical CVD series across reconnects.
+- Full UTC session delta remains unavailable unless a complete session-start aggregate-trade ID chain is proven.
+- The capture worker watches at most eight configured symbols. Dynamic Spot signal discovery/rotation covers the full eligible exchangeInfo universe over time, but continuous Order Flow is not simultaneous for every pair.
+- USDⓈ-M Futures still has candle-only signals. Futures Order Flow, funding/open-interest/liquidation analysis and COIN-M remain unsupported.
+- No live profitability, win-rate improvement or production-readiness claim is made. The GitHub runner cannot verify the user's local database or a live Windows WebSocket session.
+
+### Deterministic verification added in this continuation
+
+- Exact closed-minute snapshot pairing and recomputed freshness.
+- Missing, stale, future and cross-minute observations fail closed.
+- Same-minute trade and depth timestamps are mandatory for pattern classification.
+- Consecutive-minute baseline requirements prevent sparse recorder rows from being treated as a continuous trade-activity baseline.
+- End-to-end Spot signal fixture proves a conflicting same-minute SELL absorption clue vetoes a BUY candidate. Replay fixtures remain synthetic test data, not live signals.
+
+### Next core steps
+
+1. Run Backend CI and Backend/Web CI on Python 3.12 and 3.14 plus Web CI; inspect the full PR diff and post-merge checks before merging.
+2. Verify actual local capture status and observation counts on the user's Windows host; the GitHub runner cannot inspect the local database.
+3. Add chronological replay over the retained minute feature snapshots with strict train/OOS separation, then compare candle-only baseline, each order-flow feature and combined gates with fees/spread/slippage.
+4. Extend the signal method registry only with causal, source-attributed methods and fixtures; keep OHLCV VWAP/volume-profile proxies separate from observed aggressor flow.
+5. Add a separate USDⓈ-M Order Flow capability investigation only after Spot capture/replay is reliable; never reuse Spot streams or semantics for Futures.
+

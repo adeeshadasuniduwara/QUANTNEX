@@ -1140,6 +1140,7 @@ refreshWallet().then(()=>setAccountMessage("Local wallet loaded. Your data stays
   $("qxOrderFlowReconnect").addEventListener("click",()=>loadQuantnexViewOrderFlow());
   $("qaSymbol")?.addEventListener("change",()=>{if(isWorkspaceViewActive("quantnex-advanced"))loadQuantnexViewOrderFlow();});
   $("qaInterval")?.addEventListener("change",()=>{const label=$("qxOrderFlowTimeframe");if(label)label.textContent=$("qaInterval").value+" · SPOT";});
+  $("qaMarketType")?.addEventListener("change",()=>{if(isWorkspaceViewActive("quantnex-advanced"))loadQuantnexViewOrderFlow();});
   document.querySelectorAll("[data-qx-orderflow-tab]").forEach(button=>button.addEventListener("click",()=>{
     const tab=button.dataset.qxOrderflowTab;
     document.querySelectorAll("[data-qx-orderflow-tab]").forEach(item=>{const active=item===button;item.classList.toggle("is-active",active);item.setAttribute("aria-selected",active?"true":"false");});

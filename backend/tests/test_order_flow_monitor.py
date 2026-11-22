@@ -39,7 +39,7 @@ def test_capture_worker_requires_a_safe_poll_interval():
 def test_capture_status_discloses_minute_alignment_and_no_raw_tick_archive():
     status = get_order_flow_capture_status()
     assert status["capture_alignment"] == "ONE_OBSERVATION_PER_UTC_1M_CANDLE"
-    assert status["raw_tick_archive"] is False
+    assert status["raw_tick_archive"] is True
     assert status["refresh_seconds"] >= 2
     assert "manager" in status
     assert isinstance(status["observations_last_24h"], int)

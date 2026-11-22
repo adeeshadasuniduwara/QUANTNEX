@@ -1,5 +1,5 @@
 import pytest
-from app.binance_usdm_order_flow import normalize_usdm_depth_update
+from app.binance_usdm_order_flow import normalize_usdm_depth_update, normalize_usdm_mark_price, normalize_usdm_force_order
 from app.binance_usdm_order_flow_stream import BinanceUsdmOrderFlowStream, UsdmStreamError
 
 def _depth(first, last, previous, *, bids=None, asks=None):
@@ -72,3 +72,30 @@ def test_usdm_stream_exposes_separate_60_second_aggressor_delta_window():
     assert flow["sell_volume"]==pytest.approx(0.5)
     assert flow["delta"]==pytest.approx(1.5)
     assert flow["coverage"]=="OBSERVED_STREAM_WINDOW_NOT_PROVEN_COMPLETE"
+
+
+def test_usdm_mark_price_and_force_order_capture_are_separate_and_persistable():
+    import time
+    stream=BinanceUsdmOrderFlowStream("BTCUSDT")
+    stamp=int(time.time()*1000)
+    mark={"e":"markPriceUpdate","E":stamp,"s":"BTCUSDT","p":"90001.2","i":"90000.8","r":"0.0001","T":stamp+3_600_000}
+    stream._apply_mark_price(mark,stamp+1)
+    force={"e":"forceOrder","E":stamp+2,"o":{"s":"BTCUSDT","S":"SELL","o":"LIMIT","f":"IOC",
+        "q":"1.5","p":"89900","ap":"89901","X":"FILLED","z":"1.5","T":stamp+2}}
+    stream._apply_force_order(force,stamp+3)
+    snap=stream.snapshot()
+    assert snap["mark_price"]["mark_price"]=="90001.2"
+    assert snap["liquidation_flow_60s"]["event_count"]==1
+    assert snap["liquidation_flow_60s"]["sell_side_quantity"]==pytest.approx(1.5)
+    assert stream.capture_events[-2]["event_type"]=="markPriceUpdate"
+    assert stream.capture_events[-1]["event_type"]=="forceOrder"
+
+
+def test_usdm_mark_price_and_force_order_normalizers_reject_bad_payloads():
+    import time
+    from app.binance_usdm_order_flow import FuturesOrderFlowError
+    stamp=int(time.time()*1000)
+    with pytest.raises(FuturesOrderFlowError):
+        normalize_usdm_mark_price("BTCUSDT",{"e":"markPriceUpdate","E":stamp,"s":"ETHUSDT","p":"1","i":"1","r":"0","T":stamp+1},received_at_ms=stamp+1)
+    with pytest.raises(FuturesOrderFlowError):
+        normalize_usdm_force_order("BTCUSDT",{"e":"forceOrder","E":stamp,"o":{"s":"BTCUSDT","S":"UNKNOWN","o":"LIMIT","q":"1","p":"1","ap":"1","z":"1","T":stamp}},received_at_ms=stamp+1)

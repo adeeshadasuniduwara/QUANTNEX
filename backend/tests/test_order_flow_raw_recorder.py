@@ -102,6 +102,17 @@ def test_raw_event_recorder_rejects_invalid_market_events(db, mutation):
     assert db.query(OrderFlowMarketEvent).count() == 0
 
 
+def test_raw_event_recorder_rejects_conflicting_duplicate_ids_in_same_batch_or_database(db):
+    events = _events()
+    now = datetime.fromtimestamp((events[0]["received_at_ms"] + 1000) / 1000, timezone.utc)
+    record_order_flow_market_events(db, events, now=now)
+    conflicting = _events()[0]
+    conflicting["payload"]["p"] = "90001"
+    with pytest.raises(OrderFlowRawEventError, match="conflicting duplicate"):
+        record_order_flow_market_events(db, [conflicting], now=now)
+    assert db.query(OrderFlowMarketEvent).count() == 3
+
+
 def test_raw_event_recorder_rejects_future_received_or_oversized_batches(db):
     event = _events()[0]
     now = datetime.fromtimestamp(event["received_at_ms"] / 1000, timezone.utc)

@@ -161,7 +161,21 @@ def get_minute_aligned_order_flow_snapshot(
             return None
         if not candle_start <= captured_at < candle_end:
             return None
+        seconds_before_boundary = (candle_end - captured_at).total_seconds()
+        if not 0 <= seconds_before_boundary <= 2.0:
+            return None
         if not candle_start <= last_trade_at < candle_end:
+            return None
+        if not candle_start <= depth_observed_at < candle_end:
+            return None
+        trade_id = trade_state.get("last_agg_trade_id")
+        depth_id = depth_book.get("last_update_id")
+        flow_depth_id = flow.get("depth_snapshot_update_id")
+        if (
+            isinstance(trade_id, bool) or not isinstance(trade_id, int) or trade_id < 0
+            or isinstance(depth_id, bool) or not isinstance(depth_id, int) or depth_id < 0
+            or flow_depth_id != depth_id
+        ):
             return None
         elapsed = (instant - captured_at).total_seconds()
         if elapsed < -2:

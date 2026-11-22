@@ -234,3 +234,53 @@ class OrderFlowObservation(Base):
     spread_bps: Mapped[float] = mapped_column(Float)
     depth_imbalance: Mapped[float] = mapped_column(Float)
     snapshot_json: Mapped[str] = mapped_column(Text)
+
+class OrderFlowRawEvent(Base):
+    """Exchange-native raw Binance Spot event, aligned to its UTC minute candle."""
+    __tablename__ = "order_flow_raw_events"
+    __table_args__ = (
+        UniqueConstraint("market_type", "symbol", "event_type", "event_key", name="uq_order_flow_raw_event_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    market_type: Mapped[str] = mapped_column(String(24), index=True)
+    symbol: Mapped[str] = mapped_column(String(30), index=True)
+    event_type: Mapped[str] = mapped_column(String(20), index=True)
+    event_key: Mapped[str] = mapped_column(String(100))
+    candle_bucket: Mapped[int] = mapped_column(BigInteger, index=True)
+    event_time_ms: Mapped[int] = mapped_column(BigInteger, index=True)
+    received_at_epoch_ms: Mapped[int] = mapped_column(BigInteger, index=True)
+    first_update_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    last_update_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    trade_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    buyer_is_maker: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    continuity_validated: Mapped[bool] = mapped_column(Boolean, default=False)
+    payload_json: Mapped[str] = mapped_column(Text)
+
+
+class OrderFlowCandleCapture(Base):
+    """Per-symbol UTC minute manifest describing raw event coverage and gaps."""
+    __tablename__ = "order_flow_candle_captures"
+    __table_args__ = (
+        UniqueConstraint("market_type", "symbol", "candle_bucket", name="uq_order_flow_candle_capture"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    market_type: Mapped[str] = mapped_column(String(24), index=True)
+    symbol: Mapped[str] = mapped_column(String(30), index=True)
+    candle_bucket: Mapped[int] = mapped_column(BigInteger, index=True)
+    started_at_epoch_ms: Mapped[int] = mapped_column(BigInteger)
+    updated_at_epoch_ms: Mapped[int] = mapped_column(BigInteger)
+    trade_event_count: Mapped[int] = mapped_column(Integer, default=0)
+    depth_event_count: Mapped[int] = mapped_column(Integer, default=0)
+    first_trade_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    last_trade_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    first_depth_update_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    last_depth_update_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    trade_continuity_validated: Mapped[bool] = mapped_column(Boolean, default=False)
+    depth_continuity_validated: Mapped[bool] = mapped_column(Boolean, default=False)
+    gap_count: Mapped[int] = mapped_column(Integer, default=0)
+    is_closed: Mapped[bool] = mapped_column(Boolean, default=False)
+    coverage_status: Mapped[str] = mapped_column(String(24), default="OPEN_PARTIAL", index=True)
+    gap_reasons_json: Mapped[str] = mapped_column(Text, default="[]")
+

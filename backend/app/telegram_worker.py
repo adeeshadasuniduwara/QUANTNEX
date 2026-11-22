@@ -979,6 +979,7 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
     if command=="/binance_off":
         _set(db,user_id,"binance_auto_trading_enabled","false");db.commit()
         return "🛑 Binance Auto Trading: OFF.\\n🇱🇰 Binance ස්වයංක්‍රීය ගනුදෙනු අක්‍රිය කර ඇත. No orders are submitted."
+    # Read-only operations diagnostics and configuration controls; never submit broker orders.
     if command == "/health":
         from .binance_order_flow_manager import get_binance_spot_order_flow_manager
         manager = get_binance_spot_order_flow_manager()

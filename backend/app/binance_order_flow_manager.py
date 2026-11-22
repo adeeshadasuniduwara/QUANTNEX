@@ -325,9 +325,22 @@ class BinanceSpotOrderFlowManager:
 
         last_capture_monotonic: float | None = None
 
+        last_stream_status: str | None = None
+
+        async def on_event(event: dict[str, Any]) -> None:
+            self._enqueue_raw_event(event)
+
         async def on_update(snapshot: dict[str, Any]) -> None:
-            nonlocal last_capture_monotonic
+            nonlocal last_capture_monotonic, last_stream_status
             changed_event.set()
+            status = str(snapshot.get("status") or "")
+            if status == "RECONNECTING" and last_stream_status in {"LIVE", "DEPTH_BRIDGING"}:
+                stamp_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+                self._enqueue_raw_event({"market_type": "BINANCE_SPOT", "symbol": symbol,
+                    "event_type": "FEED_GAP", "event_time_ms": stamp_ms, "received_at_epoch_ms": stamp_ms,
+                    "event_key": f"{stamp_ms}:RECONNECT", "payload": {"reason": "WEBSOCKET_RECONNECT_OR_SEQUENCE_RESYNC"},
+                    "continuity_validated": False})
+            last_stream_status = status
             captured_at = datetime.now(timezone.utc)
             seconds_until_boundary = _seconds_until_next_utc_minute(captured_at)
             if seconds_until_boundary is None:
@@ -362,7 +375,7 @@ class BinanceSpotOrderFlowManager:
             task.add_done_callback(self._capture_finished)
 
         task = asyncio.create_task(
-            stream.run(self._client, stop_event, on_update),
+            stream.run(self._client, stop_event, on_update, on_event),
             name=f"quantnex-orderflow-{symbol.lower()}",
         )
         return _ManagedStream(
@@ -431,6 +444,7 @@ class BinanceSpotOrderFlowManager:
                 "last_error": f"{type(exc).__name__}: {exc}",
             }
         snapshot["manager"] = {
+            "raw_event_capture": self.raw_capture_status(),
             "active_streams": self.active_stream_count,
             "max_streams": self.max_streams,
             "eviction_policy": "LEAST_RECENTLY_REQUESTED",

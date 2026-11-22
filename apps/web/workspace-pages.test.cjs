@@ -58,7 +58,7 @@ assert.ok(!sectionIds.includes("signal-lab") && !navTargets.includes("signal-lab
 assert.ok(!sectionIds.includes("ai-signal-center") && !navTargets.includes("ai-signal-center"), "The duplicate AI Signal Center page and sidebar link must be removed.");
 assert.doesNotMatch(html, /Signal Lab|AI Signal Center/, "Retired signal workspace names must not remain in the active Web UI.");
 const tradingViewMarkup = html.slice(tradingViewStart, telegramPageStart);
-for (const id of ["signalMarketSymbol", "runSignalScan", "runSignalBacktest", "signalResult", "p7SignalSymbol", "p7SignalThreshold", "p7RunScan", "p7SignalResult", "p7SignalFrames", "p7UseSignal", "qxLiveSignalsRows", "qxChartSignalSheetContent", "qxSignalLedgerRows", "qxIndicatorsContent"]) {
+for (const id of ["signalMarketSymbol", "runSignalScan", "runSignalBacktest", "signalResult", "p7SignalSymbol", "p7SignalThreshold", "p7RunScan", "p7SignalResult", "p7SignalFrames", "p7UseSignal", "qxLiveSignalsRows", "qxSignalLedgerRows", "qxIndicatorsContent"]) {
   assert.ok(tradingViewMarkup.includes(`id="${id}"`), "QUANTNEX VIEW must retain signal functionality: " + id);
 }
 assert.doesNotMatch(tradingViewMarkup, /id="qxSignalIntelligence"|id="qxMainSignal"|id="qxPositionPreview"|Live Strategy Engine/,
@@ -83,9 +83,8 @@ console.log("Realtime event restart-resync checks passed.");
 
 const chartClient = fs.readFileSync("apps/web/quantnex-view-chart.js", "utf8");
 const chartIntelligence = fs.readFileSync("apps/web/quantnex-view-intelligence.js", "utf8");
-assert.ok(/src="quantnex-view-chart\.js\?v=20261121-compact-layout2"/.test(html), "Live chart controller must load with the current cache version");
-assert.ok(html.includes('id="qxChartIntelMetrics"'), "Chart must expose indicator readouts");
-assert.ok(html.includes('id="qxOverlayZones"'), "Chart must expose zone visibility control");
+assert.ok(/src="quantnex-view-chart\.js\?v=20261121-usdm-signal1"/.test(html), "Live chart controller must load with the current cache version");
+assert.ok(html.includes('id="qxIndicatorsContent"'), "Chart must expose the current consolidated Technical Indicators sheet.");
 for (const feature of ["bullish_fvg", "bearish_fvg", "bullish_order_block", "bearish_order_block",
   "bullish_breaker_block", "bearish_breaker_block", "bullish_ifvg", "bearish_ifvg",
   "swing_high", "swing_low", "equilibrium", "liquidity_sweep", "quantnexViewSetTradePlan"]) {
@@ -180,3 +179,11 @@ assert.ok(fs.readFileSync("apps/web/app.js", "utf8").includes("workspaceViewGrou
 assert.ok(html.includes('href="#paper-trading">Trading Desk</a>'), "Paper-related panels must share the Trading Desk navigation destination.");
 assert.ok(html.includes('href="#watchlist-desk">Market Desks</a>'), "Forex, Crypto and Gold panels must share the Market Desks navigation destination.");
 console.log("Consolidated workspace destination checks passed.");
+
+
+assert.ok(html.includes('id="webCheckUpdate"'), "Manual Check for Updates button must remain available in the Updates workspace.");
+assert.match(app, /function syncUpdatesTab\(\)/, "Updates must be checked when entering the Updates tab.");
+assert.match(app, /window\.addEventListener\("hashchange",syncUpdatesTab\)/, "Updates-tab entry must be detected from navigation.");
+assert.doesNotMatch(app, /checkLocalUpdate\(\{silent:true\}\)[\s\S]{0,100}300000/, "The browser must not poll the updater every five minutes.");
+assert.match(html, /daily at 02:00 Sri Lanka time/i, "The Updates page must describe the automatic schedule currently present in main.");
+console.log("Updates tab entry-only check and current automatic update notice checks passed.");

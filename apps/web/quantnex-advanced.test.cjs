@@ -17,6 +17,7 @@ const advancedStart = html.indexOf('id="quantnex-advanced"');
 const orderFlowStart = html.indexOf('id="qxOrderFlowToolkit"');
 assert.ok(viewStart >= 0 && advancedStart > viewStart && orderFlowStart > advancedStart, "Order Flow toolkit must live after the Advanced workspace boundary, not inside QUANTNEX VIEW.");
 assert.ok(!html.slice(viewStart, advancedStart).includes('id="qxOrderFlowToolkit"'), "QUANTNEX VIEW must not contain the Order Flow toolkit.");
+assert.doesNotMatch(html.slice(viewStart, advancedStart), /Order Flow/i, "QUANTNEX VIEW must no longer advertise or host Order Flow tools.");
 assert.ok(chart.includes('api/v1/charts/markets') && chart.includes('new WebSocket') && chart.includes('kline_'), "Advanced chart must use the existing market catalogue and live candle WebSocket path.");
 assert.ok(chart.includes('quantnex-advanced') && chart.includes('qaChartHost'), "Advanced chart must only activate in its own workspace.");
 assert.ok(chart.includes('quantnex.advanced.chart.selection.v1') && chart.includes('quantnexAdvancedSetAnalysis'), "Advanced chart storage and global callbacks must be isolated from QUANTNEX VIEW.");

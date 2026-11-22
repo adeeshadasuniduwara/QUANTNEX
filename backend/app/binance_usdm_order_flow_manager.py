@@ -43,7 +43,7 @@ class BinanceUsdmOrderFlowManager:
                     name=f"quantnex-usdm-orderflow-{symbol.lower()}")
                 self.tasks[symbol]=task
 
-    async def _persist(self, events):
+    def _persist(self, events):
         db=SessionLocal()
         try:
             return record_usdm_market_events(db,events)

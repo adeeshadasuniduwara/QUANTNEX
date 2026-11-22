@@ -72,7 +72,8 @@
     }catch(error){setText("qaFootprintStatus","Footprint unavailable: "+error.message);}
     finally{button.disabled=false;button.textContent="Load footprint";}
   }
-  button.addEventListener("click",load);\n  window.addEventListener("resize",()=>{if(latestFootprint)drawFootprintChart(latestFootprint);});
+  button.addEventListener("click",load);
+  window.addEventListener("resize",()=>{if(latestFootprint)drawFootprintChart(latestFootprint);});
   $("qaSymbol")?.addEventListener("change",()=>setText("qaFootprintStatus","Symbol changed. Load footprint to refresh."));
   $("qaMarketType")?.addEventListener("change",()=>setText("qaFootprintStatus","Market changed. Footprint archive is Spot-only."));
 })();

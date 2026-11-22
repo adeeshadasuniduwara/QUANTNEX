@@ -24,6 +24,11 @@ from .order_flow_recorder import (
     is_recordable_order_flow_snapshot,
     record_order_flow_observation,
 )
+from .raw_order_flow_recorder import (
+    DEFAULT_RETENTION_DAYS as RAW_EVENT_RETENTION_DAYS,
+    MAX_BATCH_EVENTS,
+    record_raw_order_flow_events,
+)
 
 
 MAX_PENDING_CAPTURE_TASKS = 16
@@ -126,6 +131,14 @@ class BinanceSpotOrderFlowManager:
         self.last_capture_error: str | None = None
         self._last_prune_monotonic: float | None = None
         self._capture_tasks: set[asyncio.Task] = set()
+        self._raw_event_queue: asyncio.Queue = asyncio.Queue(maxsize=50000)
+        self._raw_event_worker_task: asyncio.Task | None = None
+        self._raw_event_stop = asyncio.Event()
+        self._raw_event_dropped = 0
+        self._raw_event_failed = 0
+        self._raw_event_last_saved_at: str | None = None
+        self._raw_event_last_error: str | None = None
+        self._last_raw_prune_monotonic: float | None = None
         self._slots: dict[str, _ManagedStream] = {}
         self._client: httpx.AsyncClient | None = None
         self._lock = asyncio.Lock()

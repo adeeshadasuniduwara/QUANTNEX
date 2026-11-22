@@ -691,7 +691,7 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 - Replay metrics now include Wilson 95% win-rate intervals, descriptive expectancy uncertainty, blocked/skipped bars and censored LIMIT orders. Confidence intervals explicitly do not correct for serial dependence or strategy-selection effects.
 - OOS trades are aggregated without truncating the calculation to the 200-trade API preview.
 - A deterministic fixture proves an open BUY position exits at TP1 after the first fold decision boundary and prevents an overlapping next entry.
-- PR head `2ca09d7bfc4f1b9edf7e7d17b9c809d5e2494b80` passed 539 tests on Python 3.12, 539 tests on Python 3.14, Web CI and the backend schema/test job. Post-merge CI on the exact main SHA was started and remained in progress at the time of this note.
+- PR head `2ca09d7bfc4f1b9edf7e7d17b9c809d5e2494b80` passed 539 tests on Python 3.12, 539 tests on Python 3.14, Web CI and the backend schema/test job. Post-merge checks on exact main SHA `5c6ad689eaecbb050d38367285412bda5b3a3076` also passed: Backend CI 539 tests, Backend/Web CI Python 3.12 539 tests, Python 3.14 539 tests and Web checks.
 - This is a stronger evaluation harness, not evidence of profitability or increased accuracy. Historical spread/depth and fee/slippage remain assumptions; TP2/TP3 partial exits, funding, position sizing and historical raw Order Flow replay remain limitations.
 
 ## Phase C18 — dynamic USDⓈ-M smoke coverage (feature branch)

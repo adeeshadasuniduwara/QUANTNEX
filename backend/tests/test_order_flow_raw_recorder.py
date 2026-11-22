@@ -108,7 +108,7 @@ def test_raw_event_recorder_rejects_conflicting_duplicate_ids_in_same_batch_or_d
     record_order_flow_market_events(db, events, now=now)
     conflicting = _events()[0]
     conflicting["payload"]["p"] = "90001"
-    with pytest.raises(OrderFlowRawEventError, match="conflicting duplicate"):
+    with pytest.raises(OrderFlowRawEventError, match="conflicting payload"):
         record_order_flow_market_events(db, [conflicting], now=now)
     assert db.query(OrderFlowMarketEvent).count() == 3
 

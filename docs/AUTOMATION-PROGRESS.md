@@ -1158,3 +1158,33 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 - Post-merge verification: QUANTNEX Web CI passed; QUANTNEX Backend and Web CI passed, including Python 3.12, Python 3.14 and the Web check.
 - Separate Telegram Update Notifications workflow did not send: its configured TELEGRAM_CHAT_ID resolves to the bot itself. This is a notification configuration issue and did not affect the merge or CI results; the notification workflow correctly reported the configuration error.
 - Local supervisor auto-update will apply the merged version on its next normal update cycle / next app launch. Browser-device rendering still needs user-side confirmation.
+
+### Phase C17 — sequential Spot out-of-sample walk-forward validation (PR #274)
+
+- PR [#274](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/274) merged to `main` as `5c6ad689eaecbb050d38367285412bda5b3a3076`.
+- Replaced the single chronological holdout with a fixed-rule sequential 2–6-fold OOS evaluation (default 3 folds). The in-sample segment remains separate; no parameters are fitted or tuned on OOS folds.
+- OOS positions and pending LIMIT entries are carried across fold boundaries. The replay blocks overlapping entries until the previous position/order resolves, distinguishes true LIMIT expiry from end-of-data censoring, and aggregates all OOS trades while bounding the API trade preview to 200.
+- Added Wilson 95% win-rate intervals and a descriptive normal-approximation expectancy interval. Both are explicitly caveated for serial dependence, selection effects and sparse/non-random Order Flow coverage.
+- Strengthened the deterministic boundary fixture: a known BUY replay remains open beyond the first fold's decision window and exits at TP1 five minutes after the boundary; the next eligible signal index is asserted after the exit.
+- PR checks on exact head `2ca09d7bfc4f1b9edf7e7d17b9c809d5e2494b80`: Python 3.12 **539 passed**, Python 3.14 **539 passed**, Web CI passed, backend schema/test job passed. Earlier failures were caused by a missing module-level timestamp helper in the new fixture; this was corrected and the stronger TP1-after-boundary test passed.
+- Main ref was verified at merge commit. Post-merge Backend/Web and Backend CI were started on the merge SHA and were still running at the time of this progress update. Telegram update notification failed at its separate notification step because the configured chat destination points to the bot itself; this is unrelated to code CI.
+- This improves validation methodology only. No measured live-market win rate, profitability or order-flow edge is claimed.
+
+### Phase C18 — dynamic USDⓈ-M smoke coverage (feature branch)
+
+- Branch `feat/dynamic-usdm-live-signal-smoke-post-walkforward` is based on the post-PR-#274 main commit `5c6ad689eaecbb050d38367285412bda5b3a3076`.
+- Extends the daily public Binance smoke workflow from the rotating 20-pair Spot sample to two independent rotating samples: 20 eligible Spot pairs from `/api/v3/exchangeInfo` and 20 active USDⓈ-M `TRADING` `PERPETUAL` contracts from `/fapi/v1/exchangeInfo`.
+- USDⓈ-M scan is explicitly a separate closed-5m-candle monitor path. It does not reuse Spot Order Flow, does not select executable MARKET/LIMIT orders, and does not place orders. COIN-M remains unsupported.
+- Newly listed contracts with insufficient closed history are reported as skips; provider errors remain failures. Each sample is deterministic and rotates daily; the smoke run still does not scan the full universe in one invocation.
+- Added tests for independent dynamic Futures rotation, market-type separation, read-only/no-Order-Flow messaging and insufficient-history skips. Workflow timeout remains 10 minutes; runtime must be observed before increasing sample size.
+- CI and live scheduled smoke verification are pending for this branch. Do not claim Futures smoke success until the workflow completes on the merged version.
+
+### Current priority and exact next steps
+
+1. Finish Phase C18: run backend/web checks, review the full four-file diff and secret scan, open Compare & Pull Request, then merge only after all checks pass and base/mergeability are verified.
+2. Verify the post-merge PR #274 CI on main and run the updated scheduled smoke. Distinguish live WAIT, successful data ingestion and actual provider errors.
+3. Continue Spot Order Flow replay validation using the seven-day minute feature store. Quantify eligible snapshot coverage, missing/stale/gap counts and baseline-vs-flow OOS trade metrics; treat sparse non-random samples as descriptive only.
+4. Build a reproducible long/short replay corpus with realistic trade/depth stream fixtures and negative cases for false sweeps, wide spreads, low liquidity, missing segments, reconnects and depth sequence gaps.
+5. Only after Spot replay is credible, investigate a separate USDⓈ-M trade/depth/funding/OI/liquidation adapter. Keep COIN-M and unsupported derivatives features explicitly disabled.
+6. Preserve paper/read-only safety. No live-money orders, API-key requirement for public data, or forced live signals.
+

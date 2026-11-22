@@ -6,7 +6,7 @@ const intel = fs.readFileSync("apps/web/quantnex-view-intelligence.js", "utf8");
 const css = fs.readFileSync("apps/web/quantnex-view-chart.css", "utf8");
 const app = fs.readFileSync("apps/web/app.js", "utf8");
 const signalTool = fs.readFileSync("apps/web/signal-tool.js", "utf8");
-for (const id of ["qxRsiChart", "qxMacdChart", "qxAdxChart", "qxAtrChart", "qxStochChart", "qxCciChart", "qxRsiValue", "qxMacdValue", "qxAdxValue", "qxAtrValue", "qxStochValue", "qxCciValue", "qxConfidenceMeter", "qxConfidenceFill"]) assert.ok(html.includes(`id="${id}"`), `Missing chart element: ${id}`);
+for (const id of ["qxChartHost", "qxLiveSignalsRows", "qxSignalLedgerContent", "qxIndicatorsContent"]) assert.ok(html.includes(`id="${id}"`), `Missing current QUANTNEX VIEW element: ${id}`);
 for (const token of ["function rsiSeries", "function adxSeries", "function atrSeries", "function stochSeries", "function cciSeries", "function renderIndicatorPanels", "new WebSocket", "kline_", "function pointerDown", "function wheel", "function mergeCandle", "window.quantnexViewSetAnalysis"]) assert.ok(js.includes(token), `Native chart/live path missing: ${token}`);
 assert.ok(!js.includes("window.LightweightCharts"), "Chart must not depend on the TradingView Lightweight Charts runtime.");
 assert.ok(!html.includes("lightweight-charts@"), "No external Lightweight Charts runtime may be loaded.");

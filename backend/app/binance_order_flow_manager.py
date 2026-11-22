@@ -219,7 +219,7 @@ class BinanceSpotOrderFlowManager:
         finally:
             db.close()
 
-    def _raw_events_capture_finished(self, task: asyncio.Task) -> None:
+    def _raw_events_capture_finished(self, task: asyncio.Task, stream=None, events=None) -> None:
         self._capture_tasks.discard(task)
         if task.cancelled():
             return
@@ -227,6 +227,12 @@ class BinanceSpotOrderFlowManager:
             result = task.result()
         except Exception as exc:
             self.last_raw_event_error = f"{type(exc).__name__}: {exc}"
+            restore = getattr(stream, "restore_capture_events", None)
+            if callable(restore) and events:
+                try:
+                    restore(events)
+                except Exception as restore_error:
+                    self.last_raw_event_error += f"; retry queue: {type(restore_error).__name__}"
             return
         if isinstance(result, dict):
             self.last_raw_event_count += int(result.get("stored", 0))
@@ -287,6 +293,8 @@ class BinanceSpotOrderFlowManager:
         async def on_update(snapshot: dict[str, Any]) -> None:
             nonlocal last_capture_monotonic
             changed_event.set()
+            if snapshot.get("capture_gap_detected") is True:
+                self.last_raw_event_error = "CAPTURE_GAP_DETECTED: raw event queue overflow was recorded."
             # Drain every validated raw trade/depth event independently of the
             # once-per-minute feature snapshot alignment window.
             if len(self._capture_tasks) < MAX_PENDING_CAPTURE_TASKS:
@@ -298,7 +306,10 @@ class BinanceSpotOrderFlowManager:
                         name=f"quantnex-orderflow-raw-{symbol.lower()}",
                     )
                     self._capture_tasks.add(raw_task)
-                    raw_task.add_done_callback(self._raw_events_capture_finished)
+                    raw_task.add_done_callback(
+                        lambda task, active_stream=stream, batch=raw_events:
+                            self._raw_events_capture_finished(task, active_stream, batch)
+                    )
             else:
                 self.last_raw_event_error = "RAW_EVENT_BACKPRESSURE: pending database writes reached the safety limit."
             captured_at = datetime.now(timezone.utc)
@@ -422,6 +433,7 @@ class BinanceSpotOrderFlowManager:
                 "raw_event_error": self.last_raw_event_error,
                 "pending_raw_events": len(getattr(slot.stream, "capture_events", ())),
                 "raw_capture_rejected_events": getattr(slot.stream, "capture_rejected_events", 0),
+                "capture_gap_detected": snapshot.get("capture_gap_detected") is True,
             },
         }
         return snapshot

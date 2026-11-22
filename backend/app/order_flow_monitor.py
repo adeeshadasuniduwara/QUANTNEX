@@ -46,40 +46,220 @@ def normalize_order_flow_monitor_symbols(value: Any) -> list[str]:
     return result or list(DEFAULT_ORDER_FLOW_SYMBOLS)
 
 
-def get_recent_trade_count_baseline(symbol: str, *, now=None, lookback_minutes: int = 30) -> float | None:
-    """Return a median of stored, validated per-minute trade counts when coverage is sufficient."""
+def _parse_aware_utc(value: Any):
+    """Parse an explicit timezone-aware timestamp; never guess a local timezone."""
+    from datetime import datetime, timezone
+
+    try:
+        stamp = value if isinstance(value, datetime) else datetime.fromisoformat(
+            str(value or "").replace("Z", "+00:00")
+        )
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if stamp.tzinfo is None or stamp.utcoffset() is None:
+        return None
+    return stamp.astimezone(timezone.utc)
+
+
+def get_minute_aligned_order_flow_snapshot(
+    symbol: str,
+    candle: dict[str, Any],
+    *,
+    now=None,
+    max_trade_age_seconds: float = 15.0,
+    max_depth_age_seconds: float = 5.0,
+) -> dict[str, Any] | None:
+    """Load the recorded Spot snapshot for one closed UTC M1 candle.
+
+    The recorder captures near the final two seconds of each minute. This
+    helper pairs that persisted sample with the exact candle minute and
+    recomputes source ages at analysis time. A live stream's newest trade is
+    deliberately not substituted because it usually belongs to the next
+    minute and would be look-ahead/misaligned context for the closed candle.
+    """
+    from datetime import datetime, timedelta, timezone
+    from .order_flow_recorder import load_order_flow_observations
+
+    normalized = str(symbol or "").strip().upper()
+    if not re.fullmatch(r"[A-Z0-9]{5,25}", normalized):
+        raise ValueError("A valid Binance Spot symbol is required.")
+    if not isinstance(candle, dict):
+        return None
+    candle_start = _parse_aware_utc(candle.get("time") or candle.get("open_time"))
+    if candle_start is None or candle_start.second != 0 or candle_start.microsecond != 0:
+        return None
+
+    instant = now or datetime.now(timezone.utc)
+    if not isinstance(instant, datetime) or instant.tzinfo is None or instant.utcoffset() is None:
+        raise ValueError("now must be a timezone-aware datetime.")
+    instant = instant.astimezone(timezone.utc)
+
+    for value, label in (
+        (max_trade_age_seconds, "max_trade_age_seconds"),
+        (max_depth_age_seconds, "max_depth_age_seconds"),
+    ):
+        if isinstance(value, bool):
+            raise ValueError(f"{label} must be finite and positive.")
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError(f"{label} must be finite and positive.") from None
+        if not math.isfinite(numeric) or numeric <= 0:
+            raise ValueError(f"{label} must be finite and positive.")
+        if label == "max_trade_age_seconds":
+            max_trade_age_seconds = numeric
+        else:
+            max_depth_age_seconds = numeric
+
+    candle_end = candle_start + timedelta(minutes=1)
+    if candle_end > instant + timedelta(seconds=2):
+        return None
+
+    db = SessionLocal()
+    try:
+        rows = load_order_flow_observations(
+            db, normalized, candle_start, candle_end, limit=2
+        )
+    finally:
+        db.close()
+    if len(rows) != 1:
+        return None
+
+    payload = rows[0]
+    storage = payload.get("storage") if isinstance(payload, dict) else None
+    flow = payload.get("order_flow") if isinstance(payload, dict) else None
+    trade_state = payload.get("trade_state") if isinstance(payload, dict) else None
+    depth_book = payload.get("depth_book") if isinstance(payload, dict) else None
+    if not all(isinstance(value, dict) for value in (storage, flow, trade_state, depth_book)):
+        return None
+    if payload.get("market_type") != "BINANCE_SPOT" or flow.get("market_type") != "BINANCE_SPOT":
+        return None
+    if flow.get("feed_mode") != "PUBLIC_WEBSOCKET_STREAM":
+        return None
+    if flow.get("depth_is_continuous") is not True:
+        return None
+    if trade_state.get("coverage_complete") is not True or trade_state.get("gap_detected") is not False:
+        return None
+    if depth_book.get("valid") is not True or depth_book.get("sequence_validated") is not True:
+        return None
+    if not isinstance(flow.get("order_book"), dict):
+        return None
+    provenance = payload.get("data_provenance")
+    if not isinstance(provenance, dict) or provenance.get("candle_volume_used") is not False:
+        return None
+
+    try:
+        bucket = storage.get("sample_bucket")
+        if isinstance(bucket, bool) or not isinstance(bucket, int):
+            return None
+        if bucket != int(candle_start.timestamp()) // 60:
+            return None
+        captured_at = _parse_aware_utc(storage.get("captured_at") or payload.get("captured_at"))
+        last_trade_at = _parse_aware_utc(flow.get("last_trade_at"))
+        depth_observed_at = _parse_aware_utc(flow.get("depth_observed_at"))
+        if captured_at is None or last_trade_at is None or depth_observed_at is None:
+            return None
+        if not candle_start <= captured_at < candle_end:
+            return None
+        if not candle_start <= last_trade_at < candle_end:
+            return None
+        elapsed = (instant - captured_at).total_seconds()
+        if elapsed < -2:
+            return None
+        trade_age = (instant - last_trade_at).total_seconds()
+        depth_age = (instant - depth_observed_at).total_seconds()
+        if (
+            trade_age < -2 or depth_age < -2
+            or trade_age > max_trade_age_seconds
+            or depth_age > max_depth_age_seconds
+            or captured_at - last_trade_at > timedelta(seconds=max_trade_age_seconds)
+            or captured_at - depth_observed_at > timedelta(seconds=max_depth_age_seconds)
+            or depth_observed_at > captured_at + timedelta(seconds=2)
+        ):
+            return None
+        for key in ("trade_count", "delta_ratio"):
+            value = flow.get(key)
+            if isinstance(value, bool) or not math.isfinite(float(value)):
+                return None
+        if float(flow.get("trade_count")) < 1 or not -1 <= float(flow.get("delta_ratio")) <= 1:
+            return None
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+    # Flatten only the stored, verified feature fields expected by the pattern
+    # classifier. Keep source provenance and exact observation timing attached.
+    aligned = dict(flow)
+    aligned.update({
+        "market_type": payload.get("market_type"),
+        "data_provenance": provenance,
+        "depth_age_seconds": max(0.0, depth_age),
+        "trade_data_age_seconds": max(0.0, trade_age),
+        "captured_at": captured_at.isoformat(),
+        "snapshot_age_seconds": max(0.0, elapsed),
+        "observation_minute": candle_start.isoformat(),
+    })
+    return aligned
+
+
+def get_recent_trade_count_baseline(
+    symbol: str,
+    *,
+    now=None,
+    lookback_minutes: int = 30,
+) -> float | None:
+    """Return a median only from at least five consecutive prior UTC minute samples."""
     from datetime import datetime, timedelta, timezone
     from statistics import median
     from .order_flow_recorder import load_order_flow_observations
 
     instant = now or datetime.now(timezone.utc)
-    if instant.tzinfo is None or instant.utcoffset() is None:
+    if not isinstance(instant, datetime) or instant.tzinfo is None or instant.utcoffset() is None:
         raise ValueError("now must be timezone-aware.")
+    instant = instant.astimezone(timezone.utc)
     if isinstance(lookback_minutes, bool) or not isinstance(lookback_minutes, int) or not 5 <= lookback_minutes <= 240:
         raise ValueError("lookback_minutes must be between 5 and 240.")
+
+    # Exclude the currently forming minute. The newest acceptable baseline
+    # observation is the immediately preceding UTC minute.
+    window_end = instant.replace(second=0, microsecond=0)
+    expected_latest_bucket = int(window_end.timestamp()) // 60 - 1
     db = SessionLocal()
     try:
         rows = load_order_flow_observations(
-            db, symbol, instant - timedelta(minutes=lookback_minutes), instant,
+            db, str(symbol).strip().upper(),
+            window_end - timedelta(minutes=lookback_minutes), window_end,
             limit=min(500, lookback_minutes + 5),
         )
     finally:
         db.close()
-    counts = []
+
+    counts_by_bucket: dict[int, float] = {}
     for row in rows:
+        storage = row.get("storage") if isinstance(row, dict) else None
         flow = row.get("order_flow") if isinstance(row, dict) else None
-        value = flow.get("trade_count") if isinstance(flow, dict) else None
-        if isinstance(value, bool):
+        if not isinstance(storage, dict) or not isinstance(flow, dict):
+            continue
+        bucket = storage.get("sample_bucket")
+        value = flow.get("trade_count")
+        if isinstance(bucket, bool) or not isinstance(bucket, int) or isinstance(value, bool):
             continue
         try:
             count = float(value)
         except (TypeError, ValueError, OverflowError):
             continue
         if math.isfinite(count) and count > 0:
-            counts.append(count)
-    if len(counts) < 5:
+            counts_by_bucket[bucket] = count
+
+    consecutive: list[float] = []
+    for offset in range(lookback_minutes):
+        bucket = expected_latest_bucket - offset
+        count = counts_by_bucket.get(bucket)
+        if count is None:
+            break
+        consecutive.append(count)
+    if len(consecutive) < 5:
         return None
-    return float(median(counts[-lookback_minutes:]))
+    return float(median(consecutive))
 
 
 def _load_symbols() -> list[str]:

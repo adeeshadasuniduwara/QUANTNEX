@@ -2,6 +2,13 @@ name: QUANTNEX Live Crypto Signal Smoke
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/smoke_signal_engine.py"
+      - "backend/app/binance_usdm_market_data.py"
+      - "backend/app/binance_usdm_signal_engine.py"
+      - ".github/workflows/live-signal-smoke.yml"
   schedule:
     - cron: "17 1 * * *"
 
@@ -10,7 +17,7 @@ permissions:
 
 jobs:
   live-crypto-smoke:
-    name: Read-only public crypto signal scan
+    name: Read-only Binance Spot and USDⓈ-M smoke scan
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:

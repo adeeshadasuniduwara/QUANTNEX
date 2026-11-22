@@ -3,11 +3,13 @@ from app.binance_usdm_order_flow import normalize_usdm_depth_update
 from app.binance_usdm_order_flow_stream import BinanceUsdmOrderFlowStream, UsdmStreamError
 
 def _depth(first, last, previous, *, bids=None, asks=None):
+    import time
+    event_ms=int(time.time()*1000)
     return normalize_usdm_depth_update(
         "BTCUSDT",
-        {"U":first,"u":last,"pu":previous,"E":1700000000000,
+        {"U":first,"u":last,"pu":previous,"E":event_ms,
          "b":bids or [],"a":asks or []},
-        received_at_ms=1700000000001,
+        received_at_ms=event_ms+1,
     )
 
 def test_usdm_stream_requires_snapshot_bridge_then_contiguous_pu_chain():

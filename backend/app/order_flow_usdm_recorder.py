@@ -1,6 +1,7 @@
 """Isolated raw-event archive for Binance USDⓈ-M Futures Order Flow."""
 from __future__ import annotations
 import json
+import math
 import re
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.exc import IntegrityError
@@ -42,7 +43,7 @@ def _validate_event(event):
             next_funding = int(payload["T"])
         except (KeyError, TypeError, ValueError, OverflowError):
             raise UsdmRawEventError("Futures mark-price event is missing required fields.") from None
-        if not all(map(__import__("math").isfinite, (mark, index, funding))) or mark <= 0 or index <= 0 or next_funding <= 0:
+        if not all(map(math.isfinite, (mark, index, funding))) or mark <= 0 or index <= 0 or next_funding <= 0:
             raise UsdmRawEventError("Futures mark-price values are invalid.")
     if kind == "forceOrder":
         order = payload.get("o")
@@ -50,7 +51,7 @@ def _validate_event(event):
             side = str(order["S"]).upper()
             qty, price, avg, filled = (float(order[key]) for key in ("q", "p", "ap", "z"))
             trade_ms = int(order["T"])
-        except (KeyError, TypeError, ValueError, OverflowError, TypeError):
+        except (KeyError, TypeError, ValueError, OverflowError):
             raise UsdmRawEventError("Futures force-order event is missing required fields.") from None
         if (not isinstance(order, dict) or str(order.get("s") or "").upper() != symbol
                 or side not in {"BUY", "SELL"} or trade_ms <= 0

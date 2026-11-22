@@ -158,7 +158,7 @@ def test_recorder_prunes_only_by_received_time_retention_window(db):
     later_events[2]["received_at_ms"] += 2 * 86_400_000
     later_events[2]["payload"]["lastUpdateId"] += 10
     later_now = datetime.fromtimestamp((later_events[0]["received_at_ms"] + 1000) / 1000, timezone.utc)
-    record_order_flow_market_events(db, later_events, now=later_now, retention_days=1)
+    record_order_flow_market_events(db, later_events, now=later_now, retention_days=1, prune_before=later_now.replace(microsecond=0) - __import__("datetime").timedelta(days=1))
     assert db.query(OrderFlowMarketEvent).count() == 3
 
 

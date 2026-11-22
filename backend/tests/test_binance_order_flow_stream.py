@@ -192,3 +192,9 @@ def test_stream_raw_event_queue_fails_closed_on_overflow():
     second = trade(702, 100, 1, now, False)
     with pytest.raises(BinanceSpotOrderFlowStreamError, match="queue overflowed"):
         asyncio.run(stream._apply_trade_row(object(), second))
+    assert stream.capture_gap_detected is True
+    assert stream.drain_capture_events(limit=8)[0]["event_type"] == "aggTrade"
+    marker = stream.drain_capture_events(limit=8)
+    assert len(marker) == 1
+    assert marker[0]["event_type"] == "captureGap"
+    assert marker[0]["payload"]["reason"] == "RAW_CAPTURE_QUEUE_OVERFLOW"

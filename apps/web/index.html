@@ -252,26 +252,6 @@
           </table>
         </div>
       </section>
-      <section class="qx-chart-intelligence qx-collapsible-panel" aria-live="polite" aria-label="Live chart intelligence">
-        <div class="qx-collapsible-heading">
-          <div><strong>LIVE SIGNAL SHEET</strong><small>Structure, confirmations and confluence · live updates continue while hidden</small></div>
-          <button class="secondary-btn compact-btn" id="qxChartSignalSheetToggle" type="button" aria-expanded="false" aria-controls="qxChartSignalSheetContent">Expand</button>
-        </div>
-        <div id="qxChartSignalSheetContent" hidden>
-        <div><div class="qx-chart-intelligence-head"><strong>LIVE STRUCTURE &amp; CONFIRMATIONS</strong><small id="qxChartIntelState">SCANNING</small></div>
-          <p class="qx-chart-intel-summary" id="qxChartIntelSummary">Waiting for market confirmation…</p><div class="qx-confidence" id="qxConfidenceMeter" aria-label="Rule confluence meter"><div class="qx-confidence-track"><span id="qxConfidenceFill"></span></div><small id="qxConfidenceLabel">0 / 20 rule matches · not a win probability</small></div>
-          <div class="qx-chart-overlay-options">
-            <label><input type="checkbox" id="qxOverlayStructure" checked> Structure &amp; sweeps</label>
-            <label><input type="checkbox" id="qxOverlayZones" checked> OB / BB / FVG zones</label>
-            <label><input type="checkbox" id="qxOverlaySR" checked> Support / resistance</label>
-          </div>
-        </div>
-        <div class="qx-chart-intel-metrics" id="qxChartIntelMetrics">
-          <div class="qx-chart-intel-metric"><span>RSI</span><strong>—</strong></div><div class="qx-chart-intel-metric"><span>ADX</span><strong>—</strong></div>
-          <div class="qx-chart-intel-metric"><span>Structure</span><strong>—</strong></div><div class="qx-chart-intel-metric"><span>Liquidity</span><strong>—</strong></div>
-        </div>
-        </div>
-      </section>
       <section class="qx-orderflow-toolkit" id="qxOrderFlowToolkit" aria-label="Order Flow and Liquidity Toolkit">
         <div class="qx-orderflow-heading">
           <div><span class="qx-orderflow-kicker">QUANTNEX VIEW · MARKET MICROSTRUCTURE</span><h3>Order Flow &amp; Liquidity Toolkit</h3><p>Live Binance Spot liquidity tools linked to the market and timeframe selected above.</p></div>
@@ -557,18 +537,17 @@
           <span class="overline">OFFICIAL GITHUB SOURCE UPDATES</span>
           <h3>Keep your workspace current.</h3>
           <div class="release-version-row"><span>Installed version <strong id="webInstalledVersion">Unknown</strong></span><span>Latest version <strong id="webReleaseVersion">Not checked</strong></span></div>
-          <p id="webUpdateStatus">Check GitHub to find the latest QUANTNEX update.</p>
+          <p id="webUpdateStatus">Open this tab to check the latest source update. Background updates run automatically every 30 minutes.</p>
           <div class="web-update-details" id="webUpdateDetails" hidden><div class="web-update-details-heading">WHAT’S NEW</div><p id="webUpdateSummary"></p><ul id="webUpdateChanges"></ul><small id="webUpdateMeta"></small></div>
           <div class="update-progress" id="webUpdateProgress" hidden><span></span></div>
           <div class="update-actions">
-            <button class="secondary-btn" id="webCheckUpdate">Check for updates</button>
             <button class="primary-btn" id="webInstallUpdate" hidden>Download &amp; install now</button>
             <a class="secondary-btn link-btn" id="webDownloadReleaseZip" href="#" target="_blank" rel="noreferrer" hidden>Download latest release ZIP</a>
             <a class="secondary-btn link-btn" id="webReleaseNotes" href="https://github.com/adeeshadasuniduwara/QUANTNEX/commits/main" target="_blank" rel="noreferrer">View source commit</a>
             <a class="secondary-btn link-btn" href="https://github.com/adeeshadasuniduwara/QUANTNEX/archive/refs/heads/main.zip" target="_blank" rel="noreferrer">Download current source ZIP</a>
           </div>
           <div class="release-assets" id="webReleaseAssets" hidden></div>
-          <p class="update-manual-note">QUANTNEX checks GitHub on startup and every five minutes while the workspace is open. A newer main-branch commit is downloaded automatically from its pinned SHA, backed up, and installed with rollback on failure. If your personal Telegram bot is connected, it receives a message after the update succeeds. The local supervisor updates the Web and Backend source together; Android APK releases are handled separately by the Android app. Your local database and settings stay separate.</p>
+          <p class="update-manual-note">QUANTNEX checks for the latest source revision when you open this Updates tab. The local supervisor independently checks for updates every 30 minutes and installs the newest verified main-branch snapshot safely. A newer main-branch commit is downloaded automatically from its pinned SHA, backed up, and installed with rollback on failure. If your personal Telegram bot is connected, it receives a message after the update succeeds. The local supervisor updates the Web and Backend source together; Android APK releases are handled separately by the Android app. Your local database and settings stay separate.</p>
         </div>
         <span class="pill">OFFICIAL</span>
       </section>

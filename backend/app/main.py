@@ -1609,6 +1609,24 @@ def usdm_order_flow_snapshot(symbol: str, user: User = Depends(local_workspace))
     }
 
 
+@app.get("/api/v1/order-flow/futures/{symbol}/derivatives")
+async def usdm_order_flow_derivatives(
+    symbol: str, oi_period: str = "5m", oi_limit: int = 30,
+    user: User = Depends(local_workspace),
+):
+    """Read-only funding, mark/index basis and bounded open-interest context."""
+    from .binance_usdm_derivatives import fetch_usdm_derivatives_snapshot, UsdmDerivativesError
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=3.0), follow_redirects=True) as client:
+            return await fetch_usdm_derivatives_snapshot(
+                client, symbol, oi_period=oi_period, oi_limit=oi_limit,
+            )
+    except UsdmDerivativesError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="Binance USD-M Futures derivatives data is temporarily unavailable.") from exc
+
+
 @app.get("/api/v1/order-flow/futures/{symbol}/footprint")
 def recorded_usdm_order_flow_footprint(
     symbol: str, start_ms: int, end_ms: int, price_step: str,

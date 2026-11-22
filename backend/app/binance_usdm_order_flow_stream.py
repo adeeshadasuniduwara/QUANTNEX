@@ -127,12 +127,29 @@ class BinanceUsdmOrderFlowStream:
             response = await client.get(REST_DEPTH, params={"symbol":self.symbol,"limit":1000})
             response.raise_for_status()
             snapshot = response.json()
-            if not isinstance(snapshot, dict) or not isinstance(snapshot.get("lastUpdateId"), int):
+            if (not isinstance(snapshot, dict) or isinstance(snapshot.get("lastUpdateId"), bool)
+                    or not isinstance(snapshot.get("lastUpdateId"), int) or snapshot["lastUpdateId"] < 0):
                 raise UsdmStreamError("Invalid USDⓈ-M Futures REST depth snapshot.")
+            def snapshot_side(rows):
+                if not isinstance(rows, list):
+                    raise UsdmStreamError("Futures REST snapshot side must be an array.")
+                result = {}
+                for level in rows:
+                    if not isinstance(level, (list, tuple)) or len(level) < 2:
+                        raise UsdmStreamError("Malformed Futures REST snapshot price level.")
+                    try:
+                        price, quantity = float(level[0]), float(level[1])
+                    except (TypeError, ValueError, OverflowError):
+                        raise UsdmStreamError("Non-numeric Futures REST snapshot level.") from None
+                    if not math.isfinite(price) or not math.isfinite(quantity) or price <= 0 or quantity < 0:
+                        raise UsdmStreamError("Out-of-range Futures REST snapshot level.")
+                    if quantity > 0:
+                        result[price] = quantity
+                return result
             self.snapshot_update_id = snapshot["lastUpdateId"]
             self.last_update_id = None
-            self.bids = {float(p):float(q) for p,q in snapshot.get("bids",[]) if float(q)>0}
-            self.asks = {float(p):float(q) for p,q in snapshot.get("asks",[]) if float(q)>0}
+            self.bids = snapshot_side(snapshot.get("bids"))
+            self.asks = snapshot_side(snapshot.get("asks"))
             deadline = time.monotonic() + 10
             while not stop_event.is_set() and not self.sequence_valid:
                 remaining = deadline-time.monotonic()

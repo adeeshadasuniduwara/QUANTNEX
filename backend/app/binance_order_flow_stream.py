@@ -17,6 +17,7 @@ import inspect
 import json
 import math
 import random
+import uuid
 from collections import deque
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -132,6 +133,9 @@ class BinanceSpotOrderFlowStream:
         self.trade_state = AggTradeCvdState(self.symbol)
         self.depth_book = BinanceSpotDepthBook()
         self.recent_trades: deque[dict[str, Any]] = deque(maxlen=max_recent_trades)
+        self.capture_events: deque[dict[str, Any]] = deque()
+        self.stream_session_id = uuid.uuid4().hex
+        self.capture_rejected_events = 0
         self._recent_trade_ids: set[int] = set()
         self.trade_source: str | None = None
         self.depth_source: str | None = None
@@ -154,6 +158,34 @@ class BinanceSpotOrderFlowStream:
             self._recent_trade_ids.discard(int(oldest["a"]))
         self.recent_trades.append(dict(row))
         self._recent_trade_ids.add(trade_id)
+
+    def _queue_capture_event(self, event_type: str, payload: dict[str, Any], source: str) -> None:
+        if len(self.capture_events) >= self.max_buffered_events:
+            raise BinanceSpotOrderFlowStreamError("Raw Order Flow capture queue overflowed; event continuity cannot be guaranteed.")
+        stamp = payload.get("T") if event_type == "aggTrade" else payload.get("E")
+        try:
+            event_time_ms = int(stamp)
+        except (TypeError, ValueError, OverflowError):
+            self.capture_rejected_events += 1
+            return
+        if event_time_ms <= 0:
+            self.capture_rejected_events += 1
+            return
+        self.capture_events.append({
+            "symbol": self.symbol, "event_type": event_type,
+            "event_time_ms": event_time_ms,
+            "received_at_ms": int(datetime.now(timezone.utc).timestamp() * 1000),
+            "source": source, "stream_session_id": self.stream_session_id,
+            "payload": dict(payload),
+        })
+
+    def drain_capture_events(self, limit: int = 256) -> list[dict[str, Any]]:
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 2048:
+            raise ValueError("Capture drain limit must be between 1 and 2048.")
+        batch = []
+        while self.capture_events and len(batch) < limit:
+            batch.append(self.capture_events.popleft())
+        return batch
 
     async def _fetch_public(
         self,
@@ -199,6 +231,7 @@ class BinanceSpotOrderFlowStream:
                     continue
                 if before is not None and before < row_id <= (after if after is not None else before):
                     self._remember_trade(row)
+                    self._queue_capture_event("aggTrade", row, "REST_GAP_BACKFILL")
             self.trade_source = source
             if result == "RECOVERED":
                 return
@@ -208,7 +241,7 @@ class BinanceSpotOrderFlowStream:
             f"Aggregate-trade gap remains after {self.max_backfill_pages} bounded backfill pages."
         )
 
-    async def _apply_trade_row(self, client: httpx.AsyncClient, row: dict[str, Any]) -> str:
+    async def _apply_trade_row(self, client: httpx.AsyncClient, row: dict[str, Any], *, source: str = "WEBSOCKET") -> str:
         if not isinstance(row, dict):
             raise BinanceSpotOrderFlowStreamError("Aggregate-trade event is not an object.")
         if row.get("s") is not None and str(row.get("s")).upper() != self.symbol:
@@ -227,12 +260,14 @@ class BinanceSpotOrderFlowStream:
             return "RECOVERED_GAP"
         if result == "APPLIED":
             self._remember_trade(row)
+            self._queue_capture_event("aggTrade", row, source)
         return result
 
     def _apply_depth_event(self, event: dict[str, Any]) -> str:
         result = self.depth_book.apply_diff(event)
         if result == "APPLIED":
             self.depth_observed_at = datetime.now(timezone.utc)
+            self._queue_capture_event("depthUpdate", event, "WEBSOCKET")
             return result
         if result == "DUPLICATE":
             return result
@@ -285,9 +320,9 @@ class BinanceSpotOrderFlowStream:
                 first = trades[0]
                 self.trade_state.begin_stream_seed(first.get("a"), first.get("T"))
             for row in trades:
-                await self._apply_trade_row(client, row)
+                await self._apply_trade_row(client, row, source="REST_BOOTSTRAP")
             for row in buffered_trades:
-                await self._apply_trade_row(client, row)
+                await self._apply_trade_row(client, row, source="WEBSOCKET_BUFFER")
 
             try:
                 bridge_result = self.depth_book.load_snapshot(
@@ -305,6 +340,12 @@ class BinanceSpotOrderFlowStream:
             self.trade_source = trade_source
             self.depth_source = depth_source
             self.depth_observed_at = datetime.now(timezone.utc)
+            self._queue_capture_event("depthSnapshot", {
+                "lastUpdateId": depth["lastUpdateId"],
+                "bids": depth["bids"], "asks": depth["asks"],
+            }, "REST_BOOTSTRAP")
+            for depth_event in buffered_depth:
+                self._queue_capture_event("depthUpdate", depth_event, "WEBSOCKET_BUFFER")
             return recv_task
         except Exception:
             for task in (trade_task, depth_task, recv_task):
@@ -433,6 +474,7 @@ class BinanceSpotOrderFlowStream:
                     max_size=1_048_576,
                     max_queue=256,
                 ) as websocket:
+                    self.stream_session_id = uuid.uuid4().hex
                     self.status = "BOOTSTRAPPING"
                     recv_task = await self._bootstrap(websocket, client)
                     self.last_error = None

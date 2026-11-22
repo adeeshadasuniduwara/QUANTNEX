@@ -154,5 +154,40 @@ class LauncherRuntimeTests(unittest.TestCase):
         self.assertEqual(second.value, "diagnostic")
 
 
+class StaggeredUpdateScheduleTests(unittest.TestCase):
+    def test_scheduler_accepts_legacy_float_deadline_without_crashing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            schedule = Path(directory) / "last_scheduled_check.json"
+            with patch.object(launcher, "UPDATE_SCHEDULE_FILE", schedule):
+                with patch.object(launcher.time, "time", return_value=1_000_000):
+                    schedule.write_text("1000300.0", encoding="utf-8")
+                    self.assertFalse(launcher._scheduled_update_due())
+                with patch.object(launcher.time, "time", return_value=1_000_400):
+                    self.assertTrue(launcher._scheduled_update_due())
+
+    def test_scheduler_writes_json_state_and_deadline_to_separate_files(self):
+        import json
+        with tempfile.TemporaryDirectory() as directory:
+            schedule = Path(directory) / "last_scheduled_check.json"
+            with patch.object(launcher, "UPDATE_SCHEDULE_FILE", schedule):
+                with patch.object(launcher.time, "time", return_value=2_000_000):
+                    with patch.object(launcher.random, "uniform", return_value=60):
+                        launcher._mark_scheduled_update_check()
+            state = json.loads(schedule.read_text(encoding="utf-8"))
+            self.assertEqual(state["last_check_epoch"], 2_000_000)
+            self.assertEqual(state["next_check_after_seconds"], launcher.UPDATE_INTERVAL_SECONDS + 60)
+            deadline = float(schedule.with_suffix(".deadline").read_text(encoding="utf-8"))
+            self.assertEqual(deadline, 2_000_000 + launcher.UPDATE_INTERVAL_SECONDS + 60)
+            self.assertIsInstance(state, dict)
+
+    def test_scheduler_keeps_legacy_json_metadata_compatible(self):
+        with tempfile.TemporaryDirectory() as directory:
+            schedule = Path(directory) / "last_scheduled_check.json"
+            with patch.object(launcher, "UPDATE_SCHEDULE_FILE", schedule):
+                with patch.object(launcher.time, "time", return_value=1_000_000):
+                    schedule.write_text('{"last_check_epoch": 999800}', encoding="utf-8")
+                    self.assertFalse(launcher._scheduled_update_due())
+
+
 if __name__ == "__main__":
     unittest.main()

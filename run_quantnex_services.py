@@ -189,29 +189,37 @@ def mark_source_update_confirmed() -> None:
 
 
 def _scheduled_update_due() -> bool:
-    """Check every five minutes with per-install jitter to spread GitHub traffic."""
+    """Read the staggered deadline, including files written by the older buggy updater."""
+    deadline_path = UPDATE_SCHEDULE_FILE.with_suffix(".deadline")
     try:
-        deadline = float(UPDATE_SCHEDULE_FILE.with_suffix(".deadline").read_text(encoding="utf-8"))
+        deadline = float(deadline_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         try:
-            state = json.loads(UPDATE_SCHEDULE_FILE.read_text(encoding="utf-8"))
-            deadline = float(state.get("last_check_epoch", 0)) + UPDATE_INTERVAL_SECONDS
-        except (OSError, ValueError, TypeError):
+            raw_state = json.loads(UPDATE_SCHEDULE_FILE.read_text(encoding="utf-8"))
+            if isinstance(raw_state, dict):
+                deadline = float(raw_state.get("last_check_epoch", 0)) + UPDATE_INTERVAL_SECONDS
+            elif isinstance(raw_state, (int, float)) and not isinstance(raw_state, bool):
+                # Older builds accidentally wrote the absolute deadline here.
+                deadline = float(raw_state)
+            else:
+                deadline = 0.0
+        except (OSError, ValueError, TypeError, OverflowError):
             deadline = 0.0
     return time.time() >= deadline
 
 
 def _mark_scheduled_update_check() -> None:
-    """Persist a randomized next-check deadline so clients do not poll together."""
+    """Persist schedule metadata and its absolute deadline in separate files."""
     UPDATE_SCHEDULE_FILE.parent.mkdir(parents=True, exist_ok=True)
     checked_at = time.time()
     delay = UPDATE_INTERVAL_SECONDS + random.uniform(0, UPDATE_JITTER_SECONDS)
     temporary = UPDATE_SCHEDULE_FILE.with_suffix(".tmp")
     temporary.write_text(json.dumps({"last_check_epoch": checked_at, "next_check_after_seconds": delay}), encoding="utf-8")
     os.replace(temporary, UPDATE_SCHEDULE_FILE)
-    deadline_tmp = UPDATE_SCHEDULE_FILE.with_suffix(".deadline.tmp")
+    deadline_path = UPDATE_SCHEDULE_FILE.with_suffix(".deadline")
+    deadline_tmp = deadline_path.with_suffix(".deadline.tmp")
     deadline_tmp.write_text(str(checked_at + delay), encoding="utf-8")
-    os.replace(deadline_tmp, UPDATE_SCHEDULE_FILE)
+    os.replace(deadline_tmp, deadline_path)
 
 
 

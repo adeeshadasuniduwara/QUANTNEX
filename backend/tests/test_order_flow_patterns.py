@@ -13,6 +13,7 @@ def snapshot(delta_ratio, depth_imbalance, trade_count=100):
         "trade_count": trade_count,
         "trade_data_age_seconds": 1.0,
         "last_trade_at": "2026-11-21T12:00:05+00:00",
+        "depth_observed_at": "2026-11-21T12:00:05+00:00",
         "depth_age_seconds": 1.0,
         "order_book": {"depth_imbalance": depth_imbalance},
     }
@@ -99,3 +100,44 @@ def test_pattern_classifier_skips_when_candle_and_exchange_trades_are_from_diffe
     )
     assert result["status"] == "NOT_ALIGNED"
     assert result["accepted_for_side"] is True
+
+def test_pattern_classifier_requires_both_exchange_trade_and_depth_timestamps():
+    observed = snapshot(-0.55, 0.30)
+    observed.pop("last_trade_at")
+    result = detect_order_flow_patterns(
+        "BUY",
+        {"time": "2026-11-21T12:00:00+00:00", "open": 100, "high": 103, "low": 99, "close": 102.5},
+        observed,
+    )
+    assert result["status"] == "NOT_ALIGNED"
+    assert result["accepted_for_side"] is True
+
+    observed = snapshot(-0.55, 0.30)
+    observed.pop("depth_observed_at")
+    result = detect_order_flow_patterns(
+        "BUY",
+        {"time": "2026-11-21T12:00:00+00:00", "open": 100, "high": 103, "low": 99, "close": 102.5},
+        observed,
+    )
+    assert result["status"] == "NOT_ALIGNED"
+
+
+def test_pattern_classifier_rejects_naive_or_cross_minute_depth_timestamps():
+    naive = snapshot(-0.55, 0.30)
+    naive["depth_observed_at"] = "2026-11-21T12:00:05"
+    result = detect_order_flow_patterns(
+        "BUY",
+        {"time": "2026-11-21T12:00:00+00:00", "open": 100, "high": 103, "low": 99, "close": 102.5},
+        naive,
+    )
+    assert result["status"] == "NOT_ALIGNED"
+
+    crossed = snapshot(-0.55, 0.30)
+    crossed["depth_observed_at"] = "2026-11-21T12:01:05+00:00"
+    result = detect_order_flow_patterns(
+        "BUY",
+        {"time": "2026-11-21T12:00:00+00:00", "open": 100, "high": 103, "low": 99, "close": 102.5},
+        crossed,
+    )
+    assert result["status"] == "NOT_ALIGNED"
+

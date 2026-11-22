@@ -81,7 +81,12 @@ def build_order_flow_footprint(events: list[dict[str, Any]], *, price_step: str 
         for side in ("buy_imbalance","sell_imbalance"):
             run = []
             for row in sorted(candle["levels"], key=lambda x: Decimal(x["price"])):
-                if row[side]: run.append(row)
+                if row[side]:
+                    price = Decimal(row["price"])
+                    if run and price - Decimal(run[-1]["price"]) != step:
+                        if len(run) >= 3: stacked.append({"open_time_ms":candle["open_time_ms"],"side":side.replace("_imbalance","").upper(),"levels":[x["price"] for x in run],"count":len(run)})
+                        run = []
+                    run.append(row)
                 else:
                     if len(run) >= 3: stacked.append({"open_time_ms":candle["open_time_ms"],"side":side.replace("_imbalance","").upper(),"levels":[x["price"] for x in run],"count":len(run)})
                     run=[]

@@ -403,6 +403,26 @@ class BinanceSpotOrderFlowStream:
         except Exception as exc:
             self.callback_error = f"{type(exc).__name__}: {exc}"
 
+    async def _notify_event(self, callback: Callable[[dict[str, Any]], Any] | None, kind: str, event: dict[str, Any], *, continuity_validated: bool) -> None:
+        if callback is None:
+            return
+        event_time_ms = event.get("T") if kind == "aggTrade" else event.get("E")
+        try:
+            payload = {
+                "market_type": "BINANCE_SPOT",
+                "symbol": self.symbol,
+                "event_type": kind,
+                "event_time_ms": int(event_time_ms),
+                "received_at_epoch_ms": int(datetime.now(timezone.utc).timestamp() * 1000),
+                "payload": dict(event),
+                "continuity_validated": continuity_validated,
+            }
+            result = callback(payload)
+            if inspect.isawaitable(result):
+                await result
+        except Exception as exc:
+            self.callback_error = f"raw-event callback: {type(exc).__name__}: {exc}"
+
     def _backoff(self, attempt: int) -> float:
         base = min(
             self.reconnect_max_seconds,
@@ -416,6 +436,7 @@ class BinanceSpotOrderFlowStream:
         client: httpx.AsyncClient,
         stop_event: asyncio.Event,
         on_update: Callable[[dict[str, Any]], Any] | None = None,
+        on_event: Callable[[dict[str, Any]], Any] | None = None,
     ) -> None:
         """Run until stopped; reconnect with bounded jitter and fail closed."""
         attempt = 0
@@ -453,9 +474,20 @@ class BinanceSpotOrderFlowStream:
                             kind, event = _decode_combined_event(raw, self.symbol)
                             self.last_message_at = datetime.now(timezone.utc)
                             if kind == "aggTrade":
-                                await self._apply_trade_row(client, event)
+                                trade_result = await self._apply_trade_row(client, event)
+                                trade_state = self.trade_state.snapshot()
+                                continuity_validated = (
+                                    trade_result in {"APPLIED", "DUPLICATE"}
+                                    and trade_state.get("coverage_complete") is True
+                                    and trade_state.get("gap_detected") is False
+                                )
                             elif kind == "depthUpdate":
                                 self._apply_depth_event(event)
+                                depth_state = self.depth_book.snapshot()
+                                continuity_validated = depth_state.get("sequence_validated") is True
+                            else:
+                                continuity_validated = False
+                            await self._notify_event(on_event, kind, event, continuity_validated=continuity_validated)
                             self.status = "LIVE" if self.snapshot()["signal_ready"] else "DEPTH_BRIDGING"
                             await self._notify(on_update)
                     finally:

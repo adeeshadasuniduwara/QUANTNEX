@@ -415,7 +415,7 @@ async function checkLocalUpdate(options={}){
       renderUpdateDetails(result,false);
       status.textContent="New update detected: "+result.latest+". QUANTNEX is installing it automatically…";
       if(installButton)installButton.hidden=false;
-      // Startup and five-minute background checks install the pinned main commit
+      // Updates-tab checks install the pinned main commit when a newer source revision is available
       // automatically. The existing manual button remains available if a retry is needed.
       await installLatestCommit();
     }else{

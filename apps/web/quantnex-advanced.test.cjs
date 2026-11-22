@@ -28,7 +28,7 @@ assert.ok(app.includes('isWorkspaceViewActive("quantnex-advanced")') && !app.inc
 assert.ok(app.includes('api/v1/order-flow/spot/'), "Moved Order Flow tools must retain the validated Spot endpoint.");
 assert.ok(app.includes('qaSymbol') && app.includes('qaMarketType') && app.includes('qaInterval'), "Order Flow must follow the Advanced chart market and timeframe.");
 assert.ok(css.includes('.qa-workspace-intro'), "Advanced workspace phase header styles must exist.");
-assert.ok(html.includes("PHASE 02") && html.includes("qaRawCaptureStatus"), "Advanced workspace must expose Phase 2 raw archive status.");
+assert.ok(html.includes("PHASE 03") && html.includes("qaRawCaptureStatus"), "Advanced workspace must expose the Phase 3 footprint header and raw archive health status.");
 assert.ok(chart.includes("/api/v1/order-flow/capture-status") && chart.includes("rawCaptureStatusTimer"), "Advanced workspace must poll and display raw capture health.");
 assert.ok(main.includes('/api/v1/order-flow/recorded-events/{symbol}') && main.includes('/api/v1/order-flow/recorded-candles/{symbol}'), "Read-only raw event and candle archive endpoints must be available.");
 assert.ok(recorder.includes("REST_GAP_BACKFILL") && recorder.includes("OBSERVED_PARTIAL_NOT_PROVEN_COMPLETE"), "Recorder must preserve backfill provenance and never claim unproven complete candle coverage.");

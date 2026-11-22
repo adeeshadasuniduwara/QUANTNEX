@@ -147,12 +147,12 @@ def record_order_flow_market_events(db, events: list[dict[str, Any]], *, now: da
             if exists:
                 duplicates += 1
                 continue
-            db.add(row)
             try:
-                db.flush()
+                with db.begin_nested():
+                    db.add(row)
+                    db.flush()
                 stored += 1
             except IntegrityError:
-                db.rollback()
                 duplicates += 1
         db.commit()
     except Exception:

@@ -52,6 +52,25 @@
       const route=market==="BINANCE_USDM_FUTURES"?"/api/v1/order-flow/futures/"+encodeURIComponent(symbol)+"/footprint":"/api/v1/order-flow/footprint/"+encodeURIComponent(symbol);
       const url=route+"?start_ms="+start+"&end_ms="+end+"&price_step="+encodeURIComponent(String(tick))+"&interval_ms="+interval+"&max_levels=250&imbalance_ratio=3";
       const data=await apiRequest(url);
+      const derivativesPanel=$("qaFootprintDerivatives");
+      if(derivativesPanel){
+        derivativesPanel.hidden=market!=="BINANCE_USDM_FUTURES";
+        if(market==="BINANCE_USDM_FUTURES"){
+          const grid=$("qaFootprintDerivativesGrid"),meta=$("qaFootprintDerivativesMeta");
+          try{
+            const derivatives=await apiRequest("/api/v1/order-flow/futures/"+encodeURIComponent(symbol)+"/derivatives?oi_period=5m&oi_limit=12");
+            if(grid){
+              grid.replaceChildren();
+              [["Funding rate",safe(derivatives.funding_rate_pct,5)+"%"],
+               ["Mark / index basis",safe(derivatives.mark_index_basis)+" ("+safe(derivatives.mark_index_basis_pct,5)+"%)"],
+               ["Open interest",safe(derivatives.open_interest,3)],
+               ["OI change",derivatives.open_interest_history?.change_pct==null?"—":safe(derivatives.open_interest_history.change_pct,3)+"%"]]
+                .forEach(([label,value])=>{const article=document.createElement("article"),span=document.createElement("span"),strong=document.createElement("strong");span.textContent=label;strong.textContent=value;article.append(span,strong);grid.append(article);});
+            }
+            if(meta)meta.textContent="USD-M public premium/OI endpoints · funding timestamp "+new Date(derivatives.premium_source_time_ms).toISOString()+" · "+derivatives.interpretation_note;
+          }catch(error){if(meta)meta.textContent="Derivatives context unavailable: "+error.message;}
+        }
+      }
       const rows=$("qaFootprintRows");rows.replaceChildren();
       const flattened=[];
       (data.candles||[]).forEach(candle=>(candle.levels||[]).forEach(level=>flattened.push({time:candle.open_time_ms,...level})));

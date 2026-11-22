@@ -1,6 +1,7 @@
 import asyncio
 from collections import deque
 import pytest
+import time
 from app.binance_usdm_order_flow_manager import BinanceUsdmOrderFlowManager
 from app.binance_usdm_order_flow_stream import UsdmStreamError
 
@@ -20,9 +21,9 @@ def test_usdm_manager_batches_raw_event_persistence(monkeypatch):
         manager=BinanceUsdmOrderFlowManager(symbols=["BTCUSDT"])
         stream=FakeStream()
         manager.streams["BTCUSDT"]=stream
-        manager._last_flush["BTCUSDT"]=10.0
-        clock=[10.1]
-        monkeypatch.setattr("app.binance_usdm_order_flow_manager.time.monotonic",lambda:clock[0])
+        real_monotonic=time.monotonic()
+        manager._last_flush["BTCUSDT"]=real_monotonic
+        monkeypatch.setattr("app.binance_usdm_order_flow_manager.time.monotonic",lambda:real_monotonic+0.1)
         persisted=[]
         monkeypatch.setattr(manager,"_persist",lambda batch:persisted.extend(batch) or {"stored":len(batch)})
         stream.capture_events.append({"event_key":"small"})
@@ -32,6 +33,7 @@ def test_usdm_manager_batches_raw_event_persistence(monkeypatch):
             stream.capture_events.append({"event_key":str(index)})
         await manager._on_update("BTCUSDT",{"status":"LIVE"})
         await asyncio.gather(*list(manager._persist_tasks))
+        await asyncio.sleep(0)
         assert len(persisted)==65
         assert manager.persisted_events==65
     asyncio.run(run())

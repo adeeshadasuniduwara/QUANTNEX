@@ -185,7 +185,7 @@ class StaggeredUpdateScheduleTests(unittest.TestCase):
             schedule = Path(directory) / "last_scheduled_check.json"
             with patch.object(launcher, "UPDATE_SCHEDULE_FILE", schedule):
                 with patch.object(launcher.time, "time", return_value=1_000_000):
-                    schedule.write_text('{"last_check_epoch": 999700}', encoding="utf-8")
+                    schedule.write_text('{"last_check_epoch": 999800}', encoding="utf-8")
                     self.assertFalse(launcher._scheduled_update_due())
 
 

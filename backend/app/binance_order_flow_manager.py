@@ -230,6 +230,56 @@ class BinanceSpotOrderFlowManager:
         finally:
             db.close()
 
+    def _enqueue_raw_event(self, event: dict[str, Any]) -> None:
+        try:
+            self._raw_event_queue.put_nowait(event)
+        except asyncio.QueueFull:
+            self._raw_event_dropped += 1
+            self._raw_event_last_error = "RAW_EVENT_BACKPRESSURE: queue full; candle coverage is incomplete."
+
+    def _persist_raw_events(self, events: list[dict[str, Any]], prune_before_epoch_ms: int | None) -> dict[str, Any]:
+        db = SessionLocal()
+        try:
+            return record_raw_order_flow_events(db, events, prune_before_epoch_ms=prune_before_epoch_ms)
+        finally:
+            db.close()
+
+    async def _raw_event_worker(self) -> None:
+        while not self._raw_event_stop.is_set() or not self._raw_event_queue.empty():
+            batch: list[dict[str, Any]] = []
+            try:
+                batch.append(await asyncio.wait_for(self._raw_event_queue.get(), timeout=0.5))
+            except asyncio.TimeoutError:
+                continue
+            while len(batch) < MAX_BATCH_EVENTS:
+                try:
+                    batch.append(self._raw_event_queue.get_nowait())
+                except asyncio.QueueEmpty:
+                    break
+            now = time.monotonic()
+            prune_before = None
+            if self._last_raw_prune_monotonic is None or now - self._last_raw_prune_monotonic >= 3600:
+                prune_before = int((datetime.now(timezone.utc) - timedelta(days=RAW_EVENT_RETENTION_DAYS)).timestamp() * 1000)
+                self._last_raw_prune_monotonic = now
+            try:
+                await asyncio.to_thread(self._persist_raw_events, batch, prune_before)
+                self._raw_event_last_saved_at = datetime.now(timezone.utc).isoformat()
+                self._raw_event_last_error = None
+            except Exception as exc:
+                self._raw_event_failed += len(batch)
+                self._raw_event_last_error = f"{type(exc).__name__}: {exc}"
+            finally:
+                for _ in batch:
+                    self._raw_event_queue.task_done()
+
+    def raw_capture_status(self) -> dict[str, Any]:
+        return {"enabled": True, "market_type": "BINANCE_SPOT", "event_types": ["aggTrade", "depthUpdate"],
+                "candle_alignment": "UTC_1_MINUTE", "retention_days": RAW_EVENT_RETENTION_DAYS,
+                "batch_size": MAX_BATCH_EVENTS, "queue_capacity": self._raw_event_queue.maxsize,
+                "pending_events": self._raw_event_queue.qsize(), "dropped_events": self._raw_event_dropped,
+                "failed_events": self._raw_event_failed, "last_saved_at": self._raw_event_last_saved_at,
+                "last_error": self._raw_event_last_error, "data_is_exchange_native": True,
+                "historical_backfill_included": False}
     def _capture_finished(self, task: asyncio.Task) -> None:
         self._capture_tasks.discard(task)
         if task.cancelled():

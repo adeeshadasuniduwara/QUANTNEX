@@ -1,0 +1,28 @@
+const fs = require("node:fs");
+const assert = require("node:assert/strict");
+const html = fs.readFileSync("apps/web/index.html", "utf8");
+const app = fs.readFileSync("apps/web/app.js", "utf8");
+const chart = fs.readFileSync("apps/web/quantnex-advanced-chart.js", "utf8");
+const viewChart = fs.readFileSync("apps/web/quantnex-view-chart.js", "utf8");
+const css = fs.readFileSync("apps/web/quantnex-advanced.css", "utf8");
+
+assert.ok(html.includes('href="#quantnex-advanced">QUANTNEX Advanced</a>'), "Advanced workspace must appear in the sidebar.");
+assert.ok(html.includes('id="quantnex-advanced"'), "Advanced workspace must have a navigation target.");
+assert.ok(html.includes('id="qaChartHost"') && html.includes('id="qaSymbol"') && html.includes('id="qaMarketType"') && html.includes('id="qaInterval"'), "Advanced must have an independent native chart and market selectors.");
+assert.ok(html.includes('id="qxChartHost"'), "Original QUANTNEX VIEW chart must remain available.");
+assert.ok(html.includes('src="quantnex-advanced-chart.js?v=20261122-phase1"'), "Advanced chart engine must be loaded.");
+assert.ok(html.includes('href="quantnex-advanced.css?v=20261122-phase1"'), "Advanced workspace styles must be loaded.");
+const viewStart = html.indexOf('id="tradingview"');
+const advancedStart = html.indexOf('id="quantnex-advanced"');
+const orderFlowStart = html.indexOf('id="qxOrderFlowToolkit"');
+assert.ok(viewStart >= 0 && advancedStart > viewStart && orderFlowStart > advancedStart, "Order Flow toolkit must live after the Advanced workspace boundary, not inside QUANTNEX VIEW.");
+assert.ok(!html.slice(viewStart, advancedStart).includes('id="qxOrderFlowToolkit"'), "QUANTNEX VIEW must not contain the Order Flow toolkit.");
+assert.ok(chart.includes('api/v1/charts/markets') && chart.includes('new WebSocket') && chart.includes('kline_'), "Advanced chart must use the existing market catalogue and live candle WebSocket path.");
+assert.ok(chart.includes('quantnex-advanced') && chart.includes('qaChartHost'), "Advanced chart must only activate in its own workspace.");
+assert.ok(chart.includes('quantnex.advanced.chart.selection.v1') && chart.includes('quantnexAdvancedSetAnalysis'), "Advanced chart storage and global callbacks must be isolated from QUANTNEX VIEW.");
+assert.ok(viewChart.includes('tradingview') && viewChart.includes('qxChartHost'), "Original chart engine must remain independently scoped to QUANTNEX VIEW.");
+assert.ok(app.includes('isWorkspaceViewActive("quantnex-advanced")') && !app.includes('isWorkspaceViewActive("tradingview")'), "Order Flow polling must run only in QUANTNEX Advanced.");
+assert.ok(app.includes('api/v1/order-flow/spot/'), "Moved Order Flow tools must retain the validated Spot endpoint.");
+assert.ok(app.includes('qaSymbol') && app.includes('qaMarketType') && app.includes('qaInterval'), "Order Flow must follow the Advanced chart market and timeframe.");
+assert.ok(css.includes('.qa-workspace-intro'), "Advanced workspace phase header styles must exist.");
+console.log("QUANTNEX Advanced Phase 1 workspace, chart isolation and Order Flow relocation checks passed.");

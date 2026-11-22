@@ -388,18 +388,15 @@ async function checkLocalUpdate(options={}){
       releaseVersionLabel.textContent=result.latest||"GitHub main unavailable";
       if(result.release_notes)releaseNotesLink.href=result.release_notes;
       if(installButton)installButton.hidden=true;
-      if(result.update_available||!silent){
+      if(result.update_available){
         latestUpdateCommit=result.commit_sha||result.latest||"";
         renderUpdateDetails(result,false);
         watchSupervisorUpdate(latestUpdateCommit);
-        if(!silent)status.textContent=result.update_available
-          ?"Update detected. Sending an immediate full-source sync to the QUANTNEX supervisor…"
-          :"Checking the installed source files and repairing anything missing…";
+        status.textContent="New source update detected ("+result.latest+"). The supervisor is preparing the latest verified snapshot…";
         const queued=await fetch("/__quantnex/check-now",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
         const receipt=await queued.json().catch(()=>({}));
-        if(!queued.ok&&queued.status!==409)throw new Error(receipt.error||"The supervisor could not accept the update check.");
-        if(!silent)status.textContent="Full source verification queued for "+result.latest+". QUANTNEX will refresh after the safe check/restart.";
-        else status.textContent=result.message||"A source update is waiting for the supervisor's safe restart.";
+        if(!queued.ok&&queued.status!==409)throw new Error(receipt.error||"The supervisor could not accept the update.");
+        status.textContent="Latest update "+result.latest+" is queued for safe installation.";
       }else{
         latestUpdateCommit="";
         $("webUpdateDetails").hidden=true;

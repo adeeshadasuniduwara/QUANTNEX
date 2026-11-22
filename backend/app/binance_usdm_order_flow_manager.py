@@ -64,7 +64,12 @@ class BinanceUsdmOrderFlowManager:
                 try:
                     result=done.result(); self.persisted_events+=int(result.get("stored",0))
                     self.last_persist_at=datetime.now(timezone.utc).isoformat(); self.last_persist_error=None
-                except Exception as exc: self.last_persist_error=f"{type(exc).__name__}: {exc}"
+                except Exception as exc:
+                    self.last_persist_error=f"{type(exc).__name__}: {exc}"
+                    active=self.streams.get(symbol)
+                    if active is not None:
+                        for event in reversed(batch):
+                            active.capture_events.appendleft(event)
             task.add_done_callback(finished)
 
     async def stop(self):

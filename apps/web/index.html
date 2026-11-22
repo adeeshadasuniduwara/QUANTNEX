@@ -601,7 +601,7 @@
           <span class="overline">OFFICIAL GITHUB SOURCE UPDATES</span>
           <h3>Keep your workspace current.</h3>
           <div class="release-version-row"><span>Installed version <strong id="webInstalledVersion">Unknown</strong></span><span>Latest version <strong id="webReleaseVersion">Not checked</strong></span></div>
-          <p id="webUpdateStatus">Automatic update check: daily at 02:00 Sri Lanka time. You can also check manually.</p>
+          <p id="webUpdateStatus">Automatic update checks run about every 5 minutes, staggered to reduce traffic. You can also check manually.</p>
           <div class="web-update-details" id="webUpdateDetails" hidden><div class="web-update-details-heading">WHAT’S NEW</div><p id="webUpdateSummary"></p><ul id="webUpdateChanges"></ul><small id="webUpdateMeta"></small></div>
           <div class="update-progress" id="webUpdateProgress" hidden><span></span></div>
           <div class="update-actions">
@@ -612,7 +612,7 @@
             <a class="secondary-btn link-btn" href="https://github.com/adeeshadasuniduwara/QUANTNEX/archive/refs/heads/main.zip" target="_blank" rel="noreferrer">Download current source ZIP</a>
           </div>
           <div class="release-assets" id="webReleaseAssets" hidden></div>
-          <p class="update-manual-note">QUANTNEX checks for the latest source revision when you open this Updates tab. The local supervisor automatically checks once daily at 02:00 Asia/Colombo and installs the newest verified main-branch snapshot safely. A newer main-branch commit is downloaded automatically from its pinned SHA, backed up, and installed with rollback on failure. If your personal Telegram bot is connected, it receives a message after the update succeeds. The local supervisor updates the Web and Backend source together; Android APK releases are handled separately by the Android app. Your local database and settings stay separate.</p>
+          <p class="update-manual-note">QUANTNEX checks for the latest source revision when you open this Updates tab. The local supervisor checks about every 5 minutes, with a randomized delay per installation to spread requests, and installs the newest verified main-branch snapshot safely. A newer main-branch commit is downloaded automatically from its pinned SHA, backed up, and installed with rollback on failure. If your personal Telegram bot is connected, it receives a message after the update succeeds. The local supervisor updates the Web and Backend source together; Android APK releases are handled separately by the Android app. Your local database and settings stay separate.</p>
         </div>
         <span class="pill">OFFICIAL</span>
       </section>

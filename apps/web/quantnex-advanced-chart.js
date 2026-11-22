@@ -305,7 +305,7 @@ async function refreshRawCaptureStatus(){
   const count=Number(data.raw_events_last_24h||0);
   const retention=Number(data.raw_event_retention_days||7);
   const manager=data.manager||{};
-  const error=manager.raw_event_error||data.last_error;
+  const error=manager.raw_event_error||data.last_error||(manager.capture_gap_detected?"RAW CAPTURE GAP DETECTED":null);
   target.textContent=error?"RAW ARCHIVE · CAPTURE WARNING · "+String(error).slice(0,100):"RAW ARCHIVE · "+count.toLocaleString()+" EVENTS / 24H · "+retention+"D RETENTION · OBSERVED DATA";
   target.dataset.state=error?"error":"ok";
  }catch(error){target.textContent="RAW ARCHIVE STATUS UNAVAILABLE · "+String(error.message||error).slice(0,80);target.dataset.state="error";}

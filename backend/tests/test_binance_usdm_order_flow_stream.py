@@ -99,3 +99,9 @@ def test_usdm_mark_price_and_force_order_normalizers_reject_bad_payloads():
         normalize_usdm_mark_price("BTCUSDT",{"e":"markPriceUpdate","E":stamp,"s":"ETHUSDT","p":"1","i":"1","r":"0","T":stamp+1},received_at_ms=stamp+1)
     with pytest.raises(FuturesOrderFlowError):
         normalize_usdm_force_order("BTCUSDT",{"e":"forceOrder","E":stamp,"o":{"s":"BTCUSDT","S":"UNKNOWN","o":"LIMIT","q":"1","p":"1","ap":"1","z":"1","T":stamp}},received_at_ms=stamp+1)
+
+
+def test_usdm_stream_subscribes_to_symbol_scoped_mark_and_force_order_channels():
+    stream=BinanceUsdmOrderFlowStream("BTCUSDT")
+    assert "btcusdt@markPrice@1s" in stream.stream_url
+    assert "btcusdt@forceOrder" in stream.stream_url

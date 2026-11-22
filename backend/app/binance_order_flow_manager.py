@@ -299,18 +299,28 @@ class BinanceSpotOrderFlowManager:
         changed_event = asyncio.Event()
 
         last_capture_monotonic: float | None = None
+        last_raw_flush_monotonic: float | None = None
 
         async def on_update(snapshot: dict[str, Any]) -> None:
-            nonlocal last_capture_monotonic
+            nonlocal last_capture_monotonic, last_raw_flush_monotonic
             changed_event.set()
             if snapshot.get("capture_gap_detected") is True:
                 self.last_raw_event_error = "CAPTURE_GAP_DETECTED: raw event queue overflow was recorded."
             # Drain every validated raw trade/depth event independently of the
             # once-per-minute feature snapshot alignment window.
-            if len(self._capture_tasks) < MAX_PENDING_CAPTURE_TASKS:
-                drain_events = getattr(stream, "drain_capture_events", None)
+            drain_events = getattr(stream, "drain_capture_events", None)
+            pending_raw_count = len(getattr(stream, "capture_events", ()))
+            flush_clock = time.monotonic()
+            flush_due = (
+                pending_raw_count >= 64
+                or last_raw_flush_monotonic is None
+                or flush_clock - last_raw_flush_monotonic >= 1.0
+                or snapshot.get("status") in {"RECONNECTING", "STOPPED"}
+            )
+            if pending_raw_count and flush_due and len(self._capture_tasks) < MAX_PENDING_CAPTURE_TASKS:
                 raw_events = drain_events(limit=256) if callable(drain_events) else []
                 if raw_events:
+                    last_raw_flush_monotonic = flush_clock
                     raw_task = asyncio.create_task(
                         asyncio.to_thread(self._persist_market_events, raw_events),
                         name=f"quantnex-orderflow-raw-{symbol.lower()}",
@@ -320,7 +330,7 @@ class BinanceSpotOrderFlowManager:
                         lambda task, active_stream=stream, batch=raw_events:
                             self._raw_events_capture_finished(task, active_stream, batch)
                     )
-            else:
+            elif pending_raw_count and len(self._capture_tasks) >= MAX_PENDING_CAPTURE_TASKS:
                 self.last_raw_event_error = "RAW_EVENT_BACKPRESSURE: pending database writes reached the safety limit."
             captured_at = datetime.now(timezone.utc)
             seconds_until_boundary = _seconds_until_next_utc_minute(captured_at)

@@ -162,6 +162,9 @@ class BinanceSpotOrderFlowManager:
                         max_keepalive_connections=self.max_streams,
                     ),
                 )
+            if self._raw_event_worker_task is None or self._raw_event_worker_task.done():
+                self._raw_event_stop.clear()
+                self._raw_event_worker_task = asyncio.create_task(self._raw_event_worker(), name="quantnex-orderflow-raw-event-recorder")
 
     async def _stop_slot(self, slot: _ManagedStream) -> None:
         slot.stop_event.set()
@@ -187,6 +190,11 @@ class BinanceSpotOrderFlowManager:
             await asyncio.gather(*(self._stop_slot(slot) for slot in slots), return_exceptions=True)
         if self._capture_tasks:
             await asyncio.gather(*list(self._capture_tasks), return_exceptions=True)
+        await self._raw_event_queue.join()
+        self._raw_event_stop.set()
+        if self._raw_event_worker_task is not None:
+            await self._raw_event_worker_task
+            self._raw_event_worker_task = None
         if client is not None and not client.is_closed:
             await client.aclose()
 

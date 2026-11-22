@@ -157,13 +157,14 @@ def _github_json_cached(url: str) -> dict:
     cached = cache.get(url)
     cached_data = cached.get("data") if isinstance(cached, dict) else None
     now = time.time()
+    cached_age = None
 
     if isinstance(cached_data, dict):
         try:
-            age = now - float(cached.get("fetched_at", 0))
+            cached_age = now - float(cached.get("fetched_at", 0))
         except (TypeError, ValueError, OverflowError):
-            age = -1
-        if 0 <= age < API_CACHE_TTL_SECONDS:
+            cached_age = None
+        if cached_age is not None and 0 <= cached_age < API_CACHE_TTL_SECONDS:
             return cached_data
 
     request = urllib.request.Request(
@@ -178,8 +179,14 @@ def _github_json_cached(url: str) -> dict:
         with urllib.request.urlopen(request, timeout=25) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
-        # Preserve the last known result while GitHub applies primary/secondary rate limits.
-        if exc.code in (403, 429) and isinstance(cached_data, dict):
+        # Use stale data only inside the documented retention window. An old or
+        # future-dated cache entry must not hide a persistent GitHub/API failure.
+        if (
+            exc.code in (403, 429)
+            and isinstance(cached_data, dict)
+            and cached_age is not None
+            and 0 <= cached_age < API_CACHE_MAX_AGE_SECONDS
+        ):
             return cached_data
         raise
 
@@ -190,12 +197,6 @@ def _github_json_cached(url: str) -> dict:
     cache[url] = {"fetched_at": fetched_at, "data": payload}
     _write_api_cache(cache, url, payload, fetched_at)
     return payload
-
-
-def github_json(url: str) -> dict:
-    # The Web server handles concurrent browser status requests.
-    with API_CACHE_LOCK:
-        return _github_json_cached(url)
 
 
 def github_json(url: str) -> dict:

@@ -9,6 +9,7 @@ from app.telegram_worker import (
     _rotating_auto_signal_batch,
     _is_auto_signal_stream_pending,
     _format_telegram_message,
+    BOT_COMMANDS,
 )
 
 
@@ -184,3 +185,14 @@ def test_telegram_source_update_links_preserve_only_github_anchors():
     assert "Compare changes</a>" in rendered
     assert "&lt;a href=" in rendered
     assert "evil.example" in rendered
+
+
+def test_telegram_operations_commands_are_registered_once():
+    commands = [item["command"] for item in BOT_COMMANDS]
+    assert len(commands) == len(set(commands))
+    expected = {
+        "health", "signals", "signals_on", "signals_off",
+        "watchlist", "watchlist_set", "orderflow", "orderflow_watchlist",
+        "futures_scan", "risk", "ai_test",
+    }
+    assert expected.issubset(set(commands))

@@ -104,7 +104,7 @@ def _event_identity(event: dict[str, Any]) -> tuple[str, str, int, int, str, int
     return symbol, event_type, event_time_ms, received_at_ms, source, first, last, session_id, {"key": key, "payload": normalized_payload}
 
 
-def record_order_flow_market_events(db, events: list[dict[str, Any]], *, now: datetime | None = None, retention_days: int = DEFAULT_RAW_EVENT_RETENTION_DAYS) -> dict[str, Any]:
+def record_order_flow_market_events(db, events: list[dict[str, Any]], *, now: datetime | None = None, retention_days: int = DEFAULT_RAW_EVENT_RETENTION_DAYS, prune_before: datetime | None = None) -> dict[str, Any]:
     """Persist a bounded batch of validated events idempotently."""
     if not isinstance(events, list) or not events or len(events) > MAX_RAW_EVENT_BATCH:
         raise OrderFlowRawEventError(f"Event batch must contain between 1 and {MAX_RAW_EVENT_BATCH} rows.")
@@ -114,8 +114,12 @@ def record_order_flow_market_events(db, events: list[dict[str, Any]], *, now: da
     if not isinstance(clock, datetime) or clock.tzinfo is None or clock.utcoffset() is None:
         raise OrderFlowRawEventError("Recorder clock must be timezone-aware.")
     now_ms = int(clock.astimezone(timezone.utc).timestamp() * 1000)
-    cutoff_ms = now_ms - retention_days * 86_400_000
-    db.query(OrderFlowMarketEvent).filter(OrderFlowMarketEvent.received_at_ms < cutoff_ms).delete(synchronize_session=False)
+    cutoff_ms = None
+    if prune_before is not None:
+        if not isinstance(prune_before, datetime) or prune_before.tzinfo is None or prune_before.utcoffset() is None:
+            raise OrderFlowRawEventError("Raw event retention cutoff must be timezone-aware.")
+        cutoff_ms = int(prune_before.astimezone(timezone.utc).timestamp() * 1000)
+        db.query(OrderFlowMarketEvent).filter(OrderFlowMarketEvent.received_at_ms < cutoff_ms).delete(synchronize_session=False)
     seen: dict[tuple[str, str, str], tuple[int, str]] = {}
     rows = []
     duplicates = 0

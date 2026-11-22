@@ -207,7 +207,7 @@ def summarize_order_flow_candles(db, symbol: str, start_ms: int, end_ms: int, *,
         bucket = event["candle_bucket_ms"]
         row = buckets.setdefault(bucket, {
             "candle_open_time_ms": bucket, "trade_count": 0, "depth_update_count": 0,
-            "depth_snapshot_count": 0, "first_event_time_ms": event["event_time_ms"],
+            "depth_snapshot_count": 0, "capture_gap_count": 0, "gap_detected": False, "first_event_time_ms": event["event_time_ms"],
             "last_event_time_ms": event["event_time_ms"], "sources": set(),
             "stream_sessions": set(), "backfill_used": False,
             "first_depth_update_id": None, "last_depth_update_id": None,

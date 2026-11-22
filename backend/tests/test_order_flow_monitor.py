@@ -41,6 +41,54 @@ def test_capture_status_discloses_minute_alignment_and_no_raw_tick_archive():
     assert status["capture_alignment"] == "ONE_OBSERVATION_PER_UTC_1M_CANDLE"
     assert status["raw_tick_archive"] is False
     assert status["refresh_seconds"] >= 2
+    assert "manager" in status
+    assert isinstance(status["observations_last_24h"], int)
+
+
+def test_capture_status_reports_manager_stream_and_database_counts(monkeypatch):
+    from types import SimpleNamespace
+    from app import binance_order_flow_manager, order_flow_monitor
+
+    class FakeQuery:
+        def __init__(self, value):
+            self.value = value
+
+        def filter(self, *_args, **_kwargs):
+            return self
+
+        def scalar(self):
+            return self.value
+
+    class FakeDB:
+        def __init__(self):
+            self.values = iter([7, 1795262400000])
+
+        def query(self, *_args, **_kwargs):
+            return FakeQuery(next(self.values))
+
+        def close(self):
+            pass
+
+    manager = SimpleNamespace(
+        active_stream_count=3,
+        max_streams=8,
+        last_capture_at="2026-11-21T12:00:59+00:00",
+        last_capture_error=None,
+    )
+    monkeypatch.setattr(order_flow_monitor, "SessionLocal", FakeDB)
+    monkeypatch.setattr(
+        binance_order_flow_manager,
+        "get_binance_spot_order_flow_manager",
+        lambda: manager,
+    )
+
+    status = get_order_flow_capture_status()
+
+    assert status["manager"]["active_streams"] == 3
+    assert status["manager"]["max_streams"] == 8
+    assert status["observations_last_24h"] == 7
+    assert status["latest_observation_at"] is not None
+    assert status["recorder_error_type"] is None
 
 
 

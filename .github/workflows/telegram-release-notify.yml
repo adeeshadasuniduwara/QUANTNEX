@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Send Telegram update announcement
+        id: telegram-notification
+        continue-on-error: true
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -182,3 +184,13 @@ jobs:
           })
           print("Telegram announcement sent successfully.")
           PY
+
+      - name: Report Telegram notification warning
+        if: steps.telegram-notification.outcome == 'failure'
+        run: |
+          echo "::warning::QUANTNEX source update completed, but Telegram notification was not delivered."
+          {
+            echo "### Telegram notification not delivered"
+            echo "The source update is unaffected. Check the repository Actions secret TELEGRAM_CHAT_ID: it must be the destination private-chat, group, supergroup or channel ID, not the bot's own ID."
+            echo "No bot token or chat secret is printed by this workflow."
+          } >> "$GITHUB_STEP_SUMMARY"

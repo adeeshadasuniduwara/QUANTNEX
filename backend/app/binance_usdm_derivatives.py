@@ -40,7 +40,10 @@ def _epoch_ms(value: Any, name: str) -> int:
 async def _get_json(client, url, params):
     response=await client.get(url,params=params)
     response.raise_for_status()
-    data=response.json()
+    try:
+        data=response.json()
+    except (TypeError,ValueError):
+        raise UsdmDerivativesError("Binance Futures derivatives endpoint returned invalid JSON.") from None
     if not isinstance(data,(dict,list)):
         raise UsdmDerivativesError("Binance Futures derivatives endpoint returned an invalid payload.")
     return data
@@ -63,7 +66,9 @@ async def fetch_usdm_derivatives_snapshot(client, symbol: str, *, oi_period: str
         raise UsdmDerivativesError("Binance Futures derivatives symbol mismatch.")
     mark=_number(premium.get("markPrice"),"mark price")
     index=_number(premium.get("indexPrice"),"index price")
-    funding=float(premium.get("lastFundingRate"))
+    try: funding=float(premium.get("lastFundingRate"))
+    except (TypeError,ValueError,OverflowError):
+        raise UsdmDerivativesError("Funding rate must be numeric.") from None
     if not math.isfinite(funding):
         raise UsdmDerivativesError("Funding rate is not finite.")
     next_funding=_epoch_ms(premium.get("nextFundingTime"),"next funding time")

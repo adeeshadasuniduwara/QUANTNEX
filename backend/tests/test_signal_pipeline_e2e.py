@@ -623,6 +623,10 @@ def test_live_signal_waits_when_same_minute_recorded_auction_pattern_conflicts(m
     async def fake_fetch(interval, _outputsize, _symbol):
         rows = _synthetic_setup("BUY", interval, now)
         if interval == "1min":
+            last_open = now.replace(second=0, microsecond=0) - timedelta(minutes=1)
+            first_open = last_open - timedelta(minutes=len(rows) - 1)
+            for index, row in enumerate(rows):
+                row["time"] = (first_open + timedelta(minutes=index)).isoformat()
             rows[-1].update({"open": 102.0, "high": 103.0, "low": 99.0, "close": 99.5})
         return rows, "Binance Spot"
 

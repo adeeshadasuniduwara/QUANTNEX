@@ -1286,6 +1286,10 @@ def test_binance_entry_selector_returns_wait_when_flow_is_not_market_aligned_and
         "market_type": "BINANCE_SPOT",
         "delta_ratio": 0.25,
         "depth_is_continuous": True,
+        "data_provenance": {
+            "candle_volume_used": False,
+            "bid_ask_semantics": "Aggressor-side inferred trade delta",
+        },
         "order_book": {"depth_imbalance": 0.0},
     }
     decision = {"accepted": True, "status": "CONFIRMED", "support_count": 1, "conflict_count": 0}
@@ -1296,7 +1300,7 @@ def test_binance_entry_selector_returns_wait_when_flow_is_not_market_aligned_and
     ) is None
 
 
-def test_binance_entry_selector_requires_accepted_flow_and_sequence_validated_depth_for_market():
+def test_binance_entry_selector_hard_vetoes_unvalidated_depth_and_rejected_flow():
     from app.signal_engine import select_binance_entry
 
     execution = {
@@ -1309,23 +1313,28 @@ def test_binance_entry_selector_requires_accepted_flow_and_sequence_validated_de
         "market_type": "BINANCE_SPOT",
         "delta_ratio": 0.25,
         "depth_is_continuous": False,
+        "data_provenance": {
+            "candle_volume_used": False,
+            "bid_ask_semantics": "Aggressor-side inferred trade delta",
+        },
         "order_book": {"depth_imbalance": 0.2},
     }
     accepted = {"accepted": True, "status": "CONFIRMED", "support_count": 2, "conflict_count": 0}
     zone = {"low": 99.6, "high": 99.8, "source": "BULLISH_FVG"}
 
-    selected = select_binance_entry(
+    assert select_binance_entry(
         "BUY", 100.0, 2.0, zone, execution,
         order_flow_snapshot=snapshot, order_flow_decision=accepted,
-    )
-    assert selected is not None
-    assert selected["entry_type"] == "LIMIT"
-    assert selected["order_flow_execution_evidence"]["depth_sequence_validated"] is False
+    ) is None
 
+    sequence_valid = {
+        **snapshot,
+        "depth_is_continuous": True,
+    }
     rejected = {"accepted": False, "status": "MIXED", "support_count": 1, "conflict_count": 1}
     assert select_binance_entry(
         "BUY", 100.0, 2.0, zone, execution,
-        order_flow_snapshot=snapshot, order_flow_decision=rejected,
+        order_flow_snapshot=sequence_valid, order_flow_decision=rejected,
     ) is None
 
 
@@ -1342,6 +1351,10 @@ def test_binance_entry_selector_supports_short_market_when_both_flow_components_
         "market_type": "BINANCE_SPOT",
         "delta_ratio": -0.25,
         "depth_is_continuous": True,
+        "data_provenance": {
+            "candle_volume_used": False,
+            "bid_ask_semantics": "Aggressor-side inferred trade delta",
+        },
         "order_book": {"depth_imbalance": -0.2},
     }
     decision = {"accepted": True, "status": "CONFIRMED", "support_count": 2, "conflict_count": 0}

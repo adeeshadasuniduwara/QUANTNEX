@@ -53,9 +53,9 @@ async def fetch_usdm_derivatives_snapshot(client, symbol: str, *, oi_period: str
     if isinstance(oi_limit,bool) or not isinstance(oi_limit,int) or not 1<=oi_limit<=30:
         raise UsdmDerivativesError("Open-interest history limit must be between 1 and 30.")
     premium, open_interest, history = await asyncio.gather(
-        _get_json(client,F"{FAPI_BASE}/fapi/v1/premiumIndex",{"symbol":normalized}),
-        _get_json(client,F"{FAPI_BASE}/fapi/v1/openInterest",{"symbol":normalized}),
-        _get_json(client,F"{DATA_BASE}/futures/data/openInterestHist",{"symbol":normalized,"period":oi_period,"limit":oi_limit}),
+        _get_json(client,f"{FAPI_BASE}/fapi/v1/premiumIndex",{"symbol":normalized}),
+        _get_json(client,f"{FAPI_BASE}/fapi/v1/openInterest",{"symbol":normalized}),
+        _get_json(client,f"{DATA_BASE}/futures/data/openInterestHist",{"symbol":normalized,"period":oi_period,"limit":oi_limit}),
     )
     if not isinstance(premium,dict) or not isinstance(open_interest,dict) or not isinstance(history,list):
         raise UsdmDerivativesError("Binance Futures derivatives payload shape is invalid.")

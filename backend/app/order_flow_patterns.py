@@ -71,28 +71,33 @@ def detect_order_flow_patterns(
 
     candle_stamp = candle.get("time") or candle.get("open_time")
     trade_stamp = flow.get("last_trade_at")
-    if candle_stamp is not None or trade_stamp is not None:
-        try:
-            candle_time = datetime.fromisoformat(str(candle_stamp).replace("Z", "+00:00"))
-            trade_time = datetime.fromisoformat(str(trade_stamp).replace("Z", "+00:00"))
-            if candle_time.tzinfo is None:
-                candle_time = candle_time.replace(tzinfo=timezone.utc)
-            if trade_time.tzinfo is None:
-                trade_time = trade_time.replace(tzinfo=timezone.utc)
-            candle_minute = int(candle_time.timestamp()) // 60
-            trade_minute = int(trade_time.timestamp()) // 60
-        except (TypeError, ValueError, OverflowError):
-            return {
-                "status": "NOT_ALIGNED", "direction": None, "accepted_for_side": True,
-                "reason": "Candle and exchange trade timestamps are unavailable or invalid; pattern confirmation is skipped.",
-                "evidence": [],
-            }
-        if candle_minute != trade_minute:
-            return {
-                "status": "NOT_ALIGNED", "direction": None, "accepted_for_side": True,
-                "reason": "The latest closed M1 candle and observed aggressor trades belong to different UTC minutes; no pattern is inferred.",
-                "evidence": [],
-            }
+    depth_stamp = flow.get("depth_observed_at")
+    try:
+        candle_time = datetime.fromisoformat(str(candle_stamp or "").replace("Z", "+00:00"))
+        trade_time = datetime.fromisoformat(str(trade_stamp or "").replace("Z", "+00:00"))
+        depth_time = datetime.fromisoformat(str(depth_stamp or "").replace("Z", "+00:00"))
+        if any(value.tzinfo is None or value.utcoffset() is None for value in (candle_time, trade_time, depth_time)):
+            raise ValueError("Order-flow and candle timestamps must carry an explicit UTC offset.")
+        candle_time = candle_time.astimezone(timezone.utc)
+        trade_time = trade_time.astimezone(timezone.utc)
+        depth_time = depth_time.astimezone(timezone.utc)
+        if candle_time.second != 0 or candle_time.microsecond != 0:
+            raise ValueError("The M1 candle timestamp must be aligned to a UTC minute.")
+        candle_minute = int(candle_time.timestamp()) // 60
+        trade_minute = int(trade_time.timestamp()) // 60
+        depth_minute = int(depth_time.timestamp()) // 60
+    except (TypeError, ValueError, OverflowError):
+        return {
+            "status": "NOT_ALIGNED", "direction": None, "accepted_for_side": True,
+            "reason": "The closed M1 candle, exchange trade and depth timestamps must all be present, timezone-aware and valid; pattern confirmation is skipped.",
+            "evidence": [],
+        }
+    if candle_minute != trade_minute or candle_minute != depth_minute:
+        return {
+            "status": "NOT_ALIGNED", "direction": None, "accepted_for_side": True,
+            "reason": "The closed M1 candle, observed aggressor trades and sequence-validated depth do not belong to the same UTC minute; no pattern is inferred.",
+            "evidence": [],
+        }
 
     close_location = (close - low) / candle_range
     upper_wick_ratio = (high - max(opening, close)) / candle_range

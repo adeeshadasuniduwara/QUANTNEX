@@ -84,8 +84,7 @@ console.log("Realtime event restart-resync checks passed.");
 const chartClient = fs.readFileSync("apps/web/quantnex-view-chart.js", "utf8");
 const chartIntelligence = fs.readFileSync("apps/web/quantnex-view-intelligence.js", "utf8");
 assert.ok(/src="quantnex-view-chart\.js\?v=20261121-usdm-signal1"/.test(html), "Live chart controller must load with the current cache version");
-assert.ok(html.includes('id="qxChartIntelMetrics"'), "Chart must expose indicator readouts");
-assert.ok(html.includes('id="qxOverlayZones"'), "Chart must expose zone visibility control");
+assert.ok(html.includes('id="qxIndicatorsContent"'), "Chart must expose the current consolidated Technical Indicators sheet.");
 for (const feature of ["bullish_fvg", "bearish_fvg", "bullish_order_block", "bearish_order_block",
   "bullish_breaker_block", "bearish_breaker_block", "bullish_ifvg", "bearish_ifvg",
   "swing_high", "swing_low", "equilibrium", "liquidity_sweep", "quantnexViewSetTradePlan"]) {

@@ -1484,9 +1484,38 @@ async def intelligence_orderbook(symbol: str, user: User = Depends(local_workspa
 
 @app.get("/api/v1/order-flow/capture-status")
 def order_flow_capture_status(user: User = Depends(local_workspace)):
-    """Report bounded minute-aligned public Spot order-flow capture health."""
+    """Report bounded feature-snapshot and raw event capture health."""
     from .order_flow_monitor import get_order_flow_capture_status
-    return get_order_flow_capture_status()
+    from .binance_order_flow_manager import get_binance_spot_order_flow_manager
+    result = get_order_flow_capture_status()
+    result["raw_event_capture"] = get_binance_spot_order_flow_manager().raw_capture_status()
+    return result
+
+
+@app.get("/api/v1/order-flow/raw-candles/{symbol}")
+def order_flow_raw_candles(
+    symbol: str,
+    start_epoch_ms: int,
+    end_epoch_ms: int,
+    include_events: bool = False,
+    limit: int = 1000,
+    db: Session = Depends(get_db),
+    user: User = Depends(local_workspace),
+):
+    """Read candle-aligned exchange-native Spot events and coverage manifests."""
+    from .raw_order_flow_recorder import load_raw_order_flow_candles
+    try:
+        return {
+            "symbol": symbol.strip().upper(),
+            "market_type": "BINANCE_SPOT",
+            "candle_alignment": "UTC_1_MINUTE",
+            "candles": load_raw_order_flow_candles(
+                db, symbol, start_epoch_ms, end_epoch_ms,
+                include_events=include_events, limit=limit,
+            ),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/api/v1/order-flow/spot/{symbol}")

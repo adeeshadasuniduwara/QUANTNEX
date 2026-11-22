@@ -432,6 +432,7 @@ async function checkLocalUpdate(options={}){
     if(updateButton)updateButton.disabled=false;
   }
 }
+updateButton?.addEventListener("click",()=>checkLocalUpdate());
 // Check once whenever the Updates workspace is entered. The local supervisor
 // independently performs its 30-minute background update cycle.
 let updatesTabActive=false;

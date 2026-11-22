@@ -684,3 +684,29 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 4. Extend the signal method registry only with causal, source-attributed methods and fixtures; keep OHLCV VWAP/volume-profile proxies separate from observed aggressor flow.
 5. Add a separate USDⓈ-M Order Flow capability investigation only after Spot capture/replay is reliable; never reuse Spot streams or semantics for Futures.
 
+## Phase C17 — sequential OOS walk-forward validation (merged PR #274)
+
+- Merged PR #274 to `main` as `5c6ad689eaecbb050d38367285412bda5b3a3076`.
+- The Spot replay now uses a fixed-rule initial training segment plus configurable sequential OOS folds (2–6; default 3). Fold windows are contiguous; positions and pending LIMIT orders carry across boundaries and block overlapping entries until resolved.
+- Replay metrics now include Wilson 95% win-rate intervals, descriptive expectancy uncertainty, blocked/skipped bars and censored LIMIT orders. Confidence intervals explicitly do not correct for serial dependence or strategy-selection effects.
+- OOS trades are aggregated without truncating the calculation to the 200-trade API preview.
+- A deterministic fixture proves an open BUY position exits at TP1 after the first fold decision boundary and prevents an overlapping next entry.
+- PR head `2ca09d7bfc4f1b9edf7e7d17b9c809d5e2494b80` passed 539 tests on Python 3.12, 539 tests on Python 3.14, Web CI and the backend schema/test job. Post-merge CI on the exact main SHA was started and remained in progress at the time of this note.
+- This is a stronger evaluation harness, not evidence of profitability or increased accuracy. Historical spread/depth and fee/slippage remain assumptions; TP2/TP3 partial exits, funding, position sizing and historical raw Order Flow replay remain limitations.
+
+## Phase C18 — dynamic USDⓈ-M smoke coverage (feature branch)
+
+- Branch: `feat/dynamic-usdm-live-signal-smoke-post-walkforward`, based on post-PR-#274 main `5c6ad689eaecbb050d38367285412bda5b3a3076`.
+- The scheduled public smoke workflow now independently discovers Spot and USDⓈ-M universes and rotates 20 symbols/contracts per market type per run.
+- Spot remains the multi-timeframe Spot signal + mandatory sequence-validated Spot Order Flow path. USDⓈ-M uses its own dynamic `TRADING` `PERPETUAL` metadata and a closed-5m-candle monitor only. It has no Futures Order Flow, adaptive execution or order placement. COIN-M remains unsupported.
+- Added mocked tests for dynamic Futures sample rotation, distinct market routing, read-only status and insufficient-history skips. CI and live workflow execution are pending; the 10-minute workflow timeout must be observed before changing scan size.
+- The smoke subsets do not imply full-universe coverage. A Futures candle candidate is a reference/monitor result, not an executable order.
+
+## Next
+
+1. Complete CI, diff/security review, Compare & PR, and safe merge for Phase C18.
+2. Verify PR #274 post-merge checks and the next scheduled Spot + USDⓈ-M smoke run.
+3. Continue causal Spot Order Flow replay/ablation over retained minute snapshots and report data coverage before any performance claim.
+4. Expand deterministic replay fixtures for long/short, false sweeps, stale/missing flow, book gaps, reconnects and poor liquidity.
+5. Investigate Futures Order Flow only as a separate adapter after Spot replay validation; COIN-M remains out of scope until a verified market-specific path exists.
+

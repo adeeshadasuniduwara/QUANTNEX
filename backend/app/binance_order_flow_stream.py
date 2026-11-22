@@ -162,7 +162,7 @@ class BinanceSpotOrderFlowStream:
     def _queue_capture_event(self, event_type: str, payload: dict[str, Any], source: str) -> None:
         if len(self.capture_events) >= self.max_buffered_events:
             raise BinanceSpotOrderFlowStreamError("Raw Order Flow capture queue overflowed; event continuity cannot be guaranteed.")
-        stamp = payload.get("T") if event_type == "aggTrade" else payload.get("E")
+        stamp = payload.get("T") if event_type == "aggTrade" else payload.get("E") if event_type == "depthUpdate" else int(datetime.now(timezone.utc).timestamp() * 1000)
         try:
             event_time_ms = int(stamp)
         except (TypeError, ValueError, OverflowError):

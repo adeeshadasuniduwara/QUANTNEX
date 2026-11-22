@@ -10,7 +10,7 @@ assert.ok(html.includes('href="#quantnex-advanced">QUANTNEX Advanced</a>'), "Adv
 assert.ok(html.includes('id="quantnex-advanced"'), "Advanced workspace must have a navigation target.");
 assert.ok(html.includes('id="qaChartHost"') && html.includes('id="qaSymbol"') && html.includes('id="qaMarketType"') && html.includes('id="qaInterval"'), "Advanced must have an independent native chart and market selectors.");
 assert.ok(html.includes('id="qxChartHost"'), "Original QUANTNEX VIEW chart must remain available.");
-assert.ok(html.includes('src="quantnex-advanced-chart.js?v=20261122-phase1"'), "Advanced chart engine must be loaded.");
+assert.ok(html.includes('src="quantnex-advanced-chart.js?v=20261122-phase2-raw1"'), "Advanced chart engine must be loaded.");
 assert.ok(html.includes('href="quantnex-advanced.css?v=20261122-phase1"'), "Advanced workspace styles must be loaded.");
 const viewStart = html.indexOf('id="tradingview"');
 const advancedStart = html.indexOf('id="quantnex-advanced"');

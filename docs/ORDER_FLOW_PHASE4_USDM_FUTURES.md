@@ -22,13 +22,10 @@
 - Capture coverage is observed-only and is never described as complete.
 - No API keys, signed endpoints, order placement, leverage changes or execution paths are used.
 
-## Explicitly deferred to Phase 5
+## Phase 5 hand-off
 
-- Funding-rate history and current premium/funding stream.
-- Open interest history and real-time open-interest sampling.
-- Mark price / index price stream and basis metrics.
-- Force-order / liquidation stream and liquidation imbalance.
-- Futures-specific replay scenarios and cross-signal validation.
+- Phase 5 has started in `docs/ORDER_FLOW_PHASE5_USDM_DERIVATIVES.md` with read-only funding, mark/index basis and bounded open-interest APIs.
+- Remaining Phase 5 work includes mark-price and force-order WebSocket capture, liquidation context, persistent derivatives snapshots, Futures replay and UI panels.
 
 ## Integrity limits
 

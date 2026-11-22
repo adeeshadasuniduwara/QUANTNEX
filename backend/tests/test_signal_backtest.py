@@ -22,6 +22,14 @@ def _candles(count: int, minutes: int, *, start_epoch: int = 1_700_000_100, pric
     return rows
 
 
+def _epoch(value: str) -> float:
+    """Convert a UTC/offset-aware fixture timestamp to Unix seconds."""
+    stamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if stamp.tzinfo is None or stamp.utcoffset() is None:
+        raise ValueError("fixture timestamps must be timezone-aware")
+    return stamp.timestamp()
+
+
 def test_aggregate_minutes_omits_incomplete_and_duplicate_buckets():
     from app.signal_engine import aggregate_minutes
 
@@ -171,6 +179,16 @@ def test_simulate_slice_carries_open_trade_beyond_fold_decision_boundary(monkeyp
     monkeypatch.setattr(signal_backtest, "build_signal", fake_build_signal)
     execution_end = _epoch(minute[-1]["time"]) + 60
     decision_end = _epoch(primary[212]["time"])
+    # The first OOS decision is at primary[211]'s close. Keep the position
+    # open through the fold boundary, then let TP1 execute five minutes later.
+    exit_minute_index = int((decision_end - _epoch(minute[0]["time"])) / 60) + 5
+    minute[exit_minute_index] = {
+        **minute[exit_minute_index],
+        "open": 100.0,
+        "high": 101.0,
+        "low": 99.5,
+        "close": 100.5,
+    }
     result = asyncio.run(signal_backtest._simulate_slice(
         "BTCUSDT",
         {"1": minute, "60": primary},
@@ -184,9 +202,9 @@ def test_simulate_slice_carries_open_trade_beyond_fold_decision_boundary(monkeyp
     ))
 
     assert result["trade_count"] == 1
-    assert result["trades"][0]["exit_reason"] == "SPLIT_END"
+    assert result["trades"][0]["exit_reason"] == "TAKE_PROFIT_1"
     assert _epoch(result["trades"][0]["exit_time"]) > decision_end
-    assert result["_next_signal_index"] == len(primary) - 2
+    assert result["_next_signal_index"] == 212
 
 
 def test_signal_walk_forward_rejects_invalid_assumptions():

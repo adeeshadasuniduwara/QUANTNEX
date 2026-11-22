@@ -20,7 +20,7 @@ def test_usdm_stream_requires_snapshot_bridge_then_contiguous_pu_chain():
     assert stream._apply_depth(_depth(102,104,101,asks=[["90001","3"]])) is True
     assert stream.last_update_id==104
     assert stream.snapshot()["depth_ready"] is True
-    assert stream.snapshot()["bids"][0]["quantity"]=="2"
+    assert float(stream.snapshot()["bids"][0]["quantity"])==pytest.approx(2.0)
 
 def test_usdm_stream_discards_old_snapshot_buffer_events_before_bridge():
     stream=BinanceUsdmOrderFlowStream("BTCUSDT")

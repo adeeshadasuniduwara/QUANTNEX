@@ -9,6 +9,11 @@ const main = fs.readFileSync("backend/app/main.py", "utf8");
 const recorder = fs.readFileSync("backend/app/order_flow_raw_recorder.py", "utf8");
 
 assert.ok(html.includes('href="#quantnex-advanced">QUANTNEX Advanced</a>'), "Advanced workspace must appear in the sidebar.");
+const viewChartEnd = html.indexOf('id="qxChartHost"');
+const workspaceTabs = html.indexOf('id="qxOpenAdvancedWorkspace"');
+const liveSignals = html.indexOf('id="qxLiveSignalsPanel"');
+assert.ok(viewChartEnd >= 0 && workspaceTabs > viewChartEnd && liveSignals > workspaceTabs, "QUANTNEX Advanced shortcut must sit immediately below the QUANTNEX VIEW chart and before its signal sheet.");
+assert.ok(app.includes('quantnexNavigate("quantnex-advanced")'), "The inline Advanced workspace tab must navigate to the existing dedicated Advanced workspace.");
 assert.ok(html.includes('id="quantnex-advanced"'), "Advanced workspace must have a navigation target.");
 assert.ok(html.includes('id="qaChartHost"') && html.includes('id="qaSymbol"') && html.includes('id="qaMarketType"') && html.includes('id="qaInterval"'), "Advanced must have an independent native chart and market selectors.");
 assert.ok(html.includes('id="qxChartHost"'), "Original QUANTNEX VIEW chart must remain available.");

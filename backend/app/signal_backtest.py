@@ -671,7 +671,7 @@ async def run_signal_walk_forward(
     assumed_depth_usd: float = 10000.0,
     order_flow_observations: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Run fixed-rule, expanding-history OOS folds with causal candle/Order Flow replay."""
+    """Run fixed-rule sequential OOS folds with causal candle/Order Flow replay."""
     settings = settings or {"primary": "5", "trend": "60", "enabled": ["60", "30", "15", "5", "1"], "min_score": 7}
     if not 0.5 <= train_ratio <= 0.9:
         raise ValueError("Train ratio must be between 0.5 and 0.9.")
@@ -783,8 +783,7 @@ async def run_signal_walk_forward(
             raw_results.append(raw)
             public_folds.append({
                 "fold": fold_number,
-                "decision_start": datetime.fromtimestamp(cursor, timezone.utc).isoformat()
-                    if False else datetime.fromtimestamp(primary_times[cursor], timezone.utc).isoformat(),
+                "decision_start": datetime.fromtimestamp(primary_times[cursor], timezone.utc).isoformat(),
                 "decision_end_exclusive": datetime.fromtimestamp(primary_times[fold_end], timezone.utc).isoformat(),
                 **_public_metrics(raw),
             })
@@ -889,7 +888,7 @@ async def run_signal_walk_forward(
             "exit_policy": "Full position exits at stop-loss or TP1; TP2/TP3 partial exits are not modeled. Open positions are carried across OOS fold boundaries and prevent overlapping new entries.",
             "order_flow_replay": "Selects only the latest stored Spot feature snapshot captured at or before each decision; source ages are recomputed at that decision timestamp. Missing, stale, future, malformed or non-sequenced snapshots fail closed for candidates; no stale forward-fill is allowed.",
         },
-        "method": "Fixed-rule expanding-history walk-forward: one initial in-sample segment followed by sequential, non-overlapping OOS decision windows. No parameters are fit on the OOS windows; open positions are carried across fold boundaries.",
+        "method": "Fixed-rule sequential walk-forward: one initial in-sample segment followed by non-overlapping OOS decision windows. No parameters are fit on the OOS windows; open positions are carried across fold boundaries.",
         "limitations": [
             "Historical order-book depth and bid/ask are unavailable; spread and depth are modeled assumptions.",
             "Fee estimates may differ from the user's Binance fee tier.",

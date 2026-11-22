@@ -61,7 +61,7 @@ def test_capture_status_reports_manager_stream_and_database_counts(monkeypatch):
 
     class FakeDB:
         def __init__(self):
-            self.values = iter([7, 1795262400000])
+            self.values = iter([7, 1795262400000, 9, 1795262400000])
 
         def query(self, *_args, **_kwargs):
             return FakeQuery(next(self.values))
@@ -91,7 +91,8 @@ def test_capture_status_reports_manager_stream_and_database_counts(monkeypatch):
     assert status["recorder_error_type"] is None
     assert status["raw_event_archive"] is True
     assert status["raw_event_retention_days"] == 7
-    assert status["raw_events_last_24h"] == 0
+    assert status["raw_events_last_24h"] == 9
+    assert status["latest_raw_event_at"] is not None
     assert status["raw_event_coverage"] == "OBSERVED_EVENTS_ONLY_NOT_PROVEN_COMPLETE"
 
 

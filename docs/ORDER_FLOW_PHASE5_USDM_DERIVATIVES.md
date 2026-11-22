@@ -8,6 +8,7 @@
 - Derived mark/index basis and percentage, plus first-to-last open-interest change percentage.
 - Explicit endpoint provenance, timestamps, observed-data coverage and non-execution disclaimer.
 - API: `GET /api/v1/order-flow/futures/{symbol}/derivatives`.
+- Advanced Footprint UI panel shows funding rate, mark/index basis, current open interest and bounded OI change when USDⓈ-M Futures is selected.
 - Deterministic tests for valid calculations, invalid symbol/interval/limit, symbol mismatch and non-finite price data.
 
 ## Remaining Phase 5

@@ -920,6 +920,7 @@ async def signal_engine_backtest(payload: dict, user: User = Depends(local_works
         result = await run_signal_walk_forward(
             symbol, candles_by_tf, symbol_info, settings,
             train_ratio=float(payload.get("train_ratio", 0.7)),
+            fold_count=int(payload.get("fold_count", 3)),
             assumed_spread_bps=float(payload.get("assumed_spread_bps", 5.0)),
             assumed_depth_usd=float(payload.get("assumed_depth_usd", 10000.0)),
             order_flow_observations=order_flow_observations,

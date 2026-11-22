@@ -22,6 +22,14 @@ def _candles(count: int, minutes: int, *, start_epoch: int = 1_700_000_100, pric
     return rows
 
 
+def _epoch(value: str) -> float:
+    """Convert a UTC/offset-aware fixture timestamp to Unix seconds."""
+    stamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if stamp.tzinfo is None or stamp.utcoffset() is None:
+        raise ValueError("fixture timestamps must be timezone-aware")
+    return stamp.timestamp()
+
+
 def test_aggregate_minutes_omits_incomplete_and_duplicate_buckets():
     from app.signal_engine import aggregate_minutes
 
@@ -76,7 +84,7 @@ def test_fetch_binance_historical_candles_paginates_and_returns_closed_rows(monk
     assert len({row["time"] for row in rows}) == len(rows)
 
 
-def test_signal_walk_forward_uses_chronological_holdout_and_costs(monkeypatch):
+def test_signal_walk_forward_uses_sequential_oos_folds_and_costs(monkeypatch):
     from app import signal_backtest
 
     candles_by_tf = {
@@ -125,13 +133,78 @@ def test_signal_walk_forward_uses_chronological_holdout_and_costs(monkeypatch):
         assumed_spread_bps=5, assumed_depth_usd=10000,
     ))
 
-    assert result["method"].startswith("Chronological holdout")
+    assert result["method"].startswith("Fixed-rule sequential walk-forward")
+    assert result["fold_count"] == 3
     assert result["training"]["trade_count"] > 0
     assert result["out_of_sample"]["trade_count"] > 0
+    assert result["out_of_sample"]["fold_count"] == 3
+    assert len(result["out_of_sample_folds"]) == 3
+    assert sum(fold["trade_count"] for fold in result["out_of_sample_folds"]) == result["out_of_sample"]["trade_count"]
+    assert sum(fold["sample_bars"] for fold in result["out_of_sample_folds"]) == result["out_of_sample"]["sample_bars"]
+    assert result["out_of_sample_folds"][0]["decision_end_exclusive"] == result["out_of_sample_folds"][1]["decision_start"]
+    assert result["out_of_sample_folds"][1]["decision_end_exclusive"] == result["out_of_sample_folds"][2]["decision_start"]
     assert result["training"]["win_rate_pct"] == 100.0
+    assert result["training"]["win_rate_95_ci_wilson_pct"][0] < 100.0
+    assert result["training"]["win_rate_95_ci_wilson_pct"][1] == 100.0
     assert result["out_of_sample"]["estimated_cost_quote"] > 0
     assert result["out_of_sample"]["buy_and_hold_return_pct"] is not None
     assert result["assumptions"]["spread_bps"] == 5
+
+
+def test_simulate_slice_carries_open_trade_beyond_fold_decision_boundary(monkeypatch):
+    from app import signal_backtest
+
+    start = 1_700_002_800
+    primary = _candles(220, 60, start_epoch=start)
+    minute = _candles(13_200, 1, start_epoch=start)
+    calls = {"count": 0}
+
+    async def fake_build_signal(_settings, _symbol, *, candles_override, execution_context_override, replay_as_of):
+        calls["count"] += 1
+        if calls["count"] > 1:
+            return {"status": "WAIT", "signal": None}
+        return {
+            "status": "SIGNAL",
+            "signal": {
+                "side": "BUY",
+                "entry_type": "MARKET",
+                "entry": 100.0,
+                "stop_loss": 99.0,
+                "tp1": 101.0,
+                "signal_candle_time": candles_override["60"][-1]["time"],
+                "execution_quality": {"estimated_round_trip_cost_bps": 0.0},
+            },
+        }
+
+    monkeypatch.setattr(signal_backtest, "build_signal", fake_build_signal)
+    execution_end = _epoch(minute[-1]["time"]) + 60
+    decision_end = _epoch(primary[212]["time"])
+    # The first OOS decision is at primary[211]'s close. Keep the position
+    # open through the fold boundary, then let TP1 execute five minutes later.
+    exit_minute_index = int((decision_end - _epoch(minute[0]["time"])) / 60) + 5
+    minute[exit_minute_index] = {
+        **minute[exit_minute_index],
+        "open": 100.0,
+        "high": 101.0,
+        "low": 99.5,
+        "close": 100.5,
+    }
+    result = asyncio.run(signal_backtest._simulate_slice(
+        "BTCUSDT",
+        {"1": minute, "60": primary},
+        {"quote_asset": "USDT", "filters": {"PRICE_FILTER": {"tickSize": "0.01"}}},
+        {"primary": "60", "trend": "60", "enabled": ["60"], "min_score": 7},
+        5.0,
+        10000.0,
+        210,
+        211,
+        execution_end_epoch=execution_end,
+    ))
+
+    assert result["trade_count"] == 1
+    assert result["trades"][0]["exit_reason"] == "TAKE_PROFIT_1"
+    assert _epoch(result["trades"][0]["exit_time"]) > decision_end
+    assert result["_next_signal_index"] == 212
 
 
 def test_signal_walk_forward_rejects_invalid_assumptions():
@@ -144,6 +217,10 @@ def test_signal_walk_forward_rejects_invalid_assumptions():
     with pytest.raises(ValueError):
         asyncio.run(signal_backtest.run_signal_walk_forward(
             "BTCUSDT", candles_by_tf, info, assumed_spread_bps=200
+        ))
+    with pytest.raises(ValueError, match="fold_count"):
+        asyncio.run(signal_backtest.run_signal_walk_forward(
+            "BTCUSDT", candles_by_tf, info, fold_count=1
         ))
 
 

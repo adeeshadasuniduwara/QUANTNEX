@@ -237,6 +237,37 @@ def _metrics(trades: list[dict[str, Any]], counters: dict[str, int], candles: li
     gross_profit = sum(trade["net_pnl"] for trade in wins)
     gross_loss = abs(sum(trade["net_pnl"] for trade in losses))
     r_values = [trade["r_multiple"] for trade in trades]
+    expectancy = sum(r_values) / len(r_values) if r_values else None
+    expectancy_se = None
+    expectancy_ci = None
+    if len(r_values) >= 2 and expectancy is not None:
+        variance = sum((value - expectancy) ** 2 for value in r_values) / (len(r_values) - 1)
+        expectancy_se = math.sqrt(max(0.0, variance) / len(r_values))
+        expectancy_ci = [
+            round(expectancy - 1.96 * expectancy_se, 3),
+            round(expectancy + 1.96 * expectancy_se, 3),
+        ]
+
+    win_rate_ci = None
+    if trades:
+        sample_size = len(trades)
+        proportion = len(wins) / sample_size
+        z_score = 1.96
+        denominator = 1 + z_score * z_score / sample_size
+        center = (proportion + z_score * z_score / (2 * sample_size)) / denominator
+        margin = (
+            z_score
+            * math.sqrt(
+                (proportion * (1 - proportion) + z_score * z_score / (4 * sample_size))
+                / sample_size
+            )
+            / denominator
+        )
+        win_rate_ci = [
+            round(max(0.0, center - margin) * 100, 2),
+            round(min(1.0, center + margin) * 100, 2),
+        ]
+
     equity = 0.0
     peak = 0.0
     max_drawdown_r = 0.0
@@ -245,30 +276,44 @@ def _metrics(trades: list[dict[str, Any]], counters: dict[str, int], candles: li
         peak = max(peak, equity)
         max_drawdown_r = max(max_drawdown_r, peak - equity)
     baseline = None
-    if 0 <= start_index < end_index < len(candles):
-        first = float(candles[start_index]["open"])
+    # A decision at primary_times[start_index + 1] executes at that bar's open.
+    # Compare buy-and-hold over the same execution window, not the preceding bar.
+    if 0 <= start_index + 1 <= end_index < len(candles):
+        first = float(candles[start_index + 1]["open"])
         last = float(candles[end_index]["close"])
         if first > 0:
             baseline = round((last / first - 1) * 100, 3)
+    sample_bars = max(0, end_index - start_index)
     return {
-        "sample_bars": max(0, end_index - start_index + 1),
+        "sample_bars": sample_bars,
+        "blocked_or_skipped_bars": max(
+            0, sample_bars - counters["signals"] - counters["waits"]
+        ),
         "signal_count": counters["signals"],
         "wait_count": counters["waits"],
         "trade_count": len(trades),
         "market_entries": counters["market"],
         "limit_entries": counters["limit"],
         "limit_expired": counters["limit_expired"],
+        "limit_censored": counters.get("limit_censored", 0),
         "wins": len(wins),
         "losses": len(losses),
         "win_rate_pct": round(len(wins) / len(trades) * 100, 2) if trades else None,
+        "win_rate_95_ci_wilson_pct": win_rate_ci,
         "gross_pnl_quote": round(sum(trade["gross_pnl"] for trade in trades), 8),
         "estimated_cost_quote": round(sum(trade["estimated_cost"] for trade in trades), 8),
         "net_pnl_quote": round(sum(trade["net_pnl"] for trade in trades), 8),
         "profit_factor": round(gross_profit / gross_loss, 3) if gross_loss else (
             "infinite" if gross_profit > 0 else None
         ),
-        "expectancy_r": round(sum(r_values) / len(r_values), 3) if r_values else None,
-        "average_r": round(sum(r_values) / len(r_values), 3) if r_values else None,
+        "expectancy_r": round(expectancy, 3) if expectancy is not None else None,
+        "expectancy_r_standard_error": round(expectancy_se, 4) if expectancy_se is not None else None,
+        "expectancy_r_95_ci_normal_approx": expectancy_ci,
+        "confidence_interval_note": (
+            "Win-rate interval uses the Wilson 95% method; expectancy interval is a descriptive normal approximation. "
+            "Neither interval corrects for serial dependence, strategy selection or sparse/non-random order-flow coverage."
+        ),
+        "average_r": round(expectancy, 3) if expectancy is not None else None,
         "max_drawdown_r": round(max_drawdown_r, 3),
         "buy_and_hold_return_pct": baseline,
         "order_flow_replay_enabled": bool(counters.get("order_flow_enabled", 0)),
@@ -280,7 +325,8 @@ def _metrics(trades: list[dict[str, Any]], counters: dict[str, int], candles: li
         "order_flow_confirmed_candidates": counters.get("order_flow_confirmed_candidates", 0),
         "order_flow_rejected_candidates": counters.get("order_flow_rejected_candidates", 0),
         "order_flow_coverage_pct": round(
-            counters.get("order_flow_snapshot_matches", 0) / counters.get("order_flow_decision_points", 1) * 100, 2
+            counters.get("order_flow_snapshot_matches", 0)
+            / counters.get("order_flow_decision_points", 1) * 100, 2
         ) if counters.get("order_flow_decision_points", 0) else None,
         "order_flow_candidate_confirmation_pct": round(
             counters.get("order_flow_confirmed_candidates", 0)
@@ -300,6 +346,7 @@ async def _simulate_slice(
     start_index: int,
     end_index: int,
     order_flow_observations: list[dict[str, Any]] | None = None,
+    execution_end_epoch: float | None = None,
 ) -> dict[str, Any]:
     primary_tf = str(settings.get("primary", "5"))
     enabled = list(dict.fromkeys(
@@ -321,7 +368,8 @@ async def _simulate_slice(
         if order_flow_observations is not None else None
     )
     counters = {
-        "signals": 0, "waits": 0, "market": 0, "limit": 0, "limit_expired": 0,
+        "signals": 0, "waits": 0, "market": 0, "limit": 0,
+        "limit_expired": 0, "limit_censored": 0,
         "order_flow_enabled": int(order_flow_observations is not None),
         "order_flow_decision_points": 0, "order_flow_snapshot_matches": 0,
         "order_flow_missing_snapshots": 0, "order_flow_stale_snapshots": 0,
@@ -335,8 +383,20 @@ async def _simulate_slice(
     minute_times = timestamps.get("1", [])
     if not minute_rows or len(minute_rows) != len(minute_times):
         raise ValueError("One-minute execution history is required for historical fill simulation.")
-    slice_end_epoch = timestamps[primary_tf][end_index + 1]
-    minute_end_index = bisect_left(minute_times, slice_end_epoch)
+    decision_end_epoch = timestamps[primary_tf][end_index + 1]
+    if execution_end_epoch is None:
+        execution_end_epoch = decision_end_epoch
+    elif (
+        isinstance(execution_end_epoch, bool)
+        or not math.isfinite(float(execution_end_epoch))
+        or float(execution_end_epoch) < decision_end_epoch
+    ):
+        raise ValueError("Replay execution end must be finite and no earlier than the decision-window end.")
+    else:
+        execution_end_epoch = float(execution_end_epoch)
+    minute_end_index = bisect_left(minute_times, execution_end_epoch - 1e-6)
+    if minute_end_index < 1:
+        raise ValueError("One-minute execution history does not reach the replay decision window.")
     raw_filters = symbol_info.get("filters")
     raw_price_filter = raw_filters.get("PRICE_FILTER") if isinstance(raw_filters, dict) else None
     if not isinstance(raw_price_filter, dict):
@@ -367,7 +427,7 @@ async def _simulate_slice(
 
     while index <= end_index:
         as_of_epoch = timestamps[primary_tf][index + 1]
-        if as_of_epoch >= slice_end_epoch:
+        if as_of_epoch >= decision_end_epoch:
             break
         as_of = datetime.fromtimestamp(as_of_epoch, timezone.utc)
         windows: dict[str, list[dict[str, Any]]] = {}
@@ -467,7 +527,7 @@ async def _simulate_slice(
             counters["market"] += 1
         elif entry_type == "LIMIT":
             limit_price = float(signal["limit_price"])
-            expiry_end_epoch = min(as_of_epoch + 900, slice_end_epoch)
+            expiry_end_epoch = min(as_of_epoch + 900, execution_end_epoch)
             expiry_end_index = bisect_left(minute_times, expiry_end_epoch - 1e-6)
             fill_index = None
             entry_price = None
@@ -479,7 +539,10 @@ async def _simulate_slice(
                     break
             counters["limit"] += 1
             if fill_index is None:
-                counters["limit_expired"] += 1
+                if as_of_epoch + 900 <= execution_end_epoch + 1e-6:
+                    counters["limit_expired"] += 1
+                else:
+                    counters["limit_censored"] += 1
                 next_signal_index = bisect_left(timestamps[primary_tf], expiry_end_epoch - 1e-6) - 1
                 index = max(index + 1, next_signal_index)
                 continue
@@ -530,12 +593,70 @@ async def _simulate_slice(
             "minutes_held": exit_index - fill_index + 1,
         })
         exit_epoch = minute_times[exit_index] + 60
-        if exit_epoch >= slice_end_epoch:
+        if exit_epoch >= execution_end_epoch:
+            index = len(primary) - 2
             break
         next_signal_index = bisect_left(timestamps[primary_tf], exit_epoch - 1e-6) - 1
         index = max(index + 1, next_signal_index)
 
-    return _metrics(trades, counters, primary, start_index, end_index, settings)
+    metrics = _metrics(trades, counters, primary, start_index, end_index, settings)
+    metrics["_all_trades"] = trades
+    metrics["_next_signal_index"] = index
+    return metrics
+
+
+def _public_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
+    """Remove internal replay state before returning metrics to API clients."""
+    return {key: value for key, value in metrics.items() if not key.startswith("_")}
+
+
+def _aggregate_fold_metrics(
+    fold_results: list[dict[str, Any]],
+    candles: list[dict[str, Any]],
+    start_index: int,
+    end_index: int,
+    settings: dict[str, Any],
+) -> dict[str, Any]:
+    """Aggregate sequential OOS folds without discarding trades beyond the UI preview."""
+    counter_fields = {
+        "signals": "signal_count",
+        "waits": "wait_count",
+        "market": "market_entries",
+        "limit": "limit_entries",
+        "limit_expired": "limit_expired",
+        "limit_censored": "limit_censored",
+        "order_flow_decision_points": "order_flow_decision_points",
+        "order_flow_snapshot_matches": "order_flow_snapshot_matches",
+        "order_flow_missing_snapshots": "order_flow_missing_snapshots",
+        "order_flow_stale_snapshots": "order_flow_stale_snapshots",
+        "order_flow_invalid_snapshots": "order_flow_invalid_snapshots",
+        "order_flow_confirmed_candidates": "order_flow_confirmed_candidates",
+        "order_flow_rejected_candidates": "order_flow_rejected_candidates",
+    }
+    counters = {key: 0 for key in counter_fields}
+    counters["order_flow_enabled"] = int(any(
+        result.get("order_flow_replay_enabled") is True for result in fold_results
+    ))
+    trades: list[dict[str, Any]] = []
+    for result in fold_results:
+        for counter_key, metric_key in counter_fields.items():
+            counters[counter_key] += int(result.get(metric_key) or 0)
+        trades.extend(result.get("_all_trades") or [])
+    trades.sort(key=lambda trade: (
+        str(trade.get("exit_time") or ""),
+        str(trade.get("signal_time") or ""),
+        str(trade.get("fill_time") or ""),
+    ))
+    aggregate = _metrics(trades, counters, candles, start_index, end_index, settings)
+    aggregate["fold_count"] = len(fold_results)
+    aggregate["folds_with_trades"] = sum(
+        1 for result in fold_results if result.get("trade_count", 0) > 0
+    )
+    aggregate["folds_with_positive_expectancy"] = sum(
+        1 for result in fold_results
+        if isinstance(result.get("expectancy_r"), (int, float)) and result["expectancy_r"] > 0
+    )
+    return aggregate
 
 
 async def run_signal_walk_forward(
@@ -545,14 +666,17 @@ async def run_signal_walk_forward(
     settings: dict[str, Any] | None = None,
     *,
     train_ratio: float = 0.7,
+    fold_count: int = 3,
     assumed_spread_bps: float = 5.0,
     assumed_depth_usd: float = 10000.0,
     order_flow_observations: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Evaluate the actual signal rules on chronological training and unseen holdout slices."""
+    """Run fixed-rule sequential OOS folds with causal candle/Order Flow replay."""
     settings = settings or {"primary": "5", "trend": "60", "enabled": ["60", "30", "15", "5", "1"], "min_score": 7}
     if not 0.5 <= train_ratio <= 0.9:
         raise ValueError("Train ratio must be between 0.5 and 0.9.")
+    if isinstance(fold_count, bool) or not isinstance(fold_count, int) or not 2 <= fold_count <= 6:
+        raise ValueError("Walk-forward fold_count must be an integer between 2 and 6.")
     if not math.isfinite(assumed_spread_bps) or not 0 <= assumed_spread_bps <= 100:
         raise ValueError("Assumed spread must be between 0 and 100 bps.")
     if not math.isfinite(assumed_depth_usd) or assumed_depth_usd < 1000:
@@ -602,6 +726,8 @@ async def run_signal_walk_forward(
         raise ValueError(
             f"Historical 1m data has too many missing bars ({missing_minute_bars}; largest gap {largest_gap_minutes}m)."
         )
+    if not minute_times or minute_times[-1] + 60 < primary_times[-1] - 1e-6:
+        raise ValueError("One-minute execution history must cover the final primary decision window.")
     first_valid = None
     for index in range(len(primary) - 1):
         as_of_epoch = primary_times[index + 1]
@@ -619,17 +745,56 @@ async def run_signal_walk_forward(
     if usable < 100:
         raise ValueError("Not enough post-warm-up candles for a meaningful train/holdout comparison.")
     split_index = first_valid + max(1, int(usable * train_ratio))
-    if split_index - first_valid < 50 or len(primary) - 1 - split_index < 30:
-        raise ValueError("Training and out-of-sample windows are too small after indicator warm-up.")
+    out_of_sample_decisions = len(primary) - 1 - split_index
+    if split_index - first_valid < 50 or out_of_sample_decisions < fold_count * 10:
+        raise ValueError(
+            "Training needs at least 50 decision bars and each out-of-sample fold needs at least 10 bars."
+        )
 
-    training = await _simulate_slice(
+    training_raw = await _simulate_slice(
         symbol, candles_by_tf, symbol_info, settings, assumed_spread_bps,
         assumed_depth_usd, first_valid, split_index - 1,
     )
-    out_of_sample = await _simulate_slice(
-        symbol, candles_by_tf, symbol_info, settings, assumed_spread_bps,
-        assumed_depth_usd, split_index, len(primary) - 2,
-    )
+    training = _public_metrics(training_raw)
+    oos_execution_end_epoch = minute_times[-1] + 60.0
+
+    async def _run_oos_folds(
+        observations: list[dict[str, Any]] | None,
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        sizes = [
+            out_of_sample_decisions // fold_count
+            + (1 if index < out_of_sample_decisions % fold_count else 0)
+            for index in range(fold_count)
+        ]
+        cursor = split_index
+        next_start_index = split_index - 1
+        raw_results: list[dict[str, Any]] = []
+        public_folds: list[dict[str, Any]] = []
+        for fold_number, size in enumerate(sizes, start=1):
+            fold_end = cursor + size
+            start_index = max(next_start_index, cursor - 1)
+            end_index = fold_end - 1
+            raw = await _simulate_slice(
+                symbol, candles_by_tf, symbol_info, settings, assumed_spread_bps,
+                assumed_depth_usd, start_index, end_index,
+                order_flow_observations=observations,
+                execution_end_epoch=oos_execution_end_epoch,
+            )
+            raw_results.append(raw)
+            public_folds.append({
+                "fold": fold_number,
+                "decision_start": datetime.fromtimestamp(primary_times[cursor], timezone.utc).isoformat(),
+                "decision_end_exclusive": datetime.fromtimestamp(primary_times[fold_end], timezone.utc).isoformat(),
+                **_public_metrics(raw),
+            })
+            next_start_index = max(fold_end - 1, int(raw.get("_next_signal_index", fold_end - 1)))
+            cursor = fold_end
+        aggregate = _aggregate_fold_metrics(
+            raw_results, primary, split_index - 1, len(primary) - 2, settings
+        )
+        return aggregate, public_folds
+
+    out_of_sample, out_of_sample_folds = await _run_oos_folds(None)
 
     order_flow_replay = None
     order_flow_comparison = None
@@ -641,15 +806,14 @@ async def run_signal_walk_forward(
                 "note": "No eligible sequence-validated Spot feature snapshots overlap this historical candle range; no order-flow performance result is available.",
             }
         else:
-            order_flow_training = await _simulate_slice(
+            order_flow_training_raw = await _simulate_slice(
                 symbol, candles_by_tf, symbol_info, settings, assumed_spread_bps,
                 assumed_depth_usd, first_valid, split_index - 1,
                 order_flow_observations=order_flow_observations,
             )
-            order_flow_out_of_sample = await _simulate_slice(
-                symbol, candles_by_tf, symbol_info, settings, assumed_spread_bps,
-                assumed_depth_usd, split_index, len(primary) - 2,
-                order_flow_observations=order_flow_observations,
+            order_flow_training = _public_metrics(order_flow_training_raw)
+            order_flow_out_of_sample, order_flow_out_of_sample_folds = await _run_oos_folds(
+                order_flow_observations
             )
             order_flow_replay = {
                 "status": "EVALUATED",
@@ -658,7 +822,8 @@ async def run_signal_walk_forward(
                 "last_captured_at": order_flow_observations[-1].get("captured_at"),
                 "training": order_flow_training,
                 "out_of_sample": order_flow_out_of_sample,
-                "method": "Same candle strategy and execution model, with the existing live Spot order-flow confirmation gate applied only to snapshots captured at/before each decision time.",
+                "out_of_sample_folds": order_flow_out_of_sample_folds,
+                "method": "Same fixed candle strategy and execution model across sequential OOS folds, with the live Spot order-flow gate applied only to prior, fresh, sequence-validated snapshots. OOS positions remain blocked until their modeled exit, including across fold boundaries.",
             }
             baseline_expectancy = out_of_sample.get("expectancy_r")
             flow_expectancy = order_flow_out_of_sample.get("expectancy_r")
@@ -704,8 +869,10 @@ async def run_signal_walk_forward(
         },
         "settings": settings,
         "train_ratio": train_ratio,
+        "fold_count": fold_count,
         "training": training,
         "out_of_sample": out_of_sample,
+        "out_of_sample_folds": out_of_sample_folds,
         "order_flow_replay": order_flow_replay,
         "order_flow_comparison": order_flow_comparison,
         "assumptions": {
@@ -718,15 +885,16 @@ async def run_signal_walk_forward(
             "market_fill": "Next primary candle open using the modeled bid/ask spread.",
             "limit_fill": "Filled only if a 1m candle touches the limit within the 15-minute signal expiry; gap-through fills use the better opening price.",
             "intrabar_ambiguity": "If stop-loss and TP1 are both touched in one candle, stop-loss is assumed first.",
-            "exit_policy": "Full position exits at stop-loss or TP1; TP2/TP3 partial exits are not modeled.",
+            "exit_policy": "Full position exits at stop-loss or TP1; TP2/TP3 partial exits are not modeled. Open positions are carried across OOS fold boundaries and prevent overlapping new entries.",
             "order_flow_replay": "Selects only the latest stored Spot feature snapshot captured at or before each decision; source ages are recomputed at that decision timestamp. Missing, stale, future, malformed or non-sequenced snapshots fail closed for candidates; no stale forward-fill is allowed.",
         },
-        "method": "Chronological holdout. Each signal uses only candles closed by the next primary bar open; the holdout is not used for parameter fitting.",
+        "method": "Fixed-rule sequential walk-forward: one initial in-sample segment followed by non-overlapping OOS decision windows. No parameters are fit on the OOS windows; open positions are carried across fold boundaries.",
         "limitations": [
             "Historical order-book depth and bid/ask are unavailable; spread and depth are modeled assumptions.",
             "Fee estimates may differ from the user's Binance fee tier.",
             "No partial fills, funding, position sizing, contract multiplier, taxes or broker execution latency.",
             "Spot SELL is a sell signal only, not a short position.",
+            "Confidence intervals are descriptive only and do not correct for serial dependence or strategy selection.",
             "A historical holdout is not proof of future profitability.",
             "Order-flow snapshots are retained for seven days, sampled at most once per symbol per minute, and only exist for symbols with active managed streams.",
             "Captured order-flow snapshots are feature summaries, not raw AggTrade/depth-diff archives; CVD is bounded since the stream seed and UTC session delta may be incomplete.",

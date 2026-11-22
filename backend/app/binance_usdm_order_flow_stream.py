@@ -39,6 +39,7 @@ class BinanceUsdmOrderFlowStream:
         self.reconnect_max_seconds = reconnect_max_seconds
         self.session_id = uuid.uuid4().hex
         self.capture_events = deque()
+        self.recent_trades: deque[dict[str, Any]] = deque(maxlen=5000)
         self.bids: dict[float, float] = {}
         self.asks: dict[float, float] = {}
         self.last_update_id = None
@@ -105,8 +106,8 @@ class BinanceUsdmOrderFlowStream:
             else: self.asks[px] = q
         self.last_update_id = p["u"]
         self.sequence_valid = True
-        self.last_depth_at = datetime.now(timezone.utc)
-        self.last_message_at = self.last_depth_at
+        self.last_depth_at = datetime.fromtimestamp(event["event_time_ms"] / 1000, tz=timezone.utc)
+        self.last_message_at = datetime.now(timezone.utc)
         self._queue({**event, "source":"WEBSOCKET", "stream_session_id":self.session_id})
         return True
 
@@ -115,8 +116,13 @@ class BinanceUsdmOrderFlowStream:
         event.update({"source":"WEBSOCKET", "stream_session_id":self.session_id})
         self.last_trade = {"price":event["payload"]["p"],"quantity":event["payload"]["q"],
                            "buyer_is_maker":event["payload"]["m"],"event_time_ms":event["event_time_ms"]}
-        self.last_trade_at = datetime.now(timezone.utc)
-        self.last_message_at = self.last_trade_at
+        self.last_trade_at = datetime.fromtimestamp(event["event_time_ms"] / 1000, tz=timezone.utc)
+        self.last_message_at = datetime.now(timezone.utc)
+        self.recent_trades.append({
+            "event_time_ms": event["event_time_ms"],
+            "quantity": float(event["payload"]["q"]),
+            "buyer_is_maker": event["payload"]["m"],
+        })
         self.trade_count += 1
         self._queue(event)
 
@@ -173,13 +179,24 @@ class BinanceUsdmOrderFlowStream:
         now = datetime.now(timezone.utc)
         trade_age = (now-self.last_trade_at).total_seconds() if self.last_trade_at else None
         depth_age = (now-self.last_depth_at).total_seconds() if self.last_depth_at else None
-        valid = self.sequence_valid and depth_age is not None and depth_age <= 5
+        valid = self.sequence_valid and depth_age is not None and 0 <= depth_age <= 5
+        window_start_ms = int(now.timestamp() * 1000) - 60_000
+        recent = [trade for trade in self.recent_trades if trade["event_time_ms"] >= window_start_ms]
+        buy_volume = sum(trade["quantity"] for trade in recent if not trade["buyer_is_maker"])
+        sell_volume = sum(trade["quantity"] for trade in recent if trade["buyer_is_maker"])
+        total_volume = buy_volume + sell_volume
+        delta = buy_volume - sell_volume
         bids = sorted(self.bids.items(), reverse=True)[:20]
         asks = sorted(self.asks.items())[:20]
         return {"market_type":MARKET_TYPE,"symbol":self.symbol,"status":self.status,
             "sequence_valid":bool(valid),"depth_ready":bool(valid and bids and asks),
             "snapshot_update_id":getattr(self,"snapshot_update_id",None),"last_update_id":self.last_update_id,
             "trade_count":self.trade_count,"last_trade":self.last_trade,
+            "trade_flow_60s":{"window_start_ms":window_start_ms,"window_seconds":60,
+                "trade_count":len(recent),"buy_volume":buy_volume,"sell_volume":sell_volume,
+                "total_volume":total_volume,"delta":delta,
+                "delta_ratio":delta/total_volume if total_volume>0 else None,
+                "coverage":"OBSERVED_STREAM_WINDOW_NOT_PROVEN_COMPLETE"},
             "trade_age_seconds":round(trade_age,3) if trade_age is not None else None,
             "depth_age_seconds":round(depth_age,3) if depth_age is not None else None,
             "bids":[{"price":str(p),"quantity":str(q)} for p,q in bids],

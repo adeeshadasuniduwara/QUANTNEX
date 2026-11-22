@@ -22,3 +22,13 @@ def test_usdm_depth_sequence_fails_closed_on_pu_gap():
 def test_usdm_rejects_spot_or_malformed_payload_data():
     with pytest.raises(FuturesOrderFlowError): normalize_usdm_agg_trade("BTCUSDT",{"a":1,"p":"NaN","q":"1","T":1700000000000,"m":True},received_at_ms=1700000000001)
     with pytest.raises(FuturesOrderFlowError): normalize_usdm_depth_update("BTCUSDT",{"U":1,"u":2,"E":1700000000000,"b":[],"a":[]},received_at_ms=1700000000001)
+
+
+def test_usdm_sequence_rejects_spot_namespace_and_cross_symbol_mixing():
+    one=normalize_usdm_depth_update("BTCUSDT",{"U":101,"u":105,"pu":100,"E":1700000000000,"b":[],"a":[]},received_at_ms=1700000000001)
+    other=normalize_usdm_depth_update("ETHUSDT",{"U":106,"u":110,"pu":105,"E":1700000000002,"b":[],"a":[]},received_at_ms=1700000000003)
+    with pytest.raises(FuturesOrderFlowError):
+        validate_usdm_depth_sequence(103,[one,other])
+    spot=dict(one,market_type="BINANCE_SPOT")
+    with pytest.raises(FuturesOrderFlowError):
+        validate_usdm_depth_sequence(103,[spot])

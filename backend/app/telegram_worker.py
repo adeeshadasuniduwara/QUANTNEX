@@ -814,14 +814,15 @@ async def _handle_command(client, db, user_id: int, token: str, chat_id: str, te
         try:
             # End the polling transaction before waiting on the external AI provider.
             db.commit()
-            from .ai_assistant import ask_openai
+            from .ai_assistant import ask_openai, openai_http_error_message
             answer, _model = await ask_openai(db, user_id, clean_text)
             return answer[:3900]
         except RuntimeError:
             return "QUANTNEX AI is not configured yet. Add your OpenAI API key in QUANTNEX → Connections & Integrations. Do not send API keys in Telegram."
         except httpx.HTTPStatusError as exc:
             logger.warning("Telegram AI request rejected for local user %s: HTTP %s", user_id, exc.response.status_code)
-            return "QUANTNEX AI could not complete that request. Check the OpenAI key, model access and API billing in Connections & Integrations."
+            from .ai_assistant import openai_http_error_message
+            return openai_http_error_message(exc)
         except (httpx.HTTPError, ValueError, KeyError, TypeError):
             logger.warning("Telegram AI request failed for local user %s", user_id)
             return "QUANTNEX AI is temporarily unavailable. Please try again in a moment."

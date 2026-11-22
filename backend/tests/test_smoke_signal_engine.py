@@ -114,3 +114,95 @@ def test_order_flow_diagnostic_formatter_handles_missing_and_non_finite_values()
     assert "accepted=n/a" in line
     assert "delta=" not in line
     assert "spread_bps=" not in line
+
+def test_smoke_run_scans_dynamic_usdm_perpetual_sample_separately(monkeypatch, capsys):
+    import smoke_signal_engine as smoke
+
+    spot_symbols = ["BTCUSDT", "ETHUSDT"]
+    futures_symbols = [f"PERP{index:03d}USDT" for index in range(11)]
+    spot_calls = []
+    futures_calls = []
+
+    async def fake_spot_universe():
+        return spot_symbols
+
+    async def fake_spot_build(settings, symbol):
+        spot_calls.append(symbol)
+        return {"provider": "Binance Spot", "signal": None, "confluence_score": 0}
+
+    async def fake_usdm_universe():
+        return futures_symbols
+
+    async def fake_usdm_analyze(symbol, interval, min_score):
+        futures_calls.append((symbol, interval, min_score))
+        return {
+            "market_type": "BINANCE_USDM_FUTURES",
+            "status": "WAIT",
+            "signal": None,
+            "confluence_score": 0,
+            "message": "WAIT — no qualifying closed-candle setup.",
+            "execution_enabled": False,
+            "order_flow_enabled": False,
+        }
+
+    monkeypatch.setattr(smoke, "get_binance_spot_symbols", fake_spot_universe)
+    monkeypatch.setattr(smoke, "build_signal", fake_spot_build)
+    monkeypatch.setattr(smoke, "get_binance_usdm_symbols", fake_usdm_universe)
+    monkeypatch.setattr(smoke, "analyze_usdm_futures_signal", fake_usdm_analyze)
+
+    result = asyncio.run(_run(
+        None, 8,
+        universe_sample_size=2,
+        sample_day=1,
+        include_usdm=True,
+        usdm_universe_sample_size=3,
+    ))
+
+    expected = rotating_symbol_sample(futures_symbols, 3, day_index=1)
+    output = capsys.readouterr().out
+    assert result == 0
+    assert spot_calls == spot_symbols
+    assert [call[0] for call in futures_calls] == expected
+    assert all(call[1] == "5m" and call[2] == 8 for call in futures_calls)
+    assert "Eligible TRADING PERPETUAL contracts from exchangeInfo: 11" in output
+    assert "Futures scope: closed 5m candles only" in output
+    assert "[FUTURES WAIT]" in output
+    assert "Execution: DISABLED | Order Flow: NOT AVAILABLE" in output
+    assert "Neither sample means every eligible contract was scanned" in output
+
+
+def test_usdm_smoke_counts_new_contracts_without_history_as_skips(monkeypatch, capsys):
+    import smoke_signal_engine as smoke
+
+    async def fake_spot_universe():
+        return ["BTCUSDT"]
+
+    async def fake_spot_build(*_args):
+        return {"provider": "Binance Spot", "signal": None, "confluence_score": 0}
+
+    async def fake_usdm_universe():
+        return ["NEWUSDT"]
+
+    async def fake_usdm_analyze(*_args):
+        raise smoke.BinanceUsdMSignalError(
+            "At least 210 fully closed 5m USDⓈ-M candles are required; received 80."
+        )
+
+    monkeypatch.setattr(smoke, "get_binance_spot_symbols", fake_spot_universe)
+    monkeypatch.setattr(smoke, "build_signal", fake_spot_build)
+    monkeypatch.setattr(smoke, "get_binance_usdm_symbols", fake_usdm_universe)
+    monkeypatch.setattr(smoke, "analyze_usdm_futures_signal", fake_usdm_analyze)
+
+    result = asyncio.run(_run(
+        None, 8,
+        universe_sample_size=1,
+        sample_day=0,
+        include_usdm=True,
+        usdm_universe_sample_size=1,
+    ))
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert "[FUTURES SKIP] NEWUSDT.P" in output
+    assert "1 insufficient-history skip(s)" in output
+

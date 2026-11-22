@@ -27,5 +27,5 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Run live public crypto signal smoke test
-        run: python smoke_signal_engine.py --universe-sample-size 20
+      - name: Run dynamic Binance Spot and USDⓈ-M Futures smoke samples
+        run: python smoke_signal_engine.py --universe-sample-size 20 --usdm-universe-sample-size 20

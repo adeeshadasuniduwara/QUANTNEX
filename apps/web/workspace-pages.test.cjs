@@ -185,5 +185,5 @@ assert.ok(html.includes('id="webCheckUpdate"'), "Manual Check for Updates button
 assert.match(app, /function syncUpdatesTab\(\)/, "Updates must be checked when entering the Updates tab.");
 assert.match(app, /window\.addEventListener\("hashchange",syncUpdatesTab\)/, "Updates-tab entry must be detected from navigation.");
 assert.doesNotMatch(app, /checkLocalUpdate\(\{silent:true\}\)[\s\S]{0,100}300000/, "The browser must not poll the updater every five minutes.");
-assert.match(html, /daily at 02:00 Sri Lanka time/i, "The Updates page must describe the automatic schedule currently present in main.");
+assert.match(html, /about every 5 minutes, staggered to reduce traffic/i, "The Updates page must describe the staggered five-minute automatic update schedule.");
 console.log("Updates tab entry-only check and current automatic update notice checks passed.");

@@ -24,6 +24,10 @@ from .order_flow_recorder import (
     is_recordable_order_flow_snapshot,
     record_order_flow_observation,
 )
+from .order_flow_raw_recorder import (
+    DEFAULT_RAW_EVENT_RETENTION_DAYS,
+    record_order_flow_market_events,
+)
 
 
 MAX_PENDING_CAPTURE_TASKS = 16
@@ -124,6 +128,9 @@ class BinanceSpotOrderFlowManager:
         self.capture_retention_days = capture_retention_days
         self.last_capture_at: str | None = None
         self.last_capture_error: str | None = None
+        self.last_raw_event_capture_at: str | None = None
+        self.last_raw_event_count = 0
+        self.last_raw_event_error: str | None = None
         self._last_prune_monotonic: float | None = None
         self._capture_tasks: set[asyncio.Task] = set()
         self._slots: dict[str, _ManagedStream] = {}
@@ -203,6 +210,29 @@ class BinanceSpotOrderFlowManager:
             raise BinanceSpotOrderFlowManagerError("Stream freshness limits must be finite and positive.")
         return normalized, str(tick_size), wait, trade_age, depth_age
 
+    def _persist_market_events(self, events: list[dict[str, Any]]) -> dict[str, Any]:
+        db = SessionLocal()
+        try:
+            return record_order_flow_market_events(
+                db, events, retention_days=DEFAULT_RAW_EVENT_RETENTION_DAYS
+            )
+        finally:
+            db.close()
+
+    def _raw_events_capture_finished(self, task: asyncio.Task) -> None:
+        self._capture_tasks.discard(task)
+        if task.cancelled():
+            return
+        try:
+            result = task.result()
+        except Exception as exc:
+            self.last_raw_event_error = f"{type(exc).__name__}: {exc}"
+            return
+        if isinstance(result, dict):
+            self.last_raw_event_count += int(result.get("stored", 0))
+            self.last_raw_event_capture_at = datetime.now(timezone.utc).isoformat()
+            self.last_raw_event_error = None
+
     def _persist_snapshot(
         self,
         snapshot: dict[str, Any],
@@ -257,6 +287,19 @@ class BinanceSpotOrderFlowManager:
         async def on_update(snapshot: dict[str, Any]) -> None:
             nonlocal last_capture_monotonic
             changed_event.set()
+            # Drain every validated raw trade/depth event independently of the
+            # once-per-minute feature snapshot alignment window.
+            if len(self._capture_tasks) < MAX_PENDING_CAPTURE_TASKS:
+                raw_events = stream.drain_capture_events(limit=256)
+                if raw_events:
+                    raw_task = asyncio.create_task(
+                        asyncio.to_thread(self._persist_market_events, raw_events),
+                        name=f"quantnex-orderflow-raw-{symbol.lower()}",
+                    )
+                    self._capture_tasks.add(raw_task)
+                    raw_task.add_done_callback(self._raw_events_capture_finished)
+            else:
+                self.last_raw_event_error = "RAW_EVENT_BACKPRESSURE: pending database writes reached the safety limit."
             captured_at = datetime.now(timezone.utc)
             seconds_until_boundary = _seconds_until_next_utc_minute(captured_at)
             if seconds_until_boundary is None:
@@ -371,6 +414,13 @@ class BinanceSpotOrderFlowManager:
                 "alignment_window_seconds": REPLAY_CAPTURE_ALIGNMENT_WINDOW_SECONDS,
                 "last_captured_at": self.last_capture_at,
                 "last_error": self.last_capture_error,
+                "raw_event_archive": True,
+                "raw_event_retention_days": DEFAULT_RAW_EVENT_RETENTION_DAYS,
+                "last_raw_event_capture_at": self.last_raw_event_capture_at,
+                "raw_events_persisted": self.last_raw_event_count,
+                "raw_event_error": self.last_raw_event_error,
+                "pending_raw_events": len(slot.stream.capture_events),
+                "raw_capture_rejected_events": slot.stream.capture_rejected_events,
             },
         }
         return snapshot

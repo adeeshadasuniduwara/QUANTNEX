@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 import sys
 
 from app.signal_engine import MarketDataError, build_signal, get_binance_spot_symbols
+from app.binance_usdm_market_data import BinanceUsdMDataError, get_binance_usdm_symbols
+from app.binance_usdm_signal_engine import BinanceUsdMSignalError, analyze_usdm_futures_signal
 
 
 DEFAULT_SETTINGS = {
@@ -94,12 +96,105 @@ def _format_order_flow_diagnostics(result: dict) -> str:
     return "  Order Flow: " + " | ".join(fields)
 
 
+async def _run_usdm(
+    *,
+    universe_sample_size: int,
+    min_score: int,
+    sample_day: int | None = None,
+) -> tuple[int, int, int]:
+    """Run a separate, read-only rotating sample of active USDⓈ-M perpetuals.
+
+    Futures currently has a candle-only monitor engine. This smoke path must
+    never imply Spot Order Flow, adaptive execution, or order placement.
+    """
+    try:
+        universe = await get_binance_usdm_symbols()
+    except BinanceUsdMDataError as exc:
+        print(f"[ERROR] Binance USDⓈ-M symbol discovery failed: {exc}", file=sys.stderr)
+        return 0, 0, 1
+
+    if not universe:
+        print("No eligible Binance USDⓈ-M perpetual contracts were returned by exchangeInfo.", file=sys.stderr)
+        return 0, 0, 1
+
+    try:
+        symbols = rotating_symbol_sample(
+            universe, universe_sample_size, day_index=sample_day
+        )
+    except ValueError as exc:
+        print(f"[ERROR] Invalid USDⓈ-M smoke sample: {exc}", file=sys.stderr)
+        return 0, 0, 1
+
+    day_label = sample_day if sample_day is not None else datetime.now(timezone.utc).date().toordinal()
+    print()
+    print("QUANTNEX Binance USDⓈ-M Futures read-only candle smoke test")
+    print(f"Eligible TRADING PERPETUAL contracts from exchangeInfo: {len(universe)}")
+    print(f"Rotating USDⓈ-M smoke sample: {len(symbols)} contracts (sample day={day_label})")
+    print("Futures scope: closed 5m candles only; no Futures Order Flow, no adaptive execution and no orders.")
+
+    successful = 0
+    skipped = 0
+    failures = 0
+    for index, symbol in enumerate(symbols):
+        try:
+            result = await analyze_usdm_futures_signal(
+                symbol, "5m", min_score=max(6, min(10, int(min_score)))
+            )
+            signal = result.get("signal")
+            if result.get("status") == "SIGNAL" and isinstance(signal, dict):
+                print(
+                    f"[FUTURES CANDLE SIGNAL] {symbol}.P {signal.get('side', 'UNKNOWN')} | "
+                    f"score={_format_diagnostic_value(signal.get('score')) or _format_diagnostic_value(result.get('confluence_score')) or 'n/a'}"
+                )
+                levels = []
+                for label, key in (("reference", "entry"), ("SL", "stop_loss"), ("TP1", "tp1")):
+                    value = _format_diagnostic_value(signal.get(key))
+                    if value is not None:
+                        levels.append(f"{label}={value}")
+                if levels:
+                    print("  " + " | ".join(levels))
+            else:
+                reason = _format_diagnostic_value(result.get("message")) or "No qualifying closed-candle setup."
+                print(
+                    f"[FUTURES WAIT] {symbol}.P | "
+                    f"confluence={_format_diagnostic_value(result.get('confluence_score')) or 'n/a'} | {reason}"
+                )
+            print("  Execution: DISABLED | Order Flow: NOT AVAILABLE | Market type: BINANCE_USDM_FUTURES")
+            successful += 1
+        except BinanceUsdMSignalError as exc:
+            detail = str(exc)
+            if any(marker in detail for marker in (
+                "At least 210 fully closed", "No closed valid", "insufficient closed"
+            )):
+                skipped += 1
+                print(f"[FUTURES SKIP] {symbol}.P | insufficient closed history: {detail}")
+            else:
+                failures += 1
+                print(f"[FUTURES ERROR] {symbol}.P | {type(exc).__name__}: {exc}")
+        except (ValueError, TypeError, KeyError) as exc:
+            failures += 1
+            print(f"[FUTURES ERROR] {symbol}.P | {type(exc).__name__}: {exc}")
+        except Exception as exc:  # continue checking the remaining dynamic universe sample
+            failures += 1
+            print(f"[FUTURES ERROR] {symbol}.P | unexpected {type(exc).__name__}: {exc}")
+        if index + 1 < len(symbols):
+            await asyncio.sleep(0.1)
+
+    print(
+        f"USDⓈ-M sample complete: {successful} successful scan(s), "
+        f"{skipped} insufficient-history skip(s), {failures} provider/error failure(s)."
+    )
+    return successful, skipped, failures
+
+
 async def _run(
     symbols: list[str] | None,
     min_score: int,
     *,
     universe_sample_size: int = 20,
     sample_day: int | None = None,
+    include_usdm: bool = False,
+    usdm_universe_sample_size: int = 20,
 ) -> int:
     settings = {**DEFAULT_SETTINGS, "min_score": max(8, min(10, min_score))}
     try:
@@ -185,14 +280,27 @@ async def _run(
         if index + 1 < len(symbols):
             await asyncio.sleep(0.1)
 
+    spot_successful = len(symbols) - failures - skipped
+    usdm_successful = 0
+    usdm_skipped = 0
+    if include_usdm:
+        usdm_successful, usdm_skipped, usdm_failures = await _run_usdm(
+            universe_sample_size=usdm_universe_sample_size,
+            min_score=settings["min_score"],
+            sample_day=sample_day,
+        )
+        failures += usdm_failures
+        skipped += usdm_skipped
+
     print("-" * 72)
     print(
-        f"Finished: {len(symbols) - failures - skipped} successful scan(s), "
+        f"Finished: {spot_successful} successful Spot scan(s), "
+        f"{usdm_successful} successful USDⓈ-M scan(s), "
         f"{skipped} insufficient-history skip(s), {failures} provider/error failure(s)."
     )
     print(
-        "Coverage note: this is a rotating read-only smoke subset, not a claim that "
-        "every Binance pair was scanned in this run."
+        "Coverage note: Spot and USDⓈ-M each use independent rotating smoke subsets. "
+        "Neither sample means every eligible contract was scanned in this run."
     )
     return 1 if failures else 0
 
@@ -216,7 +324,18 @@ def main() -> int:
         default=None,
         help="Optional deterministic non-negative day index for repeatable sample selection.",
     )
-    parser.add_argument("--min-score", type=int, default=8, help="Signal threshold, clamped to 8–10.")
+    parser.add_argument(
+        "--usdm-universe-sample-size",
+        type=int,
+        default=20,
+        help="Number of dynamically discovered active USDⓈ-M perpetuals to scan in candle-only monitor mode.",
+    )
+    parser.add_argument(
+        "--skip-usdm",
+        action="store_true",
+        help="Skip the separate USDⓈ-M Futures candle-only smoke sample.",
+    )
+    parser.add_argument("--min-score", type=int, default=8, help="Spot threshold, clamped to 8–10; also bounded for Futures.")
     args = parser.parse_args()
 
     symbols = None if args.symbols is None else [
@@ -229,6 +348,8 @@ def main() -> int:
         symbols, args.min_score,
         universe_sample_size=args.universe_sample_size,
         sample_day=args.sample_day,
+        include_usdm=not args.skip_usdm,
+        usdm_universe_sample_size=args.usdm_universe_sample_size,
     ))
 
 

@@ -127,7 +127,11 @@ assert.match(js, /marketType==="BINANCE_USDM_FUTURES"/, "Futures selection must 
 assert.match(js, /quantnex\.chart\.selection\.v1/, "Market type selection must persist across reloads.");
 console.log("QUANTNEX VIEW Spot/USDⓈ-M Futures market selector and .P ticker checks passed.");
 
-assert.match(html, /Futures chart-only; signal and Order Flow engines remain Spot-only/, "UI must disclose that Futures chart support does not imply Futures signal/order-flow support.");
+assert.match(html, /Native QUANTNEX canvas engine · Binance Spot and USDⓈ-M Futures live market feeds/, "QUANTNEX VIEW must describe its chart feeds without advertising the relocated Order Flow tools.");
+const tradingViewStart = html.indexOf('id="tradingview"');
+const advancedStart = html.indexOf('id="quantnex-advanced"');
+assert.ok(tradingViewStart >= 0 && advancedStart > tradingViewStart);
+assert.doesNotMatch(html.slice(tradingViewStart, advancedStart), /Order Flow/i, "Order Flow UI belongs in QUANTNEX Advanced, not QUANTNEX VIEW.");
 
 const intelligence = fs.readFileSync("apps/web/quantnex-view-intelligence.js", "utf8");
 assert.match(intelligence, /marketType:\$\("qxMarketType"\)\?\.value\|\|"BINANCE_SPOT"/, "Intelligence selection must include the selected market type.");

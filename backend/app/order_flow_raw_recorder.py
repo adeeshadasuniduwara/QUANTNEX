@@ -109,7 +109,7 @@ def record_order_flow_market_events(db, events: list[dict[str, Any]], *, now: da
     now_ms = int(clock.astimezone(timezone.utc).timestamp() * 1000)
     cutoff_ms = now_ms - retention_days * 86_400_000
     db.query(OrderFlowMarketEvent).filter(OrderFlowMarketEvent.received_at_ms < cutoff_ms).delete(synchronize_session=False)
-    seen: set[tuple[str, str, str]] = set()
+    seen: dict[tuple[str, str, str], tuple[int, str]] = {}
     rows = []
     duplicates = 0
     for event in events:
@@ -117,10 +117,14 @@ def record_order_flow_market_events(db, events: list[dict[str, Any]], *, now: da
         if received_ms > now_ms + 2_000:
             raise OrderFlowRawEventError("Receive timestamp is ahead of recorder clock.")
         key = (symbol, event_type, extra["key"])
-        if key in seen:
+        payload_json = json.dumps(extra["payload"], separators=(",", ":"), allow_nan=False)
+        prior = seen.get(key)
+        if prior is not None:
+            if prior != (event_ms, payload_json):
+                raise OrderFlowRawEventError("One exchange event identifier has conflicting duplicate payloads.")
             duplicates += 1
             continue
-        seen.add(key)
+        seen[key] = (event_ms, payload_json)
         rows.append(OrderFlowMarketEvent(
             market_type=MARKET_TYPE,
             symbol=symbol,
@@ -138,13 +142,15 @@ def record_order_flow_market_events(db, events: list[dict[str, Any]], *, now: da
     stored = 0
     try:
         for row in rows:
-            exists = db.query(OrderFlowMarketEvent.id).filter(
+            exists = db.query(OrderFlowMarketEvent).filter(
                 OrderFlowMarketEvent.market_type == MARKET_TYPE,
                 OrderFlowMarketEvent.symbol == row.symbol,
                 OrderFlowMarketEvent.event_type == row.event_type,
                 OrderFlowMarketEvent.event_key == row.event_key,
             ).first()
             if exists:
+                if exists.event_time_ms != row.event_time_ms or exists.payload_json != row.payload_json:
+                    raise OrderFlowRawEventError("A stored exchange event ID was replayed with conflicting payload data.")
                 duplicates += 1
                 continue
             try:

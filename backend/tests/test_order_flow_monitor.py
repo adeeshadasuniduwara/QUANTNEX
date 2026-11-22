@@ -5,6 +5,8 @@ from app.order_flow_monitor import (
     MAX_ORDER_FLOW_MONITOR_SYMBOLS,
     BinanceSpotOrderFlowCaptureWorker,
     get_order_flow_capture_status,
+    get_minute_aligned_order_flow_snapshot,
+    get_recent_trade_count_baseline,
     normalize_order_flow_monitor_symbols,
 )
 
@@ -42,7 +44,11 @@ def test_capture_status_discloses_minute_alignment_and_no_raw_tick_archive():
 
 
 
-def test_trade_count_baseline_uses_only_stored_minute_observations(monkeypatch):
+def _baseline_row(bucket, count):
+    return {"storage": {"sample_bucket": bucket}, "order_flow": {"trade_count": count}}
+
+
+def test_trade_count_baseline_uses_five_consecutive_prior_utc_minutes(monkeypatch):
     from datetime import datetime, timezone
     from app import order_flow_monitor, order_flow_recorder
 
@@ -50,22 +56,21 @@ def test_trade_count_baseline_uses_only_stored_minute_observations(monkeypatch):
         def close(self):
             pass
 
+    now = datetime(2026, 11, 21, 12, 0, tzinfo=timezone.utc)
+    minute = int(now.timestamp()) // 60
+    rows = [_baseline_row(minute - offset, value) for offset, value in zip(
+        range(5, 0, -1), [10, 20, 30, 40, 50]
+    )]
+    rows.append(_baseline_row(minute, 999))  # forming/current minute must not enter the baseline
     monkeypatch.setattr(order_flow_monitor, "SessionLocal", FakeDB)
-    monkeypatch.setattr(
-        order_flow_recorder,
-        "load_order_flow_observations",
-        lambda *_args, **_kwargs: [
-            {"order_flow": {"trade_count": value}}
-            for value in [10, 20, 30, 40, 50, "bad", None]
-        ],
-    )
-    baseline = order_flow_monitor.get_recent_trade_count_baseline(
-        "BTCUSDT", now=datetime(2026, 11, 21, 12, 0, tzinfo=timezone.utc)
-    )
+    monkeypatch.setattr(order_flow_recorder, "load_order_flow_observations", lambda *_a, **_k: rows)
+
+    baseline = get_recent_trade_count_baseline("BTCUSDT", now=now)
+
     assert baseline == 30.0
 
 
-def test_trade_count_baseline_waits_for_minimum_historical_coverage(monkeypatch):
+def test_trade_count_baseline_rejects_short_or_gapped_minute_coverage(monkeypatch):
     from datetime import datetime, timezone
     from app import order_flow_monitor, order_flow_recorder
 
@@ -73,13 +78,106 @@ def test_trade_count_baseline_waits_for_minimum_historical_coverage(monkeypatch)
         def close(self):
             pass
 
+    now = datetime(2026, 11, 21, 12, 0, tzinfo=timezone.utc)
+    minute = int(now.timestamp()) // 60
     monkeypatch.setattr(order_flow_monitor, "SessionLocal", FakeDB)
-    monkeypatch.setattr(
-        order_flow_recorder,
-        "load_order_flow_observations",
-        lambda *_args, **_kwargs: [{"order_flow": {"trade_count": value}} for value in [10, 20, 30, 40]],
+
+    monkeypatch.setattr(order_flow_recorder, "load_order_flow_observations", lambda *_a, **_k: [
+        _baseline_row(minute - offset, value)
+        for offset, value in zip(range(4, 0, -1), [10, 20, 30, 40])
+    ])
+    assert get_recent_trade_count_baseline("BTCUSDT", now=now) is None
+
+    monkeypatch.setattr(order_flow_recorder, "load_order_flow_observations", lambda *_a, **_k: [
+        _baseline_row(minute - offset, value)
+        for offset, value in [(1, 10), (2, 20), (4, 40), (5, 50), (6, 60)]
+    ])
+    assert get_recent_trade_count_baseline("BTCUSDT", now=now) is None
+
+
+def _recorded_minute_snapshot():
+    from datetime import datetime, timezone
+
+    candle_start = datetime(2026, 11, 21, 12, 0, tzinfo=timezone.utc)
+    captured = datetime(2026, 11, 21, 12, 0, 59, 500000, tzinfo=timezone.utc)
+    trade = datetime(2026, 11, 21, 12, 0, 59, tzinfo=timezone.utc)
+    depth = datetime(2026, 11, 21, 12, 0, 58, 500000, tzinfo=timezone.utc)
+    bucket = int(candle_start.timestamp()) // 60
+    return {
+        "market_type": "BINANCE_SPOT",
+        "captured_at": captured.isoformat(),
+        "storage": {"sample_bucket": bucket, "captured_at": captured.isoformat()},
+        "trade_state": {"coverage_complete": True, "gap_detected": False},
+        "depth_book": {"valid": True, "sequence_validated": True},
+        "data_provenance": {"candle_volume_used": False, "trade_side": "Binance aggregate trade buyer-is-maker"},
+        "order_flow": {
+            "market_type": "BINANCE_SPOT",
+            "feed_mode": "PUBLIC_WEBSOCKET_STREAM",
+            "depth_is_continuous": True,
+            "trade_count": 120,
+            "delta_ratio": 0.42,
+            "delta": 24.0,
+            "trade_data_age_seconds": 0.5,
+            "last_trade_at": trade.isoformat(),
+            "depth_observed_at": depth.isoformat(),
+            "order_book": {"depth_imbalance": 0.24, "spread_bps": 1.2},
+        },
+    }
+
+
+def test_minute_aligned_snapshot_uses_exact_closed_candle_and_recomputes_source_ages(monkeypatch):
+    from datetime import datetime, timezone
+    from app import order_flow_monitor, order_flow_recorder
+
+    class FakeDB:
+        def close(self):
+            pass
+
+    payload = _recorded_minute_snapshot()
+    monkeypatch.setattr(order_flow_monitor, "SessionLocal", FakeDB)
+    monkeypatch.setattr(order_flow_recorder, "load_order_flow_observations", lambda *_a, **_k: [payload])
+    now = datetime(2026, 11, 21, 12, 1, 2, tzinfo=timezone.utc)
+
+    result = get_minute_aligned_order_flow_snapshot(
+        "BTCUSDT",
+        {"time": "2026-11-21T12:00:00+00:00"},
+        now=now,
     )
-    baseline = order_flow_monitor.get_recent_trade_count_baseline(
-        "BTCUSDT", now=datetime(2026, 11, 21, 12, 0, tzinfo=timezone.utc)
-    )
-    assert baseline is None
+
+    assert result is not None
+    assert result["market_type"] == "BINANCE_SPOT"
+    assert result["depth_is_continuous"] is True
+    assert result["order_book"]["depth_imbalance"] == 0.24
+    assert result["observation_minute"] == "2026-11-21T12:00:00+00:00"
+    assert result["trade_data_age_seconds"] == 3.0
+    assert result["depth_age_seconds"] == 3.5
+
+
+def test_minute_aligned_snapshot_rejects_future_stale_or_cross_minute_data(monkeypatch):
+    from datetime import datetime, timezone
+    from app import order_flow_monitor, order_flow_recorder
+
+    class FakeDB:
+        def close(self):
+            pass
+
+    payload = _recorded_minute_snapshot()
+    monkeypatch.setattr(order_flow_monitor, "SessionLocal", FakeDB)
+    monkeypatch.setattr(order_flow_recorder, "load_order_flow_observations", lambda *_a, **_k: [payload])
+    candle = {"time": "2026-11-21T12:00:00+00:00"}
+
+    assert get_minute_aligned_order_flow_snapshot(
+        "BTCUSDT", candle,
+        now=datetime(2026, 11, 21, 12, 0, 59, tzinfo=timezone.utc),
+    ) is None
+
+    assert get_minute_aligned_order_flow_snapshot(
+        "BTCUSDT", candle,
+        now=datetime(2026, 11, 21, 12, 1, 10, tzinfo=timezone.utc),
+    ) is None
+
+    payload["order_flow"]["last_trade_at"] = "2026-11-21T12:01:01+00:00"
+    assert get_minute_aligned_order_flow_snapshot(
+        "BTCUSDT", candle,
+        now=datetime(2026, 11, 21, 12, 1, 2, tzinfo=timezone.utc),
+    ) is None

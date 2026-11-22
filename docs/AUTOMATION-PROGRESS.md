@@ -1177,7 +1177,7 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 - USDⓈ-M scan is explicitly a separate closed-5m-candle monitor path. It does not reuse Spot Order Flow, does not select executable MARKET/LIMIT orders, and does not place orders. COIN-M remains unsupported.
 - Newly listed contracts with insufficient closed history are reported as skips; provider errors remain failures. Each sample is deterministic and rotates daily; the smoke run still does not scan the full universe in one invocation.
 - Added tests for independent dynamic Futures rotation, market-type separation, read-only/no-Order-Flow messaging and insufficient-history skips. Workflow timeout remains 10 minutes; runtime must be observed before increasing sample size.
-- CI and live scheduled smoke verification are pending for this branch. Do not claim Futures smoke success until the workflow completes on the merged version.
+- Initial PR CI exposed a test-stub signature mismatch (the Futures analyzer is called with a keyword `min_score`); the stub was corrected and checks are rerunning. The live smoke workflow is also being configured to run on PRs touching the smoke/provider path, so this change can be validated against public Binance endpoints before merge. Do not claim Futures smoke success until that run completes.
 
 ### Current priority and exact next steps
 

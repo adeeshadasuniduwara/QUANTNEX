@@ -147,6 +147,24 @@ $("exportJournal").addEventListener("click",()=>{
   const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),link=document.createElement("a");link.href=url;link.download="quantnex-trading-journal.csv";link.click();URL.revokeObjectURL(url);
 });
 renderJournal();
+// Robust disclosure controls for the two retained QUANTNEX VIEW sheets.
+function bindChartDisclosure(buttonId,contentId){
+  const button=$(buttonId),content=$(contentId);
+  if(!button||!content||button.dataset.disclosureBound==="1")return;
+  button.dataset.disclosureBound="1";
+  const apply=expanded=>{
+    content.hidden=!expanded;
+    content.style.display=expanded?"":"none";
+    button.setAttribute("aria-expanded",String(expanded));
+    button.textContent=expanded?"Collapse":"Expand";
+    if(expanded&&contentId==="qxIndicatorsContent")window.quantnexViewRefreshIndicators?.();
+  };
+  apply(false);
+  button.addEventListener("click",()=>apply(button.getAttribute("aria-expanded")!=="true"));
+}
+bindChartDisclosure("qxSignalLedgerToggle","qxSignalLedgerContent");
+bindChartDisclosure("qxIndicatorsToggle","qxIndicatorsContent");
+
 // Local QUANTNEX updater. New versions are announced first; installation always needs user approval.
 const updateButton=$("webCheckUpdate");
 const installButton=$("webInstallUpdate");
@@ -268,7 +286,7 @@ async function watchUpdateInstall(){
   updatePolling=true;
   const status=$("webUpdateStatus"),progress=$("webUpdateProgress");
   progress.hidden=false;
-  updateButton.disabled=true;
+  if(updateButton)updateButton.disabled=true;
   if(installButton)installButton.disabled=true;
   if(modalInstallButton)modalInstallButton.disabled=true;
   const started=Date.now();
@@ -294,7 +312,7 @@ async function watchUpdateInstall(){
     showUpdateToast("Update could not be installed. Your current workspace is unchanged.");
   }finally{
     progress.hidden=true;updatePolling=false;
-    updateButton.disabled=false;updateButton.textContent="Check for updates";
+    if(updateButton)updateButton.disabled=false;
     if(installButton)installButton.disabled=false;
     if(modalInstallButton)modalInstallButton.disabled=false;
   }
@@ -359,8 +377,8 @@ async function checkLocalUpdate(options={}){
   updateChecking=true;
   const silent=Boolean(options.silent);
   const status=$("webUpdateStatus"),progress=$("webUpdateProgress");
-  updateButton.disabled=true;
-  if(!silent){updateButton.textContent="Checking…";progress.hidden=false;status.textContent="Checking the latest QUANTNEX version on GitHub…";}
+  if(updateButton)updateButton.disabled=true;
+  if(!silent){progress.hidden=false;status.textContent="Checking the latest QUANTNEX version on GitHub…";}
   try{
     const response=await fetch("/__quantnex/check",{cache:"no-store"});
     if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||"Local updater is not running.");}
@@ -370,18 +388,15 @@ async function checkLocalUpdate(options={}){
       releaseVersionLabel.textContent=result.latest||"GitHub main unavailable";
       if(result.release_notes)releaseNotesLink.href=result.release_notes;
       if(installButton)installButton.hidden=true;
-      if(result.update_available||!silent){
+      if(result.update_available){
         latestUpdateCommit=result.commit_sha||result.latest||"";
         renderUpdateDetails(result,false);
         watchSupervisorUpdate(latestUpdateCommit);
-        if(!silent)status.textContent=result.update_available
-          ?"Update detected. Sending an immediate full-source sync to the QUANTNEX supervisor…"
-          :"Checking the installed source files and repairing anything missing…";
+        status.textContent="New source update detected ("+result.latest+"). The supervisor is preparing the latest verified snapshot…";
         const queued=await fetch("/__quantnex/check-now",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
         const receipt=await queued.json().catch(()=>({}));
-        if(!queued.ok&&queued.status!==409)throw new Error(receipt.error||"The supervisor could not accept the update check.");
-        if(!silent)status.textContent="Full source verification queued for "+result.latest+". QUANTNEX will refresh after the safe check/restart.";
-        else status.textContent=result.message||"A source update is waiting for the supervisor's safe restart.";
+        if(!queued.ok&&queued.status!==409)throw new Error(receipt.error||"The supervisor could not accept the update.");
+        status.textContent="Latest update "+result.latest+" is queued for safe installation.";
       }else{
         latestUpdateCommit="";
         $("webUpdateDetails").hidden=true;
@@ -397,7 +412,7 @@ async function checkLocalUpdate(options={}){
       renderUpdateDetails(result,false);
       status.textContent="New update detected: "+result.latest+". QUANTNEX is installing it automatically…";
       if(installButton)installButton.hidden=false;
-      // Startup and five-minute background checks install the pinned main commit
+      // Updates-tab checks install the pinned main commit when a newer source revision is available
       // automatically. The existing manual button remains available if a retry is needed.
       await installLatestCommit();
     }else{
@@ -414,16 +429,19 @@ async function checkLocalUpdate(options={}){
   }finally{
     updateChecking=false;
     progress.hidden=true;
-    updateButton.disabled=false;updateButton.textContent="Check for updates";
+    if(updateButton)updateButton.disabled=false;
   }
 }
-if(updateButton)updateButton.addEventListener("click",()=>checkLocalUpdate());
-if(updateButton&&["127.0.0.1","localhost"].includes(location.hostname)&&location.port==="5500"){
-  checkLocalUpdate();
-  window.setInterval(()=>{
-    if(document.visibilityState==="visible")checkLocalUpdate({silent:true});
-  },300000);
+// Check once whenever the Updates workspace is entered. The local supervisor
+// independently performs its 30-minute background update cycle.
+let updatesTabActive=false;
+function syncUpdatesTab(){
+  const active=window.location.hash==="#updates";
+  if(active&&!updatesTabActive&&["127.0.0.1","localhost"].includes(location.hostname)&&location.port==="5500")checkLocalUpdate();
+  updatesTabActive=active;
 }
+window.addEventListener("hashchange",syncUpdatesTab);
+syncUpdatesTab();
 // Local-only wallet API. The backend listens on loopback and has no login/session system.
 const accountMessage = $("accountMessage");
 function setAccountMessage(message, error=false){ accountMessage.textContent=message; accountMessage.dataset.state=error?"error":"ok"; }

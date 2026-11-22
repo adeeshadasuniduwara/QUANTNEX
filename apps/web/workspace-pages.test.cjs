@@ -180,3 +180,11 @@ assert.ok(fs.readFileSync("apps/web/app.js", "utf8").includes("workspaceViewGrou
 assert.ok(html.includes('href="#paper-trading">Trading Desk</a>'), "Paper-related panels must share the Trading Desk navigation destination.");
 assert.ok(html.includes('href="#watchlist-desk">Market Desks</a>'), "Forex, Crypto and Gold panels must share the Market Desks navigation destination.");
 console.log("Consolidated workspace destination checks passed.");
+
+
+assert.ok(!html.includes('id="webCheckUpdate"'), "Manual Check for updates button must be removed.");
+assert.match(app, /function syncUpdatesTab\(\)/, "Updates must be checked when entering the Updates tab.");
+assert.match(app, /window\.addEventListener\("hashchange",syncUpdatesTab\)/, "Updates-tab entry must be detected from navigation.");
+assert.doesNotMatch(app, /checkLocalUpdate\(\{silent:true\}\)[\s\S]{0,100}300000/, "The browser must not poll the updater every five minutes.");
+assert.match(html, /every 30 minutes/, "The Updates page must explain the 30-minute automatic update schedule.");
+console.log("Updates tab entry-only check and 30-minute automatic update notice checks passed.");

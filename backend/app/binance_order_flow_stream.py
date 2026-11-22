@@ -136,6 +136,8 @@ class BinanceSpotOrderFlowStream:
         self.capture_events: deque[dict[str, Any]] = deque()
         self.stream_session_id = uuid.uuid4().hex
         self.capture_rejected_events = 0
+        self.capture_gap_detected = False
+        self.capture_gap_session_id: str | None = None
         self._recent_trade_ids: set[int] = set()
         self.trade_source: str | None = None
         self.depth_source: str | None = None
@@ -161,6 +163,8 @@ class BinanceSpotOrderFlowStream:
 
     def _queue_capture_event(self, event_type: str, payload: dict[str, Any], source: str) -> None:
         if len(self.capture_events) >= self.max_buffered_events:
+            self.capture_gap_detected = True
+            self.capture_gap_session_id = self.stream_session_id
             raise BinanceSpotOrderFlowStreamError("Raw Order Flow capture queue overflowed; event continuity cannot be guaranteed.")
         stamp = payload.get("T") if event_type == "aggTrade" else payload.get("E") if event_type == "depthUpdate" else int(datetime.now(timezone.utc).timestamp() * 1000)
         try:
@@ -182,10 +186,31 @@ class BinanceSpotOrderFlowStream:
     def drain_capture_events(self, limit: int = 256) -> list[dict[str, Any]]:
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 2048:
             raise ValueError("Capture drain limit must be between 1 and 2048.")
+        if self.capture_gap_detected and len(self.capture_events) < self.max_buffered_events:
+            stamp = int(datetime.now(timezone.utc).timestamp() * 1000)
+            self.capture_events.append({
+                "symbol": self.symbol, "event_type": "captureGap",
+                "event_time_ms": stamp, "received_at_ms": stamp,
+                "source": "WEBSOCKET", "stream_session_id": self.capture_gap_session_id or self.stream_session_id,
+                "payload": {"gap_id": uuid.uuid4().hex, "reason": "RAW_CAPTURE_QUEUE_OVERFLOW"},
+            })
+            self.capture_gap_detected = False
+            self.capture_gap_session_id = None
         batch = []
         while self.capture_events and len(batch) < limit:
             batch.append(self.capture_events.popleft())
         return batch
+
+    def restore_capture_events(self, events: list[dict[str, Any]]) -> None:
+        """Put a failed database batch back at the queue head for retry."""
+        if not isinstance(events, list):
+            raise ValueError("Events to restore must be a list.")
+        if len(self.capture_events) + len(events) > self.max_buffered_events:
+            self.capture_gap_detected = True
+            self.capture_gap_session_id = self.stream_session_id
+            raise BinanceSpotOrderFlowStreamError("Raw event retry queue overflowed; capture gap recorded.")
+        for event in reversed(events):
+            self.capture_events.appendleft(event)
 
     async def _fetch_public(
         self,
@@ -425,6 +450,8 @@ class BinanceSpotOrderFlowStream:
             "last_message_at": self.last_message_at.isoformat() if self.last_message_at else None,
             "last_error": self.last_error,
             "callback_error": self.callback_error,
+            "capture_gap_detected": self.capture_gap_detected,
+            "capture_rejected_events": self.capture_rejected_events,
             "data_provenance": {
                 "trade_side": "Binance Spot aggregate-trade buyer-is-maker flag; inferred aggressor side",
                 "depth": "REST snapshot bridged to diff-depth update IDs; sequence-valid only after first bridge event",

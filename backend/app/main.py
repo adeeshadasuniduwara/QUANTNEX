@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from .config import AI_API_KEY, AI_BASE_URL, AI_MODEL, CORS_ORIGINS, DATABASE_URL, QUANTNEX_MT5_ENABLED, QUANTNEX_MT5_GOLD_SYMBOL
 from .database import Base, engine, get_db, SessionLocal
-from .models import AuditEvent, GoalContribution, JournalImport, OrderFlowObservation, PaperTrade, PaperTradeEvent, PersonalGoal, Preference, SignalTrade, SignalTradeEvent, StrategyLabRun, Trade, User, WalletTransaction
+from .models import AuditEvent, GoalContribution, JournalImport, OrderFlowMarketEvent, OrderFlowObservation, PaperTrade, PaperTradeEvent, PersonalGoal, Preference, SignalTrade, SignalTradeEvent, StrategyLabRun, Trade, User, WalletTransaction
 from .schemas import AIChatRequest, AIChatResponse, LegacyJournalImportRequest, LegacyJournalImportResponse, PreferenceResponse, PreferenceWrite, TelegramConnectRequest, TelegramSendRequest, SignalSettingsRequest, AutoSignalSettingsRequest, TradeCreate, TradeResponse, WalletSummaryResponse, WalletTransactionCreate, WalletTransactionResponse
 from .security import decrypt_secret, encrypt_secret
 from .maintenance import daily_backup_worker, record_audit_event
@@ -1487,6 +1487,58 @@ def order_flow_capture_status(user: User = Depends(local_workspace)):
     """Report bounded minute-aligned public Spot order-flow capture health."""
     from .order_flow_monitor import get_order_flow_capture_status
     return get_order_flow_capture_status()
+
+
+@app.get("/api/v1/order-flow/recorded-events/{symbol}")
+def recorded_order_flow_events(
+    symbol: str, start_ms: int, end_ms: int, limit: int = 1000,
+    user: User = Depends(local_workspace),
+):
+    """Read archived, exchange-timestamped Binance Spot raw Order Flow events."""
+    from .order_flow_raw_recorder import load_order_flow_market_events
+    db = SessionLocal()
+    try:
+        try:
+            rows = load_order_flow_market_events(db, symbol, start_ms, end_ms, limit=limit)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {
+            "market_type": "BINANCE_SPOT",
+            "symbol": symbol.strip().upper(),
+            "time_unit": "UTC_EPOCH_MILLISECONDS",
+            "events": rows,
+            "returned": len(rows),
+            "limit": limit,
+            "coverage_note": "Raw observed events only. A missing event in this response is not proof of no market activity; inspect candle coverage and stream health.",
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/v1/order-flow/recorded-candles/{symbol}")
+def recorded_order_flow_candles(
+    symbol: str, start_ms: int, end_ms: int, limit: int = 500,
+    user: User = Depends(local_workspace),
+):
+    """Summarize archived raw events into UTC one-minute research buckets."""
+    from .order_flow_raw_recorder import summarize_order_flow_candles
+    db = SessionLocal()
+    try:
+        try:
+            rows = summarize_order_flow_candles(db, symbol, start_ms, end_ms, limit=limit)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {
+            "market_type": "BINANCE_SPOT",
+            "symbol": symbol.strip().upper(),
+            "interval": "1m",
+            "time_unit": "UTC_EPOCH_MILLISECONDS",
+            "candles": rows,
+            "returned": len(rows),
+            "coverage_note": "Event buckets are not labelled complete. Partial subscriptions, reconnects and missing history remain explicit; no synthetic events are filled.",
+        }
+    finally:
+        db.close()
 
 
 @app.get("/api/v1/order-flow/spot/{symbol}")

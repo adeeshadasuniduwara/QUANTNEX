@@ -305,7 +305,7 @@ $("qaInterval")?.addEventListener("change",()=>{saveChartSelection();refresh();}
 ["qaChartType","qaChartTheme","qaVolume","qaEma20","qaEma50","qaEma200","qaSma20","qaBollinger","qaVwap","qaGrid","qaUpColor","qaDownColor","qaOverlayStructure","qaOverlayZones","qaOverlaySR"].forEach(id=>$(id)?.addEventListener("change",rebuild));
 $("qaLogScale")?.addEventListener("change",rebuild);
 $("qaFitChart")?.addEventListener("click",fit);
-$("qaScreenshot")?.addEventListener("click",()=>{try{const a=document.createElement("a");a.download="QUANTNEX-VIEW-"+selected().symbol+".png";a.href=canvas.toDataURL("image/png");a.click();}catch(e){setStatus("Snapshot failed: "+e.message,"error");}});
+$("qaScreenshot")?.addEventListener("click",()=>{try{const a=document.createElement("a");a.download="QUANTNEX-ADVANCED-"+selected().symbol+".png";a.href=canvas.toDataURL("image/png");a.click();}catch(e){setStatus("Snapshot failed: "+e.message,"error");}});
 document.querySelectorAll("[data-qa-draw]").forEach(b=>b.addEventListener("click",()=>{drawMode=b.dataset.qaDraw;document.querySelectorAll("[data-qa-draw]").forEach(x=>x.classList.toggle("active",x===b));}));
 $("qaClearDrawings")?.addEventListener("click",()=>{drawings=[];pendingDrawing=null;saveDrawings();draw();});
 window.addEventListener("quantnex:market-tick",onTradingRoomTick);

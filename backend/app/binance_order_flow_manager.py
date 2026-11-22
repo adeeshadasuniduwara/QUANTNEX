@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import math
 import time
+import threading
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
@@ -131,6 +132,8 @@ class BinanceSpotOrderFlowManager:
         self.last_raw_event_capture_at: str | None = None
         self.last_raw_event_count = 0
         self.last_raw_event_error: str | None = None
+        self._raw_prune_lock = threading.Lock()
+        self._last_raw_prune_monotonic: float | None = None
         self._last_prune_monotonic: float | None = None
         self._capture_tasks: set[asyncio.Task] = set()
         self._slots: dict[str, _ManagedStream] = {}
@@ -211,10 +214,17 @@ class BinanceSpotOrderFlowManager:
         return normalized, str(tick_size), wait, trade_age, depth_age
 
     def _persist_market_events(self, events: list[dict[str, Any]]) -> dict[str, Any]:
+        prune_before = None
+        with self._raw_prune_lock:
+            now_monotonic = time.monotonic()
+            if self._last_raw_prune_monotonic is None or now_monotonic - self._last_raw_prune_monotonic >= 3600:
+                prune_before = datetime.now(timezone.utc) - timedelta(days=DEFAULT_RAW_EVENT_RETENTION_DAYS)
+                self._last_raw_prune_monotonic = now_monotonic
         db = SessionLocal()
         try:
             return record_order_flow_market_events(
-                db, events, retention_days=DEFAULT_RAW_EVENT_RETENTION_DAYS
+                db, events, retention_days=DEFAULT_RAW_EVENT_RETENTION_DAYS,
+                prune_before=prune_before,
             )
         finally:
             db.close()

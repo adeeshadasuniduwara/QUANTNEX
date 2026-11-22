@@ -37,6 +37,7 @@ def build_order_flow_footprint(events: list[dict[str, Any]], *, price_step: str 
         if event.get("event_type") == "depthUpdate":
             payload = event.get("payload")
             if not isinstance(payload, dict): continue
+            ignored += 1  # Depth rows contribute only to liquidity context, never executed volume.
             for side, key in (("bid", "b"), ("ask", "a")):
                 for level in payload.get(key, []) if isinstance(payload.get(key, []), list) else []:
                     if not isinstance(level, (list, tuple)) or len(level) < 2: continue

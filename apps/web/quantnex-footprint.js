@@ -59,7 +59,8 @@
       flattened.sort((a,b)=>b.time-a.time||Number(b.price)-Number(a.price));
       if(!flattened.length){const tr=document.createElement("tr");const td=document.createElement("td");td.colSpan=7;td.className="empty-row";td.textContent="No archived trade events found for this symbol and time range. Start the QUANTNEX Spot capture worker and try again.";tr.append(td);rows.append(tr);}
       flattened.slice(0,300).forEach(item=>{const tr=document.createElement("tr");cell(tr,new Date(item.time).toISOString().replace("T"," ").slice(0,19));cell(tr,item.price);cell(tr,safe(item.buy_volume));cell(tr,safe(item.sell_volume));cell(tr,safe(item.delta),Number(item.delta)>=0?"qa-footprint-buy":"qa-footprint-sell");cell(tr,item.buy_imbalance?"YES":"—",item.buy_imbalance?"qa-footprint-buy":"");cell(tr,item.sell_imbalance?"YES":"—",item.sell_imbalance?"qa-footprint-sell":"");rows.append(tr);});
-      latestFootprint=data;drawFootprintChart(data);\n      const totalTrades=Number(data.accepted_trade_events)||0;
+      latestFootprint=data;drawFootprintChart(data);
+      const totalTrades=Number(data.accepted_trade_events)||0;
       const stacked=data.stacked_imbalances||[],absorption=data.absorption_candidates||[],icebergs=data.iceberg_candidates||[],pulls=data.liquidity_pull_context||[];
       const kpis=$("qaFootprintKpis");kpis.replaceChildren();
       [["Observed trades",safe(totalTrades,0)],["Stacked imbalance",String(stacked.length)],["Delta divergence",data.delta_divergence?.signal||"—"],["Absorption candidates",String(absorption.length)]].forEach(([label,value])=>{const article=document.createElement("article"),span=document.createElement("span"),strong=document.createElement("strong");span.textContent=label;strong.textContent=value;article.append(span,strong);kpis.append(article);});

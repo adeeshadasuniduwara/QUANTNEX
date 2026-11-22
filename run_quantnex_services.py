@@ -21,7 +21,10 @@ VENV_PYTHON = VENV_DIR / (Path("Scripts") / "python.exe" if os.name == "nt" else
 LOG_FILE = ROOT / "logs" / "launcher.log"
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 PROCESSES: list[tuple[str, subprocess.Popen]] = []
-UPDATE_INTERVAL_SECONDS = 1800
+UPDATE_TIMEZONE = "Asia/Colombo"
+UPDATE_HOUR = 2
+UPDATE_MINUTE = 0
+UPDATE_SCHEDULE_FILE = ROOT / "data" / "updates" / "last_scheduled_check.json"
 UPDATE_REQUEST_FILE = ROOT / "data" / "updates" / "check_requested.json"
 UPDATE_PROGRESS_FILE = ROOT / "data" / "updates" / "check_in_progress.json"
 UPDATE_ERROR_FILE = ROOT / "data" / "updates" / "check_error.json"
@@ -185,9 +188,46 @@ def mark_source_update_confirmed() -> None:
         print("[AUTO UPDATE] Could not publish Telegram update confirmation: " + str(exc), flush=True)
 
 
+def _scheduled_update_due() -> bool:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    now = datetime.now(ZoneInfo(UPDATE_TIMEZONE))
+    if (now.hour, now.minute) < (UPDATE_HOUR, UPDATE_MINUTE):
+        return False
+    try:
+        state = json.loads(UPDATE_SCHEDULE_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        state = {}
+    return state.get("last_check_date") != now.date().isoformat()
+
+
+def _mark_scheduled_update_check() -> None:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    UPDATE_SCHEDULE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(ZoneInfo(UPDATE_TIMEZONE))
+    temporary = UPDATE_SCHEDULE_FILE.with_suffix(".tmp")
+    temporary.write_text(json.dumps({"last_check_date": now.date().isoformat(), "checked_at": now.isoformat()}), encoding="utf-8")
+    os.replace(temporary, UPDATE_SCHEDULE_FILE)
+
+
+def notify_telegram_update_pending(version: str) -> None:
+    payload = json.dumps({"message": "🆕 <b>QUANTNEX UPDATE AVAILABLE</b>\\n\\n" + version + " is ready to install. The latest verified source snapshot will be installed shortly. Your local settings and trading data will be preserved.", "notification_key": "update-pending:" + version}).encode("utf-8")
+    request = urllib.request.Request("http://127.0.0.1:8000/api/v1/telegram/notify", data=payload, headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=8) as response:
+            print("[AUTO UPDATE] Pre-install Telegram notice requested: HTTP " + str(response.status), flush=True)
+    except (OSError, urllib.error.URLError) as exc:
+        print("[AUTO UPDATE] Telegram pre-install notice could not be sent: " + str(exc), flush=True)
+
+
 def check_for_automatic_update(force_reconcile: bool = False) -> bool:
     try:
-        from quantnex_updater import check_and_apply
+        from quantnex_updater import check_and_apply, _request_latest_commit_sha, _load_state
+        latest_sha = _request_latest_commit_sha()
+        installed_sha = _load_state(ROOT).get("commit_sha")
+        if latest_sha and latest_sha != installed_sha:
+            notify_telegram_update_pending("main@" + latest_sha[:7])
         result = check_and_apply(ROOT, force_reconcile=force_reconcile)
         if result["status"] == "updated":
             print("\n[AUTO UPDATE] " + result["message"], flush=True)
@@ -342,17 +382,16 @@ def main() -> int:
             webbrowser.open("http://127.0.0.1:5500/")
         print("\nQUANTNEX Web + Backend are running.", flush=True)
         print("Keep this CMD window open. Do not close it while using the workspace.", flush=True)
-        print("Automatic GitHub source checks run every 30 minutes.", flush=True)
+        print("Automatic GitHub source check: daily at 02:00 Asia/Colombo.", flush=True)
         print("Press CTRL+C once to stop both services.", flush=True)
 
-        next_update_check = time.monotonic() + UPDATE_INTERVAL_SECONDS
         while True:
             for name, process in PROCESSES:
                 code = process.poll()
                 if code is not None:
                     raise RuntimeError(f"{name} stopped unexpectedly (exit code {code}). See {LOG_FILE}.")
             manual_check_requested = consume_manual_update_request()
-            scheduled_check_due = time.monotonic() >= next_update_check
+            scheduled_check_due = _scheduled_update_due()
             if manual_check_requested or scheduled_check_due:
                 if manual_check_requested:
                     print("\n[AUTO UPDATE] Manual Check for Updates request received.", flush=True)
@@ -360,7 +399,8 @@ def main() -> int:
                     print("\n[AUTO UPDATE] Stopping services safely before restart…", flush=True)
                     stop_all()
                     restart_launcher()
-                next_update_check = time.monotonic() + UPDATE_INTERVAL_SECONDS
+                if scheduled_check_due:
+                    _mark_scheduled_update_check()
             time.sleep(1)
     except KeyboardInterrupt:
         print("\nStopping QUANTNEX services…", flush=True)

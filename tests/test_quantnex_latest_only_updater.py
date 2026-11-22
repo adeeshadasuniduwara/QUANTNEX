@@ -47,9 +47,17 @@ class LatestCommitFeedTests(unittest.TestCase):
 
 
 class UpdateIntervalTests(unittest.TestCase):
-    def test_supervisor_checks_every_thirty_minutes(self) -> None:
+    def test_supervisor_schedules_once_daily_at_two_am_colombo(self) -> None:
         import run_quantnex_services
-        self.assertEqual(run_quantnex_services.UPDATE_INTERVAL_SECONDS, 30 * 60)
+        self.assertEqual(run_quantnex_services.UPDATE_TIMEZONE, "Asia/Colombo")
+        self.assertEqual(run_quantnex_services.UPDATE_HOUR, 2)
+        self.assertEqual(run_quantnex_services.UPDATE_MINUTE, 0)
+        self.assertTrue(callable(run_quantnex_services._scheduled_update_due))
+
+    def test_updater_has_retry_after_rate_limit_backoff(self) -> None:
+        source = open("quantnex_updater.py", encoding="utf-8").read()
+        self.assertIn("Retry-After", source)
+        self.assertIn("time.sleep(delay)", source)
 
 if __name__ == "__main__":
     unittest.main()

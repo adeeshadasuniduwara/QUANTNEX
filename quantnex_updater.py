@@ -10,6 +10,7 @@ import subprocess
 import urllib.request
 import zipfile
 import xml.etree.ElementTree as ET
+import time
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
@@ -41,8 +42,30 @@ def _request_latest_commit_sha() -> str:
         "User-Agent": "QUANTNEX-Automatic-Updater",
         "Cache-Control": "no-cache",
     })
-    with urllib.request.urlopen(request, timeout=30) as response:
-        payload = response.read(2 * 1024 * 1024 + 1)
+    payload = None
+    last_error = None
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                payload = response.read(2 * 1024 * 1024 + 1)
+            break
+        except urllib.error.HTTPError as exc:
+            last_error = exc
+            if exc.code not in (403, 429, 500, 502, 503, 504) or attempt == 3:
+                raise UpdateError(f"GitHub update check temporarily unavailable (HTTP {exc.code}). Existing QUANTNEX remains active.") from exc
+            retry_after = exc.headers.get("Retry-After", "")
+            try:
+                delay = min(900, max(1, int(retry_after)))
+            except (TypeError, ValueError):
+                delay = min(900, 30 * (2 ** attempt))
+            time.sleep(delay)
+        except (urllib.error.URLError, TimeoutError) as exc:
+            last_error = exc
+            if attempt == 3:
+                raise UpdateError("GitHub update check network failure; retry on the next scheduled check.") from exc
+            time.sleep(min(300, 15 * (2 ** attempt)))
+    if payload is None:
+        raise UpdateError("GitHub update check failed; installed source remains unchanged.") from last_error
     if len(payload) > 2 * 1024 * 1024:
         raise UpdateError("GitHub returned an unexpectedly large commit feed.")
     try:

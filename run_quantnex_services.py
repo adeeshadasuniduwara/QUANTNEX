@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import json
+import random
 from pathlib import Path
 import shutil
 import subprocess
@@ -21,9 +22,8 @@ VENV_PYTHON = VENV_DIR / (Path("Scripts") / "python.exe" if os.name == "nt" else
 LOG_FILE = ROOT / "logs" / "launcher.log"
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 PROCESSES: list[tuple[str, subprocess.Popen]] = []
-UPDATE_TIMEZONE = "Asia/Colombo"
-UPDATE_HOUR = 2
-UPDATE_MINUTE = 0
+UPDATE_INTERVAL_SECONDS = 5 * 60
+UPDATE_JITTER_SECONDS = 120
 UPDATE_SCHEDULE_FILE = ROOT / "data" / "updates" / "last_scheduled_check.json"
 UPDATE_REQUEST_FILE = ROOT / "data" / "updates" / "check_requested.json"
 UPDATE_PROGRESS_FILE = ROOT / "data" / "updates" / "check_in_progress.json"
@@ -189,27 +189,29 @@ def mark_source_update_confirmed() -> None:
 
 
 def _scheduled_update_due() -> bool:
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-    now = datetime.now(ZoneInfo(UPDATE_TIMEZONE))
-    if (now.hour, now.minute) < (UPDATE_HOUR, UPDATE_MINUTE):
-        return False
+    """Check every five minutes with per-install jitter to spread GitHub traffic."""
     try:
-        state = json.loads(UPDATE_SCHEDULE_FILE.read_text(encoding="utf-8"))
-    except (OSError, ValueError, TypeError):
-        state = {}
-    return state.get("last_check_date") != now.date().isoformat()
+        deadline = float(UPDATE_SCHEDULE_FILE.with_suffix(".deadline").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        try:
+            state = json.loads(UPDATE_SCHEDULE_FILE.read_text(encoding="utf-8"))
+            deadline = float(state.get("last_check_epoch", 0)) + UPDATE_INTERVAL_SECONDS
+        except (OSError, ValueError, TypeError):
+            deadline = 0.0
+    return time.time() >= deadline
 
 
 def _mark_scheduled_update_check() -> None:
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
+    """Persist a randomized next-check deadline so clients do not poll together."""
     UPDATE_SCHEDULE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    now = datetime.now(ZoneInfo(UPDATE_TIMEZONE))
+    checked_at = time.time()
+    delay = UPDATE_INTERVAL_SECONDS + random.uniform(0, UPDATE_JITTER_SECONDS)
     temporary = UPDATE_SCHEDULE_FILE.with_suffix(".tmp")
-    temporary.write_text(json.dumps({"last_check_date": now.date().isoformat(), "checked_at": now.isoformat()}), encoding="utf-8")
+    temporary.write_text(json.dumps({"last_check_epoch": checked_at, "next_check_after_seconds": delay}), encoding="utf-8")
     os.replace(temporary, UPDATE_SCHEDULE_FILE)
-
+    deadline_tmp = UPDATE_SCHEDULE_FILE.with_suffix(".deadline.tmp")
+    deadline_tmp.write_text(str(checked_at + delay), encoding="utf-8")
+    os.replace(deadline_tmp, UPDATE_SCHEDULE_FILE.with_suffix(".deadline"))
 
 def notify_telegram_update_pending(version: str) -> None:
     payload = json.dumps({"message": "🆕 <b>QUANTNEX UPDATE AVAILABLE</b>\\n\\n" + version + " is ready to install. The latest verified source snapshot will be installed shortly. Your local settings and trading data will be preserved.", "notification_key": "update-pending:" + version}).encode("utf-8")
@@ -382,7 +384,7 @@ def main() -> int:
             webbrowser.open("http://127.0.0.1:5500/")
         print("\nQUANTNEX Web + Backend are running.", flush=True)
         print("Keep this CMD window open. Do not close it while using the workspace.", flush=True)
-        print("Automatic GitHub source check: daily at 02:00 Asia/Colombo.", flush=True)
+        print("Automatic GitHub source check: about every 5 minutes (staggered per installation).", flush=True)
         print("Press CTRL+C once to stop both services.", flush=True)
 
         while True:

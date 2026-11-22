@@ -85,7 +85,7 @@ const chartClient = fs.readFileSync("apps/web/quantnex-view-chart.js", "utf8");
 const chartIntelligence = fs.readFileSync("apps/web/quantnex-view-intelligence.js", "utf8");
 assert.ok(/src="quantnex-view-chart\.js\?v=20261121-usdm-signal1"/.test(html), "Live chart controller must load with the current cache version");
 assert.ok(html.includes('id="qxIndicatorsContent"'), "Chart must expose the retained collapsible indicator table.");
-assert.ok(html.includes('id="qxOverlayZones"'), "Chart must expose zone visibility control");
+// Overlay visibility controls were removed with the duplicate chart-intelligence panel in PR #279.
 for (const feature of ["bullish_fvg", "bearish_fvg", "bullish_order_block", "bearish_order_block",
   "bullish_breaker_block", "bearish_breaker_block", "bullish_ifvg", "bearish_ifvg",
   "swing_high", "swing_low", "equilibrium", "liquidity_sweep", "quantnexViewSetTradePlan"]) {

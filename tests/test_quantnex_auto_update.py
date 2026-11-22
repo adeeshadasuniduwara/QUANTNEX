@@ -163,7 +163,11 @@ class AutomaticUpdateTests(unittest.TestCase):
         self.assertIn("force_reconcile=manual_check_requested", LAUNCHER)
         self.assertIn("check_in_progress.json", UPDATER)
         self.assertIn("state.syncing", APP)
-        self.assertIn("if(result.update_available||!silent)", APP)
+        self.assertIn("if(result.update_available){", APP)
+        self.assertIn("renderUpdateDetails(result,false)", APP)
+        self.assertIn("watchSupervisorUpdate(latestUpdateCommit)", APP)
+        self.assertIn('fetch("/__quantnex/check-now"', APP)
+        self.assertIn("if(!silent){", APP)
 
     def test_binance_demo_forms_match_backend_key_length_limits_and_labels(self):
         self.assertIn("Binance Spot Demo Trading", HTML)

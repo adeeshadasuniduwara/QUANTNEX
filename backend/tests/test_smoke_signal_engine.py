@@ -238,7 +238,8 @@ def test_usdm_smoke_runs_even_when_spot_exchange_info_is_unavailable(monkeypatch
         sample_day=0,
     ))
 
-    output = capsys.readouterr().out
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
     assert result == 1  # Spot provider failure remains visible to CI.
     assert calls == [("BTCUSDT", "5m", 8)]
     assert "Binance Spot symbol discovery failed" in output

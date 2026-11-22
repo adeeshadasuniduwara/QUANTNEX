@@ -9,7 +9,8 @@
 - Bounded per-symbol capture manager (five default perpetual pairs), reconnect backoff and event queue limits.
 - Separate Futures raw-event persistence using the shared append-only event table but a distinct market-type partition and uniqueness namespace.
 - Seven-day retention and idempotent archive reads.
-- Read-only Futures status, live book and archived footprint endpoints.
+- Read-only Futures status, live book, 60-second buyer/seller aggressor volume + delta window, and archived footprint endpoints.
+- Trade/depth freshness is measured from exchange event timestamps; reconnect clears the in-memory trade window so old-session flow is not carried into a new session.
 - Advanced Footprint UI market selector now routes Futures to its own Futures archive; Spot and Futures volumes are never combined.
 - Deterministic tests for snapshot bridging, old-event discard, pu gaps, queue overflow, event namespace isolation and recorder validation.
 

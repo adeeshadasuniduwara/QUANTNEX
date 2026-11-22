@@ -13,7 +13,7 @@
 
 ## Phase 5.1 — mark-price and liquidation event capture (this PR)
 
-- Subscribe each bounded USDⓈ-M symbol stream to its own `@markPrice@1s` and `@forceOrder` channels alongside aggTrade and diff-depth.
+- Subscribe each bounded USDⓈ-M symbol stream to its own `@markPrice@1s` and `@forceOrder` channels alongside aggTrade and diff-depth. In-memory mark-price and liquidation windows are reset on reconnect so old-session samples are not presented as current.
 - Validate symbol, event type, exchange/receive timestamps, finite mark/index/funding values, next-funding time, liquidation side, quantity and price fields before accepting events.
 - Persist mark-price and force-order observations in the existing isolated USDⓈ-M event archive with deterministic event keys, idempotency and seven-day retention.
 - Expose the latest mark-price sample and observed 60-second force-order side quantities through the existing read-only Futures snapshot.

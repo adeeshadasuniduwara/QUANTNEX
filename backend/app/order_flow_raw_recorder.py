@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import func, and_, or_
+from sqlalchemy import and_, func, or_
 
 from .models import OrderFlowMarketEvent
 

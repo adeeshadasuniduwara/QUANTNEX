@@ -31,7 +31,7 @@ def db():
 def _events():
     session = "0123456789abcdef0123456789abcdef"
     start = 1_795_248_000_000
-    return [
+    events = [
         {
             "symbol": "BTCUSDT", "event_type": "aggTrade",
             "event_time_ms": start + 10_000, "received_at_ms": start + 10_100,
@@ -51,6 +51,10 @@ def _events():
             "payload": {"lastUpdateId": 499, "bids": [["90000", "1"]], "asks": [["90001", "2"]]},
         },
     ]
+    # Live bootstrap queues the REST snapshot before buffered depth diffs.
+    # Keep receive ordering explicit when both events share a millisecond.
+    events[2]["received_at_ms"] = events[1]["received_at_ms"] - 1
+    return events
 
 
 def test_raw_event_recorder_persists_exchange_times_sequence_and_candle_bucket(db):

@@ -718,8 +718,8 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 
 - Current branch: `feat/spot-raw-event-coverage-audit`, based on C19 merge `518d27817447e3a02413ae7fb44e630be55b54e3`.
 - `summarize_order_flow_candles` now counts all matching raw rows before using its bounded event sample. If the 5,000-row cap (or 200 events per requested minute) truncates the window, it emits `TRUNCATED_EVENT_WINDOW` with total/loaded counts rather than silently presenting a partial sample as representative.
-- It computes observed aggTrade ID gaps, per-session depth snapshot bridge validity, depth U/u sequence gaps/non-advancing updates, stream-session/reconnect counts, source counts, REST gap-backfill use and capture-queue-overflow markers.
+- It computes observed aggTrade ID gaps, per-session depth snapshot bridge validity, depth U/u sequence gaps/non-advancing updates, stream-session counts and transition counts (a reconnect/restart proxy, not a verified socket-close cause), source counts, REST gap-backfill use and capture-queue-overflow markers.
 - Every result explicitly includes `coverage_is_complete=false`. Even a contiguous observed sample remains `OBSERVED_PARTIAL_NOT_PROVEN_COMPLETE`; this diagnostic does not assert complete candle/session coverage.
-- New deterministic tests cover aggTrade gaps, depth sequence gaps, invalid REST snapshot bridge, multi-session reconnect with REST backfill, bounded-window truncation and invalid limits. CI is pending.
+- New deterministic tests cover aggTrade gaps, depth sequence gaps, invalid REST snapshot bridge, multi-session boundary with REST backfill, bounded-window truncation and invalid limits. CI is pending.
 - Code commits: `3e5984f056e4bd07cfb6e2231a1b05801ec602de`, `2c144263caaae930341cbd96b1a87b0186521bbb`, `0369b31276530cc29249caedfbb34bc844afdbe1`.
 - Next: validate the audit on retained local capture, reject any truncated/gapped window from raw replay, then run candle-only / aggressor-only / L2-only / combined chronological ablations with fees, spread, slippage and realistic LIMIT fills. No performance uplift claim from sparse capture.

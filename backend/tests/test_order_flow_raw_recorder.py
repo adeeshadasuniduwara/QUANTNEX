@@ -1,4 +1,4 @@
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import create_engine
@@ -342,4 +342,114 @@ def test_candle_summary_rejects_invalid_limit(db):
             db, "BTCUSDT", event["event_time_ms"] - 1,
             event["event_time_ms"] + 60_000, limit=0,
         )
+
+def test_depth_sequence_baseline_carries_across_minute_and_query_boundaries(db):
+    events = _events()
+    second_update = {
+        **events[1],
+        "event_time_ms": events[1]["event_time_ms"] + 60_000,
+        "received_at_ms": events[1]["received_at_ms"] + 60_000,
+        "payload": {
+            **events[1]["payload"],
+            "U": 503,
+            "u": 504,
+            "E": events[1]["event_time_ms"] + 60_000,
+        },
+    }
+    now = datetime.fromtimestamp(
+        (second_update["received_at_ms"] + 1000) / 1000, timezone.utc
+    )
+    record_order_flow_market_events(db, [*events, second_update], now=now)
+
+    rows = summarize_order_flow_candles(
+        db, "BTCUSDT", events[0]["event_time_ms"] - 1,
+        events[0]["event_time_ms"] + 120_000,
+    )
+    assert len(rows) == 2
+    assert rows[0]["depth_baseline_validated"] is True
+    assert rows[1]["depth_baseline_validated"] is True
+    assert rows[1]["depth_sequence_gap_count"] == 0
+    assert "DEPTH_BASELINE_MISSING" not in rows[1]["gap_reasons"]
+
+    # A query beginning in minute two must seed from the last validated
+    # update in minute one, not compare directly against the old REST snapshot.
+    second_minute = summarize_order_flow_candles(
+        db, "BTCUSDT", events[0]["event_time_ms"] + 60_000,
+        events[0]["event_time_ms"] + 120_000,
+    )
+    assert len(second_minute) == 1
+    assert second_minute[0]["depth_baseline_validated"] is True
+    assert second_minute[0]["coverage_status"] == "NO_DEPTH_UPDATES" or (
+        second_minute[0]["coverage_status"] == "OBSERVED_PARTIAL_NOT_PROVEN_COMPLETE"
+    )
+
+
+def test_depth_sequence_gap_at_minute_boundary_invalidates_following_state(db):
+    events = _events()
+    gap_update = {
+        **events[1],
+        "event_time_ms": events[1]["event_time_ms"] + 60_000,
+        "received_at_ms": events[1]["received_at_ms"] + 60_000,
+        "payload": {
+            **events[1]["payload"],
+            "U": 504,
+            "u": 505,
+            "E": events[1]["event_time_ms"] + 60_000,
+        },
+    }
+    later_update = {
+        **gap_update,
+        "event_time_ms": gap_update["event_time_ms"] + 60_000,
+        "received_at_ms": gap_update["received_at_ms"] + 60_000,
+        "payload": {
+            **gap_update["payload"],
+            "U": 506,
+            "u": 507,
+            "E": gap_update["event_time_ms"] + 60_000,
+        },
+    }
+    now = datetime.fromtimestamp(
+        (later_update["received_at_ms"] + 1000) / 1000, timezone.utc
+    )
+    record_order_flow_market_events(db, [*events, gap_update, later_update], now=now)
+
+    rows = summarize_order_flow_candles(
+        db, "BTCUSDT", events[0]["event_time_ms"] - 1,
+        events[0]["event_time_ms"] + 180_000,
+    )
+    by_bucket = {row["candle_open_time_ms"]: row for row in rows}
+    gap_bucket = (gap_update["event_time_ms"] // 60_000) * 60_000
+    later_bucket = (later_update["event_time_ms"] // 60_000) * 60_000
+    assert by_bucket[gap_bucket]["depth_sequence_gap_count"] == 1
+    assert "DEPTH_SEQUENCE_GAP" in by_bucket[gap_bucket]["gap_reasons"]
+    assert by_bucket[later_bucket]["depth_baseline_validated"] is False
+    assert "DEPTH_SEQUENCE_STATE_INVALID" in by_bucket[later_bucket]["gap_reasons"]
+
+
+def test_trade_id_gap_crossing_minute_boundary_is_detected(db):
+    events = _events()
+    next_trade = {
+        **events[0],
+        "event_time_ms": events[0]["event_time_ms"] + 60_000,
+        "received_at_ms": events[0]["received_at_ms"] + 60_000,
+        "payload": {
+            **events[0]["payload"],
+            "a": 103,
+            "T": events[0]["event_time_ms"] + 60_000,
+        },
+    }
+    now = datetime.fromtimestamp(
+        (next_trade["received_at_ms"] + 1000) / 1000, timezone.utc
+    )
+    record_order_flow_market_events(db, [events[0], next_trade], now=now)
+    rows = summarize_order_flow_candles(
+        db, "BTCUSDT", events[0]["event_time_ms"] - 1,
+        events[0]["event_time_ms"] + 120_000,
+    )
+    next_bucket = (next_trade["event_time_ms"] // 60_000) * 60_000
+    row = next(item for item in rows if item["candle_open_time_ms"] == next_bucket)
+    assert row["trade_id_gap_count"] == 1
+    assert row["trade_ids_contiguous_in_observed_window"] is False
+    assert "AGGTRADE_ID_GAP" in row["gap_reasons"]
+    assert row["coverage_status"] == "DATA_SEQUENCE_GAP_DETECTED"
 

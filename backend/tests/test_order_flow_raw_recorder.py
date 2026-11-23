@@ -232,6 +232,7 @@ def test_candle_summary_detects_aggtrade_and_depth_sequence_gaps(db):
     assert row["trade_id_gap_count"] == 1
     assert row["depth_sequence_gap_count"] == 1
     assert row["coverage_status"] == "DATA_SEQUENCE_GAP_DETECTED"
+    assert row["gap_detected"] is True
     assert "AGGTRADE_ID_GAP" in row["gap_reasons"]
     assert "DEPTH_SEQUENCE_GAP" in row["gap_reasons"]
     assert row["coverage_is_complete"] is False
@@ -252,7 +253,7 @@ def test_candle_summary_rejects_unbridged_depth_snapshot_sequence(db):
     assert row["coverage_status"] == "DATA_SEQUENCE_GAP_DETECTED"
 
 
-def test_candle_summary_tracks_reconnect_sessions_and_rest_backfill(db):
+def test_candle_summary_tracks_session_boundaries_and_rest_backfill(db):
     events = _events()
     second_session = "fedcba9876543210fedcba9876543210"
     trade = {
@@ -289,13 +290,13 @@ def test_candle_summary_tracks_reconnect_sessions_and_rest_backfill(db):
         db, "BTCUSDT", events[0]["event_time_ms"] - 1,
         events[0]["event_time_ms"] + 60_000,
     )[0]
-    assert row["reconnect_session_count"] == 1
+    assert row["session_transition_count"] == 1
     assert row["depth_session_count"] == 2
     assert row["depth_baseline_validated"] is True
     assert row["trade_id_gap_count"] == 0
     assert row["backfill_used"] is True
     assert row["source_counts"]["REST_GAP_BACKFILL"] == 1
-    assert row["coverage_status"] == "MULTI_SESSION_RECONNECT_BACKFILLED"
+    assert row["coverage_status"] == "MULTI_SESSION_WITH_REST_BACKFILL"
     assert row["coverage_is_complete"] is False
 
 

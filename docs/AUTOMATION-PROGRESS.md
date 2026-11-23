@@ -1204,11 +1204,17 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 
 ### Verification boundary
 - Branch base: `518d27817447e3a02413ae7fb44e630be55b54e3` (C19 post-merge main).
-- Code commits: `3e5984f056e4bd07cfb6e2231a1b05801ec602de` (coverage audit), `2c144263caaae930341cbd96b1a87b0186521bbb` (invalid bridge flag), `0369b31276530cc29249caedfbb34bc844afdbe1` (initial tests), `27dbb513017cf84cfd5e9236c46635b3f28ba6ec`, `8678da6ae290337e5d35c07de1937f3a2b458bd7`, `2189d8f51e7741392836bda326fedb815cf953ec`, `68a84657c5328a85af82584ced72d67b7f62cfad` (cross-window sequence-state corrections), `d7210b793391ea67ea5e18bd45bcb15a92d965a3` and `8505fe1721288b7340abc46691900c6ab8831326` (boundary fixtures).
-- Tests and CI are pending; do not merge until Backend CI and Backend/Web CI pass on Python 3.12/3.14, then verify post-merge checks.
+- Code commits: `3e5984f056e4bd07cfb6e2231a1b05801ec602de` (coverage audit), `2c144263caaae930341cbd96b1a87b0186521bbb` (invalid bridge flag), `0369b31276530cc29249caedfbb34bc844afdbe1` (initial tests), `27dbb513017cf84cfd5e9236c46635b3f28ba6ec`, `8678da6ae290337e5d35c07de1937f3a2b458bd7`, `2189d8f51e7741392836bda326fedb815cf953ec`, `68a84657c5328a85af82584ced72d67b7f62cfad` (cross-window sequence-state corrections), `d7210b793391ea67ea5e18bd45bcb15a92d965a3` and `8505fe1721288b7340abc46691900c6ab8831326` (boundary fixtures), and `1409dd4bfdc925872212089cd914fa20c9a3d531` (snapshot-bridge classification).
+- Corrected-head CI passed on `1409dd4bfdc925872212089cd914fa20c9a3d531`: Backend CI **606 passed on Python 3.12**; Backend/Web CI **606 passed on Python 3.12 and 606 passed on Python 3.14**; schema test and Web check passed. Earlier attempts exposed the missing snapshot-bridge classification and fixture ordering issues; those were corrected before this green head.
 - No raw replay performance result, win-rate improvement or profitability claim is made by this coverage diagnostic.
 
-### Next
-1. Open PR against current main, inspect the full diff and secret scan.
-2. Validate the audit on retained local capture, reject any truncated/gapped window from raw replay, then implement causal raw aggTrade/depth replay.
-3. Run fixed candle-only, delta-only, L2-only and combined ablations with identical chronological folds, fees/spread/slippage and realistic LIMIT expiry/fill assumptions.
+### Review / next
+1. PR #300 is open against current main. Refresh its exact head/base/checks, inspect the complete four-file diff and secret scan, then squash-merge only if it remains clean and green; verify main and post-merge CI.
+2. Validate the coverage audit against retained local capture; reject truncated, unanchored or gapped windows from raw replay.
+3. Implement causal raw aggTrade/depth replay with realistic LIMIT expiry/fill and spread/fee/slippage assumptions; compare candle-only, delta-only, L2-only and combined variants on identical chronological folds.
+
+### 2026-11-23 live read-only Binance Spot provider sanity check
+- Binance Spot `exchangeInfo` at serverTime `2026-11-23T07:43:44.586Z`: 3,711 total symbols, 1,376 `TRADING` and `isSpotTradingAllowed=true` symbols, including 526 USDT-quoted pairs. Metadata returned symbol-specific PRICE_FILTER, LOT_SIZE and NOTIONAL filters; BTCUSDT tick 0.01, step/minQty 0.00001, minNotional 5 USDT.
+- BTCUSDT and NEOUSDT each returned 210 valid 5m kline rows. The final row was still forming at the observation time; the engine must continue to exclude it from closed-candle decisions.
+- A bounded BTCUSDT aggregate-trade sample contained 1,000 contiguous IDs (4,128,724,112–4,128,725,111): buyer-taker quantity 6.13503 BTC, seller-taker quantity 10.72028 BTC, inferred aggressor delta −4.58525 BTC (`m=false` buyer taker; `m=true` seller taker).
+- A separate REST top-20 book snapshot had 20 bid and 20 ask levels, 0.001626 bps best spread and −0.98062 quote-notional imbalance. This snapshot was not sequence-validated or synchronized to the aggregate-trade sample; it is not eligible for the live Order Flow gate. No live signal was inferred from these independent samples.

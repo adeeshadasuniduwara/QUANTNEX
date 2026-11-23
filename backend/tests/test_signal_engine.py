@@ -410,7 +410,16 @@ def test_build_signal_rejects_stale_provider_candles(monkeypatch):
         asyncio.run(signal_engine.build_signal(settings, "BTCUSDT"))
 
 
-def test_low_price_crypto_signal_levels_keep_required_precision(monkeypatch):
+@pytest.mark.parametrize(
+    ("depth_imbalance", "fvg_zone", "expected_entry_type", "expected_flow_status"),
+    [
+        (0.2, {"low": 0.000012, "high": 0.000013}, "MARKET", "MARKET_FLOW_ALIGNED"),
+        (0.0, {"low": 0.000012, "high": 0.00001235}, "LIMIT", "LIMIT_PREFERRED"),
+    ],
+)
+def test_low_price_crypto_signal_levels_keep_required_precision(
+    monkeypatch, depth_imbalance, fvg_zone, expected_entry_type, expected_flow_status
+):
     import asyncio
     from app import signal_engine
     _allow_spot_symbol(monkeypatch, "PEPEUSDT")
@@ -432,7 +441,7 @@ def test_low_price_crypto_signal_levels_keep_required_precision(monkeypatch):
 
     structure = {
         "bos_mss": "BULLISH", "liquidity_sweep": "BULLISH",
-        "bullish_fvg": {"low": 0.000012, "high": 0.000013},
+        "bullish_fvg": fvg_zone,
         "bullish_order_block": None, "bullish_breaker_block": None, "bullish_ifvg": None,
         "premium_discount": "DISCOUNT", "swing_low": 0.000011, "swing_high": 0.000014,
     }
@@ -462,7 +471,7 @@ def test_low_price_crypto_signal_levels_keep_required_precision(monkeypatch):
                 "cvd_value": 2.0, "cvd_status": "COMPLETE_SINCE_STATE_SEED",
                 "session_timezone": "UTC", "session_delta": None,
                 "session_delta_scope": "INCOMPLETE_UTC_SESSION_SAMPLE", "session_delta_coverage_complete": False,
-                "order_book": {"depth_imbalance": 0.2, "spread_bps": 1.62, "microprice_displacement_bps": 0.1,
+                "order_book": {"depth_imbalance": depth_imbalance, "spread_bps": 1.62, "microprice_displacement_bps": 0.1,
                                "source": "BINANCE_SPOT_SEQUENCE_VALIDATED_DEPTH_STREAM"},
                 "footprint": [],
                 "data_provenance": {
@@ -493,8 +502,10 @@ def test_low_price_crypto_signal_levels_keep_required_precision(monkeypatch):
     assert signal is not None
     assert 0 < signal["stop_loss"] < signal["entry"] < signal["tp1"] < signal["tp2"] < signal["tp3"]
     assert signal["entry"] > 0.00001
-    assert signal["entry_type"] == "MARKET"
+    assert signal["entry_type"] == expected_entry_type
     assert signal["entry_price"] == signal["entry"]
+    assert signal["entry_selection_evidence"]["status"] == expected_flow_status
+    assert signal["order_flow"]["entry_selection"]["status"] == expected_flow_status
     assert signal["execution_quality"]["accepted"] is True
     assert result["timeframes"]["5"]["atr"] > 0
 
@@ -1207,3 +1218,150 @@ def test_directional_entry_zone_ignores_invalid_or_wrong_side_zones():
     )
 
     assert zone is None
+
+
+def test_binance_entry_selector_requires_both_observed_flow_components_for_market():
+    from app.signal_engine import select_binance_entry
+
+    execution = {
+        "best_bid": 100.00, "best_ask": 100.02, "mid_price": 100.01,
+        "spread_bps": 2.0, "order_types": ["LIMIT", "MARKET"],
+        "limit_order_constraints_valid": True, "market_order_constraints_valid": True,
+        "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
+    }
+    decision = {"accepted": True, "status": "CONFIRMED", "support_count": 2, "conflict_count": 0}
+    aligned = {
+        "market_type": "BINANCE_SPOT",
+        "delta_ratio": 0.25,
+        "trade_count": 25,
+        "trade_data_age_seconds": 0.5,
+        "depth_is_continuous": True,
+        "depth_observed_at": datetime.now(timezone.utc).isoformat(),
+        "depth_snapshot_update_id": 123,
+        "data_provenance": {
+            "candle_volume_used": False,
+            "bid_ask_semantics": "Aggressor-side inferred trade delta",
+            "book_source": "Binance Spot sequence-validated diff-depth stream",
+        },
+        "order_book": {"depth_imbalance": 0.2},
+    }
+
+    selected = select_binance_entry(
+        "BUY", 100.0, 2.0, None, execution,
+        order_flow_snapshot=aligned, order_flow_decision=decision,
+    )
+    assert selected is not None
+    assert selected["entry_type"] == "MARKET"
+    assert selected["order_flow_execution_evidence"]["market_urgency_confirmed"] is True
+
+    neutral_depth = {
+        **aligned,
+        "order_book": {"depth_imbalance": 0.0},
+    }
+    decision_one_support = {
+        "accepted": True, "status": "CONFIRMED", "support_count": 1, "conflict_count": 0,
+    }
+    zone = {"low": 99.6, "high": 99.8, "source": "BULLISH_FVG"}
+    selected = select_binance_entry(
+        "BUY", 100.0, 2.0, zone, execution,
+        order_flow_snapshot=neutral_depth, order_flow_decision=decision_one_support,
+    )
+    assert selected is not None
+    assert selected["entry_type"] == "LIMIT"
+    assert selected["order_flow_execution_evidence"]["status"] == "LIMIT_PREFERRED"
+    assert selected["order_flow_execution_evidence"]["market_urgency_confirmed"] is False
+
+
+def test_binance_entry_selector_returns_wait_when_flow_is_not_market_aligned_and_no_limit_zone_exists():
+    from app.signal_engine import select_binance_entry
+
+    execution = {
+        "best_bid": 100.00, "best_ask": 100.02, "mid_price": 100.01,
+        "spread_bps": 2.0, "order_types": ["LIMIT", "MARKET"],
+        "limit_order_constraints_valid": True, "market_order_constraints_valid": True,
+        "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
+    }
+    snapshot = {
+        "market_type": "BINANCE_SPOT",
+        "delta_ratio": 0.25,
+        "depth_is_continuous": True,
+        "data_provenance": {
+            "candle_volume_used": False,
+            "bid_ask_semantics": "Aggressor-side inferred trade delta",
+        },
+        "order_book": {"depth_imbalance": 0.0},
+    }
+    decision = {"accepted": True, "status": "CONFIRMED", "support_count": 1, "conflict_count": 0}
+
+    assert select_binance_entry(
+        "BUY", 100.0, 2.0, None, execution,
+        order_flow_snapshot=snapshot, order_flow_decision=decision,
+    ) is None
+
+
+def test_binance_entry_selector_hard_vetoes_unvalidated_depth_and_rejected_flow():
+    from app.signal_engine import select_binance_entry
+
+    execution = {
+        "best_bid": 100.00, "best_ask": 100.02, "mid_price": 100.01,
+        "spread_bps": 2.0, "order_types": ["LIMIT", "MARKET"],
+        "limit_order_constraints_valid": True, "market_order_constraints_valid": True,
+        "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
+    }
+    snapshot = {
+        "market_type": "BINANCE_SPOT",
+        "delta_ratio": 0.25,
+        "depth_is_continuous": False,
+        "data_provenance": {
+            "candle_volume_used": False,
+            "bid_ask_semantics": "Aggressor-side inferred trade delta",
+        },
+        "order_book": {"depth_imbalance": 0.2},
+    }
+    accepted = {"accepted": True, "status": "CONFIRMED", "support_count": 2, "conflict_count": 0}
+    zone = {"low": 99.6, "high": 99.8, "source": "BULLISH_FVG"}
+
+    assert select_binance_entry(
+        "BUY", 100.0, 2.0, zone, execution,
+        order_flow_snapshot=snapshot, order_flow_decision=accepted,
+    ) is None
+
+    sequence_valid = {
+        **snapshot,
+        "depth_is_continuous": True,
+    }
+    rejected = {"accepted": False, "status": "MIXED", "support_count": 1, "conflict_count": 1}
+    assert select_binance_entry(
+        "BUY", 100.0, 2.0, zone, execution,
+        order_flow_snapshot=sequence_valid, order_flow_decision=rejected,
+    ) is None
+
+
+def test_binance_entry_selector_supports_short_market_when_both_flow_components_align():
+    from app.signal_engine import select_binance_entry
+
+    execution = {
+        "best_bid": 100.00, "best_ask": 100.02, "mid_price": 100.01,
+        "spread_bps": 2.0, "order_types": ["LIMIT", "MARKET"],
+        "limit_order_constraints_valid": True, "market_order_constraints_valid": True,
+        "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
+    }
+    snapshot = {
+        "market_type": "BINANCE_SPOT",
+        "delta_ratio": -0.25,
+        "depth_is_continuous": True,
+        "data_provenance": {
+            "candle_volume_used": False,
+            "bid_ask_semantics": "Aggressor-side inferred trade delta",
+        },
+        "order_book": {"depth_imbalance": -0.2},
+    }
+    decision = {"accepted": True, "status": "CONFIRMED", "support_count": 2, "conflict_count": 0}
+
+    selected = select_binance_entry(
+        "SELL", 100.0, 2.0, None, execution,
+        order_flow_snapshot=snapshot, order_flow_decision=decision,
+    )
+    assert selected is not None
+    assert selected["entry_type"] == "MARKET"
+    assert selected["order_flow_execution_evidence"]["market_urgency_confirmed"] is True

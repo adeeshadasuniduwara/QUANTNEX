@@ -1196,14 +1196,15 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 
 ### Implemented on `feat/spot-raw-event-coverage-audit`
 - Extend `summarize_order_flow_candles` to count the total events in the requested range before trusting its bounded sample; expose total vs loaded events and an explicit `TRUNCATED_EVENT_WINDOW` status when the 5,000-row/200-events-per-minute cap is reached.
-- Audit observed aggregate-trade IDs for missing IDs, depth-update U/u continuity, REST snapshot-to-first-diff bridge validity, session changes, REST gap-backfill sources and explicit capture-queue-overflow markers.
+- Audit observed aggregate-trade IDs across minute boundaries, depth-update U/u continuity across minute and query-window boundaries, REST snapshot-to-first-diff bridge validity, session changes, REST gap-backfill sources and explicit capture-queue-overflow markers.
+- A review found the initial per-minute baseline check would incorrectly require a new REST snapshot every minute. The implementation now carries the latest prior validated depth update into a mid-session query, propagates sequence invalidity until a new snapshot re-anchors the stream, and distinguishes an unanchored session from a sequence-invalid one.
 - Report source counts, session counts, depth sessions, stream-session count/transition count (a reconnect/restart proxy, not a verified socket-close cause), trade-ID range/gaps, depth sequence gaps, baseline validation, gap reasons and `coverage_is_complete=false`.
 - Preserve the key safety rule: even a contiguous observed event sample is `OBSERVED_PARTIAL_NOT_PROVEN_COMPLETE`; no event summary is labelled a complete candle or a full-session feed.
-- Deterministic tests added for aggTrade ID gaps, depth diff sequence gaps, invalid snapshot bridge, multi-session boundary with REST backfill, bounded-window truncation and invalid summary limits. Existing raw recorder persistence/idempotency/capture-gap tests remain.
+- Deterministic tests cover aggTrade ID gaps within and across minute buckets, depth diff gaps across minute boundaries, valid depth continuity across minute and query-window boundaries, invalid snapshot bridge, persistent invalidity after a sequence gap, multi-session boundary with REST backfill, bounded-window truncation and invalid summary limits. Existing raw recorder persistence/idempotency/capture-gap tests remain.
 
 ### Verification boundary
 - Branch base: `518d27817447e3a02413ae7fb44e630be55b54e3` (C19 post-merge main).
-- Code commits: `3e5984f056e4bd07cfb6e2231a1b05801ec602de` (coverage audit), `2c144263caaae930341cbd96b1a87b0186521bbb` (invalid bridge flag), `0369b31276530cc29249caedfbb34bc844afdbe1` (deterministic tests).
+- Code commits: `3e5984f056e4bd07cfb6e2231a1b05801ec602de` (coverage audit), `2c144263caaae930341cbd96b1a87b0186521bbb` (invalid bridge flag), `0369b31276530cc29249caedfbb34bc844afdbe1` (initial tests), `27dbb513017cf84cfd5e9236c46635b3f28ba6ec`, `8678da6ae290337e5d35c07de1937f3a2b458bd7`, `2189d8f51e7741392836bda326fedb815cf953ec`, `68a84657c5328a85af82584ced72d67b7f62cfad` (cross-window sequence-state corrections), `d7210b793391ea67ea5e18bd45bcb15a92d965a3` and `8505fe1721288b7340abc46691900c6ab8831326` (boundary fixtures).
 - Tests and CI are pending; do not merge until Backend CI and Backend/Web CI pass on Python 3.12/3.14, then verify post-merge checks.
 - No raw replay performance result, win-rate improvement or profitability claim is made by this coverage diagnostic.
 

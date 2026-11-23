@@ -204,39 +204,180 @@ def load_order_flow_market_events(db, symbol: str, start_ms: int, end_ms: int, *
 
 
 def summarize_order_flow_candles(db, symbol: str, start_ms: int, end_ms: int, *, limit: int = 1000) -> list[dict[str, Any]]:
-    """Return event-derived UTC 1m buckets; never label partial event coverage complete."""
-    events = load_order_flow_market_events(db, symbol, start_ms, end_ms, limit=min(5000, limit * 200))
+    """Return conservative UTC 1m raw-event coverage diagnostics.
+
+    The event window is bounded. Every row explicitly reports truncation,
+    trade-ID gaps, depth sequence bridges/gaps, stream-session changes,
+    source counts and capture-gap markers. No result is ever labelled complete.
+    """
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 5000:
+        raise ValueError("Candle summary limit must be an integer from 1 to 5000.")
+    event_limit = min(5000, limit * 200)
+    events = load_order_flow_market_events(
+        db, symbol, start_ms, end_ms, limit=event_limit
+    )
+    normalized = str(symbol or "").strip().upper()
+    total_events = db.query(func.count(OrderFlowMarketEvent.id)).filter(
+        OrderFlowMarketEvent.market_type == MARKET_TYPE,
+        OrderFlowMarketEvent.symbol == normalized,
+        OrderFlowMarketEvent.event_time_ms >= start_ms,
+        OrderFlowMarketEvent.event_time_ms < end_ms,
+    ).scalar() or 0
+    truncated = total_events > len(events)
     buckets: dict[int, dict[str, Any]] = {}
     for event in events:
         bucket = event["candle_bucket_ms"]
         row = buckets.setdefault(bucket, {
-            "candle_open_time_ms": bucket, "trade_count": 0, "depth_update_count": 0,
-            "depth_snapshot_count": 0, "capture_gap_count": 0, "gap_detected": False, "first_event_time_ms": event["event_time_ms"],
-            "last_event_time_ms": event["event_time_ms"], "sources": set(),
-            "stream_sessions": set(), "backfill_used": False,
-            "first_depth_update_id": None, "last_depth_update_id": None,
+            "candle_open_time_ms": bucket,
+            "event_count": 0,
+            "trade_count": 0,
+            "depth_update_count": 0,
+            "depth_snapshot_count": 0,
+            "capture_gap_count": 0,
+            "gap_detected": False,
+            "first_event_time_ms": event["event_time_ms"],
+            "last_event_time_ms": event["event_time_ms"],
+            "sources": set(),
+            "source_counts": {},
+            "stream_sessions": set(),
+            "session_event_counts": {},
+            "backfill_used": False,
+            "first_depth_update_id": None,
+            "last_depth_update_id": None,
+            "trade_ids": [],
+            "depth_updates": [],
+            "depth_snapshots": [],
         })
+        row["event_count"] += 1
         row["first_event_time_ms"] = min(row["first_event_time_ms"], event["event_time_ms"])
         row["last_event_time_ms"] = max(row["last_event_time_ms"], event["event_time_ms"])
-        row["sources"].add(event["source"])
-        row["stream_sessions"].add(event["stream_session_id"])
-        row["backfill_used"] = row["backfill_used"] or event["source"] == "REST_GAP_BACKFILL"
+        source = event["source"]
+        session = event["stream_session_id"]
+        row["sources"].add(source)
+        row["source_counts"][source] = row["source_counts"].get(source, 0) + 1
+        row["stream_sessions"].add(session)
+        row["session_event_counts"][session] = row["session_event_counts"].get(session, 0) + 1
+        row["backfill_used"] = row["backfill_used"] or source == "REST_GAP_BACKFILL"
         if event["event_type"] == "aggTrade":
             row["trade_count"] += 1
+            row["trade_ids"].append(int(event["event_key"]))
         elif event["event_type"] == "depthUpdate":
             row["depth_update_count"] += 1
-            row["first_depth_update_id"] = event["sequence_first"] if row["first_depth_update_id"] is None else min(row["first_depth_update_id"], event["sequence_first"])
-            row["last_depth_update_id"] = max(row["last_depth_update_id"] or 0, event["sequence_last"] or 0)
+            row["first_depth_update_id"] = (
+                event["sequence_first"] if row["first_depth_update_id"] is None
+                else min(row["first_depth_update_id"], event["sequence_first"])
+            )
+            row["last_depth_update_id"] = max(
+                row["last_depth_update_id"] or 0, event["sequence_last"] or 0
+            )
+            row["depth_updates"].append({
+                "session": session,
+                "first": event["sequence_first"],
+                "last": event["sequence_last"],
+                "received_at_ms": event["received_at_ms"],
+            })
         elif event["event_type"] == "depthSnapshot":
             row["depth_snapshot_count"] += 1
+            row["depth_snapshots"].append({
+                "session": session,
+                "last_update_id": int(event["payload"]["lastUpdateId"]),
+                "received_at_ms": event["received_at_ms"],
+            })
         elif event["event_type"] == "captureGap":
             row["capture_gap_count"] += 1
             row["gap_detected"] = True
+
     result = []
     for bucket in sorted(buckets):
         row = buckets[bucket]
+        trade_ids = sorted(set(row.pop("trade_ids")))
+        trade_id_gap_count = sum(
+            max(0, current - previous - 1)
+            for previous, current in zip(trade_ids, trade_ids[1:])
+        )
+        depth_updates = row.pop("depth_updates")
+        depth_snapshots = row.pop("depth_snapshots")
+        depth_sessions = sorted({item["session"] for item in depth_updates})
+        depth_sequence_gap_count = 0
+        depth_baseline_validated = True if depth_sessions else None
+        depth_unanchored_sessions = 0
+        gap_reasons: set[str] = set()
+        if trade_id_gap_count:
+            gap_reasons.add("AGGTRADE_ID_GAP")
+        if row["capture_gap_count"]:
+            gap_reasons.add("RAW_CAPTURE_QUEUE_OVERFLOW")
+
+        for session in depth_sessions:
+            updates = sorted(
+                (item for item in depth_updates if item["session"] == session),
+                key=lambda item: (item["first"], item["last"], item["received_at_ms"]),
+            )
+            snapshots = sorted(
+                (item for item in depth_snapshots if item["session"] == session),
+                key=lambda item: item["received_at_ms"],
+            )
+            first_received = updates[0]["received_at_ms"]
+            prior_snapshots = [item for item in snapshots if item["received_at_ms"] <= first_received]
+            if not prior_snapshots:
+                depth_baseline_validated = False
+                depth_unanchored_sessions += 1
+                gap_reasons.add("DEPTH_BASELINE_MISSING")
+                continue
+            baseline = prior_snapshots[-1]["last_update_id"]
+            first = updates[0]
+            if not first["first"] <= baseline + 1 <= first["last"]:
+                depth_sequence_gap_count += max(1, first["first"] - baseline - 1)
+                gap_reasons.add("DEPTH_SNAPSHOT_BRIDGE_GAP")
+            previous_last = first["last"]
+            for update in updates[1:]:
+                expected = previous_last + 1
+                if update["first"] > expected:
+                    depth_sequence_gap_count += update["first"] - expected
+                    gap_reasons.add("DEPTH_SEQUENCE_GAP")
+                elif update["last"] < expected:
+                    depth_sequence_gap_count += 1
+                    gap_reasons.add("DEPTH_SEQUENCE_NON_ADVANCING")
+                previous_last = max(previous_last, update["last"])
+
+        if depth_sequence_gap_count:
+            gap_reasons.add("DEPTH_SEQUENCE_GAP")
         row["sources"] = sorted(row["sources"])
+        row["source_counts"] = dict(sorted(row["source_counts"].items()))
         row["stream_sessions"] = sorted(row["stream_sessions"])
-        row["coverage_status"] = "CAPTURE_GAP_DETECTED" if row["gap_detected"] else "RECOVERED_WITH_REST_BACKFILL" if row["backfill_used"] else "OBSERVED_PARTIAL_NOT_PROVEN_COMPLETE"
+        row["session_event_counts"] = dict(sorted(row["session_event_counts"].items()))
+        row["trade_id_first"] = trade_ids[0] if trade_ids else None
+        row["trade_id_last"] = trade_ids[-1] if trade_ids else None
+        row["trade_id_gap_count"] = trade_id_gap_count
+        row["trade_ids_contiguous_in_observed_window"] = (
+            trade_id_gap_count == 0 if len(trade_ids) >= 2 else None
+        )
+        row["depth_session_count"] = len(depth_sessions)
+        row["reconnect_session_count"] = max(0, len(row["stream_sessions"]) - 1)
+        row["depth_sequence_gap_count"] = depth_sequence_gap_count
+        row["depth_baseline_validated"] = depth_baseline_validated
+        row["depth_unanchored_sessions"] = depth_unanchored_sessions
+        row["gap_reasons"] = sorted(gap_reasons)
+        row["event_window_total_events"] = int(total_events)
+        row["event_window_loaded_events"] = len(events)
+        row["event_window_truncated"] = truncated
+        row["coverage_is_complete"] = False
+
+        if truncated:
+            status = "TRUNCATED_EVENT_WINDOW"
+        elif row["capture_gap_count"]:
+            status = "CAPTURE_GAP_DETECTED"
+        elif trade_id_gap_count or depth_sequence_gap_count:
+            status = "DATA_SEQUENCE_GAP_DETECTED"
+        elif len(row["stream_sessions"]) > 1:
+            status = "MULTI_SESSION_RECONNECT_BACKFILLED" if row["backfill_used"] else "SESSION_BOUNDARY_UNVERIFIED"
+        elif depth_unanchored_sessions:
+            status = "DEPTH_BASELINE_MISSING"
+        elif not row["depth_update_count"]:
+            status = "NO_DEPTH_UPDATES"
+        elif row["backfill_used"]:
+            status = "RECOVERED_WITH_REST_BACKFILL"
+        else:
+            status = "OBSERVED_PARTIAL_NOT_PROVEN_COMPLETE"
+        row["coverage_status"] = status
         result.append(row)
     return result[-limit:]

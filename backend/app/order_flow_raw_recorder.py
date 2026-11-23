@@ -206,9 +206,10 @@ def load_order_flow_market_events(db, symbol: str, start_ms: int, end_ms: int, *
 def summarize_order_flow_candles(db, symbol: str, start_ms: int, end_ms: int, *, limit: int = 1000) -> list[dict[str, Any]]:
     """Return conservative UTC 1m raw-event coverage diagnostics.
 
-    The event window is bounded. Every row explicitly reports truncation,
-    trade-ID gaps, depth sequence bridges/gaps, stream-session changes,
-    source counts and capture-gap markers. No result is ever labelled complete.
+    Sequence checks run across the requested event window, not independently
+    inside each minute. A stream's REST depth snapshot normally occurs only at
+    bootstrap, so its baseline must carry forward across later minute buckets.
+    The event window is bounded and no result is ever labelled complete.
     """
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 5000:
         raise ValueError("Candle summary limit must be an integer from 1 to 5000.")
@@ -224,6 +225,7 @@ def summarize_order_flow_candles(db, symbol: str, start_ms: int, end_ms: int, *,
         OrderFlowMarketEvent.event_time_ms < end_ms,
     ).scalar() or 0
     truncated = total_events > len(events)
+
     buckets: dict[int, dict[str, Any]] = {}
     for event in events:
         bucket = event["candle_bucket_ms"]
@@ -245,8 +247,11 @@ def summarize_order_flow_candles(db, symbol: str, start_ms: int, end_ms: int, *,
             "first_depth_update_id": None,
             "last_depth_update_id": None,
             "trade_ids": [],
-            "depth_updates": [],
-            "depth_snapshots": [],
+            "trade_id_gap_count": 0,
+            "depth_sequence_gap_count": 0,
+            "depth_baseline_validations": [],
+            "depth_unanchored_sessions": 0,
+            "gap_reasons": set(),
         })
         row["event_count"] += 1
         row["first_event_time_ms"] = min(row["first_event_time_ms"], event["event_time_ms"])
@@ -270,99 +275,148 @@ def summarize_order_flow_candles(db, symbol: str, start_ms: int, end_ms: int, *,
             row["last_depth_update_id"] = max(
                 row["last_depth_update_id"] or 0, event["sequence_last"] or 0
             )
-            row["depth_updates"].append({
-                "session": session,
-                "first": event["sequence_first"],
-                "last": event["sequence_last"],
-                "received_at_ms": event["received_at_ms"],
-            })
         elif event["event_type"] == "depthSnapshot":
             row["depth_snapshot_count"] += 1
-            row["depth_snapshots"].append({
-                "session": session,
-                "last_update_id": int(event["payload"]["lastUpdateId"]),
-                "received_at_ms": event["received_at_ms"],
-            })
         elif event["event_type"] == "captureGap":
             row["capture_gap_count"] += 1
-            row["gap_detected"] = True
+            row["gap_reasons"].add("RAW_CAPTURE_QUEUE_OVERFLOW")
+
+    # Binance aggTrade IDs are per symbol, so validate across minute boundaries.
+    trade_events = sorted(
+        (event for event in events if event["event_type"] == "aggTrade"),
+        key=lambda event: (event["event_time_ms"], event["id"]),
+    )
+    previous_trade_id: int | None = None
+    for event in trade_events:
+        trade_id = int(event["event_key"])
+        if previous_trade_id is not None and trade_id > previous_trade_id + 1:
+            bucket_row = buckets[event["candle_bucket_ms"]]
+            bucket_row["trade_id_gap_count"] += trade_id - previous_trade_id - 1
+            bucket_row["gap_reasons"].add("AGGTRADE_ID_GAP")
+        elif previous_trade_id is not None and trade_id <= previous_trade_id:
+            bucket_row = buckets[event["candle_bucket_ms"]]
+            bucket_row["trade_id_gap_count"] += 1
+            bucket_row["gap_reasons"].add("AGGTRADE_ID_NON_ADVANCING")
+        previous_trade_id = max(previous_trade_id or trade_id, trade_id)
+
+    # A bootstrap snapshot belongs to a stream session and remains the depth
+    # baseline for later minute buckets until a new snapshot/reconnect occurs.
+    depth_updates = [
+        event for event in events if event["event_type"] == "depthUpdate"
+    ]
+    depth_sessions = sorted({event["stream_session_id"] for event in depth_updates})
+    snapshots_by_session: dict[str, list[dict[str, Any]]] = {
+        session: [] for session in depth_sessions
+    }
+    if depth_sessions:
+        prior_snapshots = db.query(OrderFlowMarketEvent).filter(
+            OrderFlowMarketEvent.market_type == MARKET_TYPE,
+            OrderFlowMarketEvent.symbol == normalized,
+            OrderFlowMarketEvent.event_type == "depthSnapshot",
+            OrderFlowMarketEvent.stream_session_id.in_(depth_sessions),
+        ).order_by(
+            OrderFlowMarketEvent.received_at_ms.asc(),
+            OrderFlowMarketEvent.id.asc(),
+        ).all()
+        for snapshot in prior_snapshots:
+            snapshots_by_session[snapshot.stream_session_id].append({
+                "id": snapshot.id,
+                "received_at_ms": snapshot.received_at_ms,
+                "last_update_id": int(json.loads(snapshot.payload_json)["lastUpdateId"]),
+            })
+
+    updates_by_session: dict[str, list[dict[str, Any]]] = {
+        session: [] for session in depth_sessions
+    }
+    for event in depth_updates:
+        updates_by_session[event["stream_session_id"]].append({
+            "id": event["id"],
+            "bucket": event["candle_bucket_ms"],
+            "first": int(event["sequence_first"]),
+            "last": int(event["sequence_last"]),
+            "received_at_ms": event["received_at_ms"],
+        })
+
+    for session in depth_sessions:
+        updates = sorted(
+            updates_by_session[session],
+            key=lambda item: (item["received_at_ms"], item["id"]),
+        )
+        snapshots = snapshots_by_session[session]
+        snapshot_index = 0
+        baseline: int | None = None
+        state_valid = False
+        session_unanchored = False
+        for update in updates:
+            # Apply all snapshots received before this diff. A later bootstrap
+            # can re-anchor a session after a deliberate local resynchronization.
+            while (
+                snapshot_index < len(snapshots)
+                and (
+                    snapshots[snapshot_index]["received_at_ms"],
+                    snapshots[snapshot_index]["id"],
+                ) <= (update["received_at_ms"], update["id"])
+            ):
+                baseline = snapshots[snapshot_index]["last_update_id"]
+                state_valid = True
+                snapshot_index += 1
+
+            row = buckets[update["bucket"]]
+            expected = (baseline + 1) if baseline is not None else None
+            if not state_valid or expected is None:
+                row["depth_baseline_validations"].append(False)
+                if not session_unanchored:
+                    row["depth_unanchored_sessions"] += 1
+                    session_unanchored = True
+                row["gap_reasons"].add("DEPTH_BASELINE_MISSING")
+                state_valid = False
+                continue
+
+            if update["first"] <= expected <= update["last"]:
+                row["depth_baseline_validations"].append(True)
+                baseline = max(baseline, update["last"])
+                continue
+
+            row["depth_baseline_validations"].append(False)
+            state_valid = False
+            if update["first"] > expected:
+                row["depth_sequence_gap_count"] += update["first"] - expected
+                row["gap_reasons"].add("DEPTH_SEQUENCE_GAP")
+            else:
+                row["depth_sequence_gap_count"] += 1
+                row["gap_reasons"].add("DEPTH_SEQUENCE_NON_ADVANCING")
+            row["gap_reasons"].add("DEPTH_SEQUENCE_STATE_INVALID")
 
     result = []
     for bucket in sorted(buckets):
         row = buckets[bucket]
         trade_ids = sorted(set(row.pop("trade_ids")))
-        trade_id_gap_count = sum(
-            max(0, current - previous - 1)
-            for previous, current in zip(trade_ids, trade_ids[1:])
-        )
-        depth_updates = row.pop("depth_updates")
-        depth_snapshots = row.pop("depth_snapshots")
-        depth_sessions = sorted({item["session"] for item in depth_updates})
-        depth_sequence_gap_count = 0
-        depth_baseline_validated = True if depth_sessions else None
-        depth_unanchored_sessions = 0
-        gap_reasons: set[str] = set()
-        if trade_id_gap_count:
-            gap_reasons.add("AGGTRADE_ID_GAP")
-        if row["capture_gap_count"]:
-            gap_reasons.add("RAW_CAPTURE_QUEUE_OVERFLOW")
-
-        for session in depth_sessions:
-            updates = sorted(
-                (item for item in depth_updates if item["session"] == session),
-                key=lambda item: (item["first"], item["last"], item["received_at_ms"]),
-            )
-            snapshots = sorted(
-                (item for item in depth_snapshots if item["session"] == session),
-                key=lambda item: item["received_at_ms"],
-            )
-            first_received = updates[0]["received_at_ms"]
-            prior_snapshots = [item for item in snapshots if item["received_at_ms"] <= first_received]
-            if not prior_snapshots:
-                depth_baseline_validated = False
-                depth_unanchored_sessions += 1
-                gap_reasons.add("DEPTH_BASELINE_MISSING")
-                continue
-            baseline = prior_snapshots[-1]["last_update_id"]
-            first = updates[0]
-            if not first["first"] <= baseline + 1 <= first["last"]:
-                depth_baseline_validated = False
-                depth_sequence_gap_count += max(1, first["first"] - baseline - 1)
-                gap_reasons.add("DEPTH_SNAPSHOT_BRIDGE_GAP")
-            previous_last = first["last"]
-            for update in updates[1:]:
-                expected = previous_last + 1
-                if update["first"] > expected:
-                    depth_sequence_gap_count += update["first"] - expected
-                    gap_reasons.add("DEPTH_SEQUENCE_GAP")
-                elif update["last"] < expected:
-                    depth_sequence_gap_count += 1
-                    gap_reasons.add("DEPTH_SEQUENCE_NON_ADVANCING")
-                previous_last = max(previous_last, update["last"])
-
-        if depth_sequence_gap_count:
-            gap_reasons.add("DEPTH_SEQUENCE_GAP")
-        row["sources"] = sorted(row["sources"])
-        row["source_counts"] = dict(sorted(row["source_counts"].items()))
-        row["stream_sessions"] = sorted(row["stream_sessions"])
-        row["session_event_counts"] = dict(sorted(row["session_event_counts"].items()))
         row["trade_id_first"] = trade_ids[0] if trade_ids else None
         row["trade_id_last"] = trade_ids[-1] if trade_ids else None
-        row["trade_id_gap_count"] = trade_id_gap_count
         row["trade_ids_contiguous_in_observed_window"] = (
-            trade_id_gap_count == 0 if len(trade_ids) >= 2 else None
+            row["trade_id_gap_count"] == 0 if len(trade_ids) >= 2 else
+            False if row["trade_id_gap_count"] else None
         )
-        row["depth_session_count"] = len(depth_sessions)
+        row["depth_session_count"] = len({
+            event["stream_session_id"] for event in depth_updates
+            if event["candle_bucket_ms"] == bucket
+        })
         row["stream_session_count"] = len(row["stream_sessions"])
         row["session_transition_count"] = max(0, len(row["stream_sessions"]) - 1)
         row["session_transition_semantics"] = (
             "Additional stream-session IDs within this minute; a reconnect/restart proxy, not a verified socket-close cause."
         )
-        row["depth_sequence_gap_count"] = depth_sequence_gap_count
-        row["depth_baseline_validated"] = depth_baseline_validated
-        row["depth_unanchored_sessions"] = depth_unanchored_sessions
-        row["gap_reasons"] = sorted(gap_reasons)
-        row["gap_detected"] = bool(gap_reasons)
+        row["depth_baseline_validated"] = (
+            all(row["depth_baseline_validations"])
+            if row["depth_baseline_validations"] else None
+        )
+        row.pop("depth_baseline_validations")
+        row["gap_reasons"] = sorted(row["gap_reasons"])
+        row["gap_detected"] = bool(row["gap_reasons"])
+        row["sources"] = sorted(row["sources"])
+        row["source_counts"] = dict(sorted(row["source_counts"].items()))
+        row["stream_sessions"] = sorted(row["stream_sessions"])
+        row["session_event_counts"] = dict(sorted(row["session_event_counts"].items()))
         row["event_window_total_events"] = int(total_events)
         row["event_window_loaded_events"] = len(events)
         row["event_window_truncated"] = truncated
@@ -372,11 +426,15 @@ def summarize_order_flow_candles(db, symbol: str, start_ms: int, end_ms: int, *,
             status = "TRUNCATED_EVENT_WINDOW"
         elif row["capture_gap_count"]:
             status = "CAPTURE_GAP_DETECTED"
-        elif trade_id_gap_count or depth_sequence_gap_count:
+        elif row["trade_id_gap_count"] or row["depth_sequence_gap_count"] or any(
+            reason in row["gap_reasons"] for reason in (
+                "DEPTH_SEQUENCE_STATE_INVALID", "DEPTH_BASELINE_MISSING"
+            )
+        ):
             status = "DATA_SEQUENCE_GAP_DETECTED"
         elif len(row["stream_sessions"]) > 1:
             status = "MULTI_SESSION_WITH_REST_BACKFILL" if row["backfill_used"] else "SESSION_BOUNDARY_UNVERIFIED"
-        elif depth_unanchored_sessions:
+        elif row["depth_baseline_validated"] is False:
             status = "DEPTH_BASELINE_MISSING"
         elif not row["depth_update_count"]:
             status = "NO_DEPTH_UPDATES"

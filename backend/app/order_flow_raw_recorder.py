@@ -324,6 +324,7 @@ def summarize_order_flow_candles(db, symbol: str, start_ms: int, end_ms: int, *,
             key=lambda event: (event["received_at_ms"], event["id"]),
         )
         baseline: int | None = None
+        baseline_source: str | None = None
         state_valid = False
         invalid_reason: str | None = None
         session_unanchored = False
@@ -351,9 +352,11 @@ def summarize_order_flow_candles(db, symbol: str, start_ms: int, end_ms: int, *,
             if prior is not None:
                 if prior.event_type == "depthSnapshot":
                     baseline = int(json.loads(prior.payload_json)["lastUpdateId"])
+                    baseline_source = "snapshot"
                     state_valid = True
                 elif prior.event_type == "depthUpdate":
                     baseline = int(prior.sequence_last)
+                    baseline_source = "update"
                     state_valid = True
                 else:
                     invalid_reason = "DEPTH_CAPTURE_GAP_STATE_INVALID"
@@ -362,11 +365,13 @@ def summarize_order_flow_candles(db, symbol: str, start_ms: int, end_ms: int, *,
             row = buckets[event["candle_bucket_ms"]]
             if event["event_type"] == "depthSnapshot":
                 baseline = int(event["payload"]["lastUpdateId"])
+                baseline_source = "snapshot"
                 state_valid = True
                 invalid_reason = None
                 continue
             if event["event_type"] == "captureGap":
                 baseline = None
+                baseline_source = None
                 state_valid = False
                 invalid_reason = "DEPTH_CAPTURE_GAP_STATE_INVALID"
                 continue
@@ -392,14 +397,18 @@ def summarize_order_flow_candles(db, symbol: str, start_ms: int, end_ms: int, *,
             if first_update <= expected <= last_update:
                 row["depth_baseline_validations"].append(True)
                 baseline = max(baseline, last_update)
+                baseline_source = "update"
                 continue
 
             row["depth_baseline_validations"].append(False)
             state_valid = False
             invalid_reason = "DEPTH_SEQUENCE_STATE_INVALID"
+            bridge_gap = baseline_source == "snapshot"
             if first_update > expected:
                 row["depth_sequence_gap_count"] += first_update - expected
-                row["gap_reasons"].add("DEPTH_SEQUENCE_GAP")
+                row["gap_reasons"].add(
+                    "DEPTH_SNAPSHOT_BRIDGE_GAP" if bridge_gap else "DEPTH_SEQUENCE_GAP"
+                )
             else:
                 row["depth_sequence_gap_count"] += 1
                 row["gap_reasons"].add("DEPTH_SEQUENCE_NON_ADVANCING")

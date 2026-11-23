@@ -1177,3 +1177,34 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 3. Add deterministic BUY/SELL tests for both-aligned, one-neutral, contradictory, stale and missing-flow cases. Preserve candle-only replay as a clearly labelled baseline; make feature provenance and the MARKET/LIMIT reason visible in the signal payload.
 4. Continue the chronological OOS order-flow ablation only after adequate local capture coverage is measured. Compare candle-only, aggressor-delta-only, L2-depth-only and combined gates with identical folds/cost assumptions. Do not report predictive uplift from sparse, non-random seven-day minute snapshots.
 5. Spot remains the only market type with live sequence-validated Order Flow. USDⓈ-M currently has a separate candle-only monitor engine; Futures Order Flow, funding/OI/liquidation, adaptive Futures execution and COIN-M remain unsupported. No live orders or real-money mode.
+
+## 2026-11-23 — Phase C19: Spot Order-Flow-aware final entry selection (current-main continuation)
+
+### Starting checkpoint and audit
+- Started from latest verified `main` SHA `5a1baefb97804777a46390357a0275afa370cb88` (includes Order Flow Phase 5.1 USDⓈ-M mark-price/force-order capture).
+- Inspected open issues/PRs, recent commits, docs, and Actions. Main's core boundary remains: Spot is the only path with sequence-validated live Order Flow and an adaptive analytical entry; USDⓈ-M is a separate candle-only monitor; COIN-M is unsupported.
+- PR #281 already contained the intended C19 selector change and had green checks on its old head, but it was **19 commits behind current main and GitHub marked it dirty/non-mergeable**. Its core backend logic/tests are being re-applied to a new branch based on current main; obsolete UI-test-only edits from that PR are not copied because current main already contains the newer chart contracts.
+- PR #284 was reviewed. Its proposed `raw_order_flow_recorder.py` and parallel candle-manifest schema duplicate and are less complete than main's existing `order_flow_raw_recorder.py`, which already records stream-session provenance, REST bootstrap/gap-backfill sources, sequence IDs and explicit capture-gap markers. Do not merge the duplicate recorder branch.
+- PR #275 is an earlier dynamic USDⓈ-M smoke expansion; main already includes the merged dynamic Spot/USDⓈ-M smoke runner and its independent error handling. Its old branch must not replace current main.
+
+### Implemented on `feat/spot-orderflow-aware-entry-mainline`
+- Move the final Spot entry decision until after the existing accepted Order Flow decision is available.
+- MARKET urgency now requires both observed Binance aggregate-trade aggressor delta and sequence-validated L2 quote-notional depth imbalance to have the candidate's direction, while retaining existing spread, liquidity, drift, order-type and exchange PRICE_FILTER checks.
+- When the flow decision is accepted but either component is neutral/opposed, MARKET is disabled. A technically valid favorable OB/FVG/Breaker/IFVG LIMIT retracement may still be selected; if none passes, the result is WAIT.
+- Missing/rejected/unvalidated flow, invalid provenance, malformed/non-finite/out-of-range values remain hard WAITs. No new magnitude threshold, strategy score or signal-frequency relaxation was introduced.
+- Preserve the authoritative symbol tick size for stream bootstrap, then round and revalidate the selected final MARKET/LIMIT entry against that same exchange filter.
+- Add `entry_selection_evidence` to the signal and `order_flow.entry_selection` to the flow payload, including measured delta/depth signs, decision status, freshness, depth update ID, provenance and the explicit `EXECUTION_HEURISTIC_NOT_CALIBRATED_PROBABILITY` label.
+- Add deterministic end-to-end PEPEUSDT BUY fixtures for MARKET (both flow components aligned) and LIMIT (neutral depth with a valid FVG retracement), plus selector tests for BUY/SELL MARKET, neutral-flow LIMIT, no-zone WAIT, invalid depth and rejected-flow veto.
+
+### Verification boundary / current status
+- Branch base: `5a1baefb97804777a46390357a0275afa370cb88`.
+- Current branch commits: `f26f61cec645157eaa7006b4fcff1bbeae95b8c0` (selector implementation), `b287486da3eb2ad204d29397b3a1b1407ee376b7` (deterministic tests), `dda05b2dad9211740ac2a81e0b7336b1712ade6d` (preserve exchange tick for bootstrap).
+- GitHub Actions validation has not yet run for this new branch; create the focused PR and wait for Python 3.12/3.14 Backend CI, Backend/Web CI and Web CI before considering merge.
+- No live signal or profitability/win-rate improvement is claimed. The fixtures are deterministic test inputs, not live trades. No credentials, account access, order placement or live-money path was added.
+
+### Exact next steps
+1. Open a focused Compare & Pull Request against current `main`; inspect the full diff and secret scan.
+2. Run all relevant PR checks; fix failures on this branch, then re-run them.
+3. Merge only if checks pass and GitHub confirms a clean, latest-main merge; verify the merge commit and post-merge checks.
+4. Continue C20: measure actual retained raw-event capture coverage and implement causal replay/ablation of candle-only, aggressor-delta-only, L2-depth-only and combined variants. Keep sparse/non-random coverage descriptive and include fees/spread/slippage.
+5. Continue dynamic Spot-universe and live-provider smoke verification. The last recorded live Spot sample was 20/20 WAIT with no provider errors; this is data-path health, not strategy proof. The last recorded GitHub-runner USDⓈ-M metadata attempt returned HTTP 451 and remains an environment/access limitation.

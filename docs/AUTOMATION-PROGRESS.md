@@ -1199,12 +1199,13 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 ### Verification boundary / current status
 - Branch base: `5a1baefb97804777a46390357a0275afa370cb88`.
 - Current branch commits: `f26f61cec645157eaa7006b4fcff1bbeae95b8c0` (selector implementation), `b287486da3eb2ad204d29397b3a1b1407ee376b7` (deterministic tests), `dda05b2dad9211740ac2a81e0b7336b1712ade6d` (preserve exchange tick for bootstrap).
-- GitHub Actions validation has not yet run for this new branch; create the focused PR and wait for Python 3.12/3.14 Backend CI, Backend/Web CI and Web CI before considering merge.
+- Focused PR #299: https://github.com/adeeshadasuniduwara/QUANTNEX/pull/299. The first CI attempt exposed a missing `pytest` import for the new parametrized fixture; the import was added in commit `5ab518c9c611376769ee963e3f6efb05785d30f1`.
+- Corrected-head validation passed: Backend CI (Python 3.12) **598 passed**; Backend/Web CI **598 passed on Python 3.12 and 598 passed on Python 3.14**; Web check passed. Compile and startup preflight also passed on both matrix jobs. No failing tests remain on the corrected head.
+- Full PR diff is limited to `signal_engine.py`, its tests and the two continuation/roadmap documents. Secret scan found no private-key, GitHub token, Slack token, AWS key or hard-coded Telegram token patterns. GitHub reported the PR clean/mergeable against the exact current-main base; perform one final head/check/base refresh before merge.
 - No live signal or profitability/win-rate improvement is claimed. The fixtures are deterministic test inputs, not live trades. No credentials, account access, order placement or live-money path was added.
 
 ### Exact next steps
-1. Open a focused Compare & Pull Request against current `main`; inspect the full diff and secret scan.
-2. Run all relevant PR checks; fix failures on this branch, then re-run them.
-3. Merge only if checks pass and GitHub confirms a clean, latest-main merge; verify the merge commit and post-merge checks.
-4. Continue C20: measure actual retained raw-event capture coverage and implement causal replay/ablation of candle-only, aggressor-delta-only, L2-depth-only and combined variants. Keep sparse/non-random coverage descriptive and include fees/spread/slippage.
+1. Refresh PR #299's exact head SHA, check-runs and base SHA; merge with squash only if it remains clean and all required checks are green.
+2. Verify the resulting main merge commit and post-merge Backend CI / Backend-Web CI.
+3. Continue C20: measure actual retained raw-event capture coverage and implement causal replay/ablation of candle-only, aggressor-delta-only, L2-depth-only and combined variants. Keep sparse/non-random coverage descriptive and include fees/spread/slippage.
 5. Continue dynamic Spot-universe and live-provider smoke verification. The last recorded live Spot sample was 20/20 WAIT with no provider errors; this is data-path health, not strategy proof. The last recorded GitHub-runner USDⓈ-M metadata attempt returned HTTP 451 and remains an environment/access limitation.

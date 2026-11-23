@@ -326,6 +326,7 @@ def summarize_order_flow_candles(db, symbol: str, start_ms: int, end_ms: int, *,
             baseline = prior_snapshots[-1]["last_update_id"]
             first = updates[0]
             if not first["first"] <= baseline + 1 <= first["last"]:
+                depth_baseline_validated = False
                 depth_sequence_gap_count += max(1, first["first"] - baseline - 1)
                 gap_reasons.add("DEPTH_SNAPSHOT_BRIDGE_GAP")
             previous_last = first["last"]

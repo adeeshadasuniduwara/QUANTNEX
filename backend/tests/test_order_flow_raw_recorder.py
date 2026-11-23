@@ -382,10 +382,9 @@ def test_depth_sequence_baseline_carries_across_minute_and_query_boundaries(db):
         events[0]["event_time_ms"] + 120_000,
     )
     assert len(second_minute) == 1
+    assert second_minute[0]["depth_update_count"] == 1
     assert second_minute[0]["depth_baseline_validated"] is True
-    assert second_minute[0]["coverage_status"] == "NO_DEPTH_UPDATES" or (
-        second_minute[0]["coverage_status"] == "OBSERVED_PARTIAL_NOT_PROVEN_COMPLETE"
-    )
+    assert second_minute[0]["coverage_status"] == "OBSERVED_PARTIAL_NOT_PROVEN_COMPLETE"
 
 
 def test_depth_sequence_gap_at_minute_boundary_invalidates_following_state(db):
@@ -456,4 +455,61 @@ def test_trade_id_gap_crossing_minute_boundary_is_detected(db):
     assert row["trade_ids_contiguous_in_observed_window"] is False
     assert "AGGTRADE_ID_GAP" in row["gap_reasons"]
     assert row["coverage_status"] == "DATA_SEQUENCE_GAP_DETECTED"
+
+def test_capture_gap_invalidates_depth_until_a_new_snapshot_reanchors(db):
+    events = _events()
+    capture_gap = {
+        "symbol": "BTCUSDT",
+        "event_type": "captureGap",
+        "event_time_ms": events[1]["event_time_ms"] + 200,
+        "received_at_ms": events[1]["received_at_ms"] + 200,
+        "source": "WEBSOCKET",
+        "stream_session_id": events[1]["stream_session_id"],
+        "payload": {"gap_id": "a" * 32, "reason": "RAW_CAPTURE_QUEUE_OVERFLOW"},
+    }
+    invalid_update = {
+        **events[1],
+        "event_time_ms": events[1]["event_time_ms"] + 60_000,
+        "received_at_ms": events[1]["received_at_ms"] + 60_000,
+        "payload": {
+            **events[1]["payload"],
+            "U": 503,
+            "u": 504,
+            "E": events[1]["event_time_ms"] + 60_000,
+        },
+    }
+    recovery_snapshot = {
+        **events[2],
+        "event_time_ms": events[2]["event_time_ms"] + 120_000,
+        "received_at_ms": events[2]["received_at_ms"] + 120_000,
+        "payload": {**events[2]["payload"], "lastUpdateId": 504},
+    }
+    recovered_update = {
+        **events[1],
+        "event_time_ms": events[1]["event_time_ms"] + 120_100,
+        "received_at_ms": events[1]["received_at_ms"] + 120_100,
+        "payload": {
+            **events[1]["payload"],
+            "U": 505,
+            "u": 506,
+            "E": events[1]["event_time_ms"] + 120_100,
+        },
+    }
+    now = datetime.fromtimestamp(
+        (recovered_update["received_at_ms"] + 1000) / 1000, timezone.utc
+    )
+    record_order_flow_market_events(
+        db, [*events, capture_gap, invalid_update, recovery_snapshot, recovered_update], now=now
+    )
+    rows = summarize_order_flow_candles(
+        db, "BTCUSDT", events[0]["event_time_ms"] - 1,
+        events[0]["event_time_ms"] + 180_000,
+    )
+    by_bucket = {row["candle_open_time_ms"]: row for row in rows}
+    invalid_bucket = (invalid_update["event_time_ms"] // 60_000) * 60_000
+    recovery_bucket = (recovered_update["event_time_ms"] // 60_000) * 60_000
+    assert by_bucket[invalid_bucket]["depth_baseline_validated"] is False
+    assert "DEPTH_CAPTURE_GAP_STATE_INVALID" in by_bucket[invalid_bucket]["gap_reasons"]
+    assert by_bucket[recovery_bucket]["depth_baseline_validated"] is True
+    assert "DEPTH_CAPTURE_GAP_STATE_INVALID" not in by_bucket[recovery_bucket]["gap_reasons"]
 

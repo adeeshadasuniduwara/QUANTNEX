@@ -452,6 +452,9 @@ def _price_within_exchange_filter(value: float, price_filter: Any) -> bool:
 def select_binance_entry(
     side: str, close: float, atr_value: float, zone: dict[str, Any] | None,
     execution: dict[str, Any], settings: dict[str, Any] | None = None,
+    *,
+    order_flow_snapshot: dict[str, Any] | None = None,
+    order_flow_decision: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Choose a marketable entry or a technically justified resting limit."""
     settings = settings or {}
@@ -487,7 +490,74 @@ def select_binance_entry(
         "LIMIT" in order_types and execution.get("limit_order_constraints_valid") is True
     )
 
-    def within_price_filter(value: float) -> bool:
+    flow_evidence = None
+    flow_reason = ""
+    if order_flow_snapshot is not None or order_flow_decision is not None:
+        if (
+            not isinstance(order_flow_snapshot, dict)
+            or not isinstance(order_flow_decision, dict)
+            or order_flow_decision.get("accepted") is not True
+            or order_flow_snapshot.get("market_type") != "BINANCE_SPOT"
+            or order_flow_snapshot.get("depth_is_continuous") is not True
+        ):
+            return None
+        provenance = order_flow_snapshot.get("data_provenance")
+        if (
+            not isinstance(provenance, dict)
+            or provenance.get("candle_volume_used") is not False
+            or "aggressor" not in str(provenance.get("bid_ask_semantics") or "").lower()
+        ):
+            return None
+        try:
+            delta_ratio = float(order_flow_snapshot["delta_ratio"])
+            depth_imbalance = float(order_flow_snapshot["order_book"]["depth_imbalance"])
+        except (KeyError, TypeError, ValueError, OverflowError):
+            return None
+        if (
+            not math.isfinite(delta_ratio) or not math.isfinite(depth_imbalance)
+            or not -1.0 <= delta_ratio <= 1.0
+            or not -1.0 <= depth_imbalance <= 1.0
+        ):
+            return None
+        direction = 1.0 if side == "BUY" else -1.0
+        delta_supports_direction = delta_ratio * direction > 0
+        depth_supports_direction = depth_imbalance * direction > 0
+        depth_sequence_validated = order_flow_snapshot.get("depth_is_continuous") is True
+        market_flow_confirmed = (
+            delta_supports_direction and depth_supports_direction and depth_sequence_validated
+        )
+        flow_evidence = {
+            "status": "MARKET_FLOW_ALIGNED" if market_flow_confirmed else "LIMIT_PREFERRED",
+            "market_urgency_confirmed": market_flow_confirmed,
+            "aggressor_delta_ratio": delta_ratio,
+            "l2_depth_imbalance": depth_imbalance,
+            "aggressor_delta_supports_direction": delta_supports_direction,
+            "l2_depth_supports_direction": depth_supports_direction,
+            "depth_sequence_validated": depth_sequence_validated,
+            "decision_status": order_flow_decision.get("status"),
+            "support_count": order_flow_decision.get("support_count"),
+            "conflict_count": order_flow_decision.get("conflict_count"),
+            "trade_count": order_flow_snapshot.get("trade_count"),
+            "trade_data_age_seconds": order_flow_snapshot.get("trade_data_age_seconds"),
+            "depth_observed_at": order_flow_snapshot.get("depth_observed_at"),
+            "depth_snapshot_update_id": order_flow_snapshot.get("depth_snapshot_update_id"),
+            "data_provenance": order_flow_snapshot.get("data_provenance"),
+            "method": "MARKET requires both observed aggressor delta and sequence-validated L2 depth imbalance to support the candidate direction; otherwise use a valid favorable LIMIT retracement or WAIT.",
+            "calibration": "EXECUTION_HEURISTIC_NOT_CALIBRATED_PROBABILITY",
+        }
+        if market_flow_confirmed:
+            flow_reason = (
+                " Both observed aggressor delta and sequence-validated L2 depth support the candidate direction; "
+                "MARKET urgency is allowed only if the existing spread, depth, drift and exchange-filter gates also pass."
+            )
+        else:
+            market_allowed = False
+            flow_reason = (
+                " Order Flow confirms the candidate, but aggressor delta and sequence-validated L2 depth are not both "
+                "directionally supportive; MARKET urgency is disabled and a valid favorable LIMIT retracement is preferred."
+            )
+
+    def within_price_filter(value: float):
         return _price_within_exchange_filter(value, execution.get("price_filter"))
 
     market_price = ask if side == "BUY" else bid
@@ -505,7 +575,8 @@ def select_binance_entry(
                 "Historical replay model: assumed spread/depth pass the MARKET gate."
                 if execution.get("is_replay") else
                 "Fresh spread and top-book liquidity are acceptable, and price remains close to the confirmed signal candle."
-            ),
+            ) + flow_reason,
+            "order_flow_execution_evidence": flow_evidence,
         }
 
     if zone and isinstance(zone, dict):
@@ -529,7 +600,8 @@ def select_binance_entry(
                     "Historical replay model: assumed spread/depth pass; resting LIMIT is placed at the nearest favorable " + str(zone.get("source") or "OB/FVG") + " zone midpoint."
                     if execution.get("is_replay") else
                     "Price has moved away from the signal close; a resting limit is placed at the nearest favorable " + str(zone.get("source") or "OB/FVG") + " zone midpoint."
-                ),
+                ) + flow_reason,
+                "order_flow_execution_evidence": flow_evidence,
             }
     return None
 
@@ -1242,6 +1314,8 @@ async def build_signal(
     entry_choice = None
     execution = None
     execution_quality = None
+    order_flow_snapshot = None
+    order_flow_decision = None
     tick_size = "0.01" if symbol == "XAUUSD" else "0.00000001"
     if side and symbol == "XAUUSD":
         entry_choice = {
@@ -1274,27 +1348,9 @@ async def build_signal(
                 "rejection_reason": entry_rejection_reason,
             }
         else:
+            # Keep the symbol's authoritative exchange tick for stream bootstrap.
+            # Final entry selection and price rounding happen after Order Flow.
             tick_size = str(execution["tick_size"])
-            price_precision = max(0, -Decimal(tick_size).normalize().as_tuple().exponent)
-            round_entry_up = (side == "BUY" and entry_choice["entry_type"] == "MARKET") or (
-                side == "SELL" and entry_choice["entry_type"] == "LIMIT"
-            )
-            entry_choice["entry_price"] = round_price_to_tick(
-                float(entry_choice["entry_price"]), tick_size, round_up=round_entry_up
-            )
-            if not _price_within_exchange_filter(
-                entry_choice["entry_price"], execution.get("price_filter")
-            ):
-                side = None
-                entry_choice = None
-                quality_filters["execution_quality"] = False
-                entry_rejection_reason = (
-                    "Rounded entry price violates the symbol's Binance PRICE_FILTER bounds or tick size."
-                )
-                execution_quality = {
-                    "accepted": False,
-                    "rejection_reason": entry_rejection_reason,
-                }
 
     order_flow_payload: dict[str, Any] = {"status": "NOT_EVALUATED"}
     if symbol == "XAUUSD":
@@ -1306,7 +1362,6 @@ async def build_signal(
         order_flow_mode = order_flow_mode_override or (
             "DETERMINISTIC_FIXTURE" if order_flow_override is not None else "PUBLIC_WEBSOCKET_STREAM"
         )
-        order_flow_snapshot = None
         stream_result = None
         try:
             if order_flow_override is not None:
@@ -1366,6 +1421,7 @@ async def build_signal(
                     max_depth_age_seconds=float(settings.get("max_order_book_snapshot_age_seconds", 5.0)),
                     now=as_of if candles_override is not None else datetime.now(timezone.utc),
                 )
+                order_flow_decision = decision
                 order_flow_payload = summarize_order_flow_snapshot(order_flow_snapshot, decision)
                 order_flow_payload["data_mode"] = order_flow_mode
                 quality_filters["order_flow_confirmation"] = bool(decision["accepted"])
@@ -1473,6 +1529,59 @@ async def build_signal(
             "status": "NOT_EVALUATED_NO_DIRECTIONAL_SETUP",
             "accepted": None,
         }
+
+
+    if side and entry_choice and symbol != "XAUUSD" and order_flow_snapshot is not None:
+        final_entry_choice = select_binance_entry(
+            side, close, p["atr"], entry_zone, execution, settings,
+            order_flow_snapshot=order_flow_snapshot,
+            order_flow_decision=order_flow_decision,
+        )
+        if final_entry_choice is None:
+            side = None
+            entry_choice = None
+            quality_filters["execution_quality"] = False
+            entry_rejection_reason = (
+                "Order Flow confirmed the candidate, but no MARKET entry or favorable LIMIT retracement "
+                "passed the final spread, liquidity, drift and Binance exchange-filter checks."
+            )
+            execution_quality = {
+                "spread_bps": round(float(execution["spread_bps"]), 3),
+                "bid_depth_usd": round(float(execution.get("bid_depth_usd", execution.get("bid_depth_quote", 0.0))), 2),
+                "ask_depth_usd": round(float(execution.get("ask_depth_usd", execution.get("ask_depth_quote", 0.0))), 2),
+                "quote_asset": execution.get("quote_asset"),
+                "quote_asset_usd_rate": execution.get("quote_asset_usd_rate"),
+                "accepted": False,
+                "rejection_reason": entry_rejection_reason,
+            }
+        else:
+            entry_choice = final_entry_choice
+            flow_selection = entry_choice.get("order_flow_execution_evidence")
+            if flow_selection is not None:
+                order_flow_payload["entry_selection"] = flow_selection
+
+    if side and entry_choice and symbol != "XAUUSD":
+        tick_size = str(execution["tick_size"])
+        price_precision = max(0, -Decimal(tick_size).normalize().as_tuple().exponent)
+        round_entry_up = (side == "BUY" and entry_choice["entry_type"] == "MARKET") or (
+            side == "SELL" and entry_choice["entry_type"] == "LIMIT"
+        )
+        entry_choice["entry_price"] = round_price_to_tick(
+            float(entry_choice["entry_price"]), tick_size, round_up=round_entry_up
+        )
+        if not _price_within_exchange_filter(
+            entry_choice["entry_price"], execution.get("price_filter")
+        ):
+            side = None
+            entry_choice = None
+            quality_filters["execution_quality"] = False
+            entry_rejection_reason = (
+                "Rounded entry price violates the symbol's Binance PRICE_FILTER bounds or tick size."
+            )
+            execution_quality = {
+                "accepted": False,
+                "rejection_reason": entry_rejection_reason,
+            }
 
     if side and entry_choice:
         entry = round(float(entry_choice["entry_price"]), price_precision)
@@ -1582,6 +1691,7 @@ async def build_signal(
                 "entry_price": entry,
                 "limit_price": entry if entry_choice["entry_type"] == "LIMIT" else None,
                 "entry_selection_reason": entry_choice["reason"],
+                "entry_selection_evidence": entry_choice.get("order_flow_execution_evidence"),
                 "entry_expires_at": (as_of + timedelta(seconds=expiry_seconds)).isoformat()
                     if expiry_seconds else None,
                 "signal_candle_time": candles[primary][-1]["time"],

@@ -353,11 +353,16 @@ def summarize_order_flow_candles(db, symbol: str, start_ms: int, end_ms: int, *,
             trade_id_gap_count == 0 if len(trade_ids) >= 2 else None
         )
         row["depth_session_count"] = len(depth_sessions)
-        row["reconnect_session_count"] = max(0, len(row["stream_sessions"]) - 1)
+        row["stream_session_count"] = len(row["stream_sessions"])
+        row["session_transition_count"] = max(0, len(row["stream_sessions"]) - 1)
+        row["session_transition_semantics"] = (
+            "Additional stream-session IDs within this minute; a reconnect/restart proxy, not a verified socket-close cause."
+        )
         row["depth_sequence_gap_count"] = depth_sequence_gap_count
         row["depth_baseline_validated"] = depth_baseline_validated
         row["depth_unanchored_sessions"] = depth_unanchored_sessions
         row["gap_reasons"] = sorted(gap_reasons)
+        row["gap_detected"] = bool(gap_reasons)
         row["event_window_total_events"] = int(total_events)
         row["event_window_loaded_events"] = len(events)
         row["event_window_truncated"] = truncated
@@ -370,7 +375,7 @@ def summarize_order_flow_candles(db, symbol: str, start_ms: int, end_ms: int, *,
         elif trade_id_gap_count or depth_sequence_gap_count:
             status = "DATA_SEQUENCE_GAP_DETECTED"
         elif len(row["stream_sessions"]) > 1:
-            status = "MULTI_SESSION_RECONNECT_BACKFILLED" if row["backfill_used"] else "SESSION_BOUNDARY_UNVERIFIED"
+            status = "MULTI_SESSION_WITH_REST_BACKFILL" if row["backfill_used"] else "SESSION_BOUNDARY_UNVERIFIED"
         elif depth_unanchored_sessions:
             status = "DEPTH_BASELINE_MISSING"
         elif not row["depth_update_count"]:

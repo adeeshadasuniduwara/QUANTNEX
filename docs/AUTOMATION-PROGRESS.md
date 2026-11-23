@@ -1184,47 +1184,22 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 - Exact next steps: finish the C20 raw-event coverage audit, validate truncation/trade-ID/depth-sequence/session/backfill diagnostics, run Backend CI + Backend/Web CI on Python 3.12/3.14, review the focused PR and merge only if clean. Then add event-level chronological replay and candle-only / aggressor-only / L2-only / combined ablations with fees, spread, slippage and realistic LIMIT fills. No performance uplift claim from sparse/non-random capture.
 - Spot remains the only market type with sequence-validated live Order Flow. USDⓈ-M is candle-only monitor mode; Futures Order Flow/funding/OI/liquidation-aware entries and COIN-M remain unsupported. No real orders or real-money mode.
 
-## 2026-11-23 — Phase C19: Spot Order-Flow-aware final entry selection (current-main continuation)
+## 2026-11-23 — Phase C19: Spot Order-Flow-aware final entry selection (merged)
 
-### Starting checkpoint and audit
-- Started from latest verified `main` SHA `5a1baefb97804777a46390357a0275afa370cb88` (includes Order Flow Phase 5.1 USDⓈ-M mark-price/force-order capture).
-- Inspected open issues/PRs, recent commits, docs, and Actions. Main's core boundary remains: Spot is the only path with sequence-validated live Order Flow and an adaptive analytical entry; USDⓈ-M is a separate candle-only monitor; COIN-M is unsupported.
-- PR #281 already contained the intended C19 selector change and had green checks on its old head, but it was **19 commits behind current main and GitHub marked it dirty/non-mergeable**. Its core backend logic/tests are being re-applied to a new branch based on current main; obsolete UI-test-only edits from that PR are not copied because current main already contains the newer chart contracts.
-- PR #284 was reviewed. Its proposed `raw_order_flow_recorder.py` and parallel candle-manifest schema duplicate and are less complete than main's existing `order_flow_raw_recorder.py`, which already records stream-session provenance, REST bootstrap/gap-backfill sources, sequence IDs and explicit capture-gap markers. Do not merge the duplicate recorder branch.
-- PR #275 is an earlier dynamic USDⓈ-M smoke expansion; main already includes the merged dynamic Spot/USDⓈ-M smoke runner and its independent error handling. Its old branch must not replace current main.
-
-### Implemented on `feat/spot-orderflow-aware-entry-mainline`
-- Move the final Spot entry decision until after the existing accepted Order Flow decision is available.
-- MARKET urgency now requires both observed Binance aggregate-trade aggressor delta and sequence-validated L2 quote-notional depth imbalance to have the candidate's direction, while retaining existing spread, liquidity, drift, order-type and exchange PRICE_FILTER checks.
-- When the flow decision is accepted but either component is neutral/opposed, MARKET is disabled. A technically valid favorable OB/FVG/Breaker/IFVG LIMIT retracement may still be selected; if none passes, the result is WAIT.
-- Missing/rejected/unvalidated flow, invalid provenance, malformed/non-finite/out-of-range values remain hard WAITs. No new magnitude threshold, strategy score or signal-frequency relaxation was introduced.
-- Preserve the authoritative symbol tick size for stream bootstrap, then round and revalidate the selected final MARKET/LIMIT entry against that same exchange filter.
-- Add `entry_selection_evidence` to the signal and `order_flow.entry_selection` to the flow payload, including measured delta/depth signs, decision status, freshness, depth update ID, provenance and the explicit `EXECUTION_HEURISTIC_NOT_CALIBRATED_PROBABILITY` label.
-- Add deterministic end-to-end PEPEUSDT BUY fixtures for MARKET (both flow components aligned) and LIMIT (neutral depth with a valid FVG retracement), plus selector tests for BUY/SELL MARKET, neutral-flow LIMIT, no-zone WAIT, invalid depth and rejected-flow veto.
-
-### Verification boundary / current status
-- Branch base: `5a1baefb97804777a46390357a0275afa370cb88`.
-- Current branch commits: `f26f61cec645157eaa7006b4fcff1bbeae95b8c0` (selector implementation), `b287486da3eb2ad204d29397b3a1b1407ee376b7` (deterministic tests), `dda05b2dad9211740ac2a81e0b7336b1712ade6d` (preserve exchange tick for bootstrap).
-- Focused PR #299: https://github.com/adeeshadasuniduwara/QUANTNEX/pull/299. The first CI attempt exposed a missing `pytest` import for the new parametrized fixture; the import was added in commit `5ab518c9c611376769ee963e3f6efb05785d30f1`.
-- Corrected-head validation passed: Backend CI (Python 3.12) **598 passed**; Backend/Web CI **598 passed on Python 3.12 and 598 passed on Python 3.14**; Web check passed. Compile and startup preflight also passed on both matrix jobs. No failing tests remain on the corrected head.
-- Full PR diff is limited to `signal_engine.py`, its tests and the two continuation/roadmap documents. Secret scan found no private-key, GitHub token, Slack token, AWS key or hard-coded Telegram token patterns. GitHub reported the PR clean/mergeable against the exact current-main base; perform one final head/check/base refresh before merge.
-- No live signal or profitability/win-rate improvement is claimed. The fixtures are deterministic test inputs, not live trades. No credentials, account access, order placement or live-money path was added.
-
-### Exact next steps
-1. Refresh PR #299's exact head SHA, check-runs and base SHA; merge with squash only if it remains clean and all required checks are green.
-2. Verify the resulting main merge commit and post-merge Backend CI / Backend-Web CI.
-3. Continue C20: measure actual retained raw-event capture coverage and implement causal replay/ablation of candle-only, aggressor-delta-only, L2-depth-only and combined variants. Keep sparse/non-random coverage descriptive and include fees/spread/slippage.
-5. Continue dynamic Spot-universe and live-provider smoke verification. The last recorded live Spot sample was 20/20 WAIT with no provider errors; this is data-path health, not strategy proof. The last recorded GitHub-runner USDⓈ-M metadata attempt returned HTTP 451 and remains an environment/access limitation.
-
+- PR #299 merged to main as `518d27817447e3a02413ae7fb44e630be55b54e3`.
+- Final Spot entry selection now occurs after the accepted live/replay Order Flow decision. MARKET requires both observed aggregate-trade aggressor delta and sequence-validated L2 quote-notional depth imbalance to support the candidate direction, plus the existing spread/depth/drift/order-type/exchange-filter gates. If one component is neutral, MARKET is disabled and a valid favorable LIMIT retracement may be selected; otherwise WAIT.
+- The signal and Order Flow payload expose entry-selection evidence, freshness, depth update ID and provenance. No new score/threshold or signal-frequency relaxation was introduced.
+- Post-merge Backend CI: 598 passed on Python 3.12 and 598 passed on Python 3.14; Backend/Web web-check and Telegram update notification workflow passed. The initial missing pytest import was fixed before the final green run.
+- Stale duplicate PRs #281, #284 and #275 were reviewed, commented and closed. No live order or real-money capability was added.
 
 ## 2026-11-23 — Phase C20: bounded raw-event coverage audit (feature branch)
 
 ### Implemented on `feat/spot-raw-event-coverage-audit`
 - Extend `summarize_order_flow_candles` to count the total events in the requested range before trusting its bounded sample; expose total vs loaded events and an explicit `TRUNCATED_EVENT_WINDOW` status when the 5,000-row/200-events-per-minute cap is reached.
 - Audit observed aggregate-trade IDs for missing IDs, depth-update U/u continuity, REST snapshot-to-first-diff bridge validity, session changes, REST gap-backfill sources and explicit capture-queue-overflow markers.
-- Report source counts, session counts, depth sessions, reconnect-session count, trade-ID range/gaps, depth sequence gaps, baseline validation, gap reasons and `coverage_is_complete=false`.
+- Report source counts, session counts, depth sessions, stream-session count/transition count (a reconnect/restart proxy, not a verified socket-close cause), trade-ID range/gaps, depth sequence gaps, baseline validation, gap reasons and `coverage_is_complete=false`.
 - Preserve the key safety rule: even a contiguous observed event sample is `OBSERVED_PARTIAL_NOT_PROVEN_COMPLETE`; no event summary is labelled a complete candle or a full-session feed.
-- Deterministic tests added for aggTrade ID gaps, depth diff sequence gaps, invalid snapshot bridge, multi-session reconnect with REST backfill, bounded-window truncation and invalid summary limits. Existing raw recorder persistence/idempotency/capture-gap tests remain.
+- Deterministic tests added for aggTrade ID gaps, depth diff sequence gaps, invalid snapshot bridge, multi-session boundary with REST backfill, bounded-window truncation and invalid summary limits. Existing raw recorder persistence/idempotency/capture-gap tests remain.
 
 ### Verification boundary
 - Branch base: `518d27817447e3a02413ae7fb44e630be55b54e3` (C19 post-merge main).

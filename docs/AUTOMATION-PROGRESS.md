@@ -1172,11 +1172,17 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 
 ### Current core state and next exact steps
 
-1. Merge PR #278 only after its current-main base and all relevant checks remain green; verify the merge commit on main and rerun Backend CI, Backend/Web CI and Web CI.
-2. Phase C19: make the Spot entry selector Order-Flow-aware. Keep the existing order-flow confirmation hard gate. After a valid confirmation, prefer MARKET only when both observed aggressor delta and sequence-validated L2 depth imbalance support the candidate direction and the existing spread/depth/drift/exchange-filter gates pass. If only one is supportive and the other is neutral, prefer a technically valid favorable LIMIT zone; otherwise WAIT. Label this as an execution heuristic, not a calibrated prediction.
-3. Add deterministic BUY/SELL tests for both-aligned, one-neutral, contradictory, stale and missing-flow cases. Preserve candle-only replay as a clearly labelled baseline; make feature provenance and the MARKET/LIMIT reason visible in the signal payload.
-4. Continue the chronological OOS order-flow ablation only after adequate local capture coverage is measured. Compare candle-only, aggressor-delta-only, L2-depth-only and combined gates with identical folds/cost assumptions. Do not report predictive uplift from sparse, non-random seven-day minute snapshots.
-5. Spot remains the only market type with live sequence-validated Order Flow. USDⓈ-M currently has a separate candle-only monitor engine; Futures Order Flow, funding/OI/liquidation, adaptive Futures execution and COIN-M remain unsupported. No live orders or real-money mode.
+- Phase C18 is merged: PR #277 (`b4daeb862f90ad142f485035d5eb9422724edc70`) and PR #278 (`ad3c190ae2ce60280dcba60ef943d3bfb1ce9333`). Dynamic Spot/USDⓈ-M exchangeInfo discovery and bounded rotating samples are in main. Spot is sampled over its complete eligible universe across rotations; USDⓈ-M remains a separate candle-only monitor. COIN-M is unsupported.
+- The most recent scheduled smoke run remains [#45000648674](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45000648674), 2026-11-22 07:58:53 UTC, before the USDⓈ-M smoke change was merged: 1,376 eligible Spot pairs, 20 sampled, 20 WAIT, 0 provider errors, 0 insufficient-history skips. No scheduled smoke run for 2026-11-23 was visible at this checkpoint. The current workflow supports `workflow_dispatch`, but the connected GitHub actions tools in this run expose no dispatch action.
+- The separate USDⓈ-M runner attempt [#45002095522](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45002095522) returned HTTP 451 from `/fapi/v1/exchangeInfo` on GitHub-hosted infrastructure. Treat this as a provider/access failure, not WAIT or proof of global endpoint unavailability.
+- Phase C19 PR #299 is merged to main as `518d27817447e3a02413ae7fb44e630be55b54e3`. Post-merge Backend CI passed **598 tests on Python 3.12** and **598 on Python 3.14**; Backend/Web CI's web-check passed; Telegram update notification workflow passed. The final Spot MARKET/LIMIT selector now requires both observed aggressor delta and sequence-validated L2 depth to support MARKET urgency; a neutral component prefers a valid favorable LIMIT, otherwise WAIT.
+- Old PR #281 (stale duplicate of C19), #284 (duplicate raw recorder), and #275 (superseded dynamic smoke implementation) were reviewed, commented and closed. PR #270/#266/#265/#262/#259 and other unrelated work remain open; do not mix them into signal-engine phases.
+- A read-only Binance connector sanity check on 2026-11-23 returned Spot exchangeInfo at serverTime **07:05:58.950 UTC**: 3,711 total symbols, **1,376** active `TRADING` Spot pairs, **526** active USDT-quote pairs. BTCUSDT metadata reported tick size 0.01, LOT_SIZE step/minQty 0.00001 and min notional 5 USDT.
+- A 1,000-row BTCUSDT aggregate-trade sample from 07:04:45.119–07:06:16.135 UTC had contiguous aggregate-trade IDs 4,128,697,563–4,128,698,562; buyer-aggressor volume 5.01330 BTC, seller-aggressor volume 2.59346 BTC, delta +2.41984 BTC and delta ratio +0.31812. Binance `m=false` means buyer is taker; `m=true` means buyer is maker/seller is taker. This is a recent bounded sample, not full-session CVD or a consolidated bid/ask footprint.
+- A parallel REST top-20 BTCUSDT book snapshot showed about 20,181.50 USDT bid notional vs 753,314.96 USDT ask notional (imbalance -0.94782), but it was **not sequence-validated continuous depth** and must not enter the live flow gate. The trade and REST book samples are not a synchronized signal snapshot; no trade is inferred.
+- The Binance connector's USDⓈ-M exchangeInfo response carried serverTime **02:35:56.128 UTC**, roughly 4h30m older than the Spot response. Treat that connector result as stale/cached; do not use its 956-symbol/567-perpetual/522-USDT-margined counts for live Futures validation.
+- Exact next steps: finish the C20 raw-event coverage audit, validate truncation/trade-ID/depth-sequence/session/backfill diagnostics, run Backend CI + Backend/Web CI on Python 3.12/3.14, review the focused PR and merge only if clean. Then add event-level chronological replay and candle-only / aggressor-only / L2-only / combined ablations with fees, spread, slippage and realistic LIMIT fills. No performance uplift claim from sparse/non-random capture.
+- Spot remains the only market type with sequence-validated live Order Flow. USDⓈ-M is candle-only monitor mode; Futures Order Flow/funding/OI/liquidation-aware entries and COIN-M remain unsupported. No real orders or real-money mode.
 
 ## 2026-11-23 — Phase C19: Spot Order-Flow-aware final entry selection (current-main continuation)
 
@@ -1209,3 +1215,24 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 2. Verify the resulting main merge commit and post-merge Backend CI / Backend-Web CI.
 3. Continue C20: measure actual retained raw-event capture coverage and implement causal replay/ablation of candle-only, aggressor-delta-only, L2-depth-only and combined variants. Keep sparse/non-random coverage descriptive and include fees/spread/slippage.
 5. Continue dynamic Spot-universe and live-provider smoke verification. The last recorded live Spot sample was 20/20 WAIT with no provider errors; this is data-path health, not strategy proof. The last recorded GitHub-runner USDⓈ-M metadata attempt returned HTTP 451 and remains an environment/access limitation.
+
+
+## 2026-11-23 — Phase C20: bounded raw-event coverage audit (feature branch)
+
+### Implemented on `feat/spot-raw-event-coverage-audit`
+- Extend `summarize_order_flow_candles` to count the total events in the requested range before trusting its bounded sample; expose total vs loaded events and an explicit `TRUNCATED_EVENT_WINDOW` status when the 5,000-row/200-events-per-minute cap is reached.
+- Audit observed aggregate-trade IDs for missing IDs, depth-update U/u continuity, REST snapshot-to-first-diff bridge validity, session changes, REST gap-backfill sources and explicit capture-queue-overflow markers.
+- Report source counts, session counts, depth sessions, reconnect-session count, trade-ID range/gaps, depth sequence gaps, baseline validation, gap reasons and `coverage_is_complete=false`.
+- Preserve the key safety rule: even a contiguous observed event sample is `OBSERVED_PARTIAL_NOT_PROVEN_COMPLETE`; no event summary is labelled a complete candle or a full-session feed.
+- Deterministic tests added for aggTrade ID gaps, depth diff sequence gaps, invalid snapshot bridge, multi-session reconnect with REST backfill, bounded-window truncation and invalid summary limits. Existing raw recorder persistence/idempotency/capture-gap tests remain.
+
+### Verification boundary
+- Branch base: `518d27817447e3a02413ae7fb44e630be55b54e3` (C19 post-merge main).
+- Code commits: `3e5984f056e4bd07cfb6e2231a1b05801ec602de` (coverage audit), `2c144263caaae930341cbd96b1a87b0186521bbb` (invalid bridge flag), `0369b31276530cc29249caedfbb34bc844afdbe1` (deterministic tests).
+- Tests and CI are pending; do not merge until Backend CI and Backend/Web CI pass on Python 3.12/3.14, then verify post-merge checks.
+- No raw replay performance result, win-rate improvement or profitability claim is made by this coverage diagnostic.
+
+### Next
+1. Open PR against current main, inspect the full diff and secret scan.
+2. Validate the audit on retained local capture, reject any truncated/gapped window from raw replay, then implement causal raw aggTrade/depth replay.
+3. Run fixed candle-only, delta-only, L2-only and combined ablations with identical chronological folds, fees/spread/slippage and realistic LIMIT expiry/fill assumptions.

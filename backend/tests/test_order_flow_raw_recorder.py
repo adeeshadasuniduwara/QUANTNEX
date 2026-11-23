@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import pytest
 from sqlalchemy import create_engine
@@ -201,3 +201,144 @@ def test_raw_event_recorder_accepts_full_binance_1000_level_depth_snapshot(db):
     assert len(rows) == 1
     assert len(rows[0]["payload"]["bids"]) == 1000
     assert len(rows[0]["payload"]["asks"]) == 1000
+
+def test_candle_summary_detects_aggtrade_and_depth_sequence_gaps(db):
+    events = _events()
+    trade_gap = {
+        **events[0],
+        "event_time_ms": events[0]["event_time_ms"] + 200,
+        "received_at_ms": events[0]["received_at_ms"] + 200,
+        "payload": {**events[0]["payload"], "a": 103, "T": events[0]["event_time_ms"] + 200},
+    }
+    depth_gap = {
+        **events[1],
+        "event_time_ms": events[1]["event_time_ms"] + 300,
+        "received_at_ms": events[1]["received_at_ms"] + 300,
+        "payload": {
+            **events[1]["payload"],
+            "U": 504,
+            "u": 505,
+            "E": events[1]["event_time_ms"] + 300,
+        },
+    }
+    events.extend([trade_gap, depth_gap])
+    now = datetime.fromtimestamp((events[0]["received_at_ms"] + 2000) / 1000, timezone.utc)
+    record_order_flow_market_events(db, events, now=now)
+    rows = summarize_order_flow_candles(
+        db, "BTCUSDT", events[0]["event_time_ms"] - 1,
+        events[0]["event_time_ms"] + 60_000,
+    )
+    row = rows[0]
+    assert row["trade_id_gap_count"] == 1
+    assert row["depth_sequence_gap_count"] == 1
+    assert row["coverage_status"] == "DATA_SEQUENCE_GAP_DETECTED"
+    assert "AGGTRADE_ID_GAP" in row["gap_reasons"]
+    assert "DEPTH_SEQUENCE_GAP" in row["gap_reasons"]
+    assert row["coverage_is_complete"] is False
+
+
+def test_candle_summary_rejects_unbridged_depth_snapshot_sequence(db):
+    events = _events()
+    events[1]["payload"]["U"] = 501
+    now = datetime.fromtimestamp((events[0]["received_at_ms"] + 1000) / 1000, timezone.utc)
+    record_order_flow_market_events(db, events, now=now)
+    row = summarize_order_flow_candles(
+        db, "BTCUSDT", events[0]["event_time_ms"] - 1,
+        events[0]["event_time_ms"] + 60_000,
+    )[0]
+    assert row["depth_baseline_validated"] is False
+    assert row["depth_sequence_gap_count"] == 1
+    assert "DEPTH_SNAPSHOT_BRIDGE_GAP" in row["gap_reasons"]
+    assert row["coverage_status"] == "DATA_SEQUENCE_GAP_DETECTED"
+
+
+def test_candle_summary_tracks_reconnect_sessions_and_rest_backfill(db):
+    events = _events()
+    second_session = "fedcba9876543210fedcba9876543210"
+    trade = {
+        **events[0],
+        "event_time_ms": events[0]["event_time_ms"] + 200,
+        "received_at_ms": events[0]["received_at_ms"] + 200,
+        "source": "REST_GAP_BACKFILL",
+        "stream_session_id": second_session,
+        "payload": {**events[0]["payload"], "a": 102, "T": events[0]["event_time_ms"] + 200},
+    }
+    snapshot = {
+        **events[2],
+        "event_time_ms": events[2]["event_time_ms"] + 250,
+        "received_at_ms": events[2]["received_at_ms"] + 250,
+        "stream_session_id": second_session,
+        "payload": {**events[2]["payload"], "lastUpdateId": 503},
+    }
+    depth = {
+        **events[1],
+        "event_time_ms": events[1]["event_time_ms"] + 300,
+        "received_at_ms": events[1]["received_at_ms"] + 300,
+        "stream_session_id": second_session,
+        "payload": {
+            **events[1]["payload"],
+            "U": 504,
+            "u": 505,
+            "E": events[1]["event_time_ms"] + 300,
+        },
+    }
+    events.extend([trade, snapshot, depth])
+    now = datetime.fromtimestamp((events[0]["received_at_ms"] + 2000) / 1000, timezone.utc)
+    record_order_flow_market_events(db, events, now=now)
+    row = summarize_order_flow_candles(
+        db, "BTCUSDT", events[0]["event_time_ms"] - 1,
+        events[0]["event_time_ms"] + 60_000,
+    )[0]
+    assert row["reconnect_session_count"] == 1
+    assert row["depth_session_count"] == 2
+    assert row["depth_baseline_validated"] is True
+    assert row["trade_id_gap_count"] == 0
+    assert row["backfill_used"] is True
+    assert row["source_counts"]["REST_GAP_BACKFILL"] == 1
+    assert row["coverage_status"] == "MULTI_SESSION_RECONNECT_BACKFILLED"
+    assert row["coverage_is_complete"] is False
+
+
+def test_candle_summary_reports_bounded_event_window_truncation(db):
+    session = "0123456789abcdef0123456789abcdef"
+    start = 1_795_248_000_000
+    events = []
+    for index in range(201):
+        event_time = start + 10_000 + index
+        events.append({
+            "symbol": "BTCUSDT",
+            "event_type": "aggTrade",
+            "event_time_ms": event_time,
+            "received_at_ms": event_time + 100,
+            "source": "WEBSOCKET",
+            "stream_session_id": session,
+            "payload": {
+                "a": 1000 + index,
+                "p": "90000.10",
+                "q": "0.01",
+                "T": event_time,
+                "m": False,
+            },
+        })
+    now = datetime.fromtimestamp((events[-1]["received_at_ms"] + 1000) / 1000, timezone.utc)
+    record_order_flow_market_events(db, events, now=now)
+    row = summarize_order_flow_candles(
+        db, "BTCUSDT", start - 1, start + 60_000, limit=1
+    )[0]
+    assert row["event_window_total_events"] == 201
+    assert row["event_window_loaded_events"] == 200
+    assert row["event_window_truncated"] is True
+    assert row["coverage_status"] == "TRUNCATED_EVENT_WINDOW"
+    assert row["coverage_is_complete"] is False
+
+
+def test_candle_summary_rejects_invalid_limit(db):
+    event = _events()[0]
+    now = datetime.fromtimestamp((event["received_at_ms"] + 1000) / 1000, timezone.utc)
+    record_order_flow_market_events(db, [event], now=now)
+    with pytest.raises(ValueError, match="limit"):
+        summarize_order_flow_candles(
+            db, "BTCUSDT", event["event_time_ms"] - 1,
+            event["event_time_ms"] + 60_000, limit=0,
+        )
+

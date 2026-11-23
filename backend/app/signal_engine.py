@@ -1348,8 +1348,9 @@ async def build_signal(
                 "rejection_reason": entry_rejection_reason,
             }
         else:
-            # Keep the authoritative tick for stream bootstrap. Final entry
-            # selection and rounding happen only after Order Flow is evaluated.
+            # Keep the symbol's authoritative exchange tick for stream bootstrap.
+            # Final entry selection and price rounding happen after Order Flow.
+            tick_size = str(execution["tick_size"])
 
     order_flow_payload: dict[str, Any] = {"status": "NOT_EVALUATED"}
     if symbol == "XAUUSD":

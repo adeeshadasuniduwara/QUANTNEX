@@ -284,7 +284,7 @@ def summarize_order_flow_candles(db, symbol: str, start_ms: int, end_ms: int, *,
     # Binance aggTrade IDs are per symbol, so validate across minute boundaries.
     trade_events = sorted(
         (event for event in events if event["event_type"] == "aggTrade"),
-        key=lambda event: (event["event_time_ms"], event["id"]),
+        key=lambda event: (int(event["event_key"]), event["event_time_ms"], event["id"]),
     )
     previous_trade_id: int | None = None
     for event in trade_events:
@@ -363,13 +363,17 @@ def summarize_order_flow_candles(db, symbol: str, start_ms: int, end_ms: int, *,
 
             row = buckets[update["bucket"]]
             expected = (baseline + 1) if baseline is not None else None
-            if not state_valid or expected is None:
+            if baseline is None:
                 row["depth_baseline_validations"].append(False)
                 if not session_unanchored:
                     row["depth_unanchored_sessions"] += 1
                     session_unanchored = True
                 row["gap_reasons"].add("DEPTH_BASELINE_MISSING")
                 state_valid = False
+                continue
+            if not state_valid:
+                row["depth_baseline_validations"].append(False)
+                row["gap_reasons"].add("DEPTH_SEQUENCE_STATE_INVALID")
                 continue
 
             if update["first"] <= expected <= update["last"]:
@@ -426,10 +430,8 @@ def summarize_order_flow_candles(db, symbol: str, start_ms: int, end_ms: int, *,
             status = "TRUNCATED_EVENT_WINDOW"
         elif row["capture_gap_count"]:
             status = "CAPTURE_GAP_DETECTED"
-        elif row["trade_id_gap_count"] or row["depth_sequence_gap_count"] or any(
-            reason in row["gap_reasons"] for reason in (
-                "DEPTH_SEQUENCE_STATE_INVALID", "DEPTH_BASELINE_MISSING"
-            )
+        elif row["trade_id_gap_count"] or row["depth_sequence_gap_count"] or (
+            "DEPTH_SEQUENCE_STATE_INVALID" in row["gap_reasons"]
         ):
             status = "DATA_SEQUENCE_GAP_DETECTED"
         elif len(row["stream_sessions"]) > 1:

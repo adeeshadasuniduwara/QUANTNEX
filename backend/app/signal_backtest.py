@@ -985,6 +985,31 @@ async def run_signal_walk_forward(
             "Training needs at least 50 decision bars and each out-of-sample fold needs at least 10 bars."
         )
 
+    raw_order_flow_checkpoints = None
+    raw_event_replay_summary = None
+    if raw_order_flow_events is not None:
+        replay_horizon_epoch = minute_times[-1] + 60.0
+        raw_order_flow_checkpoints = _replay_raw_order_flow_events(
+            raw_order_flow_events, symbol, replay_horizon_epoch
+        )
+        raw_event_replay_summary = {
+            "source": "BINANCE_SPOT_RAW_EVENT_ARCHIVE",
+            "event_count": len(raw_order_flow_events),
+            "checkpoint_count": len(raw_order_flow_checkpoints),
+            "eligible_checkpoint_count": sum(
+                row.get("eligible_for_order_flow_replay") is True
+                for row in raw_order_flow_checkpoints
+            ),
+            "ineligible_checkpoint_count": sum(
+                row.get("eligible_for_order_flow_replay") is not True
+                for row in raw_order_flow_checkpoints
+            ),
+            "first_checkpoint_at": raw_order_flow_checkpoints[0].get("decision_at") if raw_order_flow_checkpoints else None,
+            "last_checkpoint_at": raw_order_flow_checkpoints[-1].get("decision_at") if raw_order_flow_checkpoints else None,
+            "decision_clock": "RECEIVED_AT_MS",
+            "coverage_is_complete": False,
+        }
+
     training_raw = await _simulate_slice(
         symbol, candles_by_tf, symbol_info, settings, assumed_spread_bps,
         assumed_depth_usd, first_valid, split_index - 1,
@@ -1031,31 +1056,6 @@ async def run_signal_walk_forward(
         return aggregate, public_folds
 
     out_of_sample, out_of_sample_folds = await _run_oos_folds(None)
-
-    raw_order_flow_checkpoints = None
-    raw_event_replay_summary = None
-    if raw_order_flow_events is not None:
-        replay_horizon_epoch = minute_times[-1] + 60.0
-        raw_order_flow_checkpoints = _replay_raw_order_flow_events(
-            raw_order_flow_events, symbol, replay_horizon_epoch
-        )
-        raw_event_replay_summary = {
-            "source": "BINANCE_SPOT_RAW_EVENT_ARCHIVE",
-            "event_count": len(raw_order_flow_events),
-            "checkpoint_count": len(raw_order_flow_checkpoints),
-            "eligible_checkpoint_count": sum(
-                row.get("eligible_for_order_flow_replay") is True
-                for row in raw_order_flow_checkpoints
-            ),
-            "ineligible_checkpoint_count": sum(
-                row.get("eligible_for_order_flow_replay") is not True
-                for row in raw_order_flow_checkpoints
-            ),
-            "first_checkpoint_at": raw_order_flow_checkpoints[0].get("decision_at") if raw_order_flow_checkpoints else None,
-            "last_checkpoint_at": raw_order_flow_checkpoints[-1].get("decision_at") if raw_order_flow_checkpoints else None,
-            "decision_clock": "RECEIVED_AT_MS",
-            "coverage_is_complete": False,
-        }
 
     order_flow_replay = None
     order_flow_comparison = None

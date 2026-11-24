@@ -92,12 +92,13 @@ def test_replay_reconstructs_taker_delta_cvd_and_sequence_validated_book(
     assert snapshot["eligible_for_order_flow_replay"] is True
     assert snapshot["coverage_status"] == "OBSERVED_CONTIGUOUS_CAPTURE_NOT_FULL_SESSION"
     assert snapshot["delta"] == pytest.approx(expected_delta)
-    assert snapshot["delta_scope"] == "WEBSOCKET_AGGTRADES_RECEIVED_DURING_CAPTURE_BUCKET"
+    assert snapshot["delta_scope"] == "WEBSOCKET_AND_BUFFER_AGGTRADES_RECEIVED_DURING_CAPTURE_BUCKET"
     assert snapshot["cvd_value"] == pytest.approx(expected_delta)
     assert snapshot["cvd_scope"] == "SINCE_CAPTURE_SEED"
     assert snapshot["cvd_status"] == "COMPLETE_SINCE_STATE_SEED"
     assert snapshot["order_book"]["depth_imbalance"] * expected_imbalance > 0
     assert snapshot["depth_is_continuous"] is True
+    assert snapshot["order_book"]["source"] == "BINANCE_SPOT_SEQUENCE_VALIDATED_DEPTH_REPLAY"
     assert snapshot["session_delta"] is None
     assert snapshot["session_delta_coverage_complete"] is False
     assert snapshot["coverage_is_complete"] is False

@@ -935,9 +935,11 @@ async def signal_engine_backtest(payload: dict, user: User = Depends(local_works
                     int(history_end.timestamp() * 1000), limit=5000,
                 )
                 raw_order_flow_events = raw_event_archive["events"]
+            if order_flow_replay_source == "AUTO" and not raw_order_flow_events:
+                raw_order_flow_events = None
             if (
                 order_flow_replay_source == "FEATURE_SNAPSHOTS"
-                or (order_flow_replay_source == "AUTO" and not raw_order_flow_events)
+                or (order_flow_replay_source == "AUTO" and raw_order_flow_events is None)
             ):
                 from .order_flow_recorder import load_order_flow_observations
 

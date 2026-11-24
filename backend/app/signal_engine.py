@@ -527,12 +527,16 @@ def select_binance_entry(
         delta_supports_direction = delta_ratio * direction > 0
         depth_supports_direction = depth_imbalance * direction > 0
         depth_sequence_validated = order_flow_snapshot.get("depth_is_continuous") is True
-        market_flow_confirmed = (
-            delta_supports_direction and depth_supports_direction and depth_sequence_validated
-        )
+        directional_votes = {
+            "COMBINED": delta_supports_direction and depth_supports_direction,
+            "AGGRESSOR_ONLY": delta_supports_direction,
+            "L2_ONLY": depth_supports_direction,
+        }
+        market_flow_confirmed = directional_votes[evidence_mode] and depth_sequence_validated
         flow_evidence = {
             "status": "MARKET_FLOW_ALIGNED" if market_flow_confirmed else "LIMIT_PREFERRED",
             "market_urgency_confirmed": market_flow_confirmed,
+            "evidence_mode": evidence_mode,
             "aggressor_delta_ratio": delta_ratio,
             "l2_depth_imbalance": depth_imbalance,
             "aggressor_delta_supports_direction": delta_supports_direction,

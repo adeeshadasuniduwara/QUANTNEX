@@ -8,6 +8,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from .signal_engine import build_signal, round_price_to_tick
+from .order_flow_replay import replay_spot_order_flow_events
 
 TIMEFRAME_MINUTES = {"1": 1, "5": 5, "15": 15, "30": 30, "50": 50, "60": 60, "240": 240}
 
@@ -147,6 +148,197 @@ def _select_order_flow_snapshot(
         return replay_snapshot, "AVAILABLE"
     except (TypeError, ValueError, OverflowError):
         return {}, "INVALID"
+
+
+def _validate_raw_order_flow_checkpoints(
+    checkpoints: list[dict[str, Any]], symbol: str
+) -> list[float]:
+    """Validate receive-time replay checkpoints before chronological selection."""
+    if not isinstance(checkpoints, list):
+        raise ValueError("Raw Order Flow replay checkpoints must be a list.")
+    normalized_symbol = str(symbol or "").strip().upper()
+    epochs: list[float] = []
+    previous_ms = -1
+    for index, record in enumerate(checkpoints):
+        if not isinstance(record, dict):
+            raise ValueError(f"Raw Order Flow checkpoint {index} must be an object.")
+        if (
+            record.get("market_type") != "BINANCE_SPOT"
+            or record.get("symbol") != normalized_symbol
+        ):
+            raise ValueError("Raw Order Flow checkpoints must match the requested Binance Spot symbol.")
+        if (
+            record.get("feed_mode") != "RAW_EVENT_REPLAY"
+            or record.get("capture_clock") != "RECEIVED_AT_MS"
+            or record.get("capture_scope") != "RECEIVE_TIME_BUCKET"
+            or record.get("coverage_is_complete") is not False
+        ):
+            raise ValueError("Raw Order Flow checkpoint provenance or bounded-coverage declaration is invalid.")
+        decision_ms = record.get("decision_at_ms")
+        if isinstance(decision_ms, bool) or not isinstance(decision_ms, int) or decision_ms <= 0:
+            raise ValueError("Raw Order Flow checkpoint decision_at_ms must be a positive integer.")
+        if decision_ms <= previous_ms:
+            raise ValueError("Raw Order Flow checkpoints must have unique, strictly increasing decision times.")
+        decision_epoch = _snapshot_epoch(record.get("decision_at"), "decision_at")
+        if abs(decision_epoch * 1000 - decision_ms) > 2:
+            raise ValueError("Raw Order Flow checkpoint decision timestamp fields disagree.")
+        if not isinstance(record.get("eligible_for_order_flow_replay"), bool):
+            raise ValueError("Raw Order Flow checkpoint must declare replay eligibility.")
+        epochs.append(decision_epoch)
+        previous_ms = decision_ms
+    return epochs
+
+
+def _select_raw_order_flow_snapshot(
+    checkpoints: list[dict[str, Any]],
+    checkpoint_epochs: list[float],
+    symbol: str,
+    as_of_epoch: float,
+    settings: dict[str, Any],
+) -> tuple[dict[str, Any], str]:
+    """Adapt only the latest prior, fresh, sequence-valid raw replay checkpoint.
+
+    The archive remains bounded and cannot prove full-session completeness. A
+    later invalid checkpoint is never bypassed in favour of an older good one.
+    """
+    index = bisect_right(checkpoint_epochs, as_of_epoch + 1e-6) - 1
+    if index < 0:
+        return {}, "MISSING"
+    record = checkpoints[index]
+    try:
+        if record.get("symbol") != symbol or record.get("market_type") != "BINANCE_SPOT":
+            return {}, "INVALID"
+        decision_epoch = _snapshot_epoch(record.get("decision_at"), "decision_at")
+        if decision_epoch > as_of_epoch + 1e-6:
+            return {}, "FUTURE"
+        if record.get("eligible_for_order_flow_replay") is not True:
+            return {}, (
+                "STALE" if record.get("coverage_status") in {"TRADE_STALE", "DEPTH_STALE"}
+                else "INVALID"
+            )
+        if record.get("coverage_is_complete") is not False:
+            return {}, "INVALID"
+
+        trade_state = record.get("trade_state")
+        depth_book = record.get("depth_book")
+        book_metrics = record.get("order_book")
+        provenance = record.get("data_provenance")
+        if not all(isinstance(value, dict) for value in (trade_state, depth_book, book_metrics, provenance)):
+            return {}, "INVALID"
+        if (
+            trade_state.get("coverage_complete") is not True
+            or trade_state.get("gap_detected") is not False
+            or record.get("cvd_status") != "COMPLETE_SINCE_STATE_SEED"
+            or depth_book.get("valid") is not True
+            or depth_book.get("sequence_validated") is not True
+            or record.get("depth_is_continuous") is not True
+            or provenance.get("candle_volume_used") is not False
+            or "aggressor" not in str(provenance.get("bid_ask_semantics") or "").lower()
+        ):
+            return {}, "INVALID"
+        trade_id = trade_state.get("last_agg_trade_id")
+        update_id = record.get("depth_snapshot_update_id")
+        if isinstance(trade_id, bool) or not isinstance(trade_id, int) or trade_id < 0:
+            return {}, "INVALID"
+        if (
+            isinstance(update_id, bool) or not isinstance(update_id, int) or update_id < 0
+            or depth_book.get("last_update_id") != update_id
+            or not isinstance(depth_book.get("bids"), list) or not depth_book["bids"]
+            or not isinstance(depth_book.get("asks"), list) or not depth_book["asks"]
+        ):
+            return {}, "INVALID"
+
+        trade_count = record.get("live_trade_count")
+        delta_ratio = record.get("delta_ratio")
+        depth_imbalance = book_metrics.get("depth_imbalance")
+        if isinstance(trade_count, bool) or not isinstance(trade_count, int) or trade_count < 1:
+            return {}, "INVALID"
+        delta_value = float(delta_ratio)
+        depth_value = float(depth_imbalance)
+        if (
+            not math.isfinite(delta_value) or not math.isfinite(depth_value)
+            or not -1.0 <= delta_value <= 1.0
+            or not -1.0 <= depth_value <= 1.0
+        ):
+            return {}, "INVALID"
+
+        trade_ms = record.get("last_trade_at_ms")
+        depth_ms = record.get("last_depth_event_at_ms")
+        if any(isinstance(value, bool) or not isinstance(value, int) or value <= 0 for value in (trade_ms, depth_ms)):
+            return {}, "INVALID"
+        trade_epoch = trade_ms / 1000.0
+        depth_epoch = depth_ms / 1000.0
+        if trade_epoch > as_of_epoch + 1e-6 or depth_epoch > as_of_epoch + 1e-6:
+            return {}, "FUTURE"
+        trade_age = as_of_epoch - trade_epoch
+        depth_age = as_of_epoch - depth_epoch
+        max_trade_age = float(settings.get("max_order_flow_trade_age_seconds", 15.0))
+        max_depth_age = float(settings.get("max_order_book_snapshot_age_seconds", 5.0))
+        if (
+            not math.isfinite(max_trade_age) or max_trade_age <= 0
+            or not math.isfinite(max_depth_age) or max_depth_age <= 0
+        ):
+            raise ValueError("Raw Order Flow replay freshness settings must be finite and positive.")
+        if trade_age < 0 or depth_age < 0:
+            return {}, "FUTURE"
+        if trade_age > max_trade_age or depth_age > max_depth_age:
+            return {}, "STALE"
+
+        return {
+            "market_type": "BINANCE_SPOT",
+            "feed_mode": "RAW_EVENT_REPLAY",
+            "trade_count": trade_count,
+            "trade_data_age_seconds": round(trade_age, 3),
+            "last_trade_at": datetime.fromtimestamp(trade_epoch, timezone.utc).isoformat(),
+            "buy_volume": record.get("buy_volume"),
+            "sell_volume": record.get("sell_volume"),
+            "delta": record.get("delta"),
+            "delta_ratio": delta_value,
+            "window_cumulative_delta": record.get("cvd_value"),
+            "window_delta_scope": record.get("cvd_scope"),
+            "cvd_value": record.get("cvd_value"),
+            "cvd_status": record.get("cvd_status"),
+            "cvd_scope": record.get("cvd_scope"),
+            "session_timezone": record.get("session_timezone", "UTC"),
+            "session_delta": record.get("session_delta"),
+            "session_delta_coverage_complete": record.get("session_delta_coverage_complete") is True,
+            "session_delta_scope": record.get("session_delta_scope"),
+            "depth_is_continuous": True,
+            "depth_snapshot_update_id": update_id,
+            "depth_observed_at": datetime.fromtimestamp(depth_epoch, timezone.utc).isoformat(),
+            "order_book": dict(book_metrics),
+            "data_provenance": {
+                **provenance,
+                "decision_clock": "RECEIVED_AT_MS",
+                "capture_scope": "BOUNDED_RAW_ARCHIVE_NOT_FULL_SESSION",
+                "depth_reconstruction": "REST snapshot plus sequence-applied diff-depth events",
+            },
+            "data_sources": {
+                "stream": "RAW_BINANCE_SPOT_EVENT_ARCHIVE",
+                "book": "BINANCE_SPOT_SEQUENCE_VALIDATED_DEPTH_REPLAY",
+            },
+            "replay_checkpoint_at": record.get("decision_at"),
+            "coverage_status": record.get("coverage_status"),
+            "coverage_is_complete": False,
+        }, "AVAILABLE"
+    except (TypeError, ValueError, OverflowError, KeyError):
+        return {}, "INVALID"
+
+
+def _replay_raw_order_flow_events(
+    events: list[dict[str, Any]], symbol: str, replay_horizon_epoch: float
+) -> list[dict[str, Any]]:
+    """Rebuild causal Spot checkpoints no later than the closed-candle horizon."""
+    if not isinstance(events, list):
+        raise ValueError("Raw Order Flow events must be a list.")
+    if not events:
+        return []
+    if isinstance(replay_horizon_epoch, bool) or not math.isfinite(float(replay_horizon_epoch)):
+        raise ValueError("Raw Order Flow replay horizon must be a finite timestamp.")
+    replay_clock = datetime.fromtimestamp(float(replay_horizon_epoch), timezone.utc)
+    checkpoints = replay_spot_order_flow_events(events, symbol, now=replay_clock)
+    _validate_raw_order_flow_checkpoints(checkpoints, symbol)
+    return checkpoints
 
 
 
@@ -317,6 +509,8 @@ def _metrics(trades: list[dict[str, Any]], counters: dict[str, int], candles: li
         "max_drawdown_r": round(max_drawdown_r, 3),
         "buy_and_hold_return_pct": baseline,
         "order_flow_replay_enabled": bool(counters.get("order_flow_enabled", 0)),
+        "order_flow_raw_event_replay_enabled": bool(counters.get("order_flow_raw_event_replay_enabled", 0)),
+        "order_flow_raw_event_checkpoint_matches": counters.get("order_flow_raw_event_checkpoint_matches", 0),
         "order_flow_decision_points": counters.get("order_flow_decision_points", 0),
         "order_flow_snapshot_matches": counters.get("order_flow_snapshot_matches", 0),
         "order_flow_missing_snapshots": counters.get("order_flow_missing_snapshots", 0),
@@ -346,6 +540,7 @@ async def _simulate_slice(
     start_index: int,
     end_index: int,
     order_flow_observations: list[dict[str, Any]] | None = None,
+    raw_order_flow_checkpoints: list[dict[str, Any]] | None = None,
     execution_end_epoch: float | None = None,
 ) -> dict[str, Any]:
     primary_tf = str(settings.get("primary", "5"))
@@ -363,14 +558,22 @@ async def _simulate_slice(
         tf: [_epoch(row["time"]) for row in rows]
         for tf, rows in candles_by_tf.items() if tf in TIMEFRAME_MINUTES
     }
+    if order_flow_observations is not None and raw_order_flow_checkpoints is not None:
+        raise ValueError("Choose feature snapshots or raw Order Flow checkpoints, not both.")
     observation_epochs = (
         _validate_order_flow_observations(order_flow_observations, symbol)
         if order_flow_observations is not None else None
     )
+    raw_checkpoint_epochs = (
+        _validate_raw_order_flow_checkpoints(raw_order_flow_checkpoints, symbol)
+        if raw_order_flow_checkpoints is not None else None
+    )
     counters = {
         "signals": 0, "waits": 0, "market": 0, "limit": 0,
         "limit_expired": 0, "limit_censored": 0,
-        "order_flow_enabled": int(order_flow_observations is not None),
+        "order_flow_enabled": int(order_flow_observations is not None or raw_order_flow_checkpoints is not None),
+        "order_flow_raw_event_replay_enabled": int(raw_order_flow_checkpoints is not None),
+        "order_flow_raw_event_checkpoint_matches": 0,
         "order_flow_decision_points": 0, "order_flow_snapshot_matches": 0,
         "order_flow_missing_snapshots": 0, "order_flow_stale_snapshots": 0,
         "order_flow_invalid_snapshots": 0, "order_flow_confirmed_candidates": 0,
@@ -476,13 +679,24 @@ async def _simulate_slice(
             "is_replay": True,
         }
         order_flow_override = None
+        order_flow_mode = None
         if order_flow_observations is not None and observation_epochs is not None:
             order_flow_override, observation_status = _select_order_flow_snapshot(
                 order_flow_observations, observation_epochs, symbol, as_of_epoch, settings
             )
+            order_flow_mode = "HISTORICAL_FEATURE_SNAPSHOT_REPLAY"
+        elif raw_order_flow_checkpoints is not None and raw_checkpoint_epochs is not None:
+            order_flow_override, observation_status = _select_raw_order_flow_snapshot(
+                raw_order_flow_checkpoints, raw_checkpoint_epochs, symbol, as_of_epoch, settings
+            )
+            order_flow_mode = "HISTORICAL_RAW_EVENT_REPLAY"
+
+        if order_flow_mode is not None:
             counters["order_flow_decision_points"] += 1
             if observation_status == "AVAILABLE":
                 counters["order_flow_snapshot_matches"] += 1
+                if order_flow_mode == "HISTORICAL_RAW_EVENT_REPLAY":
+                    counters["order_flow_raw_event_checkpoint_matches"] += 1
             elif observation_status == "MISSING":
                 counters["order_flow_missing_snapshots"] += 1
             elif observation_status == "STALE":
@@ -495,11 +709,11 @@ async def _simulate_slice(
             "execution_context_override": execution,
             "replay_as_of": as_of,
         }
-        if order_flow_observations is not None:
+        if order_flow_mode is not None:
             # An empty override deliberately fails the existing order-flow gate;
             # historical candidates must not silently fall back to candle-only.
             build_kwargs["order_flow_override"] = order_flow_override or {}
-            build_kwargs["order_flow_mode_override"] = "HISTORICAL_FEATURE_SNAPSHOT_REPLAY"
+            build_kwargs["order_flow_mode_override"] = order_flow_mode
         result = await build_signal(settings, symbol, **build_kwargs)
         order_flow_result = result.get("order_flow") or {}
         if order_flow_result.get("data_mode") == "HISTORICAL_FEATURE_SNAPSHOT_REPLAY":
@@ -670,9 +884,12 @@ async def run_signal_walk_forward(
     assumed_spread_bps: float = 5.0,
     assumed_depth_usd: float = 10000.0,
     order_flow_observations: list[dict[str, Any]] | None = None,
+    raw_order_flow_events: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Run fixed-rule sequential OOS folds with causal candle/Order Flow replay."""
     settings = settings or {"primary": "5", "trend": "60", "enabled": ["60", "30", "15", "5", "1"], "min_score": 7}
+    if order_flow_observations is not None and raw_order_flow_events is not None:
+        raise ValueError("Choose feature snapshots or raw Order Flow events, not both.")
     if not 0.5 <= train_ratio <= 0.9:
         raise ValueError("Train ratio must be between 0.5 and 0.9.")
     if isinstance(fold_count, bool) or not isinstance(fold_count, int) or not 2 <= fold_count <= 6:
@@ -760,6 +977,7 @@ async def run_signal_walk_forward(
 
     async def _run_oos_folds(
         observations: list[dict[str, Any]] | None,
+        raw_checkpoints: list[dict[str, Any]] | None = None,
     ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         sizes = [
             out_of_sample_decisions // fold_count
@@ -778,6 +996,7 @@ async def run_signal_walk_forward(
                 symbol, candles_by_tf, symbol_info, settings, assumed_spread_bps,
                 assumed_depth_usd, start_index, end_index,
                 order_flow_observations=observations,
+                raw_order_flow_checkpoints=raw_checkpoints,
                 execution_end_epoch=oos_execution_end_epoch,
             )
             raw_results.append(raw)
@@ -796,34 +1015,103 @@ async def run_signal_walk_forward(
 
     out_of_sample, out_of_sample_folds = await _run_oos_folds(None)
 
+    raw_order_flow_checkpoints = None
+    raw_event_replay_summary = None
+    if raw_order_flow_events is not None:
+        replay_horizon_epoch = minute_times[-1] + 60.0
+        raw_order_flow_checkpoints = _replay_raw_order_flow_events(
+            raw_order_flow_events, symbol, replay_horizon_epoch
+        )
+        raw_event_replay_summary = {
+            "source": "BINANCE_SPOT_RAW_EVENT_ARCHIVE",
+            "event_count": len(raw_order_flow_events),
+            "checkpoint_count": len(raw_order_flow_checkpoints),
+            "eligible_checkpoint_count": sum(
+                row.get("eligible_for_order_flow_replay") is True
+                for row in raw_order_flow_checkpoints
+            ),
+            "ineligible_checkpoint_count": sum(
+                row.get("eligible_for_order_flow_replay") is not True
+                for row in raw_order_flow_checkpoints
+            ),
+            "first_checkpoint_at": raw_order_flow_checkpoints[0].get("decision_at") if raw_order_flow_checkpoints else None,
+            "last_checkpoint_at": raw_order_flow_checkpoints[-1].get("decision_at") if raw_order_flow_checkpoints else None,
+            "decision_clock": "RECEIVED_AT_MS",
+            "coverage_is_complete": False,
+        }
+
     order_flow_replay = None
     order_flow_comparison = None
-    if order_flow_observations is not None:
-        if not order_flow_observations:
+    if order_flow_observations is not None or raw_order_flow_events is not None:
+        is_raw_replay = raw_order_flow_events is not None
+        flow_observations = order_flow_observations
+        flow_checkpoints = raw_order_flow_checkpoints if is_raw_replay else None
+        flow_count = len(flow_checkpoints or []) if is_raw_replay else len(flow_observations or [])
+        if flow_count == 0:
             order_flow_replay = {
-                "status": "NO_CAPTURED_ORDER_FLOW_DATA",
+                "status": (
+                    "NO_COMPLETE_RAW_EVENT_CHECKPOINTS" if is_raw_replay
+                    else "NO_CAPTURED_ORDER_FLOW_DATA"
+                ),
+                "source": "BINANCE_SPOT_RAW_EVENT_ARCHIVE" if is_raw_replay else "MINUTE_FEATURE_SNAPSHOTS",
                 "observation_count": 0,
-                "note": "No eligible sequence-validated Spot feature snapshots overlap this historical candle range; no order-flow performance result is available.",
+                "raw_event_count": len(raw_order_flow_events or []) if is_raw_replay else None,
+                "note": (
+                    "No completed receive-time raw-event checkpoint overlaps the historical candle range; "
+                    "the raw archive cannot support an Order Flow performance result."
+                    if is_raw_replay else
+                    "No eligible sequence-validated Spot feature snapshots overlap this historical candle range; no order-flow performance result is available."
+                ),
             }
         else:
+            flow_kwargs = (
+                {"raw_order_flow_checkpoints": flow_checkpoints}
+                if is_raw_replay else {"order_flow_observations": flow_observations}
+            )
             order_flow_training_raw = await _simulate_slice(
                 symbol, candles_by_tf, symbol_info, settings, assumed_spread_bps,
                 assumed_depth_usd, first_valid, split_index - 1,
-                order_flow_observations=order_flow_observations,
+                **flow_kwargs,
             )
             order_flow_training = _public_metrics(order_flow_training_raw)
             order_flow_out_of_sample, order_flow_out_of_sample_folds = await _run_oos_folds(
-                order_flow_observations
+                flow_observations, flow_checkpoints
             )
             order_flow_replay = {
                 "status": "EVALUATED",
-                "observation_count": len(order_flow_observations),
-                "first_captured_at": order_flow_observations[0].get("captured_at"),
-                "last_captured_at": order_flow_observations[-1].get("captured_at"),
+                "source": "BINANCE_SPOT_RAW_EVENT_ARCHIVE" if is_raw_replay else "MINUTE_FEATURE_SNAPSHOTS",
+                "observation_count": flow_count,
+                "raw_event_count": len(raw_order_flow_events or []) if is_raw_replay else None,
+                "eligible_checkpoint_count": (
+                    raw_event_replay_summary["eligible_checkpoint_count"] if is_raw_replay else None
+                ),
+                "ineligible_checkpoint_count": (
+                    raw_event_replay_summary["ineligible_checkpoint_count"] if is_raw_replay else None
+                ),
+                "first_captured_at": (
+                    raw_event_replay_summary["first_checkpoint_at"] if is_raw_replay
+                    else flow_observations[0].get("captured_at")
+                ),
+                "last_captured_at": (
+                    raw_event_replay_summary["last_checkpoint_at"] if is_raw_replay
+                    else flow_observations[-1].get("captured_at")
+                ),
+                "decision_clock": "RECEIVED_AT_MS" if is_raw_replay else "FEATURE_CAPTURE_TIMESTAMP",
+                "coverage_is_complete": False if is_raw_replay else None,
                 "training": order_flow_training,
                 "out_of_sample": order_flow_out_of_sample,
                 "out_of_sample_folds": order_flow_out_of_sample_folds,
-                "method": "Same fixed candle strategy and execution model across sequential OOS folds, with the live Spot order-flow gate applied only to prior, fresh, sequence-validated snapshots. OOS positions remain blocked until their modeled exit, including across fold boundaries.",
+                "method": (
+                    "Same fixed candle strategy and execution model across sequential OOS folds. Raw Binance Spot "
+                    "aggTrade and sequence-reconstructed L2 checkpoints are selected only when their receive-time "
+                    "decision boundary is at or before the candle decision; exchange event-time freshness is "
+                    "recomputed at that decision. Ineligible or missing latest checkpoints fail closed. "
+                    "OOS positions remain blocked until their modeled exit."
+                    if is_raw_replay else
+                    "Same fixed candle strategy and execution model across sequential OOS folds, with the live Spot "
+                    "order-flow gate applied only to prior, fresh, sequence-validated feature snapshots. "
+                    "OOS positions remain blocked until their modeled exit, including across fold boundaries."
+                ),
             }
             baseline_expectancy = out_of_sample.get("expectancy_r")
             flow_expectancy = order_flow_out_of_sample.get("expectancy_r")
@@ -886,7 +1174,16 @@ async def run_signal_walk_forward(
             "limit_fill": "Filled only if a 1m candle touches the limit within the 15-minute signal expiry; gap-through fills use the better opening price.",
             "intrabar_ambiguity": "If stop-loss and TP1 are both touched in one candle, stop-loss is assumed first.",
             "exit_policy": "Full position exits at stop-loss or TP1; TP2/TP3 partial exits are not modeled. Open positions are carried across OOS fold boundaries and prevent overlapping new entries.",
-            "order_flow_replay": "Selects only the latest stored Spot feature snapshot captured at or before each decision; source ages are recomputed at that decision timestamp. Missing, stale, future, malformed or non-sequenced snapshots fail closed for candidates; no stale forward-fill is allowed.",
+            "order_flow_replay": (
+                "Raw-event mode reconstructs receive-time checkpoints from archived Binance Spot aggTrades and "
+                "sequence-applied depth diffs. Only the latest checkpoint at or before each candle decision is "
+                "eligible; trade/depth event-time ages are recomputed at that decision. Missing, stale, gapped, "
+                "truncated or malformed data fails closed. Bounded archives never claim full-session completeness."
+                if raw_order_flow_events is not None else
+                "Feature-snapshot mode selects only the latest stored Spot feature snapshot captured at or before "
+                "each decision; source ages are recomputed at that decision timestamp. Missing, stale, future, "
+                "malformed or non-sequenced snapshots fail closed; no stale forward-fill is allowed."
+            ),
         },
         "method": "Fixed-rule sequential walk-forward: one initial in-sample segment followed by non-overlapping OOS decision windows. No parameters are fit on the OOS windows; open positions are carried across fold boundaries.",
         "limitations": [
@@ -897,7 +1194,9 @@ async def run_signal_walk_forward(
             "Confidence intervals are descriptive only and do not correct for serial dependence or strategy selection.",
             "A historical holdout is not proof of future profitability.",
             "Order-flow snapshots are retained for seven days, sampled at most once per symbol per minute, and only exist for symbols with active managed streams.",
-            "Captured order-flow snapshots are feature summaries, not raw AggTrade/depth-diff archives; CVD is bounded since the stream seed and UTC session delta may be incomplete.",
+            "Captured feature snapshots are summaries, not raw AggTrade/depth-diff archives; CVD is bounded since the stream seed and UTC session delta may be incomplete.",
+            "Raw-event replay is bounded to the supplied archive window and its first captured trade is only a CVD seed; UTC session delta is not available without a proven session-start anchor.",
+            "Raw-event archives may be sparse, non-random or truncated; this replay does not establish complete exchange-event capture.",
             "The order-flow replay comparison is subject to sparse, non-random stream coverage and must not be interpreted as proof of incremental predictive value.",
         ],
     }

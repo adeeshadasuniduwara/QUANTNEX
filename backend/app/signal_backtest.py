@@ -727,7 +727,9 @@ async def _simulate_slice(
             build_kwargs["order_flow_mode_override"] = order_flow_mode
         result = await build_signal(settings, symbol, **build_kwargs)
         order_flow_result = result.get("order_flow") or {}
-        if order_flow_result.get("data_mode") == "HISTORICAL_FEATURE_SNAPSHOT_REPLAY":
+        if order_flow_result.get("data_mode") in {
+            "HISTORICAL_FEATURE_SNAPSHOT_REPLAY", "HISTORICAL_RAW_EVENT_REPLAY"
+        }:
             if order_flow_result.get("accepted") is True:
                 counters["order_flow_confirmed_candidates"] += 1
             elif order_flow_result.get("accepted") is False:
@@ -1157,7 +1159,13 @@ async def run_signal_walk_forward(
                 "out_of_sample_max_drawdown_r_delta": round(
                     order_flow_out_of_sample["max_drawdown_r"] - out_of_sample["max_drawdown_r"], 3
                 ),
-                "interpretation": "Descriptive ablation only. Snapshot coverage is sparse and non-random; this comparison is not a calibrated causal estimate of order-flow edge.",
+                "interpretation": (
+                    "Descriptive ablation only. Raw-event capture is bounded and may be sparse or non-random; "
+                    "this comparison is not a calibrated causal estimate of order-flow edge."
+                    if is_raw_replay else
+                    "Descriptive ablation only. Feature-snapshot coverage is sparse and non-random; "
+                    "this comparison is not a calibrated causal estimate of order-flow edge."
+                ),
             }
     return {
         "symbol": symbol,

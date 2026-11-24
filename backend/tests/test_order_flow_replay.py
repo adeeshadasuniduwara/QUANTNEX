@@ -197,6 +197,46 @@ def test_replay_carries_trade_cvd_across_stream_sessions_after_depth_resnapshot(
     assert result[1]["session_delta"] is None
 
 
+def test_reconnect_invalidates_old_depth_until_new_session_snapshot_and_diff():
+    events = _book_events()
+    events.append(_event(
+        9, "aggTrade", "WEBSOCKET", START_MS + 58_000, START_MS + 58_020,
+        {"a": 103, "p": "100", "q": "1", "T": START_MS + 58_000, "m": False},
+        SESSION_B,
+    ))
+    result = replay_spot_order_flow_events(events, "BTCUSDT", now=_now())
+    snapshot = result[0]
+    assert snapshot["trade_state"]["coverage_complete"] is True
+    assert snapshot["order_book"] is None
+    assert snapshot["depth_is_continuous"] is False
+    assert snapshot["coverage_status"] == "DEPTH_SEQUENCE_UNVALIDATED"
+    assert snapshot["eligible_for_order_flow_replay"] is False
+
+
+def test_capture_gap_remains_a_veto_even_after_later_depth_resnapshot():
+    events = _book_events()
+    gap_time = START_MS + 57_000
+    events.append(_event(
+        9, "captureGap", "WEBSOCKET", gap_time, gap_time + 10,
+        {"gap_id": "abcdef0123456789abcdef0123456789", "reason": "RAW_CAPTURE_QUEUE_OVERFLOW"},
+    ))
+    events.extend([
+        _event(10, "depthSnapshot", "REST_BOOTSTRAP", START_MS + 114_000, START_MS + 114_100,
+               {"lastUpdateId": 900, "bids": [["99.99", "10"]], "asks": [["100.01", "2"]]}, SESSION_B),
+        _event(11, "depthUpdate", "WEBSOCKET", START_MS + 115_000, START_MS + 115_100,
+               {"U": 901, "u": 901, "E": START_MS + 115_000, "b": [], "a": []}, SESSION_B),
+        _event(12, "aggTrade", "WEBSOCKET", START_MS + 115_200, START_MS + 115_220,
+               {"a": 103, "p": "100", "q": "1", "T": START_MS + 115_200, "m": False}, SESSION_B),
+    ])
+    result = replay_spot_order_flow_events(events, "BTCUSDT", now=_now(offset_ms=180_000))
+    assert len(result) == 2
+    assert result[0]["coverage_status"] == "CAPTURE_GAP_DETECTED"
+    assert result[1]["coverage_status"] == "CAPTURE_GAP_DETECTED"
+    assert result[1]["depth_is_continuous"] is True
+    assert result[1]["cvd_value"] is None
+    assert result[1]["eligible_for_order_flow_replay"] is False
+
+
 def test_late_rest_backfill_recovers_only_the_later_checkpoint_not_the_gap_checkpoint():
     events = [
         _event(1, "depthSnapshot", "REST_BOOTSTRAP", START_MS + 54_000, START_MS + 54_100,

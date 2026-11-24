@@ -147,8 +147,9 @@ class GitHubApiCacheTests(unittest.TestCase):
             }), encoding="utf-8")
 
             def rate_limited(request, timeout):
+                headers = {"X-RateLimit-Remaining": "0"} if status_code == 403 else {"Retry-After": "120"}
                 raise urllib.error.HTTPError(
-                    request.full_url, status_code, "rate limit exceeded", {}, None
+                    request.full_url, status_code, "rate limit exceeded", headers, None
                 )
 
             with patch.object(UPDATER.urllib.request, "urlopen", side_effect=rate_limited):

@@ -1189,6 +1189,7 @@ async def build_signal(
     execution_context_override: dict[str, Any] | None = None,
     order_flow_override: dict[str, Any] | None = None,
     order_flow_mode_override: str | None = None,
+    order_flow_confirmation_mode_override: str | None = None,
     replay_as_of: datetime | None = None,
 ) -> dict[str, Any]:
     symbol = str(symbol).upper()
@@ -1420,6 +1421,7 @@ async def build_signal(
                     max_trade_age_seconds=float(settings.get("max_order_flow_trade_age_seconds", 15.0)),
                     max_depth_age_seconds=float(settings.get("max_order_book_snapshot_age_seconds", 5.0)),
                     now=as_of if candles_override is not None else datetime.now(timezone.utc),
+                    evidence_mode=order_flow_confirmation_mode_override or "COMBINED",
                 )
                 order_flow_decision = decision
                 order_flow_payload = summarize_order_flow_snapshot(order_flow_snapshot, decision)

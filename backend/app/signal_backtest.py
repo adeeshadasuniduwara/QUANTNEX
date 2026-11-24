@@ -1110,6 +1110,7 @@ async def run_signal_walk_forward(
                 return {key: metrics.get(key) for key in keys}
 
             variant_results: dict[str, dict[str, Any]] = {}
+            variant_full_results: dict[str, tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]] = {}
             variant_modes = ("AGGRESSOR_ONLY", "L2_ONLY", "COMBINED")
             for confirmation_mode in variant_modes:
                 training_raw = await _simulate_slice(
@@ -1123,6 +1124,7 @@ async def run_signal_walk_forward(
                     flow_observations, flow_checkpoints,
                     confirmation_mode=confirmation_mode,
                 )
+                variant_full_results[confirmation_mode] = (training_raw, variant_oos, variant_folds)
                 variant_results[confirmation_mode] = {
                     "confirmation_mode": confirmation_mode,
                     "training": training_summary,
@@ -1176,15 +1178,10 @@ async def run_signal_walk_forward(
                     },
                 }
 
-            order_flow_training_raw = await _simulate_slice(
-                symbol, candles_by_tf, symbol_info, settings, assumed_spread_bps,
-                assumed_depth_usd, first_valid, split_index - 1,
-                **flow_kwargs,
+            combined_training_raw, order_flow_out_of_sample, order_flow_out_of_sample_folds = (
+                variant_full_results["COMBINED"]
             )
-            order_flow_training = _public_metrics(order_flow_training_raw)
-            order_flow_out_of_sample, order_flow_out_of_sample_folds = await _run_oos_folds(
-                flow_observations, flow_checkpoints, confirmation_mode="COMBINED"
-            )
+            order_flow_training = _public_metrics(combined_training_raw)
             order_flow_replay = {
                 "status": (
                     "NO_ELIGIBLE_RAW_EVENT_CHECKPOINTS"

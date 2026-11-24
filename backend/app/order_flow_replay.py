@@ -268,6 +268,7 @@ def replay_spot_order_flow_events(
                     book_snapshot["bids"], book_snapshot["asks"],
                     depth_levels=depth_levels,
                 )
+                book_metrics["source"] = "BINANCE_SPOT_SEQUENCE_VALIDATED_DEPTH_REPLAY"
             except OrderFlowDataError as exc:
                 book_error = str(exc)
 
@@ -351,7 +352,7 @@ def replay_spot_order_flow_events(
             "buy_quote_volume": float(bucket_live["buy_quote_volume"]),
             "sell_quote_volume": float(bucket_live["sell_quote_volume"]),
             "delta": live_delta,
-            "delta_scope": "WEBSOCKET_AGGTRADES_RECEIVED_DURING_CAPTURE_BUCKET",
+            "delta_scope": "WEBSOCKET_AND_BUFFER_AGGTRADES_RECEIVED_DURING_CAPTURE_BUCKET",
             "quote_delta": float(bucket_live["buy_quote_volume"] - bucket_live["sell_quote_volume"]),
             "delta_ratio": delta_ratio,
             "backfill_delta": backfill_delta,

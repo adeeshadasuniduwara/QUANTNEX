@@ -216,6 +216,7 @@ def replay_spot_order_flow_events(
     trade_state: AggTradeCvdState | None = None
     pending_trade_rows: dict[int, dict[str, Any]] = {}
     trade_integrity_failed = False
+    trade_event_order_invalid = False
     capture_gap_detected = False
     depth_book = BinanceSpotDepthBook()
     current_stream_session_id: str | None = None
@@ -275,6 +276,7 @@ def replay_spot_order_flow_events(
             and trade_snapshot.get("coverage_complete") is True
             and trade_snapshot.get("gap_detected") is False
             and not trade_integrity_failed
+            and not trade_event_order_invalid
             and not capture_gap_detected
         )
         trade_fresh = bool(
@@ -303,8 +305,10 @@ def replay_spot_order_flow_events(
         )
         if capture_gap_detected:
             cvd_status = "INCOMPLETE_RAW_CAPTURE_GAP"
-        elif trade_integrity_failed:
+        elif trade_event_order_invalid:
             cvd_status = "INCOMPLETE_EVENT_ORDER"
+        elif trade_integrity_failed:
+            cvd_status = "INCOMPLETE_RAW_CAPTURE_GAP"
         elif trade_snapshot is None:
             cvd_status = "NOT_AVAILABLE_NO_TRADE_SEED"
         else:
@@ -312,6 +316,8 @@ def replay_spot_order_flow_events(
 
         if bucket_capture_gap or capture_gap_detected:
             coverage_status = "CAPTURE_GAP_DETECTED"
+        elif trade_event_order_invalid:
+            coverage_status = "TRADE_EVENT_ORDER_INVALID"
         elif trade_integrity_failed or (trade_snapshot and trade_snapshot.get("gap_detected")):
             coverage_status = "TRADE_SEQUENCE_GAP"
         elif not trade_covered:
@@ -466,7 +472,7 @@ def replay_spot_order_flow_events(
             elif status == "GAP_PENDING":
                 pending_trade_rows[trade_id] = payload
             elif status == "OUT_OF_ORDER":
-                trade_integrity_failed = True
+                trade_event_order_invalid = True
 
         if event_type in {"depthSnapshot", "depthUpdate"}:
             try:

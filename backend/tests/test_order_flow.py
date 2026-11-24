@@ -198,7 +198,7 @@ def test_order_flow_confirmation_ablation_modes_remove_only_the_directional_vote
     assert combined["status"] == "MIXED"
     assert combined["accepted"] is False
     assert combined["evidence_mode"] == "COMBINED"
-    assert "Both aggressor-trade and sequence-validated L2 streams" in aggressor["data_quality_gate"]
+    assert "Both underlying feeds must pass" in aggressor["data_quality_gate"]
 
 
 def test_order_flow_confirmation_rejects_unknown_ablation_mode():

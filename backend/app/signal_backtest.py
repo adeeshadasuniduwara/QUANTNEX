@@ -1095,7 +1095,11 @@ async def run_signal_walk_forward(
                 flow_observations, flow_checkpoints
             )
             order_flow_replay = {
-                "status": "EVALUATED",
+                "status": (
+                    "NO_ELIGIBLE_RAW_EVENT_CHECKPOINTS"
+                    if is_raw_replay and raw_event_replay_summary["eligible_checkpoint_count"] == 0
+                    else "EVALUATED"
+                ),
                 "source": "BINANCE_SPOT_RAW_EVENT_ARCHIVE" if is_raw_replay else "MINUTE_FEATURE_SNAPSHOTS",
                 "observation_count": flow_count,
                 "raw_event_count": len(raw_order_flow_events or []) if is_raw_replay else None,

@@ -770,7 +770,7 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 - USDⓈ-M discovery failed with HTTP 451; **0/20** Futures scans completed and the workflow correctly exited non-zero. This is a GitHub-runner provider-access failure, not a WAIT. Local-network Futures verification remains open.
 
 
-### C22 — Raw Spot event replay is now a walk-forward input (PR pending)
+### C22 — Raw Spot event replay is now a walk-forward input (merged PR #302)
 
 - The chronological backtest can now receive archived raw Binance Spot events and rebuild receive-time checkpoints before the replay. It does not use a feature snapshot generated after the candle decision.
 - A raw checkpoint is accepted only when its bounded capture is internally usable: contiguous aggTrade IDs since the seed, no capture-gap marker, fresh trade and depth event timestamps, a valid REST-snapshot/diff bridge, sequence-validated depth, non-empty current receive-bucket trades, and verified aggressor-side provenance.
@@ -779,26 +779,33 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 - load_order_flow_market_events_by_receive_time is separate from the existing event-time loader. It includes late REST backfills according to when they arrived, returns the latest bounded 5,000 rows in chronological receive order and exposes truncated plus total count.
 - The walk-forward API defaults to order_flow_replay_source=AUTO: raw events are preferred when present; feature snapshots are used only when the raw archive is empty. A non-empty raw archive that fails replay eligibility is not silently replaced by a more convenient source.
 - Raw replay metrics remain a descriptive ablation against the same candle-only chronological folds. Fee, spread, slippage and LIMIT-fill assumptions are unchanged. No strategy profitability or order-flow uplift is asserted.
-- Deterministic tests added for raw-event LONG/SHORT signal generation, contradictory flow, stale/future data, capture-gap veto, receive-time ordering of late backfill, truncation and walk-forward API wiring. CI is pending for this branch.
+- Deterministic tests added for raw-event LONG/SHORT signal generation, contradictory flow, stale/future data, capture-gap veto, receive-time ordering of late backfill, truncation and walk-forward API wiring. PR #302 merged as `c69a0589ce1b0effdf1e9b893330f38d135b38fb`; PR and post-merge backend 3.12/3.14, Web and test checks passed.
 
 ### C22 limits / next engineering
 - Binance Spot only. USDⓈ-M remains candle-only monitor mode (GitHub runner HTTP 451); COIN-M unsupported.
 - Raw archive is capped at 5,000 selected events per replay call and the first captured trade is only a CVD seed. The output always declares coverage_is_complete=false; UTC full-session delta is not inferred.
 - The current signal gate still uses directional aggressor delta and L2 depth sign confluence. CVD divergence, absorption/exhaustion and order-flow multi-timeframe scoring are not yet calibrated or used as independent predictive votes.
 - The raw replay input is now wired through the API but the local retained archive has not been exercised in this run. OOS results must be interpreted with actual eligible checkpoint coverage, not the raw event count alone.
-- Next: run C22 CI, review/merge only when green, validate on retained local archive, then add separate aggressor-only/L2-only/combined ablations and evaluate CVD divergence with hand-computed fixtures.
+- Next: validate the retained local archive and its eligible checkpoint coverage; the separate C23 aggressor-only/L2-only/combined ablations are now merged.
 
 
-### C23 — Directional-vote ablations in walk-forward (PR pending)
+### C23 — Directional-vote ablations in walk-forward (merged PR #303)
 - Added three research-only modes: `AGGRESSOR_ONLY`, `L2_ONLY`, and `COMBINED`.
 - The same selected mode now controls both the order-flow confirmation vote and MARKET urgency vote. This avoids an apparent single-component ablation being silently reintroduced by the entry selector.
 - Both data streams still have to pass existing freshness, provenance and feed-specific integrity gates in every mode. The experiment removes a directional vote; it does not remove data-quality safeguards.
 - Walk-forward runs all three variants across identical chronological folds, with the same spread, fee, slippage and conservative LIMIT fill/expiry assumptions. It reports per-variant trade count, win rate/interval, expectancy/interval, profit factor, max drawdown, net PnL, estimated costs and coverage/confirmation counts against the candle-only baseline.
 - The variants are descriptive ablations. They are not calibrated probabilities and do not establish predictive uplift. The strategy's live default remains `COMBINED`.
-- Deterministic tests cover opposite-sign delta/depth evidence, each selected directional vote, invalid modes and raw-event replay wiring. CI is pending on branch `feat/order-flow-evidence-ablation-replay`.
+- Deterministic tests cover opposite-sign delta/depth evidence, each selected directional vote, invalid modes and raw-event replay wiring. PR #303 merged as `f986dbae4d3012e6fbb43d5613d5d028adc74337`; PR and post-merge `test`, backend Python 3.12/3.14 and Web checks passed.
 
 ### C23 limitations / next
 - Both streams remain required for data integrity in every ablation; the experiment does not show whether either feed alone can operate safely when the other feed is absent.
 - The MARKET/LIMIT selector retains spread, liquidity, drift and exchange-filter hard gates in all modes.
-- No local retained archive has been evaluated here. Wait for CI, then validate with the user's retained Spot archive before interpreting any performance metrics.
-- Next: complete C23 CI/review/merge, then run real retained-archive ablations and report sample size and coverage before implementing CVD divergence or absorption as additional evidence.
+- No local retained archive has been evaluated here. Validate with the user's retained Spot archive before interpreting any performance metrics.
+- Next: run real retained-archive ablations and report sample size/coverage; then add a causal CVD-divergence classifier using confirmed price pivots and same-boundary CVD observations. Existing absorption/exhaustion logic must be evaluated separately before any combined scoring.
+
+
+### 2026-11-24 verified checkpoint
+- Main is `f986dbae4d3012e6fbb43d5613d5d028adc74337`; PR #302 and PR #303 are merged.
+- C22 raw-event walk-forward integration and C23 three-way directional-vote ablations both passed their PR and post-merge CI.
+- The next research dependency is a retained local Spot archive with enough complete, causally aligned checkpoints. Do not publish OOS performance from deterministic fixtures or sparse synthetic samples.
+- Next code phase: validate stored CVD time-series provenance, then add a confirmed-pivot divergence classifier with deterministic negative cases and ablation metrics.

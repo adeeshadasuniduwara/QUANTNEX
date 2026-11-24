@@ -486,10 +486,8 @@ def _order_flow_observation(
         },
     }
 
-def _raw_order_flow_checkpoints(as_of: datetime, side: str = "BUY", *, capture_gap: bool = False):
-    """Build one deterministic, receive-time-aligned Binance Spot raw-event checkpoint."""
-    from app.order_flow_replay import replay_spot_order_flow_events
-
+def _raw_order_flow_events(as_of: datetime, side: str = "BUY", *, capture_gap: bool = False):
+    """Build deterministic raw Binance Spot aggTrade and sequence-valid depth events."""
     start_ms = int(as_of.timestamp() * 1000) - 60_000
     session = "0123456789abcdef0123456789abcdef"
     if side == "BUY":
@@ -538,10 +536,16 @@ def _raw_order_flow_checkpoints(as_of: datetime, side: str = "BUY", *, capture_g
             6, "captureGap", "WEBSOCKET", gap_ms, gap_ms + 10,
             {"gap_id": "abcdef0123456789abcdef0123456789", "reason": "RAW_CAPTURE_QUEUE_OVERFLOW"},
         ))
+    return events
+
+
+def _raw_order_flow_checkpoints(as_of: datetime, side: str = "BUY", *, capture_gap: bool = False):
+    from app.order_flow_replay import replay_spot_order_flow_events
+
+    events = _raw_order_flow_events(as_of, side, capture_gap=capture_gap)
     return replay_spot_order_flow_events(
         events, "BTCUSDT", now=as_of + timedelta(minutes=2 if capture_gap else 1)
     )
-
 
 
 def test_order_flow_replay_selects_latest_prior_snapshot_and_recomputes_source_age():

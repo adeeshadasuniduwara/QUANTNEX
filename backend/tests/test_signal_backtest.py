@@ -1011,6 +1011,30 @@ def test_raw_event_replay_recomputes_freshness_and_never_uses_future_checkpoints
     assert stale_status == "STALE"
 
 
+def test_raw_event_replay_rejects_trade_timestamp_ahead_of_receive_checkpoint():
+    from app.signal_backtest import (
+        _select_raw_order_flow_snapshot,
+        _validate_raw_order_flow_checkpoints,
+    )
+
+    as_of = datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)
+    checkpoint = _raw_order_flow_checkpoints(as_of, "BUY")[0]
+    future = {
+        **checkpoint,
+        "trade_state": dict(checkpoint["trade_state"]),
+    }
+    future_trade_ms = checkpoint["decision_at_ms"] + 1_000
+    future["last_trade_at_ms"] = future_trade_ms
+    future["trade_state"]["last_trade_time_ms"] = future_trade_ms
+    epochs = _validate_raw_order_flow_checkpoints([future], "BTCUSDT")
+    selected, status = _select_raw_order_flow_snapshot(
+        [future], epochs, "BTCUSDT", (as_of + timedelta(seconds=2)).timestamp(),
+        {"max_order_flow_trade_age_seconds": 15, "max_order_book_snapshot_age_seconds": 5},
+    )
+    assert selected == {}
+    assert status == "FUTURE"
+
+
 def test_raw_event_checkpoint_validation_rejects_false_full_coverage_and_unsorted_times():
     from app.signal_backtest import _validate_raw_order_flow_checkpoints
 

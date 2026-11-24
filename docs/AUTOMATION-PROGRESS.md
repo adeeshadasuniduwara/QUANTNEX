@@ -1208,10 +1208,11 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 - Corrected-head CI passed on `c8d917f1cbfd699d7d5df167d9956c1a2a366d5a`: Backend CI **607 passed on Python 3.12**; Backend/Web CI **607 passed on Python 3.12 and 607 passed on Python 3.14**; schema test and Web check passed. Added a capture-gap invalidation/re-snapshot re-anchor fixture and tightened the mid-window baseline assertion. Earlier attempts exposed snapshot-bridge classification and fixture-ordering issues; those were corrected before this green head.
 - No raw replay performance result, win-rate improvement or profitability claim is made by this coverage diagnostic.
 
-### Review / next
-1. PR #300 is open against current main. Refresh its exact head/base/checks, inspect the complete four-file diff and secret scan, then squash-merge only if it remains clean and green; verify main and post-merge CI.
-2. Validate the coverage audit against retained local capture; reject truncated, unanchored or gapped windows from raw replay.
-3. Implement causal raw aggTrade/depth replay with realistic LIMIT expiry/fill and spread/fee/slippage assumptions; compare candle-only, delta-only, L2-only and combined variants on identical chronological folds.
+### Merge and post-merge verification
+1. PR #300 was squash-merged to main as `b5b3eb609fdeff005536345cb406882a3cef3215` on 2026-11-23 07:53:19 UTC.
+2. The exact main merge SHA passed [Backend CI #45134362671](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45134362671) and [Backend/Web CI #45134362665](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45134362665), including Python 3.12, Python 3.14 and Web checks.
+3. PR #300 changed only the raw-event recorder, its tests and the two progress documents. It adds bounded-window/truncation diagnostics, cross-minute trade/depth sequence checks, reconnect/session indicators, backfill provenance and capture-gap invalidation. No profitability uplift was claimed.
+4. Next: validate the audit against retained local capture, reject truncated/unanchored/gapped windows from raw replay, then compare candle-only, delta-only, L2-only and combined methods on identical chronological folds with fees, spread, slippage and realistic LIMIT fills.
 
 ### 2026-11-23 live read-only Binance Spot provider sanity check
 - Binance Spot `exchangeInfo` at serverTime `2026-11-23T07:43:44.586Z`: 3,711 total symbols, 1,376 `TRADING` and `isSpotTradingAllowed=true` symbols, including 526 USDT-quoted pairs. Metadata returned symbol-specific PRICE_FILTER, LOT_SIZE and NOTIONAL filters; BTCUSDT tick 0.01, step/minQty 0.00001, minNotional 5 USDT.
@@ -1222,3 +1223,51 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 ### 2026-11-23 latest-main smoke audit
 - Latest completed QUANTNEX Live Crypto Signal Smoke run: [#45000648674](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45000648674), 2026-11-22 07:58:53 UTC, commit `f47f9c5399ac46572d7d856604f1687e913aa4e3` (older than current main). It discovered 1,376 eligible Spot pairs, scanned a rotating 20-symbol sample, and completed 20/20 scans with 0 history skips and 0 provider errors. All 20 returned WAIT; every row reported `NOT_EVALUATED_NO_DIRECTIONAL_SETUP`, so this run did not exercise the Order Flow confirmation gate and is not evidence of a live trade setup.
 - The current main smoke workflow now configures both a 20-pair Spot sample and a separate 20-contract USDⓈ-M sample. The latest completed run above predates that workflow version and its job command only invoked the Spot sample; no completed smoke run on the current main head was found. USDⓈ-M remains monitor-only and the prior GitHub-hosted fapi exchangeInfo HTTP 451 remains a provider-access limitation.
+
+## 2026-11-24 — Automation run: Phase C21 causal raw-event Spot replay (implementation branch)
+
+### Start-of-run repository audit
+- Default branch at start: `b5b3eb609fdeff005536345cb406882a3cef3215` (PR #300 merged).
+- Inspected current README, `AUTOMATION-PROGRESS.md`, `ORDER-FLOW-ROADMAP.md`, the live smoke workflow/runner, raw recorder, Spot order-flow state/stream, signal engine/method registry, walk-forward harness and relevant tests.
+- No open repository issues were returned. Open PRs include #270, #266, #265, #262, #259, #239 and older unrelated UI/Telegram/Android work; none was folded into this signal-engine branch.
+- Mainline post-merge Backend CI and Backend/Web CI for #300 passed on exact main SHA. The latest scheduled Live Crypto Signal Smoke run [#45143589597](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45143589597) completed with **failure** at the combined Spot/USDⓈ-M scan step. The job summary exposed no provider exception or per-symbol output, so the precise cause is **not verified**. A previous GitHub-hosted USDⓈ-M `/fapi/v1/exchangeInfo` attempt returned HTTP 451, but that prior error must not be assumed to explain this newer run. The smoke failure is not a WAIT result and is not counted as a successful live scan.
+
+### Phase C21 implementation on `feat/spot-raw-event-chronological-replay`
+- Add `backend/app/order_flow_replay.py`: deterministic replay of archived Binance Spot aggregate trades, REST depth bootstrap snapshots, sequence-applied diff-depth events and raw-capture gap markers.
+- Use receive-time buckets as the replay information clock; emit only completed buckets. Exchange event timestamps remain separate for trade/depth freshness. Later-arriving backfill cannot change a checkpoint that was already emitted.
+- Reuse `AggTradeCvdState` for buyer-is-maker aggressor-side inference, contiguous aggregate-trade IDs, CVD since the first captured seed and delayed REST gap recovery. Backfill and bootstrap volumes are reported separately from live receive-bucket delta.
+- Reuse `BinanceSpotDepthBook` for snapshot/diff reconstruction. A stream-session change invalidates the old book until a new snapshot and bridging diff validate the new session. Sequence gaps keep depth unusable until re-snapshot.
+- A raw capture-gap marker permanently vetoes replay eligibility for the archive window. Full UTC session delta remains null without an explicit session-start trade-ID anchor. `coverage_is_complete=false` is retained even for internally contiguous captured windows.
+- Expose data provenance, delta/quote delta, CVD scope/status, trade/depth ages, L2 metrics, sequence state and explicit replay eligibility. This module is research-only; it is not wired into live signal generation and does not place orders or relax quality gates.
+
+### Deterministic coverage added
+- BUY and SELL taker-delta/CVD fixtures with hand-computed expected deltas.
+- L2 snapshot/diff reconstruction and directionally opposite depth-imbalance fixtures.
+- Exclusion of incomplete receive-time buckets.
+- Trade-ID gap veto, delayed REST backfill recovery, and proof that the earlier pre-backfill checkpoint remains invalid.
+- Depth sequence-gap veto and stream-reconnect invalidation until a fresh snapshot/diff bridge.
+- Persistent capture-gap veto even after later depth re-anchoring.
+- Stale trade/depth age rejection, market-type/symbol isolation, future receive-time and naive-clock rejection.
+- These are deterministic replay fixtures, not live signals or a profitability sample.
+
+### Changed files and branch commits
+- `backend/app/order_flow_replay.py` — `dbdc42253bcc98b840a4e6fc1e525b7a6d7ca698`, `efdbd24ac3ee0dcee76bcffa3a8b95266f9d9c9c`, `7dc1b2a268c38b9eaa3e85da1f88de0286a1f86f`.
+- `backend/tests/test_order_flow_replay.py` — `cf1c108ceecfff2d41f8e044caba76485809cc94`, `96f3ebe8ca10ff82a83666ea289988a7dc836e52`.
+- `docs/ORDER-FLOW-ROADMAP.md` — `84cdb3e98e47ccc411b6db844ad189ae0ea88d7b`.
+- CI-verified code/test head: `01ec41ca69001f50c81cbc7a273058a97a0997ee`.
+
+### Verification / PR #301
+1. PR #301: https://github.com/adeeshadasuniduwara/QUANTNEX/pull/301, based on main SHA `b5b3eb609fdeff005536345cb406882a3cef3215`, is open and GitHub reports it mergeable/clean at head `01ec41ca69001f50c81cbc7a273058a97a0997ee`.
+2. Backend CI passed. Backend/Web CI passed: **621 tests on Python 3.12**, **621 tests on Python 3.14**, plus the Web check. The standalone schema/compile Backend CI also passed.
+3. Full PR diff is limited to `order_flow_replay.py`, its deterministic tests and the two progress documents. Secret-pattern scan found no matches; no order-placement references or live-order paths were added.
+4. No local Python execution or retained Windows raw-archive replay was performed. GitHub CI verifies deterministic fixtures only; the user's local SQLite archive and WebSocket capture remain unverified.
+5. Merge only after refreshing the exact head/base and all checks, then verify the merge commit on main and run post-merge checks.
+6. Next core work: adapt the chronological walk-forward harness to consume only validated replay checkpoints, then run candle-only / aggressor-only / L2-only / combined ablations with fee, spread, slippage and conservative LIMIT expiry/fill assumptions. No OOS metrics or predictive uplift are available yet.
+7. Binance Spot remains the only market type with sequence-validated live Order Flow. USDⓈ-M remains candle-only monitor mode; COIN-M remains unsupported. Never place live orders or enable real-money trading.
+
+### 2026-11-23 latest-main dynamic Binance smoke run (log-verified)
+- [QUANTNEX Live Crypto Signal Smoke #45143589597](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45143589597) ran on main SHA `b5b3eb609fdeff005536345cb406882a3cef3215`.
+- Binance Spot discovery returned **1,376 eligible Spot pairs**; the rotating sample scanned **20/20 successfully**, with **0 history skips** and **0 Spot provider errors**. This verifies a successful bounded live Spot scan, not a same-run scan of every eligible pair.
+- All 20 returned WAIT. Every row reported `NOT_EVALUATED_NO_DIRECTIONAL_SETUP`; therefore the live Order Flow confirmation gate was not exercised. WAIT is not a test of the signal's predictive quality.
+- USDⓈ-M discovery failed with the explicit provider response **HTTP 451** from the public exchangeInfo endpoint. It produced **0 successful USDⓈ-M scans** and one provider/error failure; the workflow correctly exited non-zero. This is a provider-access failure, not a Futures WAIT.
+- The prior note about 451 is now confirmed by the latest run log. A local-network USDⓈ-M access check remains required. Do not claim USDⓈ-M live signal coverage from the GitHub runner.

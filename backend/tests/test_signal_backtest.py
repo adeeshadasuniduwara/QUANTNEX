@@ -165,11 +165,14 @@ def test_signal_walk_forward_consumes_raw_receive_time_events_without_future_che
         _epoch(candles_by_tf["5"][-2]["time"]), timezone.utc
     )
     raw_events = _raw_order_flow_events(last_decision, "BUY")
-    observed = {"raw_mode": 0, "available": 0}
+    observed = {"raw_mode": 0, "available": 0, "modes": set()}
 
     async def fake_build_signal(_settings, _symbol, **kwargs):
         mode = kwargs.get("order_flow_mode_override")
+        confirmation_mode = kwargs.get("order_flow_confirmation_mode_override")
         override = kwargs.get("order_flow_override")
+        if confirmation_mode:
+            observed["modes"].add(confirmation_mode)
         if mode == "HISTORICAL_RAW_EVENT_REPLAY":
             observed["raw_mode"] += 1
             if isinstance(override, dict) and override.get("feed_mode") == "RAW_EVENT_REPLAY":
@@ -179,7 +182,7 @@ def test_signal_walk_forward_consumes_raw_receive_time_events_without_future_che
                 return {
                     "status": "WAIT",
                     "signal": None,
-                    "order_flow": {"data_mode": mode, "accepted": False},
+                    "order_flow": {"data_mode": mode, "accepted": False, "evidence_mode": confirmation_mode},
                 }
         return {"status": "WAIT", "signal": None}
 
@@ -209,7 +212,10 @@ def test_signal_walk_forward_consumes_raw_receive_time_events_without_future_che
     assert replay["eligible_checkpoint_count"] == 1
     assert replay["decision_clock"] == "RECEIVED_AT_MS"
     assert observed["raw_mode"] > 0
-    assert observed["available"] == 1
+    assert observed["available"] > 0
+    assert observed["modes"] == {"AGGRESSOR_ONLY", "L2_ONLY", "COMBINED"}
+    assert set(replay["variants"]) == {"AGGRESSOR_ONLY", "L2_ONLY", "COMBINED"}
+    assert set(result["order_flow_comparison"]["variants"]) == {"AGGRESSOR_ONLY", "L2_ONLY", "COMBINED"}
     assert replay["out_of_sample"]["order_flow_raw_event_replay_enabled"] is True
     assert replay["out_of_sample"]["order_flow_raw_event_checkpoint_matches"] == 1
 

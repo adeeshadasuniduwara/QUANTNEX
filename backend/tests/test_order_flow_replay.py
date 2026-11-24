@@ -141,6 +141,18 @@ def test_trade_id_gap_vetoes_cvd_and_order_flow_replay():
     assert snapshot["trade_state"]["gap_detected"] is True
 
 
+def test_out_of_order_trade_event_is_distinguished_from_an_id_gap():
+    events = _book_events()
+    events[4]["payload"]["a"] = 99
+    events[4]["event_key"] = "99"
+    result = replay_spot_order_flow_events(events, "BTCUSDT", now=_now())
+    snapshot = result[0]
+    assert snapshot["coverage_status"] == "TRADE_EVENT_ORDER_INVALID"
+    assert snapshot["cvd_status"] == "INCOMPLETE_EVENT_ORDER"
+    assert snapshot["cvd_value"] is None
+    assert snapshot["eligible_for_order_flow_replay"] is False
+
+
 def test_depth_sequence_gap_vetoes_book_metrics():
     events = _book_events()
     events[1]["payload"]["U"] = 502

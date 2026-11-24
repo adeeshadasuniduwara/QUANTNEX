@@ -550,19 +550,25 @@ def select_binance_entry(
             "depth_observed_at": order_flow_snapshot.get("depth_observed_at"),
             "depth_snapshot_update_id": order_flow_snapshot.get("depth_snapshot_update_id"),
             "data_provenance": order_flow_snapshot.get("data_provenance"),
-            "method": "MARKET requires both observed aggressor delta and sequence-validated L2 depth imbalance to support the candidate direction; otherwise use a valid favorable LIMIT retracement or WAIT.",
+            "method": (
+                "MARKET urgency uses both aggressor delta and sequence-validated L2 depth."
+                if evidence_mode == "COMBINED" else
+                "MARKET urgency uses only aggressor delta direction; L2 remains a freshness and sequence-integrity gate."
+                if evidence_mode == "AGGRESSOR_ONLY" else
+                "MARKET urgency uses only L2 depth direction; aggressor trades remain a freshness and provenance gate."
+            ) + " Spread, liquidity, drift and exchange filters remain mandatory.",
             "calibration": "EXECUTION_HEURISTIC_NOT_CALIBRATED_PROBABILITY",
         }
         if market_flow_confirmed:
             flow_reason = (
-                " Both observed aggressor delta and sequence-validated L2 depth support the candidate direction; "
-                "MARKET urgency is allowed only if the existing spread, depth, drift and exchange-filter gates also pass."
+                f" The {evidence_mode.lower().replace('_', ' ')} evidence mode supports immediate MARKET urgency; "
+                "spread, depth, drift and exchange-filter gates still apply."
             )
         else:
             market_allowed = False
             flow_reason = (
-                " Order Flow confirms the candidate, but aggressor delta and sequence-validated L2 depth are not both "
-                "directionally supportive; MARKET urgency is disabled and a valid favorable LIMIT retracement is preferred."
+                f" The {evidence_mode.lower().replace('_', ' ')} evidence mode does not support immediate MARKET urgency; "
+                "a valid favorable LIMIT retracement is preferred, otherwise the setup remains WAIT."
             )
 
     def within_price_filter(value: float):
@@ -1546,6 +1552,7 @@ async def build_signal(
             side, close, p["atr"], entry_zone, execution, settings,
             order_flow_snapshot=order_flow_snapshot,
             order_flow_decision=order_flow_decision,
+            order_flow_evidence_mode=order_flow_confirmation_mode_override or "COMBINED",
         )
         if final_entry_choice is None:
             side = None

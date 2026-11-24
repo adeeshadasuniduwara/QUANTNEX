@@ -1290,7 +1290,7 @@ def test_binance_entry_selector_uses_only_the_selected_order_flow_vote_for_marke
             "bid_ask_semantics": "Aggressor-side inferred trade delta",
         },
     }
-    decision = {"accepted": True, "status": "CONFIRMED", "support_count": 1, "conflict_count": 0}
+    decision = {"accepted": True, "status": "CONFIRMED", "support_count": 1, "conflict_count": 0, "evidence_mode": "AGGRESSOR_ONLY"}
 
     aggressor_only = select_binance_entry(
         "BUY", 100.0, 2.0, None, execution,
@@ -1301,14 +1301,22 @@ def test_binance_entry_selector_uses_only_the_selected_order_flow_vote_for_marke
     l2_only = select_binance_entry(
         "BUY", 100.0, 2.0, None, execution,
         order_flow_snapshot={**common, "delta_ratio": -0.25, "order_book": {"depth_imbalance": 0.2}},
-        order_flow_decision=decision,
+        order_flow_decision={**decision, "evidence_mode": "L2_ONLY"},
         order_flow_evidence_mode="L2_ONLY",
+    )
+
+    mismatched = select_binance_entry(
+        "BUY", 100.0, 2.0, None, execution,
+        order_flow_snapshot={**common, "delta_ratio": 0.25, "order_book": {"depth_imbalance": -0.2}},
+        order_flow_decision={**decision, "evidence_mode": "L2_ONLY"},
+        order_flow_evidence_mode="AGGRESSOR_ONLY",
     )
 
     assert aggressor_only is not None and aggressor_only["entry_type"] == "MARKET"
     assert aggressor_only["order_flow_execution_evidence"]["evidence_mode"] == "AGGRESSOR_ONLY"
     assert l2_only is not None and l2_only["entry_type"] == "MARKET"
     assert l2_only["order_flow_execution_evidence"]["evidence_mode"] == "L2_ONLY"
+    assert mismatched is None
 
 
 def test_binance_entry_selector_rejects_unknown_order_flow_ablation_mode():

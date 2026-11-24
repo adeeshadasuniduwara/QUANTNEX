@@ -151,6 +151,69 @@ def test_signal_walk_forward_uses_sequential_oos_folds_and_costs(monkeypatch):
     assert result["assumptions"]["spread_bps"] == 5
 
 
+def test_signal_walk_forward_consumes_raw_receive_time_events_without_future_checkpoints(monkeypatch):
+    from app import signal_backtest
+
+    candles_by_tf = {
+        "1": _candles(15_000, 1),
+        "5": _candles(3_000, 5),
+        "15": _candles(1_000, 15),
+        "30": _candles(500, 30),
+        "60": _candles(250, 60),
+    }
+    last_decision = datetime.fromtimestamp(
+        _epoch(candles_by_tf["5"][-2]["time"]), timezone.utc
+    )
+    raw_events = _raw_order_flow_events(last_decision, "BUY")
+    observed = {"raw_mode": 0, "available": 0}
+
+    async def fake_build_signal(_settings, _symbol, **kwargs):
+        mode = kwargs.get("order_flow_mode_override")
+        override = kwargs.get("order_flow_override")
+        if mode == "HISTORICAL_RAW_EVENT_REPLAY":
+            observed["raw_mode"] += 1
+            if isinstance(override, dict) and override.get("feed_mode") == "RAW_EVENT_REPLAY":
+                observed["available"] += 1
+                assert override["depth_is_continuous"] is True
+                assert override["coverage_is_complete"] is False
+                return {
+                    "status": "WAIT",
+                    "signal": None,
+                    "order_flow": {"data_mode": mode, "accepted": False},
+                }
+        return {"status": "WAIT", "signal": None}
+
+    monkeypatch.setattr(signal_backtest, "build_signal", fake_build_signal)
+    info = {
+        "quote_asset": "USDT",
+        "filters": {
+            "PRICE_FILTER": {"tickSize": "0.01"},
+            "LOT_SIZE": {"stepSize": "0.001", "minQty": "0.001"},
+        },
+    }
+    result = asyncio.run(signal_backtest.run_signal_walk_forward(
+        "BTCUSDT",
+        candles_by_tf,
+        info,
+        train_ratio=0.7,
+        assumed_spread_bps=5,
+        assumed_depth_usd=10_000,
+        raw_order_flow_events=raw_events,
+    ))
+
+    replay = result["order_flow_replay"]
+    assert replay["status"] == "EVALUATED"
+    assert replay["source"] == "BINANCE_SPOT_RAW_EVENT_ARCHIVE"
+    assert replay["raw_event_count"] == len(raw_events)
+    assert replay["observation_count"] == 1
+    assert replay["eligible_checkpoint_count"] == 1
+    assert replay["decision_clock"] == "RECEIVED_AT_MS"
+    assert observed["raw_mode"] > 0
+    assert observed["available"] == 1
+    assert replay["out_of_sample"]["order_flow_raw_event_replay_enabled"] is True
+    assert replay["out_of_sample"]["order_flow_raw_event_checkpoint_matches"] == 1
+
+
 def test_simulate_slice_carries_open_trade_beyond_fold_decision_boundary(monkeypatch):
     from app import signal_backtest
 

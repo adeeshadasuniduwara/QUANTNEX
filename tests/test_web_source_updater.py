@@ -247,5 +247,18 @@ class GitHubApiCacheTests(unittest.TestCase):
             request.assert_called_once()
 
 
+    def test_rate_limit_without_cache_is_backed_off_without_repeating_requests(self):
+        url = "https://api.github.com/repos/example/project/commits/main"
+        error = urllib.error.HTTPError(
+            url, 429, "Too Many Requests", {"Retry-After": "300"}, None
+        )
+        with patch.object(UPDATER.urllib.request, "urlopen", side_effect=error) as request:
+            with self.assertRaises(urllib.error.HTTPError):
+                UPDATER.github_json(url)
+            with self.assertRaisesRegex(RuntimeError, "retry is delayed"):
+                UPDATER.github_json(url)
+            request.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

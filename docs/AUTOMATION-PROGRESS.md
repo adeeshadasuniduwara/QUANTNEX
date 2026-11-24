@@ -1271,3 +1271,51 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 - All 20 returned WAIT. Every row reported `NOT_EVALUATED_NO_DIRECTIONAL_SETUP`; therefore the live Order Flow confirmation gate was not exercised. WAIT is not a test of the signal's predictive quality.
 - USDⓈ-M discovery failed with the explicit provider response **HTTP 451** from the public exchangeInfo endpoint. It produced **0 successful USDⓈ-M scans** and one provider/error failure; the workflow correctly exited non-zero. This is a provider-access failure, not a Futures WAIT.
 - The prior note about 451 is now confirmed by the latest run log. A local-network USDⓈ-M access check remains required. Do not claim USDⓈ-M live signal coverage from the GitHub runner.
+
+
+## 2026-11-24 C22 — Raw Binance Spot event replay integrated into walk-forward (PR pending)
+
+### Starting checkpoint and repository audit
+- Latest main at run start: 347b992245c9a5fdde8e3bb4ce8647cdcfbf1baf, merge commit for PR #301. PR #301 is confirmed closed/merged.
+- The prior C21 replay module existed but was only a deterministic replay library. The walk-forward harness consumed the older minute feature-snapshot format; it did not consume raw archived aggTrade and depth-diff events.
+- Existing main CI immediately before this branch had passed 621 tests on Python 3.12, 621 tests on Python 3.14, and the Web check. The latest scheduled smoke metadata still points to the earlier main SHA b5b3eb609fdeff005536345cb406882a3cef3215; no post-C21 smoke result is available yet.
+- Open PR review and latest workflow history were inspected. No open core signal/order-flow PR superseded this checkpoint.
+
+### C22 implementation
+- backend/app/signal_backtest.py
+  - Added raw checkpoint provenance validation and a selector that only chooses the latest receive-time checkpoint at or before each candle decision.
+  - Recomputes trade/depth freshness from exchange event timestamps at the decision boundary; rejects future event timestamps relative to the checkpoint, stale sources, trade-ID gaps, depth sequence gaps, capture-gap markers, missing live-bucket trades and false full-coverage declarations.
+  - Adapts eligible raw replay checkpoints to the existing fail-closed order-flow confirmation and entry-selection path. Missing/ineligible latest checkpoints do not fall back to older valid checkpoints.
+  - run_signal_walk_forward now accepts raw_order_flow_events, reconstructs checkpoints once against the closed-candle replay horizon, and reports raw event/checkpoint/eligibility counts separately from feature snapshots.
+  - OOS fold aggregation now preserves raw-checkpoint match counters. Candle-only baseline and order-flow variant retain the same chronological folds and modeled execution assumptions.
+- backend/app/order_flow.py
+  - Recognizes RAW_EVENT_REPLAY as a sequence-validated Spot depth source and describes its bounded-archive and receive-time limitations accurately; it is not mislabeled as a single REST snapshot.
+- backend/app/order_flow_raw_recorder.py
+  - Added a separate receive-time archive query. It returns the latest bounded events in chronological receive order and explicitly reports total count/truncation. The existing event-time query remains unchanged for event-time research endpoints.
+- backend/app/main.py
+  - The signal walk-forward API now supports order_flow_replay_source=AUTO|RAW_EVENTS|FEATURE_SNAPSHOTS. Default AUTO prefers raw events when any are present and falls back to feature snapshots only when the raw archive is empty. A non-empty but invalid/incomplete raw archive is never hidden by fallback.
+  - API response/audit metadata reports the actual source, receive-time clock, event/checkpoint counts and archive truncation.
+- Deterministic tests added: raw-event BUY and SELL signal fixtures, contradictory delta/depth veto, capture-gap no-fallback, stale/future checkpoint handling, event-time-ahead-of-checkpoint rejection, bounded-coverage validation, full walk-forward raw-event wiring, receive-time inclusion of late REST backfill, and explicit truncation behavior (11 parametrized/test cases).
+
+### Verification boundary
+- The new branch has not yet been run through GitHub CI at the time of this note. Local git clone/Python execution was unavailable because the runner could not resolve github.com; no test pass is claimed.
+- Raw replay is still Binance Spot only. It uses aggressor delta plus sequence-validated L2 directional sign confluence; CVD is surfaced with bounded-seed provenance but is not yet a calibrated divergence score. No predictive uplift or profitability claim is made.
+- AUTO uses at most the latest 5,000 retained raw events for the requested receive-time window; truncation is explicit. Raw event archives remain bounded and coverage_is_complete=false. The feature-snapshot path remains available.
+- USDⓈ-M is still candle-only monitor coverage on the GitHub runner due HTTP 451 on exchangeInfo; COIN-M remains unsupported. No live orders or real-money routing were added.
+
+### C22 changed files
+- backend/app/signal_backtest.py
+- backend/app/order_flow.py
+- backend/app/order_flow_raw_recorder.py
+- backend/app/main.py
+- backend/tests/test_signal_backtest.py
+- backend/tests/test_order_flow_raw_recorder.py
+- docs/AUTOMATION-PROGRESS.md
+- docs/ORDER-FLOW-ROADMAP.md
+
+### Next steps
+1. Run Backend CI on the C22 PR; fix any failures before considering merge.
+2. Review the full diff and secret scan; verify PR base/head and mergeability, then merge only if every required check passes.
+3. Verify post-merge main and run the backend suite again.
+4. Use the local retained raw archive through the new AUTO path; report archive truncation, eligible checkpoint count, coverage and OOS sample size. Do not interpret sparse/seeded CVD as a full session.
+5. Add aggressor-only / L2-only / combined ablations and CVD-divergence features only after deterministic causal definitions and tests; retain the current quality gate.

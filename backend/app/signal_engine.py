@@ -455,8 +455,12 @@ def select_binance_entry(
     *,
     order_flow_snapshot: dict[str, Any] | None = None,
     order_flow_decision: dict[str, Any] | None = None,
+    order_flow_evidence_mode: str = "COMBINED",
 ) -> dict[str, Any] | None:
     """Choose a marketable entry or a technically justified resting limit."""
+    evidence_mode = str(order_flow_evidence_mode or "").strip().upper()
+    if evidence_mode not in {"COMBINED", "AGGRESSOR_ONLY", "L2_ONLY"}:
+        raise ValueError("Order Flow entry evidence mode must be COMBINED, AGGRESSOR_ONLY or L2_ONLY.")
     settings = settings or {}
     spread = float(execution["spread_bps"])
     depth = float(

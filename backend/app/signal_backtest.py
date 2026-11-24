@@ -852,6 +852,7 @@ def _aggregate_fold_metrics(
         "limit_censored": "limit_censored",
         "order_flow_decision_points": "order_flow_decision_points",
         "order_flow_snapshot_matches": "order_flow_snapshot_matches",
+        "order_flow_raw_event_checkpoint_matches": "order_flow_raw_event_checkpoint_matches",
         "order_flow_missing_snapshots": "order_flow_missing_snapshots",
         "order_flow_stale_snapshots": "order_flow_stale_snapshots",
         "order_flow_invalid_snapshots": "order_flow_invalid_snapshots",
@@ -861,6 +862,9 @@ def _aggregate_fold_metrics(
     counters = {key: 0 for key in counter_fields}
     counters["order_flow_enabled"] = int(any(
         result.get("order_flow_replay_enabled") is True for result in fold_results
+    ))
+    counters["order_flow_raw_event_replay_enabled"] = int(any(
+        result.get("order_flow_raw_event_replay_enabled") is True for result in fold_results
     ))
     trades: list[dict[str, Any]] = []
     for result in fold_results:

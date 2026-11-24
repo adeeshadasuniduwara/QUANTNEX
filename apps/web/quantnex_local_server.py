@@ -301,7 +301,7 @@ def _github_json_cached(url: str) -> dict:
             _write_api_cache(cache, url, entry)
             if cached_age is not None:
                 return cached_data
-            raise RuntimeError("GitHub API rate limit reached; QUANTNEX will retry after the server-provided delay.") from exc
+            raise
 
         if 500 <= exc.code < 600 and cached_age is not None:
             entry = dict(cached)

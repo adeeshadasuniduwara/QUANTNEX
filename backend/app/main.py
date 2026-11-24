@@ -974,10 +974,11 @@ async def signal_engine_backtest(payload: dict, user: User = Depends(local_works
             "requested_source": order_flow_replay_source,
             "source": selected_order_flow_replay_source,
             "status": (
-                "NO_COMPLETE_RAW_EVENT_CHECKPOINTS"
+                "NO_CAPTURED_RAW_EVENT_DATA"
+                if include_order_flow_replay and selected_order_flow_replay_source == "RAW_EVENTS" and capture_count == 0
+                else "NO_COMPLETE_RAW_EVENT_CHECKPOINTS"
                 if selected_order_flow_replay_source == "RAW_EVENTS" and replay_status == "NO_COMPLETE_RAW_EVENT_CHECKPOINTS"
                 else "AVAILABLE" if capture_count
-                else "NO_CAPTURED_RAW_EVENT_DATA" if include_order_flow_replay and selected_order_flow_replay_source == "RAW_EVENTS"
                 else "NO_CAPTURED_ORDER_FLOW_DATA" if include_order_flow_replay
                 else "DISABLED"
             ),

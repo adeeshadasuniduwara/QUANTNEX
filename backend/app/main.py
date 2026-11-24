@@ -908,10 +908,17 @@ async def signal_engine_backtest(payload: dict, user: User = Depends(local_works
         include_order_flow_replay = payload.get("include_order_flow_replay", True)
         if not isinstance(include_order_flow_replay, bool):
             raise ValueError("include_order_flow_replay must be a boolean.")
+        order_flow_replay_source = str(
+            payload.get("order_flow_replay_source", "FEATURE_SNAPSHOTS")
+        ).strip().upper()
+        if order_flow_replay_source not in {"FEATURE_SNAPSHOTS", "RAW_EVENTS"}:
+            raise ValueError("order_flow_replay_source must be FEATURE_SNAPSHOTS or RAW_EVENTS.")
         order_flow_observations = None
+        raw_order_flow_events = None
+        raw_event_archive = None
+        history_start = None
+        history_end = None
         if include_order_flow_replay:
-            from .order_flow_recorder import load_order_flow_observations
-
             first_candle = datetime.fromisoformat(str(history[0]["time"]).replace("Z", "+00:00"))
             last_candle = datetime.fromisoformat(str(history[-1]["time"]).replace("Z", "+00:00"))
             if first_candle.tzinfo is None:
@@ -920,9 +927,20 @@ async def signal_engine_backtest(payload: dict, user: User = Depends(local_works
                 last_candle = last_candle.replace(tzinfo=timezone.utc)
             history_start = first_candle.astimezone(timezone.utc)
             history_end = last_candle.astimezone(timezone.utc) + timedelta(minutes=1)
-            order_flow_observations = load_order_flow_observations(
-                db, symbol, history_start, history_end, limit=20000
-            )
+            if order_flow_replay_source == "RAW_EVENTS":
+                from .order_flow_raw_recorder import load_order_flow_market_events_by_receive_time
+
+                raw_event_archive = load_order_flow_market_events_by_receive_time(
+                    db, symbol, int(history_start.timestamp() * 1000),
+                    int(history_end.timestamp() * 1000), limit=5000,
+                )
+                raw_order_flow_events = raw_event_archive["events"]
+            else:
+                from .order_flow_recorder import load_order_flow_observations
+
+                order_flow_observations = load_order_flow_observations(
+                    db, symbol, history_start, history_end, limit=20000
+                )
         result = await run_signal_walk_forward(
             symbol, candles_by_tf, symbol_info, settings,
             train_ratio=float(payload.get("train_ratio", 0.7)),
@@ -930,20 +948,40 @@ async def signal_engine_backtest(payload: dict, user: User = Depends(local_works
             assumed_spread_bps=float(payload.get("assumed_spread_bps", 5.0)),
             assumed_depth_usd=float(payload.get("assumed_depth_usd", 10000.0)),
             order_flow_observations=order_flow_observations,
+            raw_order_flow_events=raw_order_flow_events,
+        )
+        capture_count = (
+            len(raw_order_flow_events or [])
+            if order_flow_replay_source == "RAW_EVENTS"
+            else len(order_flow_observations or [])
         )
         result["order_flow_capture"] = {
             "requested": include_order_flow_replay,
+            "source": order_flow_replay_source,
             "status": (
-                "AVAILABLE" if order_flow_observations
+                "AVAILABLE" if capture_count
+                else "NO_CAPTURED_RAW_EVENT_DATA" if include_order_flow_replay and order_flow_replay_source == "RAW_EVENTS"
                 else "NO_CAPTURED_ORDER_FLOW_DATA" if include_order_flow_replay
                 else "DISABLED"
             ),
             "observation_count": len(order_flow_observations or []),
+            "raw_event_count": len(raw_order_flow_events or []),
+            "total_archive_events": raw_event_archive.get("total_count") if raw_event_archive else None,
+            "archive_window_truncated": raw_event_archive.get("truncated") if raw_event_archive else False,
+            "archive_selection": raw_event_archive.get("selection") if raw_event_archive else None,
+            "decision_clock": "RECEIVED_AT_MS" if order_flow_replay_source == "RAW_EVENTS" else "FEATURE_CAPTURE_TIMESTAMP",
             "retention_days": 7,
-            "sampling": "At most one sequence-validated feature snapshot per active symbol per UTC minute.",
-            "window_start": history_start.isoformat() if include_order_flow_replay else None,
-            "window_end": history_end.isoformat() if include_order_flow_replay else None,
+            "sampling": (
+                "Bounded raw Spot aggTrade/depth archive; latest events are selected by receive time and replayed in chronological receive order."
+                if order_flow_replay_source == "RAW_EVENTS"
+                else "At most one sequence-validated feature snapshot per active symbol per UTC minute."
+            ),
+            "window_start": history_start.isoformat() if history_start else None,
+            "window_end": history_end.isoformat() if history_end else None,
         }
+        if raw_event_archive and isinstance(result.get("order_flow_replay"), dict):
+            result["order_flow_replay"]["archive_window_truncated"] = raw_event_archive["truncated"]
+            result["order_flow_replay"]["total_archive_events"] = raw_event_archive["total_count"]
     except HTTPException:
         raise
     except (ValueError, TypeError) as exc:
@@ -962,6 +1000,8 @@ async def signal_engine_backtest(payload: dict, user: User = Depends(local_works
         "training_trades": result["training"]["trade_count"],
         "out_of_sample_trades": result["out_of_sample"]["trade_count"],
         "order_flow_snapshots": len(order_flow_observations or []),
+        "order_flow_raw_events": len(raw_order_flow_events or []),
+        "order_flow_replay_source": order_flow_replay_source,
     })
     db.commit()
     event_hub.publish("strategy.research.changed", "strategy", "signal_walk_forward_saved", {"symbol": symbol})

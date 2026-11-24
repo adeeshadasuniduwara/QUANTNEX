@@ -501,6 +501,7 @@ def select_binance_entry(
             not isinstance(order_flow_snapshot, dict)
             or not isinstance(order_flow_decision, dict)
             or order_flow_decision.get("accepted") is not True
+            or str(order_flow_decision.get("evidence_mode") or "COMBINED").strip().upper() != evidence_mode
             or order_flow_snapshot.get("market_type") != "BINANCE_SPOT"
             or order_flow_snapshot.get("depth_is_continuous") is not True
         ):

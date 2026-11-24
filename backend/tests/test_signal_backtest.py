@@ -486,6 +486,63 @@ def _order_flow_observation(
         },
     }
 
+def _raw_order_flow_checkpoints(as_of: datetime, side: str = "BUY", *, capture_gap: bool = False):
+    """Build one deterministic, receive-time-aligned Binance Spot raw-event checkpoint."""
+    from app.order_flow_replay import replay_spot_order_flow_events
+
+    start_ms = int(as_of.timestamp() * 1000) - 60_000
+    session = "0123456789abcdef0123456789abcdef"
+    if side == "BUY":
+        bids, asks = [["99.99", "10"], ["99.98", "8"]], [["100.01", "2"], ["100.02", "3"]]
+        diff_bids, diff_asks = [["99.99", "12"]], [["100.01", "1"]]
+        trades = [(100, "2", False), (101, "1", False), (102, "0.5", True)]
+    else:
+        bids, asks = [["99.99", "2"], ["99.98", "3"]], [["100.01", "10"], ["100.02", "8"]]
+        diff_bids, diff_asks = [["99.99", "1"]], [["100.01", "12"]]
+        trades = [(100, "2", True), (101, "1", True), (102, "0.5", False)]
+
+    def event(row_id, event_type, source, event_ms, received_ms, payload):
+        return {
+            "id": row_id,
+            "market_type": "BINANCE_SPOT",
+            "symbol": "BTCUSDT",
+            "event_type": event_type,
+            "event_time_ms": event_ms,
+            "received_at_ms": received_ms,
+            "source": source,
+            "stream_session_id": session,
+            "payload": payload,
+        }
+
+    events = [
+        event(
+            1, "depthSnapshot", "REST_BOOTSTRAP",
+            start_ms + 54_000, start_ms + 54_100,
+            {"lastUpdateId": 499, "bids": bids, "asks": asks},
+        ),
+        event(
+            2, "depthUpdate", "WEBSOCKET_BUFFER",
+            start_ms + 56_000, start_ms + 56_100,
+            {"U": 500, "u": 500, "E": start_ms + 56_000, "b": diff_bids, "a": diff_asks},
+        ),
+    ]
+    for row_id, (trade_id, quantity, buyer_is_maker) in enumerate(trades, start=3):
+        event_ms = start_ms + 56_200 + (row_id - 3) * 100
+        events.append(event(
+            row_id, "aggTrade", "WEBSOCKET", event_ms, event_ms + 20,
+            {"a": trade_id, "p": "100", "q": quantity, "T": event_ms, "m": buyer_is_maker},
+        ))
+    if capture_gap:
+        gap_ms = start_ms + 60_200
+        events.append(event(
+            6, "captureGap", "WEBSOCKET", gap_ms, gap_ms + 10,
+            {"gap_id": "abcdef0123456789abcdef0123456789", "reason": "RAW_CAPTURE_QUEUE_OVERFLOW"},
+        ))
+    return replay_spot_order_flow_events(
+        events, "BTCUSDT", now=as_of + timedelta(minutes=2 if capture_gap else 1)
+    )
+
+
 
 def test_order_flow_replay_selects_latest_prior_snapshot_and_recomputes_source_age():
     from app.signal_backtest import (
@@ -711,7 +768,12 @@ def _next_replay_bar(previous: dict, at: datetime, side: str) -> dict:
     }
 
 
-def _run_historical_order_flow_replay_fixture(direction: str, observation: dict) -> dict:
+def _run_historical_order_flow_replay_fixture(
+    direction: str,
+    observation: dict | None = None,
+    *,
+    raw_checkpoints: list[dict] | None = None,
+) -> dict:
     """Run a deterministic qualifying setup through the real replay + signal engine."""
     from app.signal_backtest import _simulate_slice
 
@@ -749,6 +811,11 @@ def _run_historical_order_flow_replay_fixture(direction: str, observation: dict)
         "min_score": 8,
     }
 
+    replay_kwargs = (
+        {"raw_order_flow_checkpoints": raw_checkpoints}
+        if raw_checkpoints is not None else
+        {"order_flow_observations": [observation]}
+    )
     return asyncio.run(_simulate_slice(
         "BTCUSDT",
         candles_by_tf,
@@ -758,7 +825,7 @@ def _run_historical_order_flow_replay_fixture(direction: str, observation: dict)
         assumed_depth_usd=10_000.0,
         start_index=319,
         end_index=320,
-        order_flow_observations=[observation],
+        **replay_kwargs,
     ))
 
 
@@ -847,6 +914,115 @@ def test_historical_order_flow_replay_rejects_gap_for_valid_candle_setup():
     assert result["order_flow_rejected_candidates"] == 1, result
     assert result["signal_count"] == 0, result
     assert result["trade_count"] == 0
+
+
+@pytest.mark.parametrize(("side", "direction"), [("BUY", "BUY"), ("SELL", "SELL")])
+def test_raw_event_order_flow_replay_generates_real_long_and_short_signals(side, direction):
+    """Replay real aggTrade/depth state, then pass it through the actual signal engine."""
+    as_of = datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)
+    checkpoints = _raw_order_flow_checkpoints(as_of, side)
+    assert len(checkpoints) == 1
+    assert checkpoints[0]["eligible_for_order_flow_replay"] is True
+    assert checkpoints[0]["coverage_is_complete"] is False
+
+    result = _run_historical_order_flow_replay_fixture(
+        direction, raw_checkpoints=checkpoints
+    )
+
+    assert result["order_flow_raw_event_replay_enabled"] is True
+    assert result["order_flow_raw_event_checkpoint_matches"] == 1
+    assert result["order_flow_decision_points"] == 1
+    assert result["order_flow_snapshot_matches"] == 1
+    assert result["order_flow_confirmed_candidates"] == 1
+    assert result["order_flow_rejected_candidates"] == 0
+    assert result["signal_count"] == 1
+    assert result["trade_count"] == 1
+    assert result["market_entries"] == 1
+    assert result["trades"][0]["side"] == side
+    assert result["trades"][0]["entry_type"] == "MARKET"
+
+
+@pytest.mark.parametrize(("direction", "opposite_side"), [("BUY", "SELL"), ("SELL", "BUY")])
+def test_raw_event_replay_rejects_directionally_contradictory_flow(direction, opposite_side):
+    as_of = datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)
+    checkpoints = _raw_order_flow_checkpoints(as_of, opposite_side)
+    result = _run_historical_order_flow_replay_fixture(
+        direction, raw_checkpoints=checkpoints
+    )
+    assert result["order_flow_raw_event_checkpoint_matches"] == 1
+    assert result["order_flow_confirmed_candidates"] == 0
+    assert result["order_flow_rejected_candidates"] == 1
+    assert result["signal_count"] == 0
+    assert result["trade_count"] == 0
+
+
+def test_raw_event_replay_latest_capture_gap_checkpoint_cannot_fall_back_to_older_good_state():
+    from app.signal_backtest import (
+        _select_raw_order_flow_snapshot,
+        _validate_raw_order_flow_checkpoints,
+    )
+
+    as_of = datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)
+    checkpoints = _raw_order_flow_checkpoints(as_of, "BUY", capture_gap=True)
+    assert len(checkpoints) == 2
+    assert checkpoints[0]["eligible_for_order_flow_replay"] is True
+    assert checkpoints[1]["eligible_for_order_flow_replay"] is False
+    epochs = _validate_raw_order_flow_checkpoints(checkpoints, "BTCUSDT")
+    selected, status = _select_raw_order_flow_snapshot(
+        checkpoints, epochs, "BTCUSDT",
+        (as_of + timedelta(minutes=1, seconds=1)).timestamp(),
+        {"max_order_flow_trade_age_seconds": 15, "max_order_book_snapshot_age_seconds": 5},
+    )
+    assert selected == {}
+    assert status == "INVALID"
+
+
+def test_raw_event_replay_recomputes_freshness_and_never_uses_future_checkpoints():
+    from app.signal_backtest import (
+        _select_raw_order_flow_snapshot,
+        _validate_raw_order_flow_checkpoints,
+    )
+
+    as_of = datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)
+    checkpoints = _raw_order_flow_checkpoints(as_of, "BUY")
+    epochs = _validate_raw_order_flow_checkpoints(checkpoints, "BTCUSDT")
+    selected, status = _select_raw_order_flow_snapshot(
+        checkpoints, epochs, "BTCUSDT", (as_of + timedelta(seconds=1)).timestamp(),
+        {"max_order_flow_trade_age_seconds": 15, "max_order_book_snapshot_age_seconds": 5},
+    )
+    assert status == "AVAILABLE"
+    assert selected["feed_mode"] == "RAW_EVENT_REPLAY"
+    assert selected["trade_data_age_seconds"] == pytest.approx(4.6, abs=0.01)
+    assert selected["depth_is_continuous"] is True
+    assert selected["coverage_is_complete"] is False
+
+    future, future_status = _select_raw_order_flow_snapshot(
+        checkpoints, epochs, "BTCUSDT", (as_of - timedelta(seconds=1)).timestamp(),
+        {"max_order_flow_trade_age_seconds": 15, "max_order_book_snapshot_age_seconds": 5},
+    )
+    assert future == {}
+    assert future_status == "MISSING"
+
+    stale, stale_status = _select_raw_order_flow_snapshot(
+        checkpoints, epochs, "BTCUSDT", (as_of + timedelta(seconds=3)).timestamp(),
+        {"max_order_flow_trade_age_seconds": 15, "max_order_book_snapshot_age_seconds": 5},
+    )
+    assert stale == {}
+    assert stale_status == "STALE"
+
+
+def test_raw_event_checkpoint_validation_rejects_false_full_coverage_and_unsorted_times():
+    from app.signal_backtest import _validate_raw_order_flow_checkpoints
+
+    as_of = datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)
+    checkpoint = _raw_order_flow_checkpoints(as_of, "BUY")[0]
+    falsely_complete = dict(checkpoint, coverage_is_complete=True)
+    with pytest.raises(ValueError, match="bounded-coverage"):
+        _validate_raw_order_flow_checkpoints([falsely_complete], "BTCUSDT")
+
+    later = _raw_order_flow_checkpoints(as_of + timedelta(minutes=1), "BUY")[0]
+    with pytest.raises(ValueError, match="strictly increasing"):
+        _validate_raw_order_flow_checkpoints([later, checkpoint], "BTCUSDT")
 
 
 def test_replay_execution_quotes_are_tick_aligned_uncrossed_and_cost_conservative():

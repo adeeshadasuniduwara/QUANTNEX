@@ -178,5 +178,73 @@ class GitHubApiCacheTests(unittest.TestCase):
                 self.assertEqual(caught.exception.code, status_code)
 
 
+    def test_etag_conditional_request_reuses_cached_payload_on_304(self):
+        url = "https://api.github.com/repos/example/project/commits/main"
+        self.cache_file.write_text(json.dumps({
+            url: {
+                "fetched_at": time.time() - UPDATER.API_CACHE_TTL_SECONDS - 1,
+                "data": {"sha": "cached"},
+                "etag": '"abc123"',
+            }
+        }), encoding="utf-8")
+        error = urllib.error.HTTPError(
+            url, 304, "Not Modified", {"ETag": '"abc123"'}, None
+        )
+        with patch.object(UPDATER.urllib.request, "urlopen", side_effect=error) as request:
+            self.assertEqual(UPDATER.github_json(url), {"sha": "cached"})
+            sent = request.call_args.args[0]
+            self.assertEqual(sent.get_header("If-none-match"), '"abc123"')
+        saved = json.loads(self.cache_file.read_text(encoding="utf-8"))[url]
+        self.assertGreater(saved["fetched_at"], time.time() - 5)
+
+    def test_retry_after_prevents_repeated_rate_limit_requests(self):
+        url = "https://api.github.com/repos/example/project/commits/main"
+        self.cache_file.write_text(json.dumps({
+            url: {
+                "fetched_at": time.time() - UPDATER.API_CACHE_TTL_SECONDS - 1,
+                "data": {"sha": "last-known-good"},
+            }
+        }), encoding="utf-8")
+        error = urllib.error.HTTPError(
+            url, 429, "Too Many Requests", {"Retry-After": "300"}, None
+        )
+        with patch.object(UPDATER.urllib.request, "urlopen", side_effect=error) as request:
+            self.assertEqual(UPDATER.github_json(url), {"sha": "last-known-good"})
+            self.assertEqual(UPDATER.github_json(url), {"sha": "last-known-good"})
+            request.assert_called_once()
+        saved = json.loads(self.cache_file.read_text(encoding="utf-8"))[url]
+        self.assertGreater(saved["retry_after"], time.time())
+
+    def test_non_rate_limit_403_does_not_hide_permission_errors(self):
+        url = "https://api.github.com/repos/example/project/commits/main"
+        self.cache_file.write_text(json.dumps({
+            url: {
+                "fetched_at": time.time() - UPDATER.API_CACHE_TTL_SECONDS - 1,
+                "data": {"sha": "stale"},
+            }
+        }), encoding="utf-8")
+        error = urllib.error.HTTPError(
+            url, 403, "Forbidden", {"X-RateLimit-Remaining": "42"}, None
+        )
+        with patch.object(UPDATER.urllib.request, "urlopen", side_effect=error):
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                UPDATER.github_json(url)
+        self.assertEqual(caught.exception.code, 403)
+
+    def test_stale_cache_is_reused_during_server_errors_with_backoff(self):
+        url = "https://api.github.com/repos/example/project/commits/main"
+        self.cache_file.write_text(json.dumps({
+            url: {
+                "fetched_at": time.time() - UPDATER.API_CACHE_TTL_SECONDS - 1,
+                "data": {"sha": "last-known-good"},
+            }
+        }), encoding="utf-8")
+        error = urllib.error.HTTPError(url, 503, "Service Unavailable", {}, None)
+        with patch.object(UPDATER.urllib.request, "urlopen", side_effect=error) as request:
+            self.assertEqual(UPDATER.github_json(url), {"sha": "last-known-good"})
+            self.assertEqual(UPDATER.github_json(url), {"sha": "last-known-good"})
+            request.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

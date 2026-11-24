@@ -909,7 +909,7 @@ async def signal_engine_backtest(payload: dict, user: User = Depends(local_works
         if not isinstance(include_order_flow_replay, bool):
             raise ValueError("include_order_flow_replay must be a boolean.")
         order_flow_replay_source = str(
-            payload.get("order_flow_replay_source", "FEATURE_SNAPSHOTS")
+            payload.get("order_flow_replay_source", "AUTO")
         ).strip().upper()
         if order_flow_replay_source not in {"AUTO", "FEATURE_SNAPSHOTS", "RAW_EVENTS"}:
             raise ValueError("order_flow_replay_source must be AUTO, FEATURE_SNAPSHOTS or RAW_EVENTS.")

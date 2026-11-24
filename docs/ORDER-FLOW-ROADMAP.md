@@ -732,9 +732,11 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 - A bounded 1,000-row BTCUSDT aggregate-trade sample had contiguous aggregate IDs and inferred taker delta −4.58525 BTC. A separately fetched top-20 REST book had a wide top-20 notional imbalance, but no sequence validation or timestamp synchronization with those trades; it must not be combined into a live flow decision.
 - This confirms the public Spot REST data sources were responding at the observation time, not that the strategy emitted a valid live signal or that the order-flow samples were synchronized.
 
-## Phase C21 — causal raw-event Binance Spot replay (implementation branch)
+## Phase C21 — causal raw-event Binance Spot replay (PR #301; CI green)
 
 ### Implemented on `feat/spot-raw-event-chronological-replay`
+
+- PR #301: https://github.com/adeeshadasuniduwara/QUANTNEX/pull/301. Base is current main `b5b3eb609fdeff005536345cb406882a3cef3215`; latest verified code head `01ec41ca69001f50c81cbc7a273058a97a0997ee`.
 
 - Add `backend/app/order_flow_replay.py` to rebuild bounded flow checkpoints from archived `aggTrade`, `depthSnapshot`, `depthUpdate` and `captureGap` events.
 - Use `received_at_ms` as the replay information clock. Only fully completed receive-time buckets are emitted; events arriving later cannot retroactively change an earlier checkpoint. Exchange event timestamps remain separate and are used for freshness.
@@ -753,8 +755,16 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 
 ### Verification / next
 
-1. Run the new deterministic replay suite plus Backend CI and Backend/Web CI on Python 3.12/3.14; fix every failure before merge.
+- Backend CI passed. Backend/Web CI passed with **621 tests on Python 3.12**, **621 tests on Python 3.14**, and the Web check; standalone compile/schema checks passed.
+- Full PR diff contains only the new replay module, its tests and these two progress documents. Secret-pattern scan found no matches and no order-placement references were introduced.
+- GitHub reports PR #301 mergeable/clean at the verified code head. The CI fixtures validate the replay logic but do not validate a retained local archive or any live strategy performance.
+1. Merge only after refreshing PR #301's exact head/base and green checks; verify the merge commit on main and post-merge checks.
 2. Validate reconstructed features against a retained local raw archive and hand-computed trade/book fixtures. Do not claim full session coverage from a stream seed.
 3. Adapt the existing chronological walk-forward harness to consume only replay checkpoints available at each decision time, preserving the capture/receive clock and refusing incomplete windows.
 4. Compare candle-only, aggressor-only, L2-only and combined ablations on identical chronological folds with explicit fee, spread, slippage and conservative LIMIT fill/expiry assumptions. Report sample size, trade count, win rate, expectancy, profit factor, drawdown and limitations only when supported.
 5. Keep USDⓈ-M candle-only and COIN-M unsupported until their own market-specific order-flow adapters and replay fixtures are verified.
+
+### 2026-11-23 latest-main dynamic smoke run — log verified
+- [Run #45143589597](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45143589597) ran on main `b5b3eb609fdeff005536345cb406882a3cef3215`. Spot exchangeInfo discovered **1,376 eligible pairs**; the rotating 20-symbol sample completed **20/20** with 0 history skips and 0 Spot provider errors.
+- All 20 results were WAIT with `NOT_EVALUATED_NO_DIRECTIONAL_SETUP`; the live Order Flow confirmation gate was not exercised. This is successful bounded live-data ingestion, not evidence of signal quality or profitability.
+- USDⓈ-M discovery failed with HTTP 451; **0/20** Futures scans completed and the workflow correctly exited non-zero. This is a GitHub-runner provider-access failure, not a WAIT. Local-network Futures verification remains open.

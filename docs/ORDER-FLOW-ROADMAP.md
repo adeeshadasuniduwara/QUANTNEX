@@ -787,3 +787,18 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 - The current signal gate still uses directional aggressor delta and L2 depth sign confluence. CVD divergence, absorption/exhaustion and order-flow multi-timeframe scoring are not yet calibrated or used as independent predictive votes.
 - The raw replay input is now wired through the API but the local retained archive has not been exercised in this run. OOS results must be interpreted with actual eligible checkpoint coverage, not the raw event count alone.
 - Next: run C22 CI, review/merge only when green, validate on retained local archive, then add separate aggressor-only/L2-only/combined ablations and evaluate CVD divergence with hand-computed fixtures.
+
+
+### C23 — Directional-vote ablations in walk-forward (PR pending)
+- Added three research-only modes: `AGGRESSOR_ONLY`, `L2_ONLY`, and `COMBINED`.
+- The same selected mode now controls both the order-flow confirmation vote and MARKET urgency vote. This avoids an apparent single-component ablation being silently reintroduced by the entry selector.
+- Both data streams still have to pass existing freshness, provenance and feed-specific integrity gates in every mode. The experiment removes a directional vote; it does not remove data-quality safeguards.
+- Walk-forward runs all three variants across identical chronological folds, with the same spread, fee, slippage and conservative LIMIT fill/expiry assumptions. It reports per-variant trade count, win rate/interval, expectancy/interval, profit factor, max drawdown, net PnL, estimated costs and coverage/confirmation counts against the candle-only baseline.
+- The variants are descriptive ablations. They are not calibrated probabilities and do not establish predictive uplift. The strategy's live default remains `COMBINED`.
+- Deterministic tests cover opposite-sign delta/depth evidence, each selected directional vote, invalid modes and raw-event replay wiring. CI is pending on branch `feat/order-flow-evidence-ablation-replay`.
+
+### C23 limitations / next
+- Both streams remain required for data integrity in every ablation; the experiment does not show whether either feed alone can operate safely when the other feed is absent.
+- The MARKET/LIMIT selector retains spread, liquidity, drift and exchange-filter hard gates in all modes.
+- No local retained archive has been evaluated here. Wait for CI, then validate with the user's retained Spot archive before interpreting any performance metrics.
+- Next: complete C23 CI/review/merge, then run real retained-archive ablations and report sample size and coverage before implementing CVD divergence or absorption as additional evidence.

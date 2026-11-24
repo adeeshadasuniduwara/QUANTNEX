@@ -136,13 +136,20 @@ def _write_api_cache(cache: dict, url: str, entry: dict) -> None:
 
     retained[url] = entry
     if len(retained) > API_CACHE_MAX_ENTRIES:
+        def cache_recency(item):
+            value = item[1]
+            try:
+                fetched_at = float(value.get("fetched_at", 0) or 0)
+            except (TypeError, ValueError, OverflowError):
+                fetched_at = 0
+            try:
+                retry_at = float(value.get("retry_after", 0) or 0)
+            except (TypeError, ValueError, OverflowError):
+                retry_at = 0
+            return max(fetched_at, retry_at)
+
         retained = dict(sorted(
-            retained.items(),
-            key=lambda item: max(
-                float(item[1].get("fetched_at", 0) or 0),
-                float(item[1].get("retry_after", 0) or 0),
-            ),
-            reverse=True,
+            retained.items(), key=cache_recency, reverse=True
         )[:API_CACHE_MAX_ENTRIES])
 
     temporary = API_CACHE_FILE.with_name(
@@ -270,10 +277,11 @@ def _github_json_cached(url: str) -> dict:
             entry["fetched_at"] = time.time()
             entry["retry_after"] = 0
             entry["failures"] = 0
-            if exc.headers.get("ETag"):
-                entry["etag"] = exc.headers.get("ETag")
-            if exc.headers.get("Last-Modified"):
-                entry["last_modified"] = exc.headers.get("Last-Modified")
+            response_headers = exc.headers or {}
+            if response_headers.get("ETag"):
+                entry["etag"] = response_headers.get("ETag")
+            if response_headers.get("Last-Modified"):
+                entry["last_modified"] = response_headers.get("Last-Modified")
             cache[url] = entry
             _write_api_cache(cache, url, entry)
             return cached_data

@@ -173,6 +173,43 @@ def test_order_flow_confirmation_rejects_contradicted_mixed_and_neutral_evidence
     assert neutral["accepted"] is False
 
 
+def test_order_flow_confirmation_ablation_modes_remove_only_the_directional_vote():
+    from app.order_flow import evaluate_order_flow_confirmation
+
+    snapshot = _order_flow_snapshot(0.25, -0.15)
+    aggressor = evaluate_order_flow_confirmation(
+        "BUY", snapshot, now=NOW, evidence_mode="AGGRESSOR_ONLY"
+    )
+    l2 = evaluate_order_flow_confirmation(
+        "BUY", snapshot, now=NOW, evidence_mode="L2_ONLY"
+    )
+    combined = evaluate_order_flow_confirmation(
+        "BUY", snapshot, now=NOW, evidence_mode="COMBINED"
+    )
+
+    assert aggressor["status"] == "CONFIRMED"
+    assert aggressor["accepted"] is True
+    assert aggressor["support_count"] == 1
+    assert aggressor["conflict_count"] == 0
+    assert aggressor["evidence_mode"] == "AGGRESSOR_ONLY"
+    assert l2["status"] == "CONTRADICTED"
+    assert l2["accepted"] is False
+    assert l2["evidence_mode"] == "L2_ONLY"
+    assert combined["status"] == "MIXED"
+    assert combined["accepted"] is False
+    assert combined["evidence_mode"] == "COMBINED"
+    assert "Both aggressor-trade and sequence-validated L2 streams" in aggressor["data_quality_gate"]
+
+
+def test_order_flow_confirmation_rejects_unknown_ablation_mode():
+    from app.order_flow import evaluate_order_flow_confirmation
+
+    with pytest.raises(OrderFlowDataError, match="evidence_mode"):
+        evaluate_order_flow_confirmation(
+            "BUY", _order_flow_snapshot(), now=NOW, evidence_mode="CANDLE_VOLUME_PROXY"
+        )
+
+
 def test_order_flow_confirmation_rejects_stale_or_unproven_trade_side_data():
     from app.order_flow import evaluate_order_flow_confirmation
 

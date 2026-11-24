@@ -1347,15 +1347,22 @@ Measure whether observed Binance Spot aggressor-side delta, sequence-validated L
 - Added per-variant OOS summaries and deltas for trade count, win rate, expectancy, net PnL, estimated costs and max drawdown, plus order-flow coverage/confirmation counters. Existing combined result fields remain available for compatibility.
 - Added deterministic tests for conflicting aggressor/L2 votes, invalid ablation modes, entry-urgency mode consistency and raw-event walk-forward variant wiring.
 
-### Verification boundary
-- CI has not yet run for C23. No local Python runtime was available for direct test execution during this session; no test pass is claimed before GitHub Actions completes.
-- The raw replay fixture proves causal mode wiring and deterministic branch behavior only. It is not a representative market sample and cannot produce a profitability or incremental-edge claim.
-- Entry execution costs, spread, LIMIT expiry/fill assumptions and OOS fold boundaries remain shared across variants. Both-source integrity gates remain enabled.
-- Raw-event replay remains Binance Spot only. USDⓈ-M remains candle-only monitor coverage pending local/provider access; COIN-M remains unsupported.
+### Merge and verification
+- PR [#303](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/303) merged to `main` as squash commit `f986dbae4d3012e6fbb43d5613d5d028adc74337`.
+- The PR head `a99d29cb0b09a11f7fe7c99585176161172bf7df` passed `test`, `backend-tests (3.12)`, `backend-tests (3.14)`, and `web-check`.
+- Post-merge checks on `f986dbae4d3012e6fbb43d5613d5d028adc74337` also passed: `test`, both backend Python versions, `web-check`, and the Telegram announce workflow.
+- The live/default signal path remains `COMBINED`; the ablation modes are invoked only by the historical walk-forward harness. No live order or real-money path was added.
+- The comparison is a descriptive experiment. No local retained archive was run and no predictive uplift, win-rate improvement or profitability is claimed.
+
+### Current limitations
+- Both trade and L2 streams remain required to pass their existing freshness, provenance and feed-specific integrity gates in every ablation. The experiment does not prove either feed can operate safely when the other is absent.
+- Binance Spot is the only market type with sequence-validated live/raw Order Flow. USDⓈ-M remains candle-only monitor coverage because the latest GitHub-runner exchangeInfo request returned HTTP 451; COIN-M remains unsupported.
+- The latest recorded dynamic smoke run is still the 2026-11-23 run: 20/20 rotating Spot sample requests succeeded and all were WAIT with no directional setup; USDⓈ-M discovery failed with HTTP 451. There is no post-C23 live smoke result in this checkpoint.
+- The user's local retained SQLite raw-event archive has not been exercised. Real OOS metrics remain unavailable until its eligible checkpoint coverage and truncation are measured.
 
 ### Next steps
-1. Run Backend CI and Backend/Web CI for C23; fix any regression before review.
-2. Review the complete diff, especially the research-only mode propagation and unchanged live default `COMBINED`.
-3. Merge only after all checks are green and the branch is mergeable against the latest `main`; verify post-merge checks.
-4. Exercise the API with retained local raw archives and report eligible checkpoints, truncation, OOS sample size and each ablation's metrics. Do not treat sparse or synthetic fixtures as evidence of strategy edge.
-5. Continue with causal CVD-divergence and absorption/exhaustion definitions only after hand-computed replay tests and independent incremental-value measurement.
+1. Run the walk-forward API against the retained local Binance Spot archive. Record total events, truncation, completed/eligible checkpoints, OOS bars, matched decisions and all three variant metrics before interpreting results.
+2. Verify the stored minute series carries a causally valid CVD value and status at each closed UTC M1 boundary. If it does not, extend the recorder with explicit seed/gap/reset provenance first.
+3. Add a causal CVD-divergence classifier only from confirmed price pivots and same-boundary CVD observations; use hand-computed LONG/SHORT, false-divergence, gap, reset and stale-data fixtures.
+4. Measure CVD divergence and existing absorption/exhaustion patterns as separate ablations against the same candle-only baseline. Do not stack them as independent votes without incremental-value evidence.
+5. Continue Binance Spot signal-quality validation; keep USDⓈ-M and COIN-M capability claims restricted to verified support. Paper/replay only.

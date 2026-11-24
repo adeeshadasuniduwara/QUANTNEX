@@ -1437,6 +1437,11 @@ async def build_signal(
                     now=as_of if candles_override is not None else datetime.now(timezone.utc),
                     evidence_mode=order_flow_confirmation_mode_override or "COMBINED",
                 )
+                if order_flow_confirmation_mode_override:
+                    decision["ablation_scope"] = (
+                        "Directional confirmation and MARKET urgency use the selected evidence mode; both feeds "
+                        "remain subject to freshness, provenance and feed-specific integrity gates."
+                    )
                 order_flow_decision = decision
                 order_flow_payload = summarize_order_flow_snapshot(order_flow_snapshot, decision)
                 order_flow_payload["data_mode"] = order_flow_mode

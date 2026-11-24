@@ -215,7 +215,6 @@ def replay_spot_order_flow_events(
     depth_book = BinanceSpotDepthBook()
     depth_session_id: str | None = None
     last_depth_event_time_ms: int | None = None
-    last_trade_received_event_ms: int | None = None
     stream_sessions: set[str] = set()
     snapshots: list[dict[str, Any]] = []
 
@@ -224,7 +223,7 @@ def replay_spot_order_flow_events(
     bucket_backfill = _new_trade_bucket()
     bucket_bootstrap = _new_trade_bucket()
     bucket_counts = defaultdict(int)
-    bucket_sources: set[str] = set()
+    bucket_source_counts = defaultdict(int)
     bucket_backfill_used = False
     bucket_capture_gap = False
 
@@ -333,7 +332,7 @@ def replay_spot_order_flow_events(
             "live_trade_count": int(bucket_live["trade_count"]),
             "backfill_trade_count": int(bucket_backfill["trade_count"]),
             "bootstrap_trade_count": int(bucket_bootstrap["trade_count"]),
-            "source_counts": dict(sorted(bucket_counts["sources"].items())),
+            "source_counts": dict(sorted(bucket_source_counts.items())),
             "stream_sessions": sorted(stream_sessions),
             "stream_session_count": len(stream_sessions),
             "buy_volume": live_buy,
@@ -403,13 +402,12 @@ def replay_spot_order_flow_events(
             bucket_backfill = _new_trade_bucket()
             bucket_bootstrap = _new_trade_bucket()
             bucket_counts = defaultdict(int)
-            bucket_sources = set()
+            bucket_source_counts = defaultdict(int)
             bucket_backfill_used = False
             bucket_capture_gap = False
 
         bucket_counts["events"] += 1
-        bucket_counts["sources"][event["source"]] += 1
-        bucket_sources.add(event["source"])
+        bucket_source_counts[event["source"]] += 1
         stream_sessions.add(event["stream_session_id"])
 
         event_type = event["event_type"]
@@ -463,7 +461,6 @@ def replay_spot_order_flow_events(
                 pending_trade_rows[trade_id] = payload
             elif status == "OUT_OF_ORDER":
                 trade_integrity_failed = True
-            last_trade_received_event_ms = event["event_time_ms"]
 
         if event_type in {"depthSnapshot", "depthUpdate"}:
             if depth_session_id != event["stream_session_id"]:

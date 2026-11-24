@@ -714,7 +714,7 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 - CI passed before merge and again post-merge: **598 tests on Python 3.12**, **598 tests on Python 3.14**, Backend/Web CI web-check success, Backend CI success, and Telegram update workflow success. The initial branch run caught a missing `pytest` import; it was fixed before the final green run.
 - Full diff contained only `signal_engine.py`, its deterministic tests and progress/roadmap docs. Secret scan found no key/token patterns. PR #281's stale 19-commits-behind duplicate was closed after #299 merged.
 
-## Phase C20 — raw-event coverage diagnostics (implementation in progress)
+## Phase C20 — raw-event coverage diagnostics (merged PR #300)
 
 - Current branch: `feat/spot-raw-event-coverage-audit`, based on C19 merge `518d27817447e3a02413ae7fb44e630be55b54e3`.
 - `summarize_order_flow_candles` now counts all matching raw rows before using its bounded event sample. If the 5,000-row cap (or 200 events per requested minute) truncates the window, it emits `TRUNCATED_EVENT_WINDOW` with total/loaded counts rather than silently presenting a partial sample as representative.
@@ -723,9 +723,38 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 - Every result explicitly includes `coverage_is_complete=false`. Even a contiguous observed sample remains `OBSERVED_PARTIAL_NOT_PROVEN_COMPLETE`; this diagnostic does not assert complete candle/session coverage.
 - New deterministic tests cover aggTrade gaps across minute boundaries, valid depth continuity across minute/query boundaries, depth gaps and persistent invalidity across later minutes, invalid REST snapshot bridge, multi-session boundary with REST backfill, bounded-window truncation and invalid limits. Corrected-head CI passed: **607 tests on Python 3.12**, **607 tests on Python 3.14**, schema test passed, Web check passed. A capture-gap regression fixture also verifies depth remains invalid until a new REST snapshot re-anchors it.
 - Code commits: `3e5984f056e4bd07cfb6e2231a1b05801ec602de`, `2c144263caaae930341cbd96b1a87b0186521bbb`, `0369b31276530cc29249caedfbb34bc844afdbe1`, `27dbb513017cf84cfd5e9236c46635b3f28ba6ec`, `8678da6ae290337e5d35c07de1937f3a2b458bd7`, `2189d8f51e7741392836bda326fedb815cf953ec`, `d7210b793391ea67ea5e18bd45bcb15a92d965a3`, `8505fe1721288b7340abc46691900c6ab8831326`, `68a84657c5328a85af82584ced72d67b7f62cfad`, `1409dd4bfdc925872212089cd914fa20c9a3d531`, `c8d917f1cbfd699d7d5df167d9956c1a2a366d5a`.
-- PR #300 is open against current main; refresh head/base/checks and review the full four-file diff before squash merge. After post-merge CI, validate the audit on retained local capture, reject any truncated/gapped window from raw replay, then run candle-only / aggressor-only / L2-only / combined chronological ablations with fees, spread, slippage and realistic LIMIT fills. No performance uplift claim from sparse capture.
+- PR #300 was squash-merged to main as `b5b3eb609fdeff005536345cb406882a3cef3215` on 2026-11-23 07:53:19 UTC. The merge contains the four intended files: `order_flow_raw_recorder.py`, its tests, this roadmap and the durable automation progress log.
+- Post-merge main checks passed on the exact merge SHA: [Backend CI #45134362671](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45134362671) and [Backend/Web CI #45134362665](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45134362665), including Python 3.12, Python 3.14 and Web checks.
+- The next step is causal event-level replay over retained local capture. Reject truncated, unanchored, capture-gap or sequence-invalid windows; then run candle-only / aggressor-only / L2-only / combined chronological ablations with fees, spread, slippage and realistic LIMIT fills. No performance uplift claim from sparse capture.
 
 ### 2026-11-23 live Spot feed sanity check (read-only; not a signal)
 - Binance `exchangeInfo` returned 3,711 symbols, of which 1,376 were active/tradable Spot and 526 had USDT quote. BTCUSDT and NEOUSDT each returned 210 5m rows; the last candle was still open and must not enter closed-bar signal analysis.
 - A bounded 1,000-row BTCUSDT aggregate-trade sample had contiguous aggregate IDs and inferred taker delta −4.58525 BTC. A separately fetched top-20 REST book had a wide top-20 notional imbalance, but no sequence validation or timestamp synchronization with those trades; it must not be combined into a live flow decision.
 - This confirms the public Spot REST data sources were responding at the observation time, not that the strategy emitted a valid live signal or that the order-flow samples were synchronized.
+
+## Phase C21 — causal raw-event Binance Spot replay (implementation branch)
+
+### Implemented on `feat/spot-raw-event-chronological-replay`
+
+- Add `backend/app/order_flow_replay.py` to rebuild bounded flow checkpoints from archived `aggTrade`, `depthSnapshot`, `depthUpdate` and `captureGap` events.
+- Use `received_at_ms` as the replay information clock. Only fully completed receive-time buckets are emitted; events arriving later cannot retroactively change an earlier checkpoint. Exchange event timestamps remain separate and are used for freshness.
+- Reuse the existing `AggTradeCvdState` for Binance `m=false` buyer-taker / `m=true` seller-taker semantics, contiguous aggregate-trade IDs, CVD since the first captured seed and delayed REST gap recovery. A recovered gap affects only checkpoints after the backfill was received.
+- Reuse `BinanceSpotDepthBook` for REST-snapshot-to-diff sequence validation and live L2 reconstruction. Every stream-session change invalidates the prior book; a new session needs a new snapshot plus a bridging diff before depth metrics can be used.
+- Expose capture-bucket aggressor delta and quote delta, separate live/bootstrap/backfill volumes, CVD scope/status, UTC session-delta unavailability, sequence-validated L2 metrics, data ages and explicit provenance. OHLCV volume is never substituted for observed trade-side volume.
+- A raw capture-gap marker permanently vetoes replay eligibility for the archive window, even if a later depth snapshot restores the book. `coverage_is_complete` remains false; replay eligibility means only that the bounded captured data is internally usable at that checkpoint, not that a full session or all market events were captured.
+- Deterministic fixtures cover BUY/SELL aggressor delta, L2 reconstruction, partial receive-bucket exclusion, trade-ID gap veto, delayed REST backfill recovery without retroactive repair of the earlier checkpoint, depth sequence gaps, reconnect resnapshot requirements, capture-gap persistence, stale data, market-type/symbol isolation and future/naive-time rejection.
+
+### Evidence boundary
+
+- This is a research/replay feature, not a production live signal or execution path. It does not create orders, alter live thresholds, claim predictive uplift or claim profitability.
+- The first captured trade is only a CVD seed. Full UTC session delta remains null without a proven session-start trade-ID anchor.
+- Capture-time delta is explicitly bucketed by receive time; bootstrap and backfill trades are reported separately to avoid treating recovery batches as current-minute activity.
+- Raw-event archives may be sparse, bounded or non-random. No walk-forward metrics should be reported until retained data passes the coverage audit and is aligned causally with closed candles.
+
+### Verification / next
+
+1. Run the new deterministic replay suite plus Backend CI and Backend/Web CI on Python 3.12/3.14; fix every failure before merge.
+2. Validate reconstructed features against a retained local raw archive and hand-computed trade/book fixtures. Do not claim full session coverage from a stream seed.
+3. Adapt the existing chronological walk-forward harness to consume only replay checkpoints available at each decision time, preserving the capture/receive clock and refusing incomplete windows.
+4. Compare candle-only, aggressor-only, L2-only and combined ablations on identical chronological folds with explicit fee, spread, slippage and conservative LIMIT fill/expiry assumptions. Report sample size, trade count, win rate, expectancy, profit factor, drawdown and limitations only when supported.
+5. Keep USDⓈ-M candle-only and COIN-M unsupported until their own market-specific order-flow adapters and replay fixtures are verified.

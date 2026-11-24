@@ -1254,12 +1254,20 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 - `backend/app/order_flow_replay.py` — `dbdc42253bcc98b840a4e6fc1e525b7a6d7ca698`, `efdbd24ac3ee0dcee76bcffa3a8b95266f9d9c9c`, `7dc1b2a268c38b9eaa3e85da1f88de0286a1f86f`.
 - `backend/tests/test_order_flow_replay.py` — `cf1c108ceecfff2d41f8e044caba76485809cc94`, `96f3ebe8ca10ff82a83666ea289988a7dc836e52`.
 - `docs/ORDER-FLOW-ROADMAP.md` — `84cdb3e98e47ccc411b6db844ad189ae0ea88d7b`.
-- Current branch head at this progress update: `92b3d2848dfd180de7dc32cd7086cc1a426d05f5`.
+- CI-verified code/test head: `01ec41ca69001f50c81cbc7a273058a97a0997ee`.
 
-### Verification boundary / exact next steps
-1. No local Python execution was available in this GitHub-only engineering pass. The new test file has been authored but is **not yet verified**; do not call this phase green.
-2. Create the focused PR against latest main and let Backend CI plus Backend/Web CI run on Python 3.12/3.14 and Web checks. Fix failures before review or merge.
-3. Inspect the complete branch diff and secret scan; confirm mergeability and latest-main base. Merge only after all relevant checks pass, then verify main and post-merge checks.
-4. Validate the replay against retained local raw capture. The GitHub runner cannot inspect the user's Windows SQLite archive or local WebSocket session.
-5. Integrate only validated replay checkpoints into the chronological walk-forward harness, then run candle-only / aggressor-only / L2-only / combined ablations with fee, spread, slippage and conservative LIMIT expiry/fill assumptions. No OOS metrics or predictive uplift are available yet.
-6. Binance Spot remains the only market type with sequence-validated live Order Flow. USDⓈ-M remains candle-only monitor mode; COIN-M remains unsupported. Never place live orders or enable real-money trading.
+### Verification / PR #301
+1. PR #301: https://github.com/adeeshadasuniduwara/QUANTNEX/pull/301, based on main SHA `b5b3eb609fdeff005536345cb406882a3cef3215`, is open and GitHub reports it mergeable/clean at head `01ec41ca69001f50c81cbc7a273058a97a0997ee`.
+2. Backend CI passed. Backend/Web CI passed: **621 tests on Python 3.12**, **621 tests on Python 3.14**, plus the Web check. The standalone schema/compile Backend CI also passed.
+3. Full PR diff is limited to `order_flow_replay.py`, its deterministic tests and the two progress documents. Secret-pattern scan found no matches; no order-placement references or live-order paths were added.
+4. No local Python execution or retained Windows raw-archive replay was performed. GitHub CI verifies deterministic fixtures only; the user's local SQLite archive and WebSocket capture remain unverified.
+5. Merge only after refreshing the exact head/base and all checks, then verify the merge commit on main and run post-merge checks.
+6. Next core work: adapt the chronological walk-forward harness to consume only validated replay checkpoints, then run candle-only / aggressor-only / L2-only / combined ablations with fee, spread, slippage and conservative LIMIT expiry/fill assumptions. No OOS metrics or predictive uplift are available yet.
+7. Binance Spot remains the only market type with sequence-validated live Order Flow. USDⓈ-M remains candle-only monitor mode; COIN-M remains unsupported. Never place live orders or enable real-money trading.
+
+### 2026-11-23 latest-main dynamic Binance smoke run (log-verified)
+- [QUANTNEX Live Crypto Signal Smoke #45143589597](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45143589597) ran on main SHA `b5b3eb609fdeff005536345cb406882a3cef3215`.
+- Binance Spot discovery returned **1,376 eligible Spot pairs**; the rotating sample scanned **20/20 successfully**, with **0 history skips** and **0 Spot provider errors**. This verifies a successful bounded live Spot scan, not a same-run scan of every eligible pair.
+- All 20 returned WAIT. Every row reported `NOT_EVALUATED_NO_DIRECTIONAL_SETUP`; therefore the live Order Flow confirmation gate was not exercised. WAIT is not a test of the signal's predictive quality.
+- USDⓈ-M discovery failed with the explicit provider response **HTTP 451** from the public exchangeInfo endpoint. It produced **0 successful USDⓈ-M scans** and one provider/error failure; the workflow correctly exited non-zero. This is a provider-access failure, not a Futures WAIT.
+- The prior note about 451 is now confirmed by the latest run log. A local-network USDⓈ-M access check remains required. Do not claim USDⓈ-M live signal coverage from the GitHub runner.

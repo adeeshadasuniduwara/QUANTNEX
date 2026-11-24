@@ -911,8 +911,8 @@ async def signal_engine_backtest(payload: dict, user: User = Depends(local_works
         order_flow_replay_source = str(
             payload.get("order_flow_replay_source", "FEATURE_SNAPSHOTS")
         ).strip().upper()
-        if order_flow_replay_source not in {"FEATURE_SNAPSHOTS", "RAW_EVENTS"}:
-            raise ValueError("order_flow_replay_source must be FEATURE_SNAPSHOTS or RAW_EVENTS.")
+        if order_flow_replay_source not in {"AUTO", "FEATURE_SNAPSHOTS", "RAW_EVENTS"}:
+            raise ValueError("order_flow_replay_source must be AUTO, FEATURE_SNAPSHOTS or RAW_EVENTS.")
         order_flow_observations = None
         raw_order_flow_events = None
         raw_event_archive = None
@@ -927,7 +927,7 @@ async def signal_engine_backtest(payload: dict, user: User = Depends(local_works
                 last_candle = last_candle.replace(tzinfo=timezone.utc)
             history_start = first_candle.astimezone(timezone.utc)
             history_end = last_candle.astimezone(timezone.utc) + timedelta(minutes=1)
-            if order_flow_replay_source == "RAW_EVENTS":
+            if order_flow_replay_source in {"AUTO", "RAW_EVENTS"}:
                 from .order_flow_raw_recorder import load_order_flow_market_events_by_receive_time
 
                 raw_event_archive = load_order_flow_market_events_by_receive_time(
@@ -935,7 +935,10 @@ async def signal_engine_backtest(payload: dict, user: User = Depends(local_works
                     int(history_end.timestamp() * 1000), limit=5000,
                 )
                 raw_order_flow_events = raw_event_archive["events"]
-            else:
+            if (
+                order_flow_replay_source == "FEATURE_SNAPSHOTS"
+                or (order_flow_replay_source == "AUTO" and not raw_order_flow_events)
+            ):
                 from .order_flow_recorder import load_order_flow_observations
 
                 order_flow_observations = load_order_flow_observations(
@@ -950,30 +953,46 @@ async def signal_engine_backtest(payload: dict, user: User = Depends(local_works
             order_flow_observations=order_flow_observations,
             raw_order_flow_events=raw_order_flow_events,
         )
+        selected_order_flow_replay_source = (
+            "RAW_EVENTS" if raw_order_flow_events is not None else
+            "FEATURE_SNAPSHOTS" if order_flow_observations is not None else
+            "DISABLED"
+        )
         capture_count = (
             len(raw_order_flow_events or [])
-            if order_flow_replay_source == "RAW_EVENTS"
+            if selected_order_flow_replay_source == "RAW_EVENTS"
             else len(order_flow_observations or [])
+        )
+        replay_status = (
+            (result.get("order_flow_replay") or {}).get("status")
+            if isinstance(result.get("order_flow_replay"), dict) else None
         )
         result["order_flow_capture"] = {
             "requested": include_order_flow_replay,
-            "source": order_flow_replay_source,
+            "requested_source": order_flow_replay_source,
+            "source": selected_order_flow_replay_source,
             "status": (
-                "AVAILABLE" if capture_count
-                else "NO_CAPTURED_RAW_EVENT_DATA" if include_order_flow_replay and order_flow_replay_source == "RAW_EVENTS"
+                "NO_COMPLETE_RAW_EVENT_CHECKPOINTS"
+                if selected_order_flow_replay_source == "RAW_EVENTS" and replay_status == "NO_COMPLETE_RAW_EVENT_CHECKPOINTS"
+                else "AVAILABLE" if capture_count
+                else "NO_CAPTURED_RAW_EVENT_DATA" if include_order_flow_replay and selected_order_flow_replay_source == "RAW_EVENTS"
                 else "NO_CAPTURED_ORDER_FLOW_DATA" if include_order_flow_replay
                 else "DISABLED"
             ),
             "observation_count": len(order_flow_observations or []),
             "raw_event_count": len(raw_order_flow_events or []),
+            "checkpoint_count": (
+                (result.get("order_flow_replay") or {}).get("observation_count")
+                if selected_order_flow_replay_source == "RAW_EVENTS" else None
+            ),
             "total_archive_events": raw_event_archive.get("total_count") if raw_event_archive else None,
             "archive_window_truncated": raw_event_archive.get("truncated") if raw_event_archive else False,
             "archive_selection": raw_event_archive.get("selection") if raw_event_archive else None,
-            "decision_clock": "RECEIVED_AT_MS" if order_flow_replay_source == "RAW_EVENTS" else "FEATURE_CAPTURE_TIMESTAMP",
+            "decision_clock": "RECEIVED_AT_MS" if selected_order_flow_replay_source == "RAW_EVENTS" else "FEATURE_CAPTURE_TIMESTAMP",
             "retention_days": 7,
             "sampling": (
-                "Bounded raw Spot aggTrade/depth archive; latest events are selected by receive time and replayed in chronological receive order."
-                if order_flow_replay_source == "RAW_EVENTS"
+                "Bounded raw Spot aggTrade/depth archive; latest events are selected by receive time and replayed in chronological receive order. AUTO prefers raw events when present and never falls back after a non-empty but invalid raw archive."
+                if selected_order_flow_replay_source == "RAW_EVENTS"
                 else "At most one sequence-validated feature snapshot per active symbol per UTC minute."
             ),
             "window_start": history_start.isoformat() if history_start else None,
@@ -1001,7 +1020,7 @@ async def signal_engine_backtest(payload: dict, user: User = Depends(local_works
         "out_of_sample_trades": result["out_of_sample"]["trade_count"],
         "order_flow_snapshots": len(order_flow_observations or []),
         "order_flow_raw_events": len(raw_order_flow_events or []),
-        "order_flow_replay_source": order_flow_replay_source,
+        "order_flow_replay_source": selected_order_flow_replay_source,
     })
     db.commit()
     event_hub.publish("strategy.research.changed", "strategy", "signal_walk_forward_saved", {"symbol": symbol})

@@ -1213,14 +1213,14 @@ async def run_signal_walk_forward(
                 "variants": variant_results,
                 "method": (
                     "Three directional-vote ablations (aggressor-only, L2-only and combined) use identical "
-                    "chronological folds and execution assumptions. Both underlying feeds must still be fresh, "
-                    "sequence-valid and provenance-valid in every variant; only the named component's directional "
+                    "chronological folds and execution assumptions. Both underlying feeds must still pass their existing freshness, provenance and feed-specific integrity "
+                    "gates in every variant; only the named component's directional "
                     "vote is removed. Raw Binance Spot checkpoints are selected only at or before each candle "
                     "decision. Results are descriptive, not calibrated predictive uplift."
                     if is_raw_replay else
                     "Three directional-vote ablations (aggressor-only, L2-only and combined) use identical "
-                    "chronological folds and execution assumptions. Both underlying feeds must still be fresh, "
-                    "sequence-valid and provenance-valid in every variant; only the named component's directional "
+                    "chronological folds and execution assumptions. Both underlying feeds must still pass their existing freshness, provenance and feed-specific integrity "
+                    "gates in every variant; only the named component's directional "
                     "vote is removed. Feature snapshots remain sparse and non-random; results are descriptive."
                 ),
             }

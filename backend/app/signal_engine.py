@@ -455,8 +455,12 @@ def select_binance_entry(
     *,
     order_flow_snapshot: dict[str, Any] | None = None,
     order_flow_decision: dict[str, Any] | None = None,
+    order_flow_evidence_mode: str = "COMBINED",
 ) -> dict[str, Any] | None:
     """Choose a marketable entry or a technically justified resting limit."""
+    evidence_mode = str(order_flow_evidence_mode or "").strip().upper()
+    if evidence_mode not in {"COMBINED", "AGGRESSOR_ONLY", "L2_ONLY"}:
+        raise ValueError("Order Flow entry evidence mode must be COMBINED, AGGRESSOR_ONLY or L2_ONLY.")
     settings = settings or {}
     spread = float(execution["spread_bps"])
     depth = float(
@@ -497,6 +501,7 @@ def select_binance_entry(
             not isinstance(order_flow_snapshot, dict)
             or not isinstance(order_flow_decision, dict)
             or order_flow_decision.get("accepted") is not True
+            or str(order_flow_decision.get("evidence_mode") or "COMBINED").strip().upper() != evidence_mode
             or order_flow_snapshot.get("market_type") != "BINANCE_SPOT"
             or order_flow_snapshot.get("depth_is_continuous") is not True
         ):
@@ -523,12 +528,16 @@ def select_binance_entry(
         delta_supports_direction = delta_ratio * direction > 0
         depth_supports_direction = depth_imbalance * direction > 0
         depth_sequence_validated = order_flow_snapshot.get("depth_is_continuous") is True
-        market_flow_confirmed = (
-            delta_supports_direction and depth_supports_direction and depth_sequence_validated
-        )
+        directional_votes = {
+            "COMBINED": delta_supports_direction and depth_supports_direction,
+            "AGGRESSOR_ONLY": delta_supports_direction,
+            "L2_ONLY": depth_supports_direction,
+        }
+        market_flow_confirmed = directional_votes[evidence_mode] and depth_sequence_validated
         flow_evidence = {
             "status": "MARKET_FLOW_ALIGNED" if market_flow_confirmed else "LIMIT_PREFERRED",
             "market_urgency_confirmed": market_flow_confirmed,
+            "evidence_mode": evidence_mode,
             "aggressor_delta_ratio": delta_ratio,
             "l2_depth_imbalance": depth_imbalance,
             "aggressor_delta_supports_direction": delta_supports_direction,
@@ -542,19 +551,25 @@ def select_binance_entry(
             "depth_observed_at": order_flow_snapshot.get("depth_observed_at"),
             "depth_snapshot_update_id": order_flow_snapshot.get("depth_snapshot_update_id"),
             "data_provenance": order_flow_snapshot.get("data_provenance"),
-            "method": "MARKET requires both observed aggressor delta and sequence-validated L2 depth imbalance to support the candidate direction; otherwise use a valid favorable LIMIT retracement or WAIT.",
+            "method": (
+                "MARKET urgency uses both aggressor delta and sequence-validated L2 depth."
+                if evidence_mode == "COMBINED" else
+                "MARKET urgency uses only aggressor delta direction; L2 remains a freshness and sequence-integrity gate."
+                if evidence_mode == "AGGRESSOR_ONLY" else
+                "MARKET urgency uses only L2 depth direction; aggressor trades remain a freshness and provenance gate."
+            ) + " Spread, liquidity, drift and exchange filters remain mandatory.",
             "calibration": "EXECUTION_HEURISTIC_NOT_CALIBRATED_PROBABILITY",
         }
         if market_flow_confirmed:
             flow_reason = (
-                " Both observed aggressor delta and sequence-validated L2 depth support the candidate direction; "
-                "MARKET urgency is allowed only if the existing spread, depth, drift and exchange-filter gates also pass."
+                f" The {evidence_mode.lower().replace('_', ' ')} evidence mode supports immediate MARKET urgency; "
+                "spread, depth, drift and exchange-filter gates still apply."
             )
         else:
             market_allowed = False
             flow_reason = (
-                " Order Flow confirms the candidate, but aggressor delta and sequence-validated L2 depth are not both "
-                "directionally supportive; MARKET urgency is disabled and a valid favorable LIMIT retracement is preferred."
+                f" The {evidence_mode.lower().replace('_', ' ')} evidence mode does not support immediate MARKET urgency; "
+                "a valid favorable LIMIT retracement is preferred, otherwise the setup remains WAIT."
             )
 
     def within_price_filter(value: float):
@@ -1189,6 +1204,7 @@ async def build_signal(
     execution_context_override: dict[str, Any] | None = None,
     order_flow_override: dict[str, Any] | None = None,
     order_flow_mode_override: str | None = None,
+    order_flow_confirmation_mode_override: str | None = None,
     replay_as_of: datetime | None = None,
 ) -> dict[str, Any]:
     symbol = str(symbol).upper()
@@ -1420,7 +1436,13 @@ async def build_signal(
                     max_trade_age_seconds=float(settings.get("max_order_flow_trade_age_seconds", 15.0)),
                     max_depth_age_seconds=float(settings.get("max_order_book_snapshot_age_seconds", 5.0)),
                     now=as_of if candles_override is not None else datetime.now(timezone.utc),
+                    evidence_mode=order_flow_confirmation_mode_override or "COMBINED",
                 )
+                if order_flow_confirmation_mode_override:
+                    decision["ablation_scope"] = (
+                        "Directional confirmation and MARKET urgency use the selected evidence mode; both feeds "
+                        "remain subject to freshness, provenance and feed-specific integrity gates."
+                    )
                 order_flow_decision = decision
                 order_flow_payload = summarize_order_flow_snapshot(order_flow_snapshot, decision)
                 order_flow_payload["data_mode"] = order_flow_mode
@@ -1536,6 +1558,7 @@ async def build_signal(
             side, close, p["atr"], entry_zone, execution, settings,
             order_flow_snapshot=order_flow_snapshot,
             order_flow_decision=order_flow_decision,
+            order_flow_evidence_mode=order_flow_confirmation_mode_override or "COMBINED",
         )
         if final_entry_choice is None:
             side = None

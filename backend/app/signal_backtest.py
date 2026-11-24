@@ -553,8 +553,13 @@ async def _simulate_slice(
     order_flow_observations: list[dict[str, Any]] | None = None,
     raw_order_flow_checkpoints: list[dict[str, Any]] | None = None,
     execution_end_epoch: float | None = None,
+    order_flow_confirmation_mode: str | None = None,
 ) -> dict[str, Any]:
     primary_tf = str(settings.get("primary", "5"))
+    if order_flow_confirmation_mode is not None:
+        order_flow_confirmation_mode = str(order_flow_confirmation_mode).strip().upper()
+        if order_flow_confirmation_mode not in {"COMBINED", "AGGRESSOR_ONLY", "L2_ONLY"}:
+            raise ValueError("Order Flow ablation mode must be COMBINED, AGGRESSOR_ONLY or L2_ONLY.")
     enabled = list(dict.fromkeys(
         [str(item) for item in settings.get("enabled", ["60", "30", "15", "5", "1"])]
         + [primary_tf, str(settings.get("trend", "60"))]
@@ -725,6 +730,8 @@ async def _simulate_slice(
             # historical candidates must not silently fall back to candle-only.
             build_kwargs["order_flow_override"] = order_flow_override or {}
             build_kwargs["order_flow_mode_override"] = order_flow_mode
+        if order_flow_confirmation_mode is not None:
+            build_kwargs["order_flow_confirmation_mode_override"] = order_flow_confirmation_mode
         result = await build_signal(settings, symbol, **build_kwargs)
         order_flow_result = result.get("order_flow") or {}
         if order_flow_result.get("data_mode") in {
@@ -1020,6 +1027,7 @@ async def run_signal_walk_forward(
     async def _run_oos_folds(
         observations: list[dict[str, Any]] | None,
         raw_checkpoints: list[dict[str, Any]] | None = None,
+        confirmation_mode: str | None = None,
     ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         sizes = [
             out_of_sample_decisions // fold_count
@@ -1040,6 +1048,7 @@ async def run_signal_walk_forward(
                 order_flow_observations=observations,
                 raw_order_flow_checkpoints=raw_checkpoints,
                 execution_end_epoch=oos_execution_end_epoch,
+                order_flow_confirmation_mode=confirmation_mode,
             )
             raw_results.append(raw)
             public_folds.append({
@@ -1085,15 +1094,93 @@ async def run_signal_walk_forward(
                 {"raw_order_flow_checkpoints": flow_checkpoints}
                 if is_raw_replay else {"order_flow_observations": flow_observations}
             )
-            order_flow_training_raw = await _simulate_slice(
-                symbol, candles_by_tf, symbol_info, settings, assumed_spread_bps,
-                assumed_depth_usd, first_valid, split_index - 1,
-                **flow_kwargs,
+
+            def _ablation_summary(metrics: dict[str, Any]) -> dict[str, Any]:
+                keys = (
+                    "sample_bars", "signal_count", "wait_count", "trade_count",
+                    "win_rate_pct", "win_rate_95_ci_wilson_pct", "expectancy_r",
+                    "expectancy_r_95_ci_normal_approx", "profit_factor", "max_drawdown_r",
+                    "net_pnl_quote", "estimated_cost_quote", "order_flow_decision_points",
+                    "order_flow_snapshot_matches", "order_flow_missing_snapshots",
+                    "order_flow_stale_snapshots", "order_flow_invalid_snapshots",
+                    "order_flow_confirmed_candidates", "order_flow_rejected_candidates",
+                    "order_flow_coverage_pct", "order_flow_candidate_confirmation_pct",
+                    "order_flow_raw_event_checkpoint_matches",
+                )
+                return {key: metrics.get(key) for key in keys}
+
+            variant_results: dict[str, dict[str, Any]] = {}
+            variant_full_results: dict[str, tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]] = {}
+            variant_modes = ("AGGRESSOR_ONLY", "L2_ONLY", "COMBINED")
+            for confirmation_mode in variant_modes:
+                training_raw = await _simulate_slice(
+                    symbol, candles_by_tf, symbol_info, settings, assumed_spread_bps,
+                    assumed_depth_usd, first_valid, split_index - 1,
+                    order_flow_confirmation_mode=confirmation_mode,
+                    **flow_kwargs,
+                )
+                training_summary = _ablation_summary(_public_metrics(training_raw))
+                variant_oos, variant_folds = await _run_oos_folds(
+                    flow_observations, flow_checkpoints,
+                    confirmation_mode=confirmation_mode,
+                )
+                variant_full_results[confirmation_mode] = (training_raw, variant_oos, variant_folds)
+                variant_results[confirmation_mode] = {
+                    "confirmation_mode": confirmation_mode,
+                    "training": training_summary,
+                    "out_of_sample": _ablation_summary(variant_oos),
+                    "out_of_sample_folds": [
+                        {
+                            "fold": fold["fold"],
+                            "decision_start": fold["decision_start"],
+                            "decision_end_exclusive": fold["decision_end_exclusive"],
+                            **_ablation_summary(fold),
+                        }
+                        for fold in variant_folds
+                    ],
+                }
+
+            combined = variant_results["COMBINED"]
+            baseline_summary = _ablation_summary(out_of_sample)
+
+            def _numeric_delta(left: Any, right: Any, digits: int = 3) -> float | int | None:
+                if (
+                    isinstance(left, bool) or isinstance(right, bool)
+                    or not isinstance(left, (int, float))
+                    or not isinstance(right, (int, float))
+                    or not math.isfinite(float(left)) or not math.isfinite(float(right))
+                ):
+                    return None
+                delta = float(left) - float(right)
+                return int(delta) if digits == 0 else round(delta, digits)
+
+            variant_comparisons: dict[str, Any] = {}
+            for confirmation_mode, variant in variant_results.items():
+                metrics = variant["out_of_sample"]
+                variant_comparisons[confirmation_mode] = {
+                    "out_of_sample": metrics,
+                    "delta_vs_candle_only_baseline": {
+                        "trade_count": _numeric_delta(metrics.get("trade_count"), baseline_summary.get("trade_count"), 0),
+                        "win_rate_percentage_points": _numeric_delta(metrics.get("win_rate_pct"), baseline_summary.get("win_rate_pct"), 2),
+                        "expectancy_r": _numeric_delta(metrics.get("expectancy_r"), baseline_summary.get("expectancy_r"), 3),
+                        "net_pnl_quote": _numeric_delta(metrics.get("net_pnl_quote"), baseline_summary.get("net_pnl_quote"), 8),
+                        "estimated_cost_quote": _numeric_delta(metrics.get("estimated_cost_quote"), baseline_summary.get("estimated_cost_quote"), 8),
+                        "max_drawdown_r": _numeric_delta(metrics.get("max_drawdown_r"), baseline_summary.get("max_drawdown_r"), 3),
+                    },
+                    "baseline_profit_factor": baseline_summary.get("profit_factor"),
+                    "variant_profit_factor": metrics.get("profit_factor"),
+                    "coverage": {
+                        "decision_points": metrics.get("order_flow_decision_points"),
+                        "snapshot_matches": metrics.get("order_flow_snapshot_matches"),
+                        "confirmed_candidates": metrics.get("order_flow_confirmed_candidates"),
+                        "rejected_candidates": metrics.get("order_flow_rejected_candidates"),
+                    },
+                }
+
+            combined_training_raw, order_flow_out_of_sample, order_flow_out_of_sample_folds = (
+                variant_full_results["COMBINED"]
             )
-            order_flow_training = _public_metrics(order_flow_training_raw)
-            order_flow_out_of_sample, order_flow_out_of_sample_folds = await _run_oos_folds(
-                flow_observations, flow_checkpoints
-            )
+            order_flow_training = _public_metrics(combined_training_raw)
             order_flow_replay = {
                 "status": (
                     "NO_ELIGIBLE_RAW_EVENT_CHECKPOINTS"
@@ -1122,18 +1209,23 @@ async def run_signal_walk_forward(
                 "training": order_flow_training,
                 "out_of_sample": order_flow_out_of_sample,
                 "out_of_sample_folds": order_flow_out_of_sample_folds,
+                "variants": variant_results,
                 "method": (
-                    "Same fixed candle strategy and execution model across sequential OOS folds. Raw Binance Spot "
-                    "aggTrade and sequence-reconstructed L2 checkpoints are selected only when their receive-time "
-                    "decision boundary is at or before the candle decision; exchange event-time freshness is "
-                    "recomputed at that decision. Ineligible or missing latest checkpoints fail closed. "
-                    "OOS positions remain blocked until their modeled exit."
+                    "Three directional-vote ablations (aggressor-only, L2-only and combined) use the same fixed "
+                    "candle strategy, chronological folds and execution assumptions. Both feeds pass their existing "
+                    "freshness, provenance and feed-specific integrity gates in every variant; only the named "
+                    "component's directional vote is removed. Raw Binance Spot checkpoints are selected only at or "
+                    "before each candle decision. OOS positions remain blocked until modeled exit across fold "
+                    "boundaries. Results are descriptive, not calibrated predictive uplift."
                     if is_raw_replay else
-                    "Same fixed candle strategy and execution model across sequential OOS folds, with the live Spot "
-                    "order-flow gate applied only to prior, fresh, sequence-validated feature snapshots. "
-                    "OOS positions remain blocked until their modeled exit, including across fold boundaries."
+                    "Three directional-vote ablations (aggressor-only, L2-only and combined) use the same fixed "
+                    "candle strategy, chronological folds and execution assumptions. Both feeds pass their existing "
+                    "freshness, provenance and feed-specific integrity gates in every variant; only the named "
+                    "component's directional vote is removed. OOS positions remain blocked until modeled exit "
+                    "across fold boundaries. Feature snapshots remain sparse and non-random; results are descriptive."
                 ),
             }
+
             baseline_expectancy = out_of_sample.get("expectancy_r")
             flow_expectancy = order_flow_out_of_sample.get("expectancy_r")
             baseline_win_rate = out_of_sample.get("win_rate_pct")
@@ -1163,12 +1255,15 @@ async def run_signal_walk_forward(
                 "out_of_sample_max_drawdown_r_delta": round(
                     order_flow_out_of_sample["max_drawdown_r"] - out_of_sample["max_drawdown_r"], 3
                 ),
+                "baseline": baseline_summary,
+                "variants": variant_comparisons,
                 "interpretation": (
                     "Descriptive ablation only. Raw-event capture is bounded and may be sparse or non-random; "
-                    "this comparison is not a calibrated causal estimate of order-flow edge."
+                    "all variants retain both-source freshness and integrity gates. This is not a calibrated "
+                    "causal estimate of order-flow edge."
                     if is_raw_replay else
-                    "Descriptive ablation only. Feature-snapshot coverage is sparse and non-random; "
-                    "this comparison is not a calibrated causal estimate of order-flow edge."
+                    "Descriptive ablation only. Feature-snapshot coverage is sparse and non-random; all variants "
+                    "retain both-source freshness and integrity gates. This is not a calibrated causal estimate."
                 ),
             }
     return {

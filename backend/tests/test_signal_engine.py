@@ -1273,6 +1273,67 @@ def test_binance_entry_selector_requires_both_observed_flow_components_for_marke
     assert selected["order_flow_execution_evidence"]["market_urgency_confirmed"] is False
 
 
+def test_binance_entry_selector_uses_only_the_selected_order_flow_vote_for_market_urgency():
+    from app.signal_engine import select_binance_entry
+
+    execution = {
+        "best_bid": 100.00, "best_ask": 100.02, "mid_price": 100.01,
+        "spread_bps": 2.0, "order_types": ["LIMIT", "MARKET"],
+        "limit_order_constraints_valid": True, "market_order_constraints_valid": True,
+        "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
+    }
+    common = {
+        "market_type": "BINANCE_SPOT",
+        "depth_is_continuous": True,
+        "data_provenance": {
+            "candle_volume_used": False,
+            "bid_ask_semantics": "Aggressor-side inferred trade delta",
+        },
+    }
+    decision = {"accepted": True, "status": "CONFIRMED", "support_count": 1, "conflict_count": 0, "evidence_mode": "AGGRESSOR_ONLY"}
+
+    aggressor_only = select_binance_entry(
+        "BUY", 100.0, 2.0, None, execution,
+        order_flow_snapshot={**common, "delta_ratio": 0.25, "order_book": {"depth_imbalance": -0.2}},
+        order_flow_decision=decision,
+        order_flow_evidence_mode="AGGRESSOR_ONLY",
+    )
+    l2_only = select_binance_entry(
+        "BUY", 100.0, 2.0, None, execution,
+        order_flow_snapshot={**common, "delta_ratio": -0.25, "order_book": {"depth_imbalance": 0.2}},
+        order_flow_decision={**decision, "evidence_mode": "L2_ONLY"},
+        order_flow_evidence_mode="L2_ONLY",
+    )
+
+    mismatched = select_binance_entry(
+        "BUY", 100.0, 2.0, None, execution,
+        order_flow_snapshot={**common, "delta_ratio": 0.25, "order_book": {"depth_imbalance": -0.2}},
+        order_flow_decision={**decision, "evidence_mode": "L2_ONLY"},
+        order_flow_evidence_mode="AGGRESSOR_ONLY",
+    )
+
+    assert aggressor_only is not None and aggressor_only["entry_type"] == "MARKET"
+    assert aggressor_only["order_flow_execution_evidence"]["evidence_mode"] == "AGGRESSOR_ONLY"
+    assert l2_only is not None and l2_only["entry_type"] == "MARKET"
+    assert l2_only["order_flow_execution_evidence"]["evidence_mode"] == "L2_ONLY"
+    assert mismatched is None
+
+
+def test_binance_entry_selector_rejects_unknown_order_flow_ablation_mode():
+    from app.signal_engine import select_binance_entry
+
+    execution = {
+        "best_bid": 100.00, "best_ask": 100.02, "mid_price": 100.01,
+        "spread_bps": 2.0, "order_types": ["LIMIT", "MARKET"],
+        "limit_order_constraints_valid": True, "market_order_constraints_valid": True,
+        "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
+    }
+    with pytest.raises(ValueError, match="evidence mode"):
+        select_binance_entry(
+            "BUY", 100.0, 2.0, None, execution, order_flow_evidence_mode="CANDLE_PROXY"
+        )
+
+
 def test_binance_entry_selector_returns_wait_when_flow_is_not_market_aligned_and_no_limit_zone_exists():
     from app.signal_engine import select_binance_entry
 

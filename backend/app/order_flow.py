@@ -348,6 +348,7 @@ def evaluate_order_flow_confirmation(
     max_trade_age_seconds: float = 15.0,
     max_depth_age_seconds: float = 5.0,
     now: datetime | None = None,
+    evidence_mode: str = "COMBINED",
 ) -> dict[str, Any]:
     """Evaluate directional confirmation from observed aggressor delta and an L2 snapshot.
 
@@ -358,6 +359,9 @@ def evaluate_order_flow_confirmation(
     """
     if side not in {"BUY", "SELL"}:
         raise OrderFlowDataError("side must be BUY or SELL.")
+    normalized_evidence_mode = str(evidence_mode or "").strip().upper()
+    if normalized_evidence_mode not in {"COMBINED", "AGGRESSOR_ONLY", "L2_ONLY"}:
+        raise OrderFlowDataError("evidence_mode must be COMBINED, AGGRESSOR_ONLY or L2_ONLY.")
     try:
         trade_age_limit = float(max_trade_age_seconds)
         depth_age_limit = float(max_depth_age_seconds)
@@ -424,10 +428,15 @@ def evaluate_order_flow_confirmation(
         raise OrderFlowDataError("Order-flow delta/depth imbalance is outside its normalized range.")
 
     direction = 1.0 if side == "BUY" else -1.0
-    observations = (
+    all_observations = (
         ("Aggressor trade delta", delta_value),
         ("L2 quote-notional depth imbalance", depth_value),
     )
+    observations = {
+        "COMBINED": all_observations,
+        "AGGRESSOR_ONLY": all_observations[:1],
+        "L2_ONLY": all_observations[1:],
+    }[normalized_evidence_mode]
     supporting: list[str] = []
     conflicting: list[str] = []
     neutral: list[str] = []
@@ -485,7 +494,14 @@ def evaluate_order_flow_confirmation(
         "supporting_evidence": supporting,
         "conflicting_evidence": conflicting,
         "neutral_evidence": neutral,
-        "method": "directional sign confluence v1; not calibrated as win probability",
+        "evidence_mode": normalized_evidence_mode,
+        "method": (
+            f"directional sign ablation {normalized_evidence_mode.lower()} v1; not calibrated as win probability"
+        ),
+        "data_quality_gate": (
+            "Both underlying feeds must pass the existing freshness, provenance and feed-specific integrity gates; "
+            "the ablation removes only the named component's directional vote."
+        ),
         "limitations": [
             "Aggressor side is inferred from Binance aggregate-trade buyer-is-maker semantics.",
             *depth_limitations,

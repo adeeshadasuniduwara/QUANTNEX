@@ -232,6 +232,11 @@ def _select_raw_order_flow_snapshot(
             or depth_book.get("valid") is not True
             or depth_book.get("sequence_validated") is not True
             or record.get("depth_is_continuous") is not True
+            or record.get("capture_gap_detected") is not False
+            or record.get("coverage_status") != "OBSERVED_CONTIGUOUS_CAPTURE_NOT_FULL_SESSION"
+            or record.get("delta_scope") != "WEBSOCKET_AND_BUFFER_AGGTRADES_RECEIVED_DURING_CAPTURE_BUCKET"
+            or book_metrics.get("source") != "BINANCE_SPOT_SEQUENCE_VALIDATED_DEPTH_REPLAY"
+            or trade_state.get("last_trade_time_ms") != record.get("last_trade_at_ms")
             or provenance.get("candle_volume_used") is not False
             or "aggressor" not in str(provenance.get("bid_ask_semantics") or "").lower()
         ):
@@ -266,6 +271,12 @@ def _select_raw_order_flow_snapshot(
         depth_ms = record.get("last_depth_event_at_ms")
         if any(isinstance(value, bool) or not isinstance(value, int) or value <= 0 for value in (trade_ms, depth_ms)):
             return {}, "INVALID"
+        decision_ms = record.get("decision_at_ms")
+        if (
+            isinstance(decision_ms, bool) or not isinstance(decision_ms, int)
+            or trade_ms > decision_ms or depth_ms > decision_ms
+        ):
+            return {}, "FUTURE"
         trade_epoch = trade_ms / 1000.0
         depth_epoch = depth_ms / 1000.0
         if trade_epoch > as_of_epoch + 1e-6 or depth_epoch > as_of_epoch + 1e-6:

@@ -1141,7 +1141,6 @@ async def run_signal_walk_forward(
                 }
 
             combined = variant_results["COMBINED"]
-            combined_oos = combined["out_of_sample"]
             baseline_summary = _ablation_summary(out_of_sample)
 
             def _numeric_delta(left: Any, right: Any, digits: int = 3) -> float | int | None:
@@ -1212,16 +1211,18 @@ async def run_signal_walk_forward(
                 "out_of_sample_folds": order_flow_out_of_sample_folds,
                 "variants": variant_results,
                 "method": (
-                    "Three directional-vote ablations (aggressor-only, L2-only and combined) use identical "
-                    "chronological folds and execution assumptions. Both underlying feeds must still pass their existing freshness, provenance and feed-specific integrity "
-                    "gates in every variant; only the named component's directional "
-                    "vote is removed. Raw Binance Spot checkpoints are selected only at or before each candle "
-                    "decision. Results are descriptive, not calibrated predictive uplift."
+                    "Three directional-vote ablations (aggressor-only, L2-only and combined) use the same fixed "
+                    "candle strategy, chronological folds and execution assumptions. Both feeds pass their existing "
+                    "freshness, provenance and feed-specific integrity gates in every variant; only the named "
+                    "component's directional vote is removed. Raw Binance Spot checkpoints are selected only at or "
+                    "before each candle decision. OOS positions remain blocked until modeled exit across fold "
+                    "boundaries. Results are descriptive, not calibrated predictive uplift."
                     if is_raw_replay else
-                    "Three directional-vote ablations (aggressor-only, L2-only and combined) use identical "
-                    "chronological folds and execution assumptions. Both underlying feeds must still pass their existing freshness, provenance and feed-specific integrity "
-                    "gates in every variant; only the named component's directional "
-                    "vote is removed. Feature snapshots remain sparse and non-random; results are descriptive."
+                    "Three directional-vote ablations (aggressor-only, L2-only and combined) use the same fixed "
+                    "candle strategy, chronological folds and execution assumptions. Both feeds pass their existing "
+                    "freshness, provenance and feed-specific integrity gates in every variant; only the named "
+                    "component's directional vote is removed. OOS positions remain blocked until modeled exit "
+                    "across fold boundaries. Feature snapshots remain sparse and non-random; results are descriptive."
                 ),
             }
 

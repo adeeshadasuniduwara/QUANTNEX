@@ -499,7 +499,7 @@ def evaluate_order_flow_confirmation(
             f"directional sign ablation {normalized_evidence_mode.lower()} v1; not calibrated as win probability"
         ),
         "data_quality_gate": (
-            "Both aggressor-trade and sequence-validated L2 streams must still be fresh and valid; "
+            "Both underlying feeds must pass the existing freshness, provenance and feed-specific integrity gates; "
             "the ablation removes only the named component's directional vote."
         ),
         "limitations": [

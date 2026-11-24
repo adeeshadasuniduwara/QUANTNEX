@@ -198,6 +198,11 @@ def replay_spot_order_flow_events(
         raise OrderFlowReplayError("Depth levels must be an integer from 1 to 100.")
     if isinstance(max_trade_age_seconds, bool) or isinstance(max_depth_age_seconds, bool):
         raise OrderFlowReplayError("Replay freshness limits must be numeric.")
+    try:
+        max_trade_age_seconds = float(max_trade_age_seconds)
+        max_depth_age_seconds = float(max_depth_age_seconds)
+    except (TypeError, ValueError, OverflowError):
+        raise OrderFlowReplayError("Replay freshness limits must be finite positive numbers.") from None
     if not math.isfinite(max_trade_age_seconds) or max_trade_age_seconds <= 0:
         raise OrderFlowReplayError("Trade freshness limit must be finite and positive.")
     if not math.isfinite(max_depth_age_seconds) or max_depth_age_seconds <= 0:
@@ -213,7 +218,7 @@ def replay_spot_order_flow_events(
     trade_integrity_failed = False
     capture_gap_detected = False
     depth_book = BinanceSpotDepthBook()
-    depth_session_id: str | None = None
+    current_stream_session_id: str | None = None
     last_depth_event_time_ms: int | None = None
     stream_sessions: set[str] = set()
     snapshots: list[dict[str, Any]] = []
@@ -358,11 +363,6 @@ def replay_spot_order_flow_events(
                 and trade_covered
             ),
             "session_delta_scope": "UTC_SESSION_START_ANCHOR_REQUIRED",
-            "session_delta_sample": (
-                float(trade_snapshot["session_delta_sample"])
-                if trade_snapshot and trade_snapshot.get("session_delta") is not None
-                else None
-            ),
             "last_trade_at_ms": last_trade_ms,
             "trade_age_seconds": round(trade_age, 3) if trade_age is not None else None,
             "last_depth_event_at_ms": last_depth_event_time_ms,
@@ -409,6 +409,10 @@ def replay_spot_order_flow_events(
         bucket_counts["events"] += 1
         bucket_source_counts[event["source"]] += 1
         stream_sessions.add(event["stream_session_id"])
+        if current_stream_session_id != event["stream_session_id"]:
+            current_stream_session_id = event["stream_session_id"]
+            depth_book = BinanceSpotDepthBook()
+            last_depth_event_time_ms = None
 
         event_type = event["event_type"]
         source = event["source"]
@@ -418,7 +422,6 @@ def replay_spot_order_flow_events(
             capture_gap_detected = True
             bucket_capture_gap = True
             depth_book = BinanceSpotDepthBook()
-            depth_session_id = event["stream_session_id"]
             last_depth_event_time_ms = None
             trade_integrity_failed = True
             continue
@@ -463,10 +466,6 @@ def replay_spot_order_flow_events(
                 trade_integrity_failed = True
 
         if event_type in {"depthSnapshot", "depthUpdate"}:
-            if depth_session_id != event["stream_session_id"]:
-                depth_book = BinanceSpotDepthBook()
-                depth_session_id = event["stream_session_id"]
-                last_depth_event_time_ms = None
             try:
                 if event_type == "depthSnapshot":
                     depth_book.load_snapshot(

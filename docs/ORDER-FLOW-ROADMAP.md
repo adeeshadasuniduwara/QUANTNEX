@@ -768,3 +768,22 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 - [Run #45143589597](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45143589597) ran on main `b5b3eb609fdeff005536345cb406882a3cef3215`. Spot exchangeInfo discovered **1,376 eligible pairs**; the rotating 20-symbol sample completed **20/20** with 0 history skips and 0 Spot provider errors.
 - All 20 results were WAIT with `NOT_EVALUATED_NO_DIRECTIONAL_SETUP`; the live Order Flow confirmation gate was not exercised. This is successful bounded live-data ingestion, not evidence of signal quality or profitability.
 - USDⓈ-M discovery failed with HTTP 451; **0/20** Futures scans completed and the workflow correctly exited non-zero. This is a GitHub-runner provider-access failure, not a WAIT. Local-network Futures verification remains open.
+
+
+### C22 — Raw Spot event replay is now a walk-forward input (PR pending)
+
+- The chronological backtest can now receive archived raw Binance Spot events and rebuild receive-time checkpoints before the replay. It does not use a feature snapshot generated after the candle decision.
+- A raw checkpoint is accepted only when its bounded capture is internally usable: contiguous aggTrade IDs since the seed, no capture-gap marker, fresh trade and depth event timestamps, a valid REST-snapshot/diff bridge, sequence-validated depth, non-empty current receive-bucket trades, and verified aggressor-side provenance.
+- At each candle decision, the selector takes only the latest prior checkpoint. It recomputes source ages from event timestamps, rejects event timestamps ahead of the receive-time checkpoint, and never falls back past a later invalid checkpoint.
+- The signal confirmation and entry selector receive the adapted raw snapshot with feed_mode=RAW_EVENT_REPLAY. Depth provenance explicitly states that it is reconstructed from archived Spot snapshot/diff events; bounded archive continuity is not equated with full exchange capture.
+- load_order_flow_market_events_by_receive_time is separate from the existing event-time loader. It includes late REST backfills according to when they arrived, returns the latest bounded 5,000 rows in chronological receive order and exposes truncated plus total count.
+- The walk-forward API defaults to order_flow_replay_source=AUTO: raw events are preferred when present; feature snapshots are used only when the raw archive is empty. A non-empty raw archive that fails replay eligibility is not silently replaced by a more convenient source.
+- Raw replay metrics remain a descriptive ablation against the same candle-only chronological folds. Fee, spread, slippage and LIMIT-fill assumptions are unchanged. No strategy profitability or order-flow uplift is asserted.
+- Deterministic tests added for raw-event LONG/SHORT signal generation, contradictory flow, stale/future data, capture-gap veto, receive-time ordering of late backfill, truncation and walk-forward API wiring. CI is pending for this branch.
+
+### C22 limits / next engineering
+- Binance Spot only. USDⓈ-M remains candle-only monitor mode (GitHub runner HTTP 451); COIN-M unsupported.
+- Raw archive is capped at 5,000 selected events per replay call and the first captured trade is only a CVD seed. The output always declares coverage_is_complete=false; UTC full-session delta is not inferred.
+- The current signal gate still uses directional aggressor delta and L2 depth sign confluence. CVD divergence, absorption/exhaustion and order-flow multi-timeframe scoring are not yet calibrated or used as independent predictive votes.
+- The raw replay input is now wired through the API but the local retained archive has not been exercised in this run. OOS results must be interpreted with actual eligible checkpoint coverage, not the raw event count alone.
+- Next: run C22 CI, review/merge only when green, validate on retained local archive, then add separate aggressor-only/L2-only/combined ablations and evaluate CVD divergence with hand-computed fixtures.

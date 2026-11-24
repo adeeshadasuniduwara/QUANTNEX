@@ -381,9 +381,9 @@ def evaluate_order_flow_confirmation(
     if not isinstance(snapshot.get("depth_is_continuous"), bool):
         raise OrderFlowDataError("Order-flow snapshot must declare its depth continuity state.")
     feed_mode = str(snapshot.get("feed_mode") or "")
-    if feed_mode == "PUBLIC_WEBSOCKET_STREAM" and snapshot.get("depth_is_continuous") is not True:
+    if feed_mode in {"PUBLIC_WEBSOCKET_STREAM", "RAW_EVENT_REPLAY"} and snapshot.get("depth_is_continuous") is not True:
         raise OrderFlowDataError(
-            "Live WebSocket order-flow requires sequence-validated depth; the book is not continuous."
+            "Live or replayed Spot order-flow requires sequence-validated depth; the book is not continuous."
         )
     update_id = snapshot.get("depth_snapshot_update_id")
     if isinstance(update_id, bool) or not isinstance(update_id, int) or update_id < 0:
@@ -451,6 +451,12 @@ def evaluate_order_flow_confirmation(
         depth_limitations = [
             "L2 depth is sequence-validated only from the current REST snapshot bridge; any update-ID gap invalidates it until a new bridge succeeds.",
             "Depth freshness uses local receive time; it is not an exchange-server clock guarantee.",
+        ]
+    elif feed_mode == "RAW_EVENT_REPLAY":
+        depth_limitations = [
+            "L2 depth is reconstructed from archived Binance Spot REST snapshot and diff-depth events with update-ID continuity checks.",
+            "The raw archive is bounded and may be incomplete; sequence continuity does not prove that every exchange event was captured.",
+            "Replay decisions use receive-time checkpoints while event timestamps are used for source freshness.",
         ]
     else:
         depth_limitations = [

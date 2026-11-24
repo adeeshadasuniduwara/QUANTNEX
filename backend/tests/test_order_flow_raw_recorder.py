@@ -10,6 +10,7 @@ from app.models import OrderFlowMarketEvent
 from app.order_flow_raw_recorder import (
     OrderFlowRawEventError,
     load_order_flow_market_events,
+    load_order_flow_market_events_by_receive_time,
     record_order_flow_market_events,
     summarize_order_flow_candles,
 )
@@ -76,6 +77,63 @@ def test_raw_event_recorder_persists_exchange_times_sequence_and_candle_bucket(d
     assert depth["sequence_last"] == 502
     assert depth["candle_bucket_ms"] == (events[0]["event_time_ms"] // 60_000) * 60_000
     assert depth["source"] == "WEBSOCKET"
+
+
+def test_receive_time_loader_includes_late_backfill_and_orders_by_information_arrival(db):
+    events = _events()
+    start = events[0]["event_time_ms"] - 10_000
+    session = events[0]["stream_session_id"]
+    events.extend([
+        {
+            "symbol": "BTCUSDT", "event_type": "aggTrade",
+            "event_time_ms": start + 5_000, "received_at_ms": start + 12_000,
+            "source": "REST_GAP_BACKFILL", "stream_session_id": session,
+            "payload": {"a": 100, "p": "90000.00", "q": "0.5", "T": start + 5_000, "m": True},
+        },
+        {
+            "symbol": "BTCUSDT", "event_type": "aggTrade",
+            "event_time_ms": start + 11_500, "received_at_ms": start + 11_600,
+            "source": "WEBSOCKET", "stream_session_id": session,
+            "payload": {"a": 102, "p": "90000.20", "q": "0.4", "T": start + 11_500, "m": False},
+        },
+    ])
+    now = datetime.fromtimestamp((start + 13_000) / 1000, timezone.utc)
+    record_order_flow_market_events(db, events, now=now)
+
+    result = load_order_flow_market_events_by_receive_time(
+        db, "BTCUSDT", start + 11_000, start + 13_000, limit=10
+    )
+    assert result["time_basis"] == "RECEIVED_AT_MS"
+    assert result["truncated"] is False
+    assert result["total_count"] == 2
+    assert [row["payload"].get("a") for row in result["events"]] == [102, 100]
+    assert result["events"][1]["event_time_ms"] < start + 11_000
+    assert result["events"][0]["received_at_ms"] < result["events"][1]["received_at_ms"]
+
+
+def test_receive_time_loader_returns_latest_bounded_window_and_marks_truncation(db):
+    events = _events()
+    start = events[0]["event_time_ms"] - 10_000
+    session = events[0]["stream_session_id"]
+    for offset, trade_id in ((11_000, 102), (12_000, 103)):
+        event_ms = start + offset
+        events.append({
+            "symbol": "BTCUSDT", "event_type": "aggTrade",
+            "event_time_ms": event_ms, "received_at_ms": event_ms + 10,
+            "source": "WEBSOCKET", "stream_session_id": session,
+            "payload": {"a": trade_id, "p": "90000.30", "q": "0.1", "T": event_ms, "m": False},
+        })
+    now = datetime.fromtimestamp((start + 13_000) / 1000, timezone.utc)
+    record_order_flow_market_events(db, events, now=now)
+
+    result = load_order_flow_market_events_by_receive_time(
+        db, "BTCUSDT", start + 9_000, start + 13_000, limit=2
+    )
+    assert result["total_count"] == 5
+    assert result["returned_count"] == 2
+    assert result["truncated"] is True
+    assert [row["payload"].get("a") for row in result["events"]] == [102, 103]
+    assert result["events"][0]["received_at_ms"] < result["events"][1]["received_at_ms"]
 
 
 def test_raw_event_recorder_is_idempotent_for_duplicate_trade_and_depth_ids(db):

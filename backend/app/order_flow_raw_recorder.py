@@ -202,6 +202,55 @@ def load_order_flow_market_events(db, symbol: str, start_ms: int, end_ms: int, *
         "payload": json.loads(row.payload_json),
     } for row in rows]
 
+def load_order_flow_market_events_by_receive_time(
+    db, symbol: str, start_ms: int, end_ms: int, *, limit: int = 5000
+) -> dict[str, Any]:
+    """Load a bounded raw archive by receive time for causal replay.
+
+    If the window exceeds the replay cap, the newest events are returned in
+    chronological receive order and truncation is explicit. This query is
+    intentionally separate from the exchange-event-time research endpoint.
+    """
+    normalized = str(symbol or "").strip().upper()
+    if not re.fullmatch(r"[A-Z0-9]{5,25}", normalized):
+        raise ValueError("A valid Binance Spot symbol is required.")
+    if any(isinstance(value, bool) or not isinstance(value, int) for value in (start_ms, end_ms, limit)):
+        raise ValueError("Time range and limit must be integers.")
+    if start_ms <= 0 or end_ms <= start_ms or not 1 <= limit <= 5000:
+        raise ValueError("Use a valid receive-time range and a limit from 1 to 5000.")
+
+    base_query = db.query(OrderFlowMarketEvent).filter(
+        OrderFlowMarketEvent.market_type == MARKET_TYPE,
+        OrderFlowMarketEvent.symbol == normalized,
+        OrderFlowMarketEvent.received_at_ms >= start_ms,
+        OrderFlowMarketEvent.received_at_ms < end_ms,
+    )
+    total_count = int(base_query.with_entities(func.count(OrderFlowMarketEvent.id)).scalar() or 0)
+    truncated = total_count > limit
+    rows = base_query.order_by(
+        OrderFlowMarketEvent.received_at_ms.desc(),
+        OrderFlowMarketEvent.id.desc(),
+    ).limit(limit).all()
+    rows.reverse()
+    events = [{
+        "id": row.id, "market_type": row.market_type, "symbol": row.symbol,
+        "event_type": row.event_type, "event_key": row.event_key,
+        "event_time_ms": row.event_time_ms, "received_at_ms": row.received_at_ms,
+        "candle_bucket_ms": row.candle_bucket_ms, "source": row.source,
+        "stream_session_id": row.stream_session_id,
+        "sequence_first": row.sequence_first, "sequence_last": row.sequence_last,
+        "payload": json.loads(row.payload_json),
+    } for row in rows]
+    return {
+        "events": events,
+        "total_count": total_count,
+        "returned_count": len(events),
+        "truncated": truncated,
+        "time_basis": "RECEIVED_AT_MS",
+        "selection": "LATEST_EVENTS_IN_WINDOW_RETURNED_IN_CHRONOLOGICAL_RECEIVE_ORDER",
+    }
+
+
 
 def summarize_order_flow_candles(db, symbol: str, start_ms: int, end_ms: int, *, limit: int = 1000) -> list[dict[str, Any]]:
     """Return conservative UTC 1m raw-event coverage diagnostics.

@@ -1319,3 +1319,43 @@ Consolidate the existing standalone Order Flow & Liquidity page and its Bookmap-
 3. Verify post-merge main and run the backend suite again.
 4. Use the local retained raw archive through the new AUTO path; report archive truncation, eligible checkpoint count, coverage and OOS sample size. Do not interpret sparse/seeded CVD as a full session.
 5. Add aggressor-only / L2-only / combined ablations and CVD-divergence features only after deterministic causal definitions and tests; retain the current quality gate.
+
+
+## 2026-11-24 C22 — Raw Binance Spot event replay merged
+
+### Merge and verification
+- PR [#302](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/302) merged to `main` as squash commit `c69a0589ce1b0effdf1e9b893330f38d135b38fb`.
+- The PR head `94b2f65b8750e670beadc24b347fa7679c7d1346` passed `test`, `backend-tests (3.12)`, `backend-tests (3.14)`, and `web-check`.
+- Post-merge checks on the merge commit also passed: `test`, `backend-tests (3.12)`, `backend-tests (3.14)`, and `web-check`. The Telegram announce workflow also completed successfully.
+- The merge only connects archived raw Binance Spot events to the causal walk-forward harness. It does not establish live predictive value or profitability.
+
+### C22 evidence boundary clarification
+- The receive-time archive query returns the newest bounded 5,000 events and exposes `total_count` and `truncated`.
+- A truncated archive is not automatically equivalent to a sequence gap: a recent bounded segment may still be internally contiguous from its captured trade seed and sequence-valid depth bridge. Such a checkpoint may be used only as a bounded observation; `coverage_is_complete=false`, CVD remains since-seed, and UTC full-session delta is not inferred.
+- Any actual trade-ID gap, capture-gap marker, stale/future source, invalid depth bridge or malformed latest checkpoint remains fail-closed. The walk-forward response must retain the archive truncation flag beside any replay metrics.
+
+## 2026-11-24 C23 — Order Flow directional-vote ablations (PR pending)
+
+### Goal
+Measure whether observed Binance Spot aggressor-side delta, sequence-validated L2 depth imbalance, or their combined directional confirmation changes the same candle strategy's historical decisions. This is a controlled research ablation, not a live-strategy threshold change.
+
+### Changes on branch `feat/order-flow-evidence-ablation-replay`
+- Added explicit `COMBINED`, `AGGRESSOR_ONLY` and `L2_ONLY` evidence modes to the existing order-flow confirmation function.
+- Applied the same evidence mode to MARKET-versus-LIMIT urgency selection, so the directional vote is consistently isolated through both confirmation and entry selection.
+- Kept both underlying feeds subject to existing freshness, provenance and feed-specific integrity checks in every variant. AGGRESSOR_ONLY does not bypass depth sequence integrity; L2_ONLY does not bypass trade-side provenance or freshness.
+- Extended chronological walk-forward replay to run the three variants on identical training/OOS windows and execution assumptions, alongside the existing candle-only baseline.
+- Added per-variant OOS summaries and deltas for trade count, win rate, expectancy, net PnL, estimated costs and max drawdown, plus order-flow coverage/confirmation counters. Existing combined result fields remain available for compatibility.
+- Added deterministic tests for conflicting aggressor/L2 votes, invalid ablation modes, entry-urgency mode consistency and raw-event walk-forward variant wiring.
+
+### Verification boundary
+- CI has not yet run for C23. No local Python runtime was available for direct test execution during this session; no test pass is claimed before GitHub Actions completes.
+- The raw replay fixture proves causal mode wiring and deterministic branch behavior only. It is not a representative market sample and cannot produce a profitability or incremental-edge claim.
+- Entry execution costs, spread, LIMIT expiry/fill assumptions and OOS fold boundaries remain shared across variants. Both-source integrity gates remain enabled.
+- Raw-event replay remains Binance Spot only. USDⓈ-M remains candle-only monitor coverage pending local/provider access; COIN-M remains unsupported.
+
+### Next steps
+1. Run Backend CI and Backend/Web CI for C23; fix any regression before review.
+2. Review the complete diff, especially the research-only mode propagation and unchanged live default `COMBINED`.
+3. Merge only after all checks are green and the branch is mergeable against the latest `main`; verify post-merge checks.
+4. Exercise the API with retained local raw archives and report eligible checkpoints, truncation, OOS sample size and each ablation's metrics. Do not treat sparse or synthetic fixtures as evidence of strategy edge.
+5. Continue with causal CVD-divergence and absorption/exhaustion definitions only after hand-computed replay tests and independent incremental-value measurement.

@@ -269,3 +269,15 @@ def test_future_checkpoint_metadata_cannot_change_an_earlier_decision():
         decision_at_ms=BASE_MS + 5 * 60_000,
     )
     assert result["status"] == "NO_DIVERGENCE"
+
+
+def test_unclosed_future_candle_values_do_not_change_earlier_divergence():
+    candles = _candles()
+    candles[-1]["low"] = "not-yet-closed"
+    candles[-1]["high"] = "not-yet-closed"
+    result = _evaluate(
+        candles=candles,
+        decision_at_ms=BASE_MS + 6 * 60_000,
+    )
+    assert result["status"] == "BULLISH_DIVERGENCE"
+    assert result["direction"] == "BUY"

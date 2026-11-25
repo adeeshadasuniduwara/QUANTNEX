@@ -50,6 +50,10 @@ def detect_order_flow_patterns(
         "market_type": "BINANCE_SPOT",
         "symbol": str(snapshot.get("symbol") or "").upper() or None,
         "feed_mode": feed_mode,
+        "trade_count_basis": (
+            "RAW_RECEIVE_TIME_UTC_MINUTE_BUCKET"
+            if feed_mode == "RAW_EVENT_REPLAY" else "RECENT_OBSERVED_AGGTRADE_WINDOW"
+        ),
         "coverage_status": snapshot.get("coverage_status"),
         "coverage_is_complete": snapshot.get("coverage_is_complete"),
         "data_provenance": {

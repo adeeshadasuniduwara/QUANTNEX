@@ -160,6 +160,7 @@ def evaluate_cvd_divergence(
         depth_book = checkpoint.get("depth_book")
         cvd_value = checkpoint.get("cvd_value")
         seed_id = trade_state.get("cvd_seed_trade_id") if isinstance(trade_state, dict) else None
+        last_trade_id = trade_state.get("last_agg_trade_id") if isinstance(trade_state, dict) else None
         try:
             cvd_number = float(cvd_value)
         except (TypeError, ValueError, OverflowError):
@@ -176,6 +177,7 @@ def evaluate_cvd_divergence(
             or trade_state.get("coverage_complete") is not True
             or trade_state.get("gap_detected") is not False
             or isinstance(seed_id, bool) or not isinstance(seed_id, int) or seed_id < 0
+            or isinstance(last_trade_id, bool) or not isinstance(last_trade_id, int) or last_trade_id < seed_id
             or not isinstance(depth_book, dict)
             or depth_book.get("valid") is not True
             or depth_book.get("sequence_validated") is not True
@@ -188,7 +190,7 @@ def evaluate_cvd_divergence(
             "decision_at_ms": checkpoint_ms,
             "cvd_value": cvd_number,
             "seed_trade_id": seed_id,
-            "last_agg_trade_id": trade_state.get("last_agg_trade_id"),
+            "last_agg_trade_id": last_trade_id,
         }
 
     def confirmed_pivots(kind: str) -> list[dict[str, Any]]:
@@ -232,6 +234,7 @@ def evaluate_cvd_divergence(
         minute_count = (end_ms - start_ms) // 60_000
         if minute_count < 1:
             return None, "The two confirmed price pivots do not span a complete minute."
+        previous_trade_id = first_observation["last_agg_trade_id"]
         for minute in range(minute_count + 1):
             boundary_ms = start_ms + minute * 60_000
             observation = aligned_observation(boundary_ms)
@@ -239,6 +242,9 @@ def evaluate_cvd_divergence(
                 return None, "CVD continuity is unproven across one or more intervening UTC minute boundaries."
             if observation["seed_trade_id"] != first_observation["seed_trade_id"]:
                 return None, "CVD seed changed inside the price-pivot comparison window."
+            if observation["last_agg_trade_id"] < previous_trade_id:
+                return None, "Aggregate-trade ID moved backwards inside the CVD comparison window."
+            previous_trade_id = observation["last_agg_trade_id"]
         first["cvd_value"] = first_observation["cvd_value"]
         first["cvd_checkpoint_at_ms"] = first_observation["decision_at_ms"]
         second["cvd_value"] = second_observation["cvd_value"]

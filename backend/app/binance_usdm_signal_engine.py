@@ -22,7 +22,11 @@ INTERVAL_SECONDS = {
 
 
 class BinanceUsdMSignalError(RuntimeError):
-    pass
+    """Futures signal failure with provider HTTP status preserved when available."""
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 async def analyze_usdm_futures_signal(
@@ -40,7 +44,7 @@ async def analyze_usdm_futures_signal(
     try:
         candles = await fetch_binance_usdm_candles(normalized, interval, 1000)
     except BinanceUsdMDataError as exc:
-        raise BinanceUsdMSignalError(str(exc)) from exc
+        raise BinanceUsdMSignalError(str(exc), status_code=exc.status_code) from exc
     if not isinstance(candles, list) or len(candles) < 210:
         raise BinanceUsdMSignalError(
             f"At least 210 fully closed {interval} USDⓈ-M candles are required; "

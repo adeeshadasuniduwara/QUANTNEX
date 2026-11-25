@@ -720,9 +720,13 @@ async def _simulate_slice(
             )
             order_flow_mode = "HISTORICAL_RAW_EVENT_REPLAY"
 
-        if raw_order_flow_checkpoints is not None:
+        if (
+            raw_order_flow_checkpoints is not None
+            and order_flow_confirmation_mode in {"CVD_DIVERGENCE_ONLY", "COMBINED_CVD"}
+        ):
+            checkpoint_end = bisect_right(raw_checkpoint_epochs or [], as_of_epoch)
             cvd_divergence = evaluate_cvd_divergence(
-                windows[primary_tf], raw_order_flow_checkpoints, symbol,
+                windows[primary_tf], raw_order_flow_checkpoints[:checkpoint_end], symbol,
                 timeframe_seconds=TIMEFRAME_MINUTES[primary_tf] * 60,
                 decision_at_ms=int(round(as_of_epoch * 1000)),
             )

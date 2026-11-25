@@ -153,7 +153,10 @@ def _synthetic_setup(direction: str, interval: str, now: datetime):
         ("SELL", "SELL", "XAUUSD", "Twelve Data"),
     ],
 )
-def test_real_signal_pipeline_generates_and_delivers_synthetic_setup(monkeypatch, direction, expected_side, symbol, provider):
+@pytest.mark.parametrize("score_mode_override", [None, "CATEGORY_BALANCED"])
+def test_real_signal_pipeline_generates_and_delivers_synthetic_setup(
+    monkeypatch, direction, expected_side, symbol, provider, score_mode_override
+):
     now = datetime.now(timezone.utc)
 
     async def fake_fetch(interval, _outputsize, _symbol):
@@ -183,14 +186,29 @@ def test_real_signal_pipeline_generates_and_delivers_synthetic_setup(monkeypatch
         "enabled": ["60", "30", "15", "5", "1"],
         "min_score": 8,
     }
-    result = asyncio.run(signal_engine.build_signal(settings, symbol))
+    result = asyncio.run(signal_engine.build_signal(
+        settings, symbol, score_mode_override=score_mode_override
+    ))
     candidate = result["signal"]
 
     assert result["status"] == "SIGNAL"
     assert result["provider"] == provider
     assert candidate is not None
     assert candidate["side"] == expected_side
-    assert candidate["score"] >= 8
+    if score_mode_override == "CATEGORY_BALANCED":
+        assert candidate["score"] >= 4
+        assert candidate["score"] == candidate["strategy_evidence"]["category_balanced_score"]
+        assert candidate["score_mode"] == "CATEGORY_BALANCED"
+        assert candidate["score_threshold"] == 4
+        assert candidate["out_of"] == 5
+        assert result["score_out_of"] == 5
+        assert "not a calibrated probability" in result["score_note"]
+    else:
+        assert candidate["score"] >= 8
+        assert candidate["score_mode"] == "LEGACY_RAW"
+        assert candidate["score_threshold"] == 8
+        assert candidate["out_of"] == 10
+        assert result["score_out_of"] == 10
     assert candidate["signal_candle_time"]
     assert candidate["strategy_evidence"]["registry_version"] == 1
     assert candidate["strategy_evidence"]["supporting"]
@@ -198,7 +216,12 @@ def test_real_signal_pipeline_generates_and_delivers_synthetic_setup(monkeypatch
         item["observed_at"] == result["generated_at"]
         for item in candidate["strategy_evidence"]["supporting"]
     )
-    assert candidate["strategy_evidence"]["unique_category_count"] <= candidate["score"]
+    if score_mode_override == "CATEGORY_BALANCED":
+        assert candidate["strategy_evidence"]["category_balanced_score"] <= (
+            candidate["strategy_evidence"]["unique_category_count"]
+        )
+    else:
+        assert candidate["strategy_evidence"]["unique_category_count"] <= candidate["score"]
     assert candidate["strategy_evidence"]["category_score_status"] == (
         "DIAGNOSTIC_ONLY_NOT_USED_FOR_LIVE_DECISIONS"
     )

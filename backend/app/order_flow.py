@@ -626,9 +626,16 @@ def evaluate_order_flow_confirmation(
     if side not in {"BUY", "SELL"}:
         raise OrderFlowDataError("side must be BUY or SELL.")
     normalized_evidence_mode = str(evidence_mode or "").strip().upper()
-    valid_modes = {"COMBINED", "AGGRESSOR_ONLY", "L2_ONLY", "CVD_DIVERGENCE_ONLY", "COMBINED_CVD"}
+    pattern_modes = {
+        "ABSORPTION_ONLY", "EXHAUSTION_ONLY",
+        "COMBINED_OR_ABSORPTION", "COMBINED_OR_EXHAUSTION",
+    }
+    valid_modes = {
+        "COMBINED", "AGGRESSOR_ONLY", "L2_ONLY",
+        "CVD_DIVERGENCE_ONLY", "COMBINED_CVD", *pattern_modes,
+    }
     if normalized_evidence_mode not in valid_modes:
-        raise OrderFlowDataError("evidence_mode must be COMBINED, AGGRESSOR_ONLY, L2_ONLY, CVD_DIVERGENCE_ONLY or COMBINED_CVD.")
+        raise OrderFlowDataError("evidence_mode is not a supported Spot directional or research-pattern mode.")
     try:
         trade_age_limit = float(max_trade_age_seconds)
         depth_age_limit = float(max_depth_age_seconds)
@@ -739,12 +746,69 @@ def evaluate_order_flow_confirmation(
             raise OrderFlowDataError("CVD-divergence status and direction are inconsistent.")
         cvd_supports_direction = cvd_vote * direction > 0
     cvd_observation = ("Confirmed-pivot CVD divergence", cvd_vote)
+    pattern_status = None
+    pattern_direction = None
+    pattern_evidence: list[str] = []
+    pattern_vote = 0.0
+    pattern_supports_direction = False
+    if normalized_evidence_mode in pattern_modes:
+        if feed_mode != "RAW_EVENT_REPLAY":
+            raise OrderFlowDataError("Absorption/exhaustion ablations are research-only and require raw Binance Spot replay.")
+        pattern = snapshot.get("auction_patterns")
+        if not isinstance(pattern, dict):
+            raise OrderFlowDataError("Absorption/exhaustion mode requires same-minute raw replay pattern evidence.")
+        pattern_status = str(pattern.get("status") or "")
+        pattern_direction = pattern.get("direction")
+        pattern_evidence = pattern.get("evidence") if isinstance(pattern.get("evidence"), list) else []
+        if (
+            pattern.get("method") != "AGGRESSOR_DELTA_L2_CANDLE_RESPONSE_ABSORPTION_EXHAUSTION"
+            or pattern.get("method_version") != 1
+            or pattern.get("market_type") != "BINANCE_SPOT"
+            or pattern.get("feed_mode") != "RAW_EVENT_REPLAY"
+            or pattern.get("symbol") != snapshot.get("symbol")
+            or pattern.get("coverage_is_complete") is not False
+            or pattern.get("coverage_status") != snapshot.get("coverage_status")
+            or not isinstance(pattern.get("data_provenance"), dict)
+            or pattern["data_provenance"].get("candle_volume_used") is not False
+            or pattern.get("candle_minute") is None
+            or pattern.get("trade_observed_at") is None
+            or pattern.get("depth_observed_at") is None
+        ):
+            raise OrderFlowDataError("Absorption/exhaustion pattern provenance is invalid or not receive-time aligned.")
+        if pattern_direction not in {None, "BUY", "SELL"}:
+            raise OrderFlowDataError("Absorption/exhaustion pattern direction is invalid.")
+        if pattern_status not in {
+            "BUY_ABSORPTION", "SELL_ABSORPTION",
+            "BUY_EXHAUSTION", "SELL_EXHAUSTION",
+            "NO_PATTERN", "NOT_ALIGNED",
+        }:
+            raise OrderFlowDataError("Absorption/exhaustion pattern status is unsupported.")
+        expected_kind = (
+            "ABSORPTION" if normalized_evidence_mode in {"ABSORPTION_ONLY", "COMBINED_OR_ABSORPTION"}
+            else "EXHAUSTION"
+        )
+        pattern_kind_matches = pattern_status.endswith("_" + expected_kind)
+        if pattern_kind_matches:
+            if pattern_direction != ("BUY" if pattern_status.startswith("BUY_") else "SELL"):
+                raise OrderFlowDataError("Absorption/exhaustion pattern status and direction disagree.")
+            pattern_vote = 1.0 if pattern_direction == "BUY" else -1.0
+            pattern_supports_direction = pattern_vote * direction > 0
+        elif pattern_direction is not None:
+            raise OrderFlowDataError("Pattern direction is inconsistent with the selected research ablation.")
+    pattern_observation = (
+        "Same-minute " + ("absorption" if normalized_evidence_mode in {"ABSORPTION_ONLY", "COMBINED_OR_ABSORPTION"} else "exhaustion") + " pattern",
+        pattern_vote,
+    )
     observations = {
         "COMBINED": all_observations,
         "AGGRESSOR_ONLY": all_observations[:1],
         "L2_ONLY": all_observations[1:],
         "CVD_DIVERGENCE_ONLY": (cvd_observation,),
         "COMBINED_CVD": all_observations + (cvd_observation,),
+        "ABSORPTION_ONLY": (pattern_observation,),
+        "EXHAUSTION_ONLY": (pattern_observation,),
+        "COMBINED_OR_ABSORPTION": all_observations + (pattern_observation,),
+        "COMBINED_OR_EXHAUSTION": all_observations + (pattern_observation,),
     }[normalized_evidence_mode]
     supporting: list[str] = []
     conflicting: list[str] = []
@@ -765,15 +829,44 @@ def evaluate_order_flow_confirmation(
         status = "MIXED"
     else:
         status = "NEUTRAL"
-    cvd_required_vote_met = normalized_evidence_mode not in {"CVD_DIVERGENCE_ONLY", "COMBINED_CVD"} or cvd_supports_direction
+    required_vote_met = normalized_evidence_mode not in {"CVD_DIVERGENCE_ONLY", "COMBINED_CVD"} or cvd_supports_direction
     if normalized_evidence_mode == "COMBINED_CVD":
-        cvd_required_vote_met = cvd_required_vote_met and delta_value * direction > 0 and depth_value * direction > 0
-    if status == "CONFIRMED" and not cvd_required_vote_met:
+        required_vote_met = required_vote_met and delta_value * direction > 0 and depth_value * direction > 0
+    if normalized_evidence_mode in {"ABSORPTION_ONLY", "EXHAUSTION_ONLY"}:
+        required_vote_met = pattern_supports_direction
+        if pattern_supports_direction:
+            status = "PATTERN_CONFIRMED"
+        elif pattern_direction is not None and pattern_vote * direction < 0:
+            status = "PATTERN_CONTRADICTED"
+        else:
+            status = "PATTERN_NOT_CONFIRMED"
+    elif normalized_evidence_mode in {"COMBINED_OR_ABSORPTION", "COMBINED_OR_EXHAUSTION"}:
+        combined_supports = delta_value * direction > 0 and depth_value * direction > 0
+        required_vote_met = combined_supports or pattern_supports_direction
+        if combined_supports:
+            status = "CONFIRMED"
+        elif pattern_supports_direction:
+            status = "PATTERN_CONFIRMED"
+        elif pattern_direction is not None and pattern_vote * direction < 0:
+            status = "PATTERN_CONTRADICTED"
+        else:
+            status = "COMBINED_OR_PATTERN_NOT_CONFIRMED"
+    elif status == "CONFIRMED" and not required_vote_met:
         if normalized_evidence_mode == "CVD_DIVERGENCE_ONLY":
             status = "CVD_DIVERGENCE_CONFLICTS" if cvd_vote * direction < 0 else "CVD_DIVERGENCE_NOT_CONFIRMED"
         else:
             status = "COMBINED_EVIDENCE_NOT_ALIGNED"
-    accepted = status == "CONFIRMED" and cvd_required_vote_met
+    accepted = (
+        required_vote_met and status in {"CONFIRMED", "PATTERN_CONFIRMED"}
+    )
+    confirmation_route = (
+        "ABSORPTION_PATTERN" if normalized_evidence_mode in {"ABSORPTION_ONLY", "COMBINED_OR_ABSORPTION"} and pattern_supports_direction and not (delta_value * direction > 0 and depth_value * direction > 0)
+        else "EXHAUSTION_PATTERN" if normalized_evidence_mode in {"EXHAUSTION_ONLY", "COMBINED_OR_EXHAUSTION"} and pattern_supports_direction and not (delta_value * direction > 0 and depth_value * direction > 0)
+        else "CVD_DIVERGENCE" if normalized_evidence_mode == "CVD_DIVERGENCE_ONLY"
+        else "COMBINED_DELTA_L2_CVD" if normalized_evidence_mode == "COMBINED_CVD"
+        else "COMBINED_DELTA_L2" if accepted or normalized_evidence_mode in {"COMBINED", "AGGRESSOR_ONLY", "L2_ONLY", "COMBINED_OR_ABSORPTION", "COMBINED_OR_EXHAUSTION"}
+        else "UNCONFIRMED"
+    )
     if feed_mode == "PUBLIC_WEBSOCKET_STREAM":
         depth_limitations = [
             "L2 depth is sequence-validated only from the current REST snapshot bridge; any update-ID gap invalidates it until a new bridge succeeds.",
@@ -813,7 +906,12 @@ def evaluate_order_flow_confirmation(
         "conflicting_evidence": conflicting,
         "neutral_evidence": neutral,
         "evidence_mode": normalized_evidence_mode,
-        "required_vote_met": cvd_required_vote_met,
+        "required_vote_met": required_vote_met,
+        "confirmation_route": confirmation_route,
+        "pattern_status": pattern_status,
+        "pattern_direction": pattern_direction,
+        "pattern_supports_direction": pattern_supports_direction,
+        "pattern_evidence": pattern_evidence,
         "cvd_direction": cvd_direction,
         "cvd_supports_direction": cvd_supports_direction,
         "cvd_divergence": cvd_divergence,
@@ -829,6 +927,11 @@ def evaluate_order_flow_confirmation(
             *depth_limitations,
             cvd_limitation,
             session_limitation,
+            *(
+                ["Absorption/exhaustion is a deterministic same-minute candle-response label from observed aggressor delta and sequence-validated L2; it is not a calibrated probability or independent data source.",
+                 "Pattern ablations are research-only and use bounded receive-time raw Spot checkpoints; missing consecutive minute history disables exhaustion."]
+                if normalized_evidence_mode in pattern_modes else []
+            ),
         ],
     }
 

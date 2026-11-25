@@ -298,9 +298,14 @@ def _select_raw_order_flow_snapshot(
 
         return {
             "market_type": "BINANCE_SPOT",
+            "symbol": record.get("symbol"),
             "feed_mode": "RAW_EVENT_REPLAY",
+            "eligible_for_order_flow_replay": True,
+            "capture_gap_detected": False,
+            "coverage_status": record.get("coverage_status"),
             "trade_count": trade_count,
             "trade_data_age_seconds": round(trade_age, 3),
+            "depth_data_age_seconds": round(depth_age, 3),
             "last_trade_at": datetime.fromtimestamp(trade_epoch, timezone.utc).isoformat(),
             "buy_volume": record.get("buy_volume"),
             "sell_volume": record.get("sell_volume"),

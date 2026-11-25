@@ -616,12 +616,11 @@ def evaluate_order_flow_confirmation(
     now: datetime | None = None,
     evidence_mode: str = "COMBINED",
 ) -> dict[str, Any]:
-    """Evaluate directional confirmation from observed aggressor delta and an L2 snapshot.
+    """Evaluate directional confirmation from observed Spot flow and validated research context.
 
-    This is a transparent sign-confluence gate, not a calibrated probability.
-    It deliberately uses only two non-duplicated observations: recent
-    aggressor-side delta and quote-notional depth imbalance. Microprice is
-    reported separately because it is derived from the same top-of-book data.
+    The default gate uses aggressor delta and quote-notional L2 imbalance. CVD
+    and absorption/exhaustion variants are explicit raw-replay ablations, never
+    calibrated probabilities or automatic live-mode changes.
     """
     if side not in {"BUY", "SELL"}:
         raise OrderFlowDataError("side must be BUY or SELL.")
@@ -782,6 +781,8 @@ def evaluate_order_flow_confirmation(
             raise OrderFlowDataError("Absorption/exhaustion pattern provenance is invalid or not receive-time aligned.")
         if pattern_direction not in {None, "BUY", "SELL"}:
             raise OrderFlowDataError("Absorption/exhaustion pattern direction is invalid.")
+        if pattern_status in {"NO_PATTERN", "NOT_ALIGNED"} and pattern_direction is not None:
+            raise OrderFlowDataError("A no-pattern or unaligned result cannot carry a direction.")
         if pattern_status not in {
             "BUY_ABSORPTION", "SELL_ABSORPTION",
             "BUY_EXHAUSTION", "SELL_EXHAUSTION",

@@ -830,3 +830,9 @@ CVD divergence is implemented as a research-only raw Binance Spot replay feature
 The GitHub-hosted scheduled smoke log confirmed a distinct provider restriction: Spot metadata returned 1,376 eligible pairs and its 20-pair sample completed, while USDⓈ-M `/fapi/v1/exchangeInfo` returned HTTP 451 before any Futures contract was scanned. This must not be mislabeled as WAIT or Futures validation.
 
 C25 preserves the HTTP status through the USDⓈ-M data and signal exceptions. The smoke runner now emits `FUTURES UNAVAILABLE` and continues to report Spot independently for HTTP 451. HTTP 403/418/429 remain failures; rate limiting is not treated as a harmless skip. If 451 occurs during candle retrieval, the Futures sample stops with an explicit incomplete-coverage message. This improves CI diagnostics only; it does not expand Futures capabilities. USDⓈ-M remains candle-only and requires a local-network provider check; COIN-M remains unsupported.
+
+
+
+## 2026-11-25 — Conflict-aware category-balanced strategy evidence
+
+The legacy raw confirmation count can count correlated methods multiple times within TREND and MOMENTUM (for example, 60m EMA plus 60m trend alignment, and MACD direction reused by ADX strength). A separate research diagnostic now gives at most one vote per baseline category when all methods in that category agree. Mixed BUY/SELL evidence neutralizes that category; diagnostic-only OHLCV VWAP evidence is excluded. The balanced count is exposed in the signal evidence payload, but the live raw score and thresholds remain unchanged. The next step is a matched chronological walk-forward ablation against the legacy baseline before considering any live scoring change.

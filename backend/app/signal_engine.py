@@ -1756,6 +1756,11 @@ async def build_signal(
                     "categories": strategy_evidence["categories"][side],
                     "category_methods": strategy_evidence["category_methods"][side],
                     "category_score_status": strategy_evidence["category_score_status"],
+                    "category_balanced_score": strategy_evidence["category_balanced_counts"][side],
+                    "category_balanced_categories": strategy_evidence["category_balanced_categories"][side],
+                    "category_balanced_methods": strategy_evidence["category_balanced_methods"][side],
+                    "category_conflicts": strategy_evidence["category_conflicts"],
+                    "category_balanced_score_status": strategy_evidence["category_balanced_score_status"],
                 },
                 "timeframe_alignment": {
                     tf: analysis[tf]["bias"] for tf in enabled if tf in analysis

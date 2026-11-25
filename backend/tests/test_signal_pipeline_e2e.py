@@ -202,6 +202,15 @@ def test_real_signal_pipeline_generates_and_delivers_synthetic_setup(monkeypatch
     assert candidate["strategy_evidence"]["category_score_status"] == (
         "DIAGNOSTIC_ONLY_NOT_USED_FOR_LIVE_DECISIONS"
     )
+    assert candidate["strategy_evidence"]["category_balanced_score"] == (
+        result["strategy_evidence"]["category_balanced_counts"][expected_side]
+    )
+    assert candidate["strategy_evidence"]["category_balanced_score"] <= (
+        candidate["strategy_evidence"]["unique_category_count"]
+    )
+    assert candidate["strategy_evidence"]["category_balanced_score_status"] == (
+        "RESEARCH_DIAGNOSTIC_ONLY_ONE_VOTE_PER_UNANIMOUS_BASELINE_CATEGORY"
+    )
     assert any(
         item["method_id"] == "rolling_vwap_proxy"
         for item in candidate["strategy_evidence"]["diagnostic_only"]

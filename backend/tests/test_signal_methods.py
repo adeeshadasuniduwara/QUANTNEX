@@ -252,3 +252,73 @@ def test_rolling_vwap_proxy_rejects_incomplete_future_or_zero_volume_inputs():
         candles=zero_volume, as_of=observed_at + timedelta(seconds=1),
     )
     assert no_volume["diagnostic_only"] == []
+
+
+
+def test_category_balanced_score_caps_correlated_votes_at_one_per_category():
+    result = evaluate_strategy_registry(
+        _analysis("BUY"), "5", "60", in_zone=True
+    )
+
+    assert result["baseline_raw_counts"] == {"BUY": 10, "SELL": 0}
+    assert result["category_balanced_counts"] == {"BUY": 5, "SELL": 0}
+    assert result["category_balanced_categories"]["BUY"] == [
+        "LIQUIDITY", "LOCATION", "MOMENTUM", "STRUCTURE", "TREND"
+    ]
+    assert result["category_balanced_methods"]["BUY"]["TREND"] == [
+        "ema_trend", "ema_trend", "ema_trend", "trend_timeframe_alignment"
+    ]
+    assert result["category_conflicts"] == {}
+    assert result["category_balanced_score_status"] == (
+        "RESEARCH_DIAGNOSTIC_ONLY_ONE_VOTE_PER_UNANIMOUS_BASELINE_CATEGORY"
+    )
+
+
+def test_category_balanced_score_neutralizes_a_category_with_opposing_methods():
+    analysis = {
+        "60": {"bias": "BULLISH"},
+        "30": {"bias": "BEARISH"},
+        "15": {"bias": "NEUTRAL"},
+        "5": {
+            "bias": "BULLISH",
+            "macd_histogram": 0.2,
+            "rsi": 60.0,
+            "adx": 22.0,
+            "structure": {
+                "bos_mss": "BEARISH",
+                "liquidity_sweep": "BULLISH",
+                "premium_discount": "DISCOUNT",
+            },
+        },
+    }
+
+    result = evaluate_strategy_registry(analysis, "5", "60", in_zone=True)
+
+    assert result["category_conflicts"] == {
+        "TREND": {
+            "BUY": ["ema_trend", "trend_timeframe_alignment"],
+            "SELL": ["ema_trend"],
+        }
+    }
+    assert result["category_balanced_categories"]["BUY"] == [
+        "LIQUIDITY", "LOCATION", "MOMENTUM"
+    ]
+    assert result["category_balanced_categories"]["SELL"] == ["STRUCTURE"]
+    assert result["category_balanced_counts"] == {"BUY": 3, "SELL": 1}
+
+
+def test_category_balanced_score_excludes_diagnostic_only_vwap_proxy():
+    from datetime import datetime, timedelta, timezone
+
+    observed_at = datetime(2026, 11, 19, 8, 0, tzinfo=timezone.utc)
+    result = evaluate_strategy_registry(
+        _analysis("BUY"), "5", "60", in_zone=True,
+        observed_at=observed_at.isoformat(),
+        candles=_vwap_candles("BUY", observed_at),
+        as_of=observed_at + timedelta(seconds=1),
+    )
+
+    assert result["unique_category_counts"]["BUY"] == 6  # includes diagnostic VALUE
+    assert result["category_balanced_counts"] == {"BUY": 5, "SELL": 0}
+    assert "VALUE" not in result["category_balanced_categories"]["BUY"]
+    assert result["category_conflicts"] == {}

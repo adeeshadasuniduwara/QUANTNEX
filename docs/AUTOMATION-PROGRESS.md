@@ -1434,3 +1434,40 @@ Measure whether observed Binance Spot aggressor-side delta, sequence-validated L
 4. Re-run the scheduled/manual live smoke. A runner HTTP 451 should now be an explicit Futures-unavailable status while Spot success/failure remains independently meaningful.
 5. Obtain a local-network USDⓈ-M read-only provider check before claiming live Futures market-data coverage. USDⓈ-M remains candle-only; COIN-M remains unsupported.
 6. Continue the core signal milestone with actual retained Spot raw-event replay and chronological ablations. Report eligible checkpoint coverage and OOS metrics only when supported; fixtures alone do not prove profitability.
+
+
+
+## 2026-11-25 C25 — USDⓈ-M HTTP 451 smoke isolation merged
+
+- PR [#307](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/307) was squash-merged to main as `6a9e4e357b5b64e8ce797f6739e48904398edadf`, based on C24 merge `59600f332917e1d4715ad473a1de254adfe31890`.
+- Final branch was 9 commits ahead / 0 behind main. The reviewed diff changed only the USDⓈ-M market-data/signal wrappers, smoke runner, their tests and the two progress documents. No secret material or order-placement code was introduced.
+- PR CI passed **661 tests on Python 3.12** and **661 tests on Python 3.14**, plus schema/compile and Web syntax checks.
+- Post-merge main CI passed on exact SHA `6a9e4e357b5b64e8ce797f6739e48904398edadf`: **661 tests on Python 3.12**, **661 tests on Python 3.14**, Backend CI, Web check and Telegram notification workflow.
+- HTTP 451 is now reported as Futures provider-unavailable, not WAIT. HTTP 403/418/429 remain failures. A new live smoke run after this merge has not yet been observed; GitHub runner USDⓈ-M access remains restricted. Local-network Futures verification is still required.
+
+
+## C26 — Conflict-aware category-balanced strategy evidence (in progress)
+
+### Audit findings
+- The live legacy confluence count is based on raw registered method reasons. The current registry can count several correlated methods from the same category separately: EMA trend across 60/30/15m plus the 60m trend-alignment method; MACD momentum and ADX strength both use the same MACD direction; RSI adds another momentum vote.
+- Existing category counts are diagnostic only, but the old `unique_category_counts` also includes diagnostic-only VALUE evidence from the OHLCV rolling VWAP proxy. It is not a clean count of baseline votes.
+- Existing live decision thresholds and legacy raw confirmation ordering must remain unchanged until a research variant is tested on identical chronological folds.
+
+### Change on `feat/category-balanced-signal-evidence-20261125`
+- Added a separate category-balanced diagnostic score: at most one vote per baseline category, only when all baseline methods in that category agree on one side.
+- If a category contains both BUY and SELL evidence, it is reported as a conflict and contributes no directional category vote.
+- Diagnostic-only methods such as the OHLCV typical-price VWAP proxy are excluded from the category-balanced score.
+- Exposed the balanced count, supporting categories/methods, conflicting categories and explicit research-only status in the strategy evidence payload.
+- The legacy raw score, threshold, signal side selection, Order Flow gate, MARKET/LIMIT selection and execution constraints are unchanged. This is not yet a replacement scoring model or calibrated probability.
+
+### Deterministic tests added
+- Correlated EMA/trend and MACD/ADX/RSI methods count as one vote per unanimous category.
+- A category containing opposing BUY/SELL methods is neutralized and its method IDs are exposed.
+- Diagnostic-only VWAP does not add a category-balanced vote.
+- Existing end-to-end synthetic BUY and SELL signal fixtures now assert the category-balanced evidence is present.
+
+### Verification / next steps
+1. Run backend CI on Python 3.12/3.14 and Web checks; inspect full diff and security/order-path surface before merge.
+2. Merge only if all checks pass and main remains the exact base; verify post-merge CI.
+3. Add a research-only category-balanced walk-forward decision variant on identical chronological folds and identical fee/spread/slippage/limit-fill assumptions; retain legacy raw-count baseline.
+4. Run both models on the user's retained Spot history only after raw-event/CVD checkpoint coverage is validated. Report trades, expectancy, profit factor, drawdown and costs; do not infer uplift from synthetic fixtures.

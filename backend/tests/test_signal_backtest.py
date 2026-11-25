@@ -179,6 +179,8 @@ def test_signal_walk_forward_consumes_raw_receive_time_events_without_future_che
                 observed["available"] += 1
                 assert override["depth_is_continuous"] is True
                 assert override["coverage_is_complete"] is False
+                assert isinstance(override.get("cvd_divergence"), dict)
+                assert override["cvd_divergence"]["status"] in {"UNAVAILABLE", "NO_DIVERGENCE", "BULLISH_DIVERGENCE", "BEARISH_DIVERGENCE", "CONFLICTING_DIVERGENCE"}
                 return {
                     "status": "WAIT",
                     "signal": None,
@@ -213,11 +215,14 @@ def test_signal_walk_forward_consumes_raw_receive_time_events_without_future_che
     assert replay["decision_clock"] == "RECEIVED_AT_MS"
     assert observed["raw_mode"] > 0
     assert observed["available"] > 0
-    assert observed["modes"] == {"AGGRESSOR_ONLY", "L2_ONLY", "COMBINED"}
-    assert set(replay["variants"]) == {"AGGRESSOR_ONLY", "L2_ONLY", "COMBINED"}
-    assert set(result["order_flow_comparison"]["variants"]) == {"AGGRESSOR_ONLY", "L2_ONLY", "COMBINED"}
+    expected_modes = {"AGGRESSOR_ONLY", "L2_ONLY", "COMBINED", "CVD_DIVERGENCE_ONLY", "COMBINED_CVD"}
+    assert observed["modes"] == expected_modes
+    assert set(replay["variants"]) == expected_modes
+    assert set(result["order_flow_comparison"]["variants"]) == expected_modes
     assert replay["out_of_sample"]["order_flow_raw_event_replay_enabled"] is True
     assert replay["out_of_sample"]["order_flow_raw_event_checkpoint_matches"] == 1
+    assert replay["out_of_sample"]["order_flow_cvd_divergence_evaluated"] > 0
+    assert replay["out_of_sample"]["order_flow_cvd_divergence_unavailable"] > 0
 
 
 def test_simulate_slice_carries_open_trade_beyond_fold_decision_boundary(monkeypatch):

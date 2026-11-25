@@ -8,6 +8,7 @@ This is exchange-reported aggressor-side inference, not consolidated bid/ask
 volume across venues. OHLCV candles are never used as a substitute.
 """
 from __future__ import annotations
+from bisect import bisect_right
 from collections import defaultdict
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_FLOOR
@@ -33,6 +34,271 @@ def _positive_decimal(value: Any, name: str) -> Decimal:
     if not result.is_finite() or result <= 0:
         raise OrderFlowDataError(f"{name} must be finite and positive.")
     return result
+
+
+
+def evaluate_cvd_divergence(
+    price_candles: list[dict[str, Any]],
+    checkpoints: list[dict[str, Any]],
+    symbol: str,
+    *,
+    timeframe_seconds: int,
+    decision_at_ms: int,
+    left_bars: int = 2,
+    right_bars: int = 2,
+    alignment_tolerance_ms: int = 2_000,
+) -> dict[str, Any]:
+    """Detect divergence between confirmed price pivots and same-boundary Spot CVD.
+
+    A pivot is confirmed only after right_bars subsequent candles have closed.
+    CVD is sampled from the latest eligible receive-time checkpoint at or
+    before each pivot candle close. Every intervening UTC minute must have an
+    eligible checkpoint with the same stream seed; gaps, stale/ineligible
+    checkpoints, capture gaps, or a seed change make the result unavailable.
+    This is a research observation, not a calibrated probability or live gate.
+    """
+    normalized_symbol = str(symbol or "").strip().upper()
+
+    def unavailable(reason: str, **extra: Any) -> dict[str, Any]:
+        return {
+            "status": "UNAVAILABLE",
+            "direction": None,
+            "reason": reason,
+            "method": "CONFIRMED_PRICE_SWING_PIVOTS_VS_RECEIVE_TIME_CVD",
+            "symbol": normalized_symbol,
+            "timeframe_seconds": timeframe_seconds if isinstance(timeframe_seconds, int) else None,
+            "as_of_ms": decision_at_ms if isinstance(decision_at_ms, int) else None,
+            "coverage": "UNAVAILABLE_OR_INCOMPLETE",
+            "coverage_is_complete": False,
+            **extra,
+        }
+
+    if not normalized_symbol or not normalized_symbol.isalnum():
+        return unavailable("A valid Binance Spot symbol is required.")
+    if isinstance(decision_at_ms, bool) or not isinstance(decision_at_ms, int) or decision_at_ms <= 0:
+        return unavailable("Decision timestamp must be a positive integer in milliseconds.")
+    if isinstance(timeframe_seconds, bool) or not isinstance(timeframe_seconds, int) or timeframe_seconds < 60 or timeframe_seconds % 60:
+        return unavailable("Timeframe must be a positive whole number of UTC minutes.")
+    if (
+        isinstance(left_bars, bool) or not isinstance(left_bars, int) or not 1 <= left_bars <= 20
+        or isinstance(right_bars, bool) or not isinstance(right_bars, int) or not 1 <= right_bars <= 20
+    ):
+        return unavailable("Pivot confirmation bars must be integers from 1 to 20.")
+    if isinstance(alignment_tolerance_ms, bool) or not isinstance(alignment_tolerance_ms, int) or not 0 <= alignment_tolerance_ms <= 5_000:
+        return unavailable("CVD boundary alignment tolerance must be between 0 and 5,000 ms.")
+    if not isinstance(price_candles, list) or not isinstance(checkpoints, list):
+        return unavailable("Closed price candles and raw receive-time checkpoints are required.")
+
+    timeframe_ms = timeframe_seconds * 1000
+    candles: list[dict[str, Any]] = []
+    previous_open_ms = -1
+    for index, candle in enumerate(price_candles):
+        if not isinstance(candle, dict):
+            return unavailable(f"Price candle {index} is not an object.")
+        raw_time = candle.get("time") or candle.get("open_time")
+        try:
+            stamp = datetime.fromisoformat(str(raw_time).replace("Z", "+00:00"))
+            if stamp.tzinfo is None or stamp.utcoffset() is None:
+                raise ValueError()
+            open_ms = int(stamp.astimezone(timezone.utc).timestamp() * 1000)
+        except (TypeError, ValueError, OverflowError):
+            return unavailable(f"Price candle {index} has an invalid UTC timestamp.")
+        if open_ms <= previous_open_ms:
+            return unavailable("Price candles must be unique and chronological.")
+        previous_open_ms = open_ms
+        close_ms = open_ms + timeframe_ms
+        if close_ms > decision_at_ms:
+            break
+        try:
+            low = float(candle["low"])
+            high = float(candle["high"])
+        except (KeyError, TypeError, ValueError, OverflowError):
+            return unavailable(f"Closed price candle {index} has an invalid range.")
+        if not math.isfinite(low) or not math.isfinite(high) or low <= 0 or high < low:
+            return unavailable("Closed price candles must have finite, positive and valid ranges.")
+        candles.append({
+            "index": index, "open_ms": open_ms, "close_ms": close_ms,
+            "low": low, "high": high,
+        })
+    if len(candles) < left_bars + right_bars + 2:
+        return unavailable("Not enough fully closed candles to confirm two price pivots.")
+
+    checkpoint_times: list[int] = []
+    eligible_checkpoints: list[dict[str, Any]] = []
+    previous_checkpoint_ms = -1
+    for index, checkpoint in enumerate(checkpoints):
+        if not isinstance(checkpoint, dict):
+            return unavailable(f"Raw Order Flow checkpoint {index} is not an object.")
+        checkpoint_ms = checkpoint.get("decision_at_ms")
+        if isinstance(checkpoint_ms, bool) or not isinstance(checkpoint_ms, int):
+            return unavailable("Raw Order Flow checkpoints must have integer receive-time boundaries.")
+        if checkpoint_ms > decision_at_ms:
+            break
+        if checkpoint_ms <= previous_checkpoint_ms:
+            return unavailable("Raw Order Flow checkpoints must have unique increasing receive-time boundaries.")
+        previous_checkpoint_ms = checkpoint_ms
+        if checkpoint.get("market_type") != "BINANCE_SPOT" or str(checkpoint.get("symbol") or "").upper() != normalized_symbol:
+            return unavailable("Raw Order Flow checkpoints must match the requested Binance Spot symbol.")
+        try:
+            stamp = datetime.fromisoformat(str(checkpoint.get("decision_at") or "").replace("Z", "+00:00"))
+            if stamp.tzinfo is None or stamp.utcoffset() is None:
+                raise ValueError()
+            stamp_ms = int(stamp.astimezone(timezone.utc).timestamp() * 1000)
+        except (TypeError, ValueError, OverflowError):
+            return unavailable(f"Raw Order Flow checkpoint {index} has an invalid UTC decision timestamp.")
+        if abs(stamp_ms - checkpoint_ms) > 2:
+            return unavailable("Raw Order Flow checkpoint timestamp fields disagree.")
+        eligible_checkpoints.append(checkpoint)
+        checkpoint_times.append(checkpoint_ms)
+    if not eligible_checkpoints:
+        return unavailable("No raw Order Flow checkpoint exists at or before the decision boundary.")
+
+    def aligned_observation(boundary_ms: int) -> dict[str, Any] | None:
+        position = bisect_right(checkpoint_times, boundary_ms) - 1
+        if position < 0:
+            return None
+        checkpoint = eligible_checkpoints[position]
+        checkpoint_ms = checkpoint_times[position]
+        if boundary_ms - checkpoint_ms > alignment_tolerance_ms:
+            return None
+        trade_state = checkpoint.get("trade_state")
+        provenance = checkpoint.get("data_provenance")
+        depth_book = checkpoint.get("depth_book")
+        cvd_value = checkpoint.get("cvd_value")
+        seed_id = trade_state.get("cvd_seed_trade_id") if isinstance(trade_state, dict) else None
+        last_trade_id = trade_state.get("last_agg_trade_id") if isinstance(trade_state, dict) else None
+        try:
+            cvd_number = float(cvd_value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if (
+            not math.isfinite(cvd_number)
+            or checkpoint.get("eligible_for_order_flow_replay") is not True
+            or checkpoint.get("cvd_status") != "COMPLETE_SINCE_STATE_SEED"
+            or checkpoint.get("cvd_scope") != "SINCE_CAPTURE_SEED"
+            or checkpoint.get("capture_gap_detected") is not False
+            or checkpoint.get("depth_is_continuous") is not True
+            or checkpoint.get("coverage_status") != "OBSERVED_CONTIGUOUS_CAPTURE_NOT_FULL_SESSION"
+            or not isinstance(trade_state, dict)
+            or trade_state.get("coverage_complete") is not True
+            or trade_state.get("gap_detected") is not False
+            or isinstance(seed_id, bool) or not isinstance(seed_id, int) or seed_id < 0
+            or isinstance(last_trade_id, bool) or not isinstance(last_trade_id, int) or last_trade_id < seed_id
+            or not isinstance(depth_book, dict)
+            or depth_book.get("valid") is not True
+            or depth_book.get("sequence_validated") is not True
+            or not isinstance(provenance, dict)
+            or provenance.get("candle_volume_used") is not False
+            or "aggressor" not in str(provenance.get("bid_ask_semantics") or "").lower()
+        ):
+            return None
+        return {
+            "decision_at_ms": checkpoint_ms,
+            "cvd_value": cvd_number,
+            "seed_trade_id": seed_id,
+            "last_agg_trade_id": last_trade_id,
+        }
+
+    def confirmed_pivots(kind: str) -> list[dict[str, Any]]:
+        values = [row[kind] for row in candles]
+        found: list[dict[str, Any]] = []
+        for pivot_index in range(left_bars, len(candles) - right_bars):
+            pivot = values[pivot_index]
+            neighbours = values[pivot_index - left_bars:pivot_index] + values[pivot_index + 1:pivot_index + right_bars + 1]
+            is_pivot = all(pivot < value for value in neighbours) if kind == "low" else all(pivot > value for value in neighbours)
+            if not is_pivot:
+                continue
+            confirmation_ms = candles[pivot_index + right_bars]["close_ms"]
+            if confirmation_ms > decision_at_ms:
+                continue
+            found.append({
+                "candle_index": candles[pivot_index]["index"],
+                "open_time_ms": candles[pivot_index]["open_ms"],
+                "close_time_ms": candles[pivot_index]["close_ms"],
+                "confirmation_time_ms": confirmation_ms,
+                "price": pivot,
+            })
+        return found
+
+    def compare_pivots(kind: str) -> tuple[dict[str, Any] | None, str | None]:
+        pivots = confirmed_pivots(kind)
+        if len(pivots) < 2:
+            return None, None
+        first, second = pivots[-2], pivots[-1]
+        if second["close_time_ms"] <= first["close_time_ms"]:
+            return None, "Confirmed pivot boundaries are not chronological."
+        first_observation = aligned_observation(first["close_time_ms"])
+        second_observation = aligned_observation(second["close_time_ms"])
+        if first_observation is None or second_observation is None:
+            return None, "A confirmed price pivot lacks a same-boundary eligible CVD observation."
+        if first_observation["seed_trade_id"] != second_observation["seed_trade_id"]:
+            return None, "CVD seed changed between the two price pivots."
+        start_ms = first["close_time_ms"]
+        end_ms = second["close_time_ms"]
+        if start_ms % 60_000 or end_ms % 60_000:
+            return None, "Price pivot closes are not aligned to UTC minute boundaries."
+        minute_count = (end_ms - start_ms) // 60_000
+        if minute_count < 1:
+            return None, "The two confirmed price pivots do not span a complete minute."
+        previous_trade_id = first_observation["last_agg_trade_id"]
+        for minute in range(minute_count + 1):
+            boundary_ms = start_ms + minute * 60_000
+            observation = aligned_observation(boundary_ms)
+            if observation is None:
+                return None, "CVD continuity is unproven across one or more intervening UTC minute boundaries."
+            if observation["seed_trade_id"] != first_observation["seed_trade_id"]:
+                return None, "CVD seed changed inside the price-pivot comparison window."
+            if observation["last_agg_trade_id"] < previous_trade_id:
+                return None, "Aggregate-trade ID moved backwards inside the CVD comparison window."
+            previous_trade_id = observation["last_agg_trade_id"]
+        first["cvd_value"] = first_observation["cvd_value"]
+        first["cvd_checkpoint_at_ms"] = first_observation["decision_at_ms"]
+        second["cvd_value"] = second_observation["cvd_value"]
+        second["cvd_checkpoint_at_ms"] = second_observation["decision_at_ms"]
+        second["cvd_seed_trade_id"] = second_observation["seed_trade_id"]
+        second["continuity_minute_checkpoints"] = minute_count + 1
+        return {"first": first, "second": second}, None
+
+    lows, low_error = compare_pivots("low")
+    highs, high_error = compare_pivots("high")
+    if low_error or high_error:
+        return unavailable(low_error or high_error or "CVD alignment is incomplete.")
+    bullish = bool(lows and lows["second"]["price"] < lows["first"]["price"] and lows["second"]["cvd_value"] > lows["first"]["cvd_value"])
+    bearish = bool(highs and highs["second"]["price"] > highs["first"]["price"] and highs["second"]["cvd_value"] < highs["first"]["cvd_value"])
+    if bullish and bearish:
+        status, direction = "CONFLICTING_DIVERGENCE", None
+    elif bullish:
+        status, direction = "BULLISH_DIVERGENCE", "BUY"
+    elif bearish:
+        status, direction = "BEARISH_DIVERGENCE", "SELL"
+    else:
+        status, direction = "NO_DIVERGENCE", None
+    selected = lows if bullish else highs if bearish else None
+    return {
+        "status": status,
+        "direction": direction,
+        "reason": (
+            "A lower confirmed price low formed with a higher same-boundary CVD low."
+            if bullish else
+            "A higher confirmed price high formed with a lower same-boundary CVD high."
+            if bearish else
+            "The latest two confirmed price pivots do not show opposing CVD structure."
+            if status == "NO_DIVERGENCE" else
+            "Bullish and bearish divergence conditions were both present."
+        ),
+        "method": "CONFIRMED_PRICE_SWING_PIVOTS_VS_RECEIVE_TIME_CVD",
+        "symbol": normalized_symbol,
+        "timeframe_seconds": timeframe_seconds,
+        "pivot_window": {"left_bars": left_bars, "right_bars": right_bars},
+        "as_of_ms": decision_at_ms,
+        "confirmed_at_ms": selected["second"]["confirmation_time_ms"] if selected else None,
+        "price_pivots": selected,
+        "bullish_pivots": lows,
+        "bearish_pivots": highs,
+        "coverage": "ELIGIBLE_CONTIGUOUS_ONE_MINUTE_CHECKPOINTS_SINCE_STABLE_CAPTURE_SEED",
+        "coverage_is_complete": False,
+        "calibration": "RESEARCH_ONLY_NOT_A_CALIBRATED_PROBABILITY",
+    }
 
 
 def normalize_agg_trades(rows: list[dict[str, Any]], *, now: datetime | None = None,
@@ -360,8 +626,9 @@ def evaluate_order_flow_confirmation(
     if side not in {"BUY", "SELL"}:
         raise OrderFlowDataError("side must be BUY or SELL.")
     normalized_evidence_mode = str(evidence_mode or "").strip().upper()
-    if normalized_evidence_mode not in {"COMBINED", "AGGRESSOR_ONLY", "L2_ONLY"}:
-        raise OrderFlowDataError("evidence_mode must be COMBINED, AGGRESSOR_ONLY or L2_ONLY.")
+    valid_modes = {"COMBINED", "AGGRESSOR_ONLY", "L2_ONLY", "CVD_DIVERGENCE_ONLY", "COMBINED_CVD"}
+    if normalized_evidence_mode not in valid_modes:
+        raise OrderFlowDataError("evidence_mode must be COMBINED, AGGRESSOR_ONLY, L2_ONLY, CVD_DIVERGENCE_ONLY or COMBINED_CVD.")
     try:
         trade_age_limit = float(max_trade_age_seconds)
         depth_age_limit = float(max_depth_age_seconds)
@@ -432,10 +699,52 @@ def evaluate_order_flow_confirmation(
         ("Aggressor trade delta", delta_value),
         ("L2 quote-notional depth imbalance", depth_value),
     )
+    cvd_divergence = None
+    cvd_direction = None
+    cvd_vote = 0.0
+    cvd_supports_direction = False
+    if normalized_evidence_mode in {"CVD_DIVERGENCE_ONLY", "COMBINED_CVD"}:
+        cvd_divergence = snapshot.get("cvd_divergence")
+        if not isinstance(cvd_divergence, dict):
+            raise OrderFlowDataError("This Order Flow evidence mode requires causal CVD-divergence evidence.")
+        cvd_status_value = str(cvd_divergence.get("status") or "")
+        cvd_direction = cvd_divergence.get("direction")
+        cvd_as_of = cvd_divergence.get("as_of_ms")
+        cvd_confirmed_at = cvd_divergence.get("confirmed_at_ms")
+        if (
+            cvd_divergence.get("method") != "CONFIRMED_PRICE_SWING_PIVOTS_VS_RECEIVE_TIME_CVD"
+            or cvd_divergence.get("symbol") != snapshot.get("symbol")
+            or cvd_divergence.get("coverage_is_complete") is not False
+            or cvd_divergence.get("coverage") not in {
+                "ELIGIBLE_CONTIGUOUS_ONE_MINUTE_CHECKPOINTS_SINCE_STABLE_CAPTURE_SEED",
+                "UNAVAILABLE_OR_INCOMPLETE",
+            }
+            or (cvd_status_value in {"BULLISH_DIVERGENCE", "BEARISH_DIVERGENCE"} and (
+                cvd_divergence.get("coverage") != "ELIGIBLE_CONTIGUOUS_ONE_MINUTE_CHECKPOINTS_SINCE_STABLE_CAPTURE_SEED"
+                or cvd_confirmed_at is None
+            ))
+            or isinstance(cvd_as_of, bool) or not isinstance(cvd_as_of, int) or cvd_as_of <= 0
+            or isinstance(cvd_confirmed_at, bool) or (cvd_confirmed_at is not None and not isinstance(cvd_confirmed_at, int))
+            or cvd_as_of > int(clock.timestamp() * 1000) + 2_000
+            or (cvd_confirmed_at is not None and cvd_confirmed_at > cvd_as_of)
+        ):
+            raise OrderFlowDataError("CVD-divergence evidence has invalid provenance or a future confirmation boundary.")
+        if cvd_status_value == "BULLISH_DIVERGENCE" and cvd_direction == "BUY":
+            cvd_vote = 1.0
+        elif cvd_status_value == "BEARISH_DIVERGENCE" and cvd_direction == "SELL":
+            cvd_vote = -1.0
+        elif cvd_status_value in {"NO_DIVERGENCE", "UNAVAILABLE", "CONFLICTING_DIVERGENCE"} and cvd_direction is None:
+            cvd_vote = 0.0
+        else:
+            raise OrderFlowDataError("CVD-divergence status and direction are inconsistent.")
+        cvd_supports_direction = cvd_vote * direction > 0
+    cvd_observation = ("Confirmed-pivot CVD divergence", cvd_vote)
     observations = {
         "COMBINED": all_observations,
         "AGGRESSOR_ONLY": all_observations[:1],
         "L2_ONLY": all_observations[1:],
+        "CVD_DIVERGENCE_ONLY": (cvd_observation,),
+        "COMBINED_CVD": all_observations + (cvd_observation,),
     }[normalized_evidence_mode]
     supporting: list[str] = []
     conflicting: list[str] = []
@@ -456,6 +765,15 @@ def evaluate_order_flow_confirmation(
         status = "MIXED"
     else:
         status = "NEUTRAL"
+    cvd_required_vote_met = normalized_evidence_mode not in {"CVD_DIVERGENCE_ONLY", "COMBINED_CVD"} or cvd_supports_direction
+    if normalized_evidence_mode == "COMBINED_CVD":
+        cvd_required_vote_met = cvd_required_vote_met and delta_value * direction > 0 and depth_value * direction > 0
+    if status == "CONFIRMED" and not cvd_required_vote_met:
+        if normalized_evidence_mode == "CVD_DIVERGENCE_ONLY":
+            status = "CVD_DIVERGENCE_CONFLICTS" if cvd_vote * direction < 0 else "CVD_DIVERGENCE_NOT_CONFIRMED"
+        else:
+            status = "COMBINED_EVIDENCE_NOT_ALIGNED"
+    accepted = status == "CONFIRMED" and cvd_required_vote_met
     if feed_mode == "PUBLIC_WEBSOCKET_STREAM":
         depth_limitations = [
             "L2 depth is sequence-validated only from the current REST snapshot bridge; any update-ID gap invalidates it until a new bridge succeeds.",
@@ -484,7 +802,7 @@ def evaluate_order_flow_confirmation(
         session_limitation = "Full UTC session delta is unavailable without a verified UTC session-start anchor and contiguous trade-ID coverage."
     return {
         "status": status,
-        "accepted": status == "CONFIRMED",
+        "accepted": accepted,
         "side": side,
         "support_count": len(supporting),
         "conflict_count": len(conflicting),
@@ -495,6 +813,10 @@ def evaluate_order_flow_confirmation(
         "conflicting_evidence": conflicting,
         "neutral_evidence": neutral,
         "evidence_mode": normalized_evidence_mode,
+        "required_vote_met": cvd_required_vote_met,
+        "cvd_direction": cvd_direction,
+        "cvd_supports_direction": cvd_supports_direction,
+        "cvd_divergence": cvd_divergence,
         "method": (
             f"directional sign ablation {normalized_evidence_mode.lower()} v1; not calibrated as win probability"
         ),
@@ -533,6 +855,7 @@ def summarize_order_flow_snapshot(
         "window_delta_scope": snapshot.get("window_delta_scope"),
         "cvd_value": snapshot.get("cvd_value"),
         "cvd_status": snapshot.get("cvd_status"),
+        "cvd_divergence": snapshot.get("cvd_divergence"),
         "session_timezone": snapshot.get("session_timezone"),
         "session_delta": snapshot.get("session_delta"),
         "session_delta_scope": snapshot.get("session_delta_scope"),

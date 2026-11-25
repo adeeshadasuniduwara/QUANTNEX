@@ -89,6 +89,7 @@ class AggTradeCvdState:
     _coverage_before_gap: bool = field(default=False, repr=False)
     _session_coverage_before_gap: bool = field(default=False, repr=False)
     _session_date_before_gap: date | None = field(default=None, repr=False)
+    seed_trade_id: int | None = None
 
     def __post_init__(self) -> None:
         self.symbol = str(self.symbol).upper()
@@ -100,6 +101,7 @@ class AggTradeCvdState:
         first_id = _int_value(first_trade_id, "first session trade ID")
         if first_id < 0 or not isinstance(session_date, date) or isinstance(session_date, datetime):
             raise OrderFlowStateError("A non-negative first trade ID and UTC date (not datetime) are required.")
+        self.seed_trade_id = first_id
         self.last_agg_trade_id = first_id - 1
         self.cumulative_delta = Decimal("0")
         self.cumulative_quote_delta = Decimal("0")
@@ -131,6 +133,7 @@ class AggTradeCvdState:
         timestamp_ms = _int_value(first_trade_time_ms, "first stream seed timestamp")
         if first_id < 0 or timestamp_ms < 0:
             raise OrderFlowStateError("Stream seed trade ID and timestamp must be non-negative.")
+        self.seed_trade_id = first_id
         try:
             seed_date = datetime.fromtimestamp(timestamp_ms / 1000, timezone.utc).date()
         except (OverflowError, OSError, ValueError):
@@ -204,6 +207,7 @@ class AggTradeCvdState:
             raise
         trade_id = parsed[0]
         if self.last_agg_trade_id is None:
+            self.seed_trade_id = trade_id
             self.last_agg_trade_id = trade_id - 1
             self.session_date_utc = parsed[5]
             self.coverage_complete = False
@@ -264,6 +268,7 @@ class AggTradeCvdState:
             cvd_status = "COMPLETE_SINCE_STATE_SEED"
         return {
             "symbol": self.symbol,
+            "cvd_seed_trade_id": self.seed_trade_id,
             "last_agg_trade_id": self.last_agg_trade_id,
             "cumulative_delta_observed": float(self.cumulative_delta),
             "cumulative_quote_delta_observed": float(self.cumulative_quote_delta),

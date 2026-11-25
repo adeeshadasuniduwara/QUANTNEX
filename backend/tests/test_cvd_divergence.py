@@ -1,0 +1,283 @@
+from datetime import datetime, timezone
+
+import pytest
+
+from app.order_flow import evaluate_cvd_divergence, evaluate_order_flow_confirmation
+from app.signal_engine import select_binance_entry
+
+
+BASE_MS = 1_795_248_000_000
+
+
+def _iso(ms):
+    return datetime.fromtimestamp(ms / 1000, timezone.utc).isoformat()
+
+
+def _candles(kind="bullish"):
+    lows = [10, 9, 11, 10, 8, 10, 11]
+    highs = [12, 11, 13, 12, 10, 12, 13]
+    if kind == "bearish":
+        lows = [8, 9, 10, 9, 11, 10, 12]
+        highs = [10, 12, 11, 13, 12, 14, 13]
+    return [
+        {
+            "time": _iso(BASE_MS + index * 60_000),
+            "low": lows[index],
+            "high": highs[index],
+            "open": lows[index] + 0.5,
+            "close": lows[index] + 1.0,
+        }
+        for index in range(len(lows))
+    ]
+
+
+def _checkpoints(values=None, *, missing=(), ineligible=(), seed_changes=None, last_trade_ids=None):
+    values = values or {1: 8, 2: 10, 3: 11, 4: 13, 5: 15, 6: 16, 7: 17}
+    missing = set(missing)
+    ineligible = set(ineligible)
+    seed_changes = seed_changes or {}
+    last_trade_ids = last_trade_ids or {}
+    rows = []
+    for minute in range(1, 8):
+        if minute in missing:
+            continue
+        stamp = BASE_MS + minute * 60_000
+        seed_id = seed_changes.get(minute, 100)
+        rows.append({
+            "market_type": "BINANCE_SPOT",
+            "symbol": "BTCUSDT",
+            "decision_at_ms": stamp,
+            "decision_at": _iso(stamp),
+            "cvd_value": float(values.get(minute, minute)),
+            "cvd_scope": "SINCE_CAPTURE_SEED",
+            "cvd_status": "COMPLETE_SINCE_STATE_SEED",
+            "capture_gap_detected": False,
+            "depth_is_continuous": True,
+            "coverage_status": "OBSERVED_CONTIGUOUS_CAPTURE_NOT_FULL_SESSION",
+            "eligible_for_order_flow_replay": minute not in ineligible,
+            "trade_state": {
+                "coverage_complete": True,
+                "gap_detected": False,
+                "cvd_seed_trade_id": seed_id,
+                "last_agg_trade_id": last_trade_ids.get(minute, 100 + minute),
+            },
+            "depth_book": {"valid": True, "sequence_validated": True},
+            "data_provenance": {
+                "candle_volume_used": False,
+                "bid_ask_semantics": "Aggressor-side inferred trade volume",
+            },
+        })
+    return rows
+
+
+def _evaluate(candles=None, checkpoints=None, *, decision_at_ms=None):
+    return evaluate_cvd_divergence(
+        candles or _candles(),
+        checkpoints if checkpoints is not None else _checkpoints(),
+        "BTCUSDT",
+        timeframe_seconds=60,
+        decision_at_ms=decision_at_ms or BASE_MS + 7 * 60_000,
+        left_bars=1,
+        right_bars=1,
+    )
+
+
+def test_confirmed_lower_price_low_with_higher_same_boundary_cvd_is_bullish():
+    result = _evaluate()
+    assert result["status"] == "BULLISH_DIVERGENCE"
+    assert result["direction"] == "BUY"
+    assert result["bullish_pivots"]["first"]["price"] == 9
+    assert result["bullish_pivots"]["second"]["price"] == 8
+    assert result["bullish_pivots"]["first"]["cvd_value"] == 10
+    assert result["bullish_pivots"]["second"]["cvd_value"] == 15
+    assert result["confirmed_at_ms"] == BASE_MS + 6 * 60_000
+    assert result["coverage_is_complete"] is False
+
+
+def test_confirmed_higher_price_high_with_lower_same_boundary_cvd_is_bearish():
+    values = {1: 8, 2: 9, 3: 12, 4: 20, 5: 18, 6: 15, 7: 14}
+    result = _evaluate(_candles("bearish"), _checkpoints(values))
+    assert result["status"] == "BEARISH_DIVERGENCE"
+    assert result["direction"] == "SELL"
+    assert result["bearish_pivots"]["first"]["price"] == 13
+    assert result["bearish_pivots"]["second"]["price"] == 14
+    assert result["bearish_pivots"]["first"]["cvd_value"] == 20
+    assert result["bearish_pivots"]["second"]["cvd_value"] == 15
+
+
+def test_price_and_cvd_moving_in_the_same_direction_is_not_divergence():
+    values = {1: 8, 2: 10, 3: 9, 4: 7, 5: 5, 6: 4, 7: 3}
+    result = _evaluate(checkpoints=_checkpoints(values))
+    assert result["status"] == "NO_DIVERGENCE"
+    assert result["direction"] is None
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "reason"),
+    [
+        ({"missing": (3,)}, "continuity"),
+        ({"ineligible": (4,)}, "continuity"),
+        ({"seed_changes": {4: 200}, "last_trade_ids": {4: 200}}, "seed"),
+        ({"last_trade_ids": {4: 102}}, "backwards"),
+    ],
+)
+def test_cvd_divergence_fails_closed_on_missing_or_invalid_intervening_checkpoints(kwargs, reason):
+    checkpoints = _checkpoints(**kwargs)
+    result = _evaluate(checkpoints=checkpoints)
+    assert result["status"] == "UNAVAILABLE"
+    assert reason in result["reason"].lower()
+
+
+def test_future_checkpoint_cannot_be_used_for_a_pivot_boundary():
+    checkpoints = _checkpoints()
+    checkpoints = [row for row in checkpoints if row["decision_at_ms"] != BASE_MS + 5 * 60_000]
+    future = _checkpoints()[4].copy()
+    future["decision_at_ms"] += 1_000
+    future["decision_at"] = _iso(future["decision_at_ms"])
+    checkpoints.append(future)
+    checkpoints.sort(key=lambda row: row["decision_at_ms"])
+    result = _evaluate(checkpoints=checkpoints)
+    assert result["status"] == "UNAVAILABLE"
+    assert "same-boundary" in result["reason"].lower()
+
+
+def test_pivot_is_not_confirmed_until_all_right_side_candles_have_closed():
+    result = _evaluate(decision_at_ms=BASE_MS + 5 * 60_000)
+    assert result["status"] == "NO_DIVERGENCE"
+    assert result["direction"] is None
+
+
+def test_naive_price_timestamps_are_rejected():
+    candles = _candles()
+    candles[0]["time"] = "2026-11-25T00:00:00"
+    result = _evaluate(candles=candles)
+    assert result["status"] == "UNAVAILABLE"
+    assert "UTC timestamp" in result["reason"]
+
+
+def test_checkpoint_order_and_symbol_are_validated():
+    checkpoints = _checkpoints()
+    checkpoints[2]["symbol"] = "ETHUSDT"
+    result = _evaluate(checkpoints=checkpoints)
+    assert result["status"] == "UNAVAILABLE"
+    assert "match" in result["reason"].lower()
+
+
+def _confirmed_snapshot(cvd_divergence, *, delta_ratio=0.25, depth_imbalance=0.2):
+    now = datetime.fromtimestamp((BASE_MS + 7 * 60_000) / 1000, timezone.utc)
+    return {
+        "symbol": "BTCUSDT",
+        "market_type": "BINANCE_SPOT",
+        "trade_count": 10,
+        "trade_data_age_seconds": 1.0,
+        "delta_ratio": delta_ratio,
+        "data_provenance": {
+            "candle_volume_used": False,
+            "bid_ask_semantics": "Aggressor-side inferred trade volume",
+        },
+        "data_sources": {"trades": "fixture", "depth": "fixture"},
+        "depth_is_continuous": True,
+        "depth_snapshot_update_id": 123,
+        "depth_observed_at": now.isoformat(),
+        "feed_mode": "RAW_EVENT_REPLAY",
+        "order_book": {"depth_imbalance": depth_imbalance},
+        "cvd_divergence": cvd_divergence,
+    }
+
+
+def test_cvd_only_confirmation_is_directional_but_never_market_urgent():
+    from datetime import datetime
+
+    divergence = _evaluate()
+    now = datetime.fromtimestamp((BASE_MS + 7 * 60_000) / 1000, timezone.utc)
+    snapshot = _confirmed_snapshot(divergence, delta_ratio=-0.25, depth_imbalance=-0.2)
+    decision = evaluate_order_flow_confirmation(
+        "BUY", snapshot, now=now, evidence_mode="CVD_DIVERGENCE_ONLY"
+    )
+    assert decision["accepted"] is True
+    assert decision["cvd_supports_direction"] is True
+    assert decision["evidence_mode"] == "CVD_DIVERGENCE_ONLY"
+
+    execution = {
+        "best_bid": 100.0, "best_ask": 100.02, "mid_price": 100.01,
+        "spread_bps": 2.0, "bid_depth_quote": 20_000.0, "ask_depth_quote": 20_000.0,
+        "order_types": ["LIMIT", "MARKET"],
+        "limit_order_constraints_valid": True, "market_order_constraints_valid": True,
+    }
+    selected = select_binance_entry(
+        "BUY", 100.0, 2.0, {"low": 99.6, "high": 99.8, "source": "BULLISH_FVG"},
+        execution, order_flow_snapshot=snapshot, order_flow_decision=decision,
+        order_flow_evidence_mode="CVD_DIVERGENCE_ONLY",
+    )
+    assert selected is not None
+    assert selected["entry_type"] == "LIMIT"
+    assert selected["order_flow_execution_evidence"]["market_urgency_confirmed"] is False
+
+
+def test_combined_cvd_requires_aggressor_l2_and_divergence_alignment():
+    from datetime import datetime
+
+    divergence = _evaluate()
+    now = datetime.fromtimestamp((BASE_MS + 7 * 60_000) / 1000, timezone.utc)
+    conflicting = _confirmed_snapshot(divergence, delta_ratio=-0.25, depth_imbalance=-0.2)
+    rejected = evaluate_order_flow_confirmation(
+        "BUY", conflicting, now=now, evidence_mode="COMBINED_CVD"
+    )
+    assert rejected["accepted"] is False
+
+    aligned = _confirmed_snapshot(divergence, delta_ratio=0.25, depth_imbalance=0.2)
+    accepted = evaluate_order_flow_confirmation(
+        "BUY", aligned, now=now, evidence_mode="COMBINED_CVD"
+    )
+    assert accepted["accepted"] is True
+    assert accepted["required_vote_met"] is True
+    assert accepted["support_count"] == 3
+
+
+def test_cvd_confirmation_rejects_future_divergence_boundaries():
+    from datetime import datetime
+
+    divergence = _evaluate()
+    divergence = {**divergence, "as_of_ms": BASE_MS + 8 * 60_000}
+    now = datetime.fromtimestamp((BASE_MS + 7 * 60_000) / 1000, timezone.utc)
+    with pytest.raises(ValueError, match="future confirmation boundary"):
+        evaluate_order_flow_confirmation(
+            "BUY", _confirmed_snapshot(divergence), now=now,
+            evidence_mode="CVD_DIVERGENCE_ONLY",
+        )
+
+
+def test_unavailable_cvd_is_a_neutral_wait_not_a_fabricated_vote():
+    now = datetime.fromtimestamp((BASE_MS + 7 * 60_000) / 1000, timezone.utc)
+    unavailable = _evaluate(checkpoints=_checkpoints(missing=(3,)))
+    decision = evaluate_order_flow_confirmation(
+        "BUY", _confirmed_snapshot(unavailable), now=now,
+        evidence_mode="CVD_DIVERGENCE_ONLY",
+    )
+    assert decision["accepted"] is False
+    assert decision["status"] == "NEUTRAL"
+    assert decision["cvd_supports_direction"] is False
+
+
+def test_future_checkpoint_metadata_cannot_change_an_earlier_decision():
+    checkpoints = _checkpoints()
+    future = checkpoints[5].copy()
+    future["symbol"] = "ETHUSDT"
+    future["decision_at"] = "not-a-timestamp"
+    result = _evaluate(
+        checkpoints=checkpoints[:5] + [future],
+        decision_at_ms=BASE_MS + 5 * 60_000,
+    )
+    assert result["status"] == "NO_DIVERGENCE"
+
+
+def test_unclosed_future_candle_values_do_not_change_earlier_divergence():
+    candles = _candles()
+    candles[-1]["low"] = "not-yet-closed"
+    candles[-1]["high"] = "not-yet-closed"
+    result = _evaluate(
+        candles=candles,
+        decision_at_ms=BASE_MS + 6 * 60_000,
+    )
+    assert result["status"] == "BULLISH_DIVERGENCE"
+    assert result["direction"] == "BUY"

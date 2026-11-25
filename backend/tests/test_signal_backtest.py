@@ -179,6 +179,9 @@ def test_signal_walk_forward_consumes_raw_receive_time_events_without_future_che
                 observed["available"] += 1
                 assert override["depth_is_continuous"] is True
                 assert override["coverage_is_complete"] is False
+                if confirmation_mode in {"CVD_DIVERGENCE_ONLY", "COMBINED_CVD"}:
+                    assert isinstance(override.get("cvd_divergence"), dict)
+                    assert override["cvd_divergence"]["status"] in {"UNAVAILABLE", "NO_DIVERGENCE", "BULLISH_DIVERGENCE", "BEARISH_DIVERGENCE", "CONFLICTING_DIVERGENCE"}
                 return {
                     "status": "WAIT",
                     "signal": None,
@@ -213,11 +216,15 @@ def test_signal_walk_forward_consumes_raw_receive_time_events_without_future_che
     assert replay["decision_clock"] == "RECEIVED_AT_MS"
     assert observed["raw_mode"] > 0
     assert observed["available"] > 0
-    assert observed["modes"] == {"AGGRESSOR_ONLY", "L2_ONLY", "COMBINED"}
-    assert set(replay["variants"]) == {"AGGRESSOR_ONLY", "L2_ONLY", "COMBINED"}
-    assert set(result["order_flow_comparison"]["variants"]) == {"AGGRESSOR_ONLY", "L2_ONLY", "COMBINED"}
+    expected_modes = {"AGGRESSOR_ONLY", "L2_ONLY", "COMBINED", "CVD_DIVERGENCE_ONLY", "COMBINED_CVD"}
+    assert observed["modes"] == expected_modes
+    assert set(replay["variants"]) == expected_modes
+    assert set(result["order_flow_comparison"]["variants"]) == expected_modes
     assert replay["out_of_sample"]["order_flow_raw_event_replay_enabled"] is True
     assert replay["out_of_sample"]["order_flow_raw_event_checkpoint_matches"] == 1
+    cvd_variant = replay["variants"]["CVD_DIVERGENCE_ONLY"]["out_of_sample"]
+    assert cvd_variant["order_flow_cvd_divergence_evaluated"] > 0
+    assert cvd_variant["order_flow_cvd_divergence_unavailable"] > 0
 
 
 def test_simulate_slice_carries_open_trade_beyond_fold_decision_boundary(monkeypatch):
@@ -1136,3 +1143,15 @@ def test_replay_execution_quotes_are_tick_aligned_uncrossed_and_cost_conservativ
     zero_spread = _replay_execution_quotes(100.0, "0.01", 0.0)
     assert zero_spread["best_ask"] - zero_spread["best_bid"] == pytest.approx(0.01)
     assert zero_spread["spread_bps"] > 0
+
+
+@pytest.mark.parametrize("mode", ["CVD_DIVERGENCE_ONLY", "COMBINED_CVD"])
+def test_cvd_walk_forward_ablation_requires_raw_receive_time_checkpoints(mode):
+    import asyncio
+    from app.signal_backtest import _simulate_slice
+
+    with pytest.raises(ValueError, match="require raw Binance Spot receive-time checkpoints"):
+        asyncio.run(_simulate_slice(
+            "BTCUSDT", {}, {}, {}, 5.0, 10_000.0, 0, 0,
+            order_flow_confirmation_mode=mode,
+        ))

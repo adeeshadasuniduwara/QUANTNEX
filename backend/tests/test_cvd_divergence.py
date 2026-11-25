@@ -255,3 +255,15 @@ def test_unavailable_cvd_is_a_neutral_wait_not_a_fabricated_vote():
     assert decision["accepted"] is False
     assert decision["status"] == "NEUTRAL"
     assert decision["cvd_supports_direction"] is False
+
+
+def test_future_checkpoint_metadata_cannot_change_an_earlier_decision():
+    checkpoints = _checkpoints()
+    future = checkpoints[5].copy()
+    future["symbol"] = "ETHUSDT"
+    future["decision_at"] = "not-a-timestamp"
+    result = _evaluate(
+        checkpoints=checkpoints[:5] + [future],
+        decision_at_ms=BASE_MS + 5 * 60_000,
+    )
+    assert result["status"] == "NO_DIVERGENCE"

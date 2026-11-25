@@ -193,7 +193,8 @@ def evaluate_cvd_divergence(
         for pivot_index in range(left_bars, len(candles) - right_bars):
             pivot = values[pivot_index]
             neighbours = values[pivot_index - left_bars:pivot_index] + values[pivot_index + 1:pivot_index + right_bars + 1]
-            if not all(pivot < value for value in neighbours):
+            is_pivot = all(pivot < value for value in neighbours) if kind == "low" else all(pivot > value for value in neighbours)
+            if not is_pivot:
                 continue
             confirmation_ms = candles[pivot_index + right_bars]["close_ms"]
             if confirmation_ms > decision_at_ms:
@@ -741,12 +742,14 @@ def evaluate_order_flow_confirmation(
         status = "MIXED"
     else:
         status = "NEUTRAL"
-    cvd_required_vote_met = (
-        normalized_evidence_mode not in {"CVD_DIVERGENCE_ONLY", "COMBINED_CVD"}
-        or cvd_supports_direction
-    )
+    cvd_required_vote_met = normalized_evidence_mode not in {"CVD_DIVERGENCE_ONLY", "COMBINED_CVD"} or cvd_supports_direction
+    if normalized_evidence_mode == "COMBINED_CVD":
+        cvd_required_vote_met = cvd_required_vote_met and delta_value * direction > 0 and depth_value * direction > 0
     if status == "CONFIRMED" and not cvd_required_vote_met:
-        status = "CVD_DIVERGENCE_CONFLICTS" if cvd_vote * direction < 0 else "CVD_DIVERGENCE_NOT_CONFIRMED"
+        if normalized_evidence_mode == "CVD_DIVERGENCE_ONLY":
+            status = "CVD_DIVERGENCE_CONFLICTS" if cvd_vote * direction < 0 else "CVD_DIVERGENCE_NOT_CONFIRMED"
+        else:
+            status = "COMBINED_EVIDENCE_NOT_ALIGNED"
     accepted = status == "CONFIRMED" and cvd_required_vote_met
     if feed_mode == "PUBLIC_WEBSOCKET_STREAM":
         depth_limitations = [

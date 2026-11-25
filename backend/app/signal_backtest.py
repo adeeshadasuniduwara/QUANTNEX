@@ -586,6 +586,11 @@ def _raw_replay_trade_count_baseline(
         or current_bucket <= 0
         or current_bucket % 60_000 != 0
         or not symbol
+        or current.get("eligible_for_order_flow_replay") is not True
+        or current.get("coverage_is_complete") is not False
+        or current.get("coverage_status") != "OBSERVED_CONTIGUOUS_CAPTURE_NOT_FULL_SESSION"
+        or current.get("capture_gap_detected") is not False
+        or current.get("depth_is_continuous") is not True
     ):
         return None
 

@@ -44,6 +44,21 @@ def detect_order_flow_patterns(
             or order_book.get("source") != "BINANCE_SPOT_SEQUENCE_VALIDATED_DEPTH_REPLAY"
         ):
             raise ValueError("Raw replay patterns require an eligible bounded receive-time checkpoint and validated depth.")
+    pattern_metadata = {
+        "method": "AGGRESSOR_DELTA_L2_CANDLE_RESPONSE_ABSORPTION_EXHAUSTION",
+        "method_version": 1,
+        "market_type": "BINANCE_SPOT",
+        "symbol": str(snapshot.get("symbol") or "").upper() or None,
+        "feed_mode": feed_mode,
+        "coverage_status": snapshot.get("coverage_status"),
+        "coverage_is_complete": snapshot.get("coverage_is_complete"),
+        "data_provenance": {
+            "candle_volume_used": provenance.get("candle_volume_used"),
+            "bid_ask_semantics": provenance.get("bid_ask_semantics"),
+            "decision_clock": provenance.get("decision_clock"),
+            "capture_scope": provenance.get("capture_scope"),
+        },
+    }
 
     def finite(value: Any, label: str) -> float:
         if isinstance(value, bool):
@@ -65,6 +80,7 @@ def detect_order_flow_patterns(
     candle_range = high - low
     if candle_range <= 0:
         return {
+            **pattern_metadata,
             "status": "NO_PATTERN", "direction": None, "accepted_for_side": True,
             "reason": "Zero-range candle cannot establish absorption or exhaustion.",
         }
@@ -99,13 +115,19 @@ def detect_order_flow_patterns(
         depth_minute = int(depth_time.timestamp()) // 60
     except (TypeError, ValueError, OverflowError):
         return {
+            **pattern_metadata,
             "status": "NOT_ALIGNED", "direction": None, "accepted_for_side": True,
+            "candle_minute": None, "trade_observed_at": None, "depth_observed_at": None,
             "reason": "The closed M1 candle, exchange trade and depth timestamps must all be present, timezone-aware and valid; pattern confirmation is skipped.",
             "evidence": [],
         }
     if candle_minute != trade_minute or candle_minute != depth_minute:
         return {
+            **pattern_metadata,
             "status": "NOT_ALIGNED", "direction": None, "accepted_for_side": True,
+            "candle_minute": candle_time.isoformat(),
+            "trade_observed_at": trade_time.isoformat(),
+            "depth_observed_at": depth_time.isoformat(),
             "reason": "The closed M1 candle, observed aggressor trades and sequence-validated depth do not belong to the same UTC minute; no pattern is inferred.",
             "evidence": [],
         }
@@ -185,22 +207,10 @@ def detect_order_flow_patterns(
             "trade_count": int(trade_count),
             "baseline_trade_count": baseline,
         },
-        "method": "AGGRESSOR_DELTA_L2_CANDLE_RESPONSE_ABSORPTION_EXHAUSTION",
-        "method_version": 1,
-        "market_type": "BINANCE_SPOT",
-        "symbol": str(snapshot.get("symbol") or "").upper() or None,
-        "feed_mode": feed_mode,
+        **pattern_metadata,
         "candle_minute": candle_time.isoformat(),
         "trade_observed_at": trade_time.isoformat(),
         "depth_observed_at": depth_time.isoformat(),
-        "coverage_status": snapshot.get("coverage_status"),
-        "coverage_is_complete": snapshot.get("coverage_is_complete"),
-        "data_provenance": {
-            "candle_volume_used": provenance.get("candle_volume_used"),
-            "bid_ask_semantics": provenance.get("bid_ask_semantics"),
-            "decision_clock": provenance.get("decision_clock"),
-            "capture_scope": provenance.get("capture_scope"),
-        },
         "reason": reason,
         "limitations": [
             "Binance Spot venue only; not consolidated multi-venue flow.",

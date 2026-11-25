@@ -809,3 +809,16 @@ The rotating Binance Spot smoke runner previously reported only WAIT/SIGNAL, pro
 - C22 raw-event walk-forward integration and C23 three-way directional-vote ablations both passed their PR and post-merge CI.
 - The next research dependency is a retained local Spot archive with enough complete, causally aligned checkpoints. Do not publish OOS performance from deterministic fixtures or sparse synthetic samples.
 - Next code phase: validate stored CVD time-series provenance, then add a confirmed-pivot divergence classifier with deterministic negative cases and ablation metrics.
+
+
+## C24 research — confirmed-pivot CVD divergence
+
+CVD divergence is implemented as a research-only raw Binance Spot replay feature, not a live signal gate.
+
+- Price pivots use a strict two-left / two-right swing definition by default. A pivot becomes available only after the two right-side candles have closed.
+- Each pivot is paired with the latest eligible receive-time CVD checkpoint at or before that candle's close, within a two-second boundary tolerance. The complete comparison interval must contain eligible one-minute checkpoints, sequence-validated depth, contiguous aggTrade state, no capture-gap marker, and one stable cvd_seed_trade_id.
+- Bullish: second confirmed price low is lower while its aligned CVD low is higher. Bearish: second confirmed price high is higher while its aligned CVD high is lower.
+- Missing/stale/ineligible checkpoints, future observations, sequence/capture gaps, changed CVD seeds, or unavailable pivot boundaries return an explicit unavailable result. A stream-seeded CVD series is never represented as a full UTC session.
+- Walk-forward variants now include CVD_DIVERGENCE_ONLY and COMBINED_CVD when raw Spot events are supplied. Combined CVD requires all three directional votes (aggressor delta, L2 depth and CVD divergence). CVD-only is not allowed to trigger MARKET urgency and needs a valid favorable LIMIT zone.
+- Existing live default remains the validated aggressor + L2 COMBINED gate. No live strategy threshold or signal frequency was relaxed.
+- Deterministic fixtures are added for positive and negative cases. They are not backtest performance evidence; local retained archive coverage and out-of-sample ablations remain required before any predictive-value claim.

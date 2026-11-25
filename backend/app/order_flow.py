@@ -864,12 +864,24 @@ def evaluate_order_flow_confirmation(
     accepted = (
         required_vote_met and status in {"CONFIRMED", "PATTERN_CONFIRMED"}
     )
+    base_combined_supports = delta_value * direction > 0 and depth_value * direction > 0
     confirmation_route = (
-        "ABSORPTION_PATTERN" if normalized_evidence_mode in {"ABSORPTION_ONLY", "COMBINED_OR_ABSORPTION"} and pattern_supports_direction and not (delta_value * direction > 0 and depth_value * direction > 0)
-        else "EXHAUSTION_PATTERN" if normalized_evidence_mode in {"EXHAUSTION_ONLY", "COMBINED_OR_EXHAUSTION"} and pattern_supports_direction and not (delta_value * direction > 0 and depth_value * direction > 0)
-        else "CVD_DIVERGENCE" if normalized_evidence_mode == "CVD_DIVERGENCE_ONLY"
-        else "COMBINED_DELTA_L2_CVD" if normalized_evidence_mode == "COMBINED_CVD"
-        else "COMBINED_DELTA_L2" if accepted or normalized_evidence_mode in {"COMBINED", "AGGRESSOR_ONLY", "L2_ONLY", "COMBINED_OR_ABSORPTION", "COMBINED_OR_EXHAUSTION"}
+        "ABSORPTION_PATTERN"
+        if normalized_evidence_mode in {"ABSORPTION_ONLY", "COMBINED_OR_ABSORPTION"}
+        and pattern_supports_direction and not base_combined_supports
+        else "EXHAUSTION_PATTERN"
+        if normalized_evidence_mode in {"EXHAUSTION_ONLY", "COMBINED_OR_EXHAUSTION"}
+        and pattern_supports_direction and not base_combined_supports
+        else "CVD_DIVERGENCE"
+        if normalized_evidence_mode == "CVD_DIVERGENCE_ONLY" and accepted
+        else "COMBINED_DELTA_L2_CVD"
+        if normalized_evidence_mode == "COMBINED_CVD" and accepted
+        else "COMBINED_DELTA_L2"
+        if normalized_evidence_mode in {"COMBINED", "COMBINED_OR_ABSORPTION", "COMBINED_OR_EXHAUSTION"} and accepted and base_combined_supports
+        else "AGGRESSOR_DELTA"
+        if normalized_evidence_mode == "AGGRESSOR_ONLY" and accepted
+        else "L2_DEPTH"
+        if normalized_evidence_mode == "L2_ONLY" and accepted
         else "UNCONFIRMED"
     )
     if feed_mode == "PUBLIC_WEBSOCKET_STREAM":

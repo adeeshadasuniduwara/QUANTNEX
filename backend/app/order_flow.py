@@ -770,9 +770,14 @@ def evaluate_order_flow_confirmation(
             or pattern.get("coverage_status") != snapshot.get("coverage_status")
             or not isinstance(pattern.get("data_provenance"), dict)
             or pattern["data_provenance"].get("candle_volume_used") is not False
-            or pattern.get("candle_minute") is None
-            or pattern.get("trade_observed_at") is None
-            or pattern.get("depth_observed_at") is None
+            or (
+                pattern_status not in {"NO_PATTERN", "NOT_ALIGNED"}
+                and (
+                    pattern.get("candle_minute") is None
+                    or pattern.get("trade_observed_at") is None
+                    or pattern.get("depth_observed_at") is None
+                )
+            )
         ):
             raise OrderFlowDataError("Absorption/exhaustion pattern provenance is invalid or not receive-time aligned.")
         if pattern_direction not in {None, "BUY", "SELL"}:
@@ -788,13 +793,13 @@ def evaluate_order_flow_confirmation(
             else "EXHAUSTION"
         )
         pattern_kind_matches = pattern_status.endswith("_" + expected_kind)
-        if pattern_kind_matches:
-            if pattern_direction != ("BUY" if pattern_status.startswith("BUY_") else "SELL"):
+        if pattern_status.endswith("_ABSORPTION") or pattern_status.endswith("_EXHAUSTION"):
+            expected_pattern_direction = "BUY" if pattern_status.startswith("BUY_") else "SELL"
+            if pattern_direction != expected_pattern_direction:
                 raise OrderFlowDataError("Absorption/exhaustion pattern status and direction disagree.")
-            pattern_vote = 1.0 if pattern_direction == "BUY" else -1.0
-            pattern_supports_direction = pattern_vote * direction > 0
-        elif pattern_direction is not None:
-            raise OrderFlowDataError("Pattern direction is inconsistent with the selected research ablation.")
+            if pattern_kind_matches:
+                pattern_vote = 1.0 if pattern_direction == "BUY" else -1.0
+                pattern_supports_direction = pattern_vote * direction > 0
     pattern_observation = (
         "Same-minute " + ("absorption" if normalized_evidence_mode in {"ABSORPTION_ONLY", "COMBINED_OR_ABSORPTION"} else "exhaustion") + " pattern",
         pattern_vote,

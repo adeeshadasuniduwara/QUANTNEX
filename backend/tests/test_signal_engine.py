@@ -1431,6 +1431,8 @@ def test_binance_entry_selector_supports_short_market_when_both_flow_components_
 
 
 def test_build_signal_rejects_unsupported_score_mode_before_market_data_calls():
+    import asyncio
+
     with pytest.raises(ValueError, match="score mode"):
         asyncio.run(signal_engine.build_signal(
             {}, "BTCUSDT", score_mode_override="UNSUPPORTED"

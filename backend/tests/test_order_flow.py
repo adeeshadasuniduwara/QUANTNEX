@@ -327,3 +327,83 @@ def test_order_flow_signal_summary_preserves_observed_volume_profile_scope():
     result = summarize_order_flow_snapshot(snapshot, {"status": "CONFIRMED", "accepted": True})
 
     assert result["volume_profile"] == snapshot["volume_profile"]
+
+
+def _raw_replay_pattern_snapshot(*, delta_ratio=-0.55, depth_imbalance=0.30, exhaustion=False):
+    from app.order_flow_patterns import detect_order_flow_patterns
+
+    candle_time = NOW - timedelta(minutes=1)
+    observed_at = candle_time + timedelta(seconds=58)
+    candle = (
+        {"time": candle_time.isoformat(), "open": 104, "high": 105, "low": 99, "close": 103}
+        if exhaustion else
+        {"time": candle_time.isoformat(), "open": 100, "high": 103, "low": 99, "close": 102.5}
+    )
+    snapshot = _order_flow_snapshot(delta_ratio, depth_imbalance, age=1.0)
+    snapshot.update({
+        "symbol": "BTCUSDT",
+        "feed_mode": "RAW_EVENT_REPLAY",
+        "depth_is_continuous": True,
+        "depth_snapshot_update_id": 123,
+        "depth_observed_at": observed_at.isoformat(),
+        "last_trade_at": observed_at.isoformat(),
+        "depth_data_age_seconds": 1.0,
+        "coverage_status": "OBSERVED_CONTIGUOUS_CAPTURE_NOT_FULL_SESSION",
+        "coverage_is_complete": False,
+        "eligible_for_order_flow_replay": True,
+        "capture_gap_detected": False,
+        "data_sources": {"trades": "raw fixture", "depth": "raw replay fixture"},
+    })
+    snapshot["order_book"]["source"] = "BINANCE_SPOT_SEQUENCE_VALIDATED_DEPTH_REPLAY"
+    snapshot["auction_patterns"] = detect_order_flow_patterns(
+        "BUY", candle, snapshot, baseline_trade_count=40 if exhaustion else None
+    )
+    return snapshot
+
+
+def test_absorption_only_and_combined_or_absorption_accept_pattern_route_not_market_vote():
+    from app.order_flow import evaluate_order_flow_confirmation
+
+    snapshot = _raw_replay_pattern_snapshot()
+    absorption = evaluate_order_flow_confirmation(
+        "BUY", snapshot, now=NOW, evidence_mode="ABSORPTION_ONLY"
+    )
+    combined_or = evaluate_order_flow_confirmation(
+        "BUY", snapshot, now=NOW, evidence_mode="COMBINED_OR_ABSORPTION"
+    )
+    assert absorption["accepted"] is True
+    assert absorption["confirmation_route"] == "ABSORPTION_PATTERN"
+    assert combined_or["accepted"] is True
+    assert combined_or["confirmation_route"] == "ABSORPTION_PATTERN"
+    assert combined_or["pattern_status"] == "BUY_ABSORPTION"
+
+
+def test_exhaustion_only_requires_same_side_exhaustion_and_pattern_modes_are_replay_only():
+    from app.order_flow import evaluate_order_flow_confirmation
+
+    snapshot = _raw_replay_pattern_snapshot(exhaustion=True, delta_ratio=-0.60, depth_imbalance=0.05)
+    result = evaluate_order_flow_confirmation(
+        "BUY", snapshot, now=NOW, evidence_mode="EXHAUSTION_ONLY"
+    )
+    assert result["accepted"] is True
+    assert result["pattern_status"] == "BUY_EXHAUSTION"
+    assert result["confirmation_route"] == "EXHAUSTION_PATTERN"
+
+    live = dict(snapshot)
+    live["feed_mode"] = "PUBLIC_WEBSOCKET_STREAM"
+    with pytest.raises(OrderFlowDataError, match="research-only"):
+        evaluate_order_flow_confirmation(
+            "BUY", live, now=NOW, evidence_mode="EXHAUSTION_ONLY"
+        )
+
+
+def test_combined_or_absorption_keeps_base_combined_route_when_no_pattern_exists():
+    from app.order_flow import evaluate_order_flow_confirmation
+
+    snapshot = _raw_replay_pattern_snapshot(delta_ratio=0.25, depth_imbalance=0.20)
+    result = evaluate_order_flow_confirmation(
+        "BUY", snapshot, now=NOW, evidence_mode="COMBINED_OR_ABSORPTION"
+    )
+    assert result["accepted"] is True
+    assert result["confirmation_route"] == "COMBINED_DELTA_L2"
+    assert result["pattern_status"] == "NO_PATTERN"

@@ -141,3 +141,74 @@ def test_pattern_classifier_rejects_naive_or_cross_minute_depth_timestamps():
     )
     assert result["status"] == "NOT_ALIGNED"
 
+
+
+def _raw_replay_snapshot(delta_ratio, depth_imbalance, trade_count=100):
+    observed_at = "2026-11-21T12:00:58+00:00"
+    return {
+        "market_type": "BINANCE_SPOT",
+        "symbol": "BTCUSDT",
+        "feed_mode": "RAW_EVENT_REPLAY",
+        "eligible_for_order_flow_replay": True,
+        "capture_gap_detected": False,
+        "coverage_status": "OBSERVED_CONTIGUOUS_CAPTURE_NOT_FULL_SESSION",
+        "coverage_is_complete": False,
+        "depth_is_continuous": True,
+        "data_provenance": {
+            "candle_volume_used": False,
+            "bid_ask_semantics": "Aggressor-side inferred trade volume; not quoted bid/ask volume",
+            "decision_clock": "RECEIVED_AT_MS",
+            "capture_scope": "bounded raw archive",
+        },
+        "delta_ratio": delta_ratio,
+        "trade_count": trade_count,
+        "trade_data_age_seconds": 1.0,
+        "depth_data_age_seconds": 1.0,
+        "last_trade_at": observed_at,
+        "depth_observed_at": observed_at,
+        "order_book": {
+            "depth_imbalance": depth_imbalance,
+            "source": "BINANCE_SPOT_SEQUENCE_VALIDATED_DEPTH_REPLAY",
+        },
+    }
+
+
+def test_raw_receive_time_replay_detects_same_minute_buy_and_sell_absorption():
+    buy = detect_order_flow_patterns(
+        "BUY",
+        {"time": "2026-11-21T12:00:00+00:00", "open": 100, "high": 103, "low": 99, "close": 102.5},
+        _raw_replay_snapshot(-0.55, 0.30),
+    )
+    sell = detect_order_flow_patterns(
+        "SELL",
+        {"time": "2026-11-21T12:00:00+00:00", "open": 102, "high": 103, "low": 99, "close": 99.5},
+        _raw_replay_snapshot(0.55, -0.30),
+    )
+    assert buy["status"] == "BUY_ABSORPTION"
+    assert sell["status"] == "SELL_ABSORPTION"
+    assert buy["feed_mode"] == sell["feed_mode"] == "RAW_EVENT_REPLAY"
+    assert buy["coverage_is_complete"] is False
+    assert buy["data_provenance"]["decision_clock"] == "RECEIVED_AT_MS"
+
+
+def test_raw_receive_time_replay_exhaustion_requires_prior_trade_count_baseline():
+    candle = {"time": "2026-11-21T12:00:00+00:00", "open": 104, "high": 105, "low": 99, "close": 103}
+    without_baseline = detect_order_flow_patterns(
+        "BUY", candle, _raw_replay_snapshot(-0.60, 0.05, 100)
+    )
+    with_baseline = detect_order_flow_patterns(
+        "BUY", candle, _raw_replay_snapshot(-0.60, 0.05, 100), baseline_trade_count=40
+    )
+    assert without_baseline["status"] == "NO_PATTERN"
+    assert with_baseline["status"] == "BUY_EXHAUSTION"
+
+
+def test_raw_replay_pattern_classifier_rejects_ineligible_or_full_session_claims():
+    invalid = _raw_replay_snapshot(-0.55, 0.30)
+    invalid["capture_gap_detected"] = True
+    with pytest.raises(ValueError, match="eligible bounded receive-time"):
+        detect_order_flow_patterns(
+            "BUY",
+            {"time": "2026-11-21T12:00:00+00:00", "open": 100, "high": 103, "low": 99, "close": 102.5},
+            invalid,
+        )

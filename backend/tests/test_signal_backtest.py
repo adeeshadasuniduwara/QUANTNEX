@@ -1136,3 +1136,15 @@ def test_replay_execution_quotes_are_tick_aligned_uncrossed_and_cost_conservativ
     zero_spread = _replay_execution_quotes(100.0, "0.01", 0.0)
     assert zero_spread["best_ask"] - zero_spread["best_bid"] == pytest.approx(0.01)
     assert zero_spread["spread_bps"] > 0
+
+
+@pytest.mark.parametrize("mode", ["CVD_DIVERGENCE_ONLY", "COMBINED_CVD"])
+def test_cvd_walk_forward_ablation_requires_raw_receive_time_checkpoints(mode):
+    import asyncio
+    from app.signal_backtest import _simulate_slice
+
+    with pytest.raises(ValueError, match="require raw Binance Spot receive-time checkpoints"):
+        asyncio.run(_simulate_slice(
+            "BTCUSDT", {}, {}, {}, 5.0, 10_000.0, 0, 0,
+            order_flow_confirmation_mode=mode,
+        ))

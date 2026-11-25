@@ -5,6 +5,7 @@ import math
 from bisect import bisect_left, bisect_right
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
+from statistics import median
 from typing import Any
 
 from .signal_engine import build_signal, round_price_to_tick
@@ -552,6 +553,77 @@ def _metrics(trades: list[dict[str, Any]], counters: dict[str, int], candles: li
     }
 
 
+def _raw_replay_trade_count_baseline(
+    checkpoints: list[dict[str, Any]],
+    current_index: int,
+    *,
+    lookback_minutes: int = 30,
+) -> float | None:
+    """Return the median of at least five consecutive prior eligible UTC minute buckets.
+
+    The current bucket is excluded. Raw replay counts only observed live aggTrade
+    events received in each bucket; missing, stale or gapped minutes stop the
+    baseline rather than being filled from later data.
+    """
+    if (
+        not isinstance(checkpoints, list)
+        or isinstance(current_index, bool)
+        or not isinstance(current_index, int)
+        or not 0 <= current_index < len(checkpoints)
+        or isinstance(lookback_minutes, bool)
+        or not isinstance(lookback_minutes, int)
+        or not 5 <= lookback_minutes <= 240
+    ):
+        return None
+    current = checkpoints[current_index]
+    if not isinstance(current, dict):
+        return None
+    current_bucket = current.get("capture_bucket_ms")
+    symbol = str(current.get("symbol") or "").upper()
+    if (
+        isinstance(current_bucket, bool)
+        or not isinstance(current_bucket, int)
+        or current_bucket <= 0
+        or current_bucket % 60_000 != 0
+        or not symbol
+    ):
+        return None
+
+    by_bucket: dict[int, dict[str, Any]] = {}
+    for record in checkpoints[:current_index]:
+        if not isinstance(record, dict) or str(record.get("symbol") or "").upper() != symbol:
+            continue
+        bucket = record.get("capture_bucket_ms")
+        if (
+            isinstance(bucket, bool)
+            or not isinstance(bucket, int)
+            or bucket <= 0
+            or bucket % 60_000 != 0
+        ):
+            continue
+        by_bucket[bucket] = record
+
+    counts: list[float] = []
+    for offset in range(1, lookback_minutes + 1):
+        previous = by_bucket.get(current_bucket - offset * 60_000)
+        if (
+            previous is None
+            or previous.get("eligible_for_order_flow_replay") is not True
+            or previous.get("coverage_is_complete") is not False
+            or previous.get("coverage_status") != "OBSERVED_CONTIGUOUS_CAPTURE_NOT_FULL_SESSION"
+            or previous.get("capture_gap_detected") is not False
+            or previous.get("depth_is_continuous") is not True
+        ):
+            break
+        count = previous.get("live_trade_count")
+        if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
+            break
+        counts.append(float(count))
+    if len(counts) < 5:
+        return None
+    return float(median(counts))
+
+
 async def _simulate_slice(
     symbol: str,
     candles_by_tf: dict[str, list[dict[str, Any]]],
@@ -574,10 +646,17 @@ async def _simulate_slice(
     primary_tf = str(settings.get("primary", "5"))
     if order_flow_confirmation_mode is not None:
         order_flow_confirmation_mode = str(order_flow_confirmation_mode).strip().upper()
-        if order_flow_confirmation_mode not in {"COMBINED", "AGGRESSOR_ONLY", "L2_ONLY", "CVD_DIVERGENCE_ONLY", "COMBINED_CVD"}:
+        pattern_modes = {
+            "ABSORPTION_ONLY", "EXHAUSTION_ONLY",
+            "COMBINED_OR_ABSORPTION", "COMBINED_OR_EXHAUSTION",
+        }
+        if order_flow_confirmation_mode not in {
+            "COMBINED", "AGGRESSOR_ONLY", "L2_ONLY",
+            "CVD_DIVERGENCE_ONLY", "COMBINED_CVD", *pattern_modes,
+        }:
             raise ValueError("Order Flow ablation mode is unsupported.")
-        if order_flow_confirmation_mode in {"CVD_DIVERGENCE_ONLY", "COMBINED_CVD"} and raw_order_flow_checkpoints is None:
-            raise ValueError("CVD divergence ablations require raw Binance Spot receive-time checkpoints.")
+        if order_flow_confirmation_mode in {"CVD_DIVERGENCE_ONLY", "COMBINED_CVD", *pattern_modes} and raw_order_flow_checkpoints is None:
+            raise ValueError("CVD and absorption/exhaustion ablations require raw Binance Spot receive-time checkpoints.")
     enabled = list(dict.fromkeys(
         [str(item) for item in settings.get("enabled", ["60", "30", "15", "5", "1"])]
         + [primary_tf, str(settings.get("trend", "60"))]
@@ -617,6 +696,11 @@ async def _simulate_slice(
         "order_flow_cvd_divergence_bearish": 0,
         "order_flow_cvd_divergence_no_divergence": 0,
         "order_flow_cvd_divergence_unavailable": 0,
+        "order_flow_pattern_evaluated": 0,
+        "order_flow_pattern_absorption": 0,
+        "order_flow_pattern_exhaustion": 0,
+        "order_flow_pattern_no_pattern": 0,
+        "order_flow_pattern_unavailable": 0,
     }
     trades: list[dict[str, Any]] = []
     index = max(0, start_index)
@@ -732,6 +816,22 @@ async def _simulate_slice(
 
         if (
             raw_order_flow_checkpoints is not None
+            and order_flow_confirmation_mode in {
+                "ABSORPTION_ONLY", "EXHAUSTION_ONLY",
+                "COMBINED_OR_ABSORPTION", "COMBINED_OR_EXHAUSTION",
+            }
+            and observation_status == "AVAILABLE"
+            and order_flow_override
+        ):
+            checkpoint_index = bisect_right(raw_checkpoint_epochs or [], as_of_epoch + 1e-6) - 1
+            baseline_trade_count = _raw_replay_trade_count_baseline(
+                raw_order_flow_checkpoints, checkpoint_index
+            ) if checkpoint_index >= 0 else None
+            order_flow_override = dict(order_flow_override)
+            order_flow_override["baseline_trade_count"] = baseline_trade_count
+
+        if (
+            raw_order_flow_checkpoints is not None
             and order_flow_confirmation_mode in {"CVD_DIVERGENCE_ONLY", "COMBINED_CVD"}
         ):
             checkpoint_end = bisect_right(raw_checkpoint_epochs or [], as_of_epoch)
@@ -782,6 +882,18 @@ async def _simulate_slice(
             build_kwargs["score_mode_override"] = score_mode
         result = await build_signal(settings, symbol, **build_kwargs)
         order_flow_result = result.get("order_flow") or {}
+        pattern_result = order_flow_result.get("auction_patterns")
+        if isinstance(pattern_result, dict):
+            counters["order_flow_pattern_evaluated"] += 1
+            pattern_status = str(pattern_result.get("status") or "")
+            if pattern_status.endswith("_ABSORPTION"):
+                counters["order_flow_pattern_absorption"] += 1
+            elif pattern_status.endswith("_EXHAUSTION"):
+                counters["order_flow_pattern_exhaustion"] += 1
+            elif pattern_status == "NO_PATTERN":
+                counters["order_flow_pattern_no_pattern"] += 1
+            else:
+                counters["order_flow_pattern_unavailable"] += 1
         if order_flow_result.get("data_mode") in {
             "HISTORICAL_FEATURE_SNAPSHOT_REPLAY", "HISTORICAL_RAW_EVENT_REPLAY"
         }:
@@ -1253,13 +1365,21 @@ async def run_signal_walk_forward(
                     "order_flow_cvd_divergence_bearish",
                     "order_flow_cvd_divergence_no_divergence",
                     "order_flow_cvd_divergence_unavailable",
+                    "order_flow_pattern_evaluated", "order_flow_pattern_absorption",
+                    "order_flow_pattern_exhaustion", "order_flow_pattern_no_pattern",
+                    "order_flow_pattern_unavailable",
                 )
                 return {key: metrics.get(key) for key in keys}
 
             variant_results: dict[str, dict[str, Any]] = {}
             variant_full_results: dict[str, tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]] = {}
             variant_modes = (
-                ("AGGRESSOR_ONLY", "L2_ONLY", "COMBINED", "CVD_DIVERGENCE_ONLY", "COMBINED_CVD")
+                (
+                    "AGGRESSOR_ONLY", "L2_ONLY", "COMBINED",
+                    "CVD_DIVERGENCE_ONLY", "COMBINED_CVD",
+                    "ABSORPTION_ONLY", "EXHAUSTION_ONLY",
+                    "COMBINED_OR_ABSORPTION", "COMBINED_OR_EXHAUSTION",
+                )
                 if is_raw_replay else ("AGGRESSOR_ONLY", "L2_ONLY", "COMBINED")
             )
             for confirmation_mode in variant_modes:
@@ -1361,12 +1481,14 @@ async def run_signal_walk_forward(
                 "out_of_sample_folds": order_flow_out_of_sample_folds,
                 "variants": variant_results,
                 "method": (
-                    "Five directional-vote ablations (aggressor-only, L2-only, combined, confirmed-pivot CVD-only "
-                    "and combined-with-CVD) use the same fixed candle strategy, chronological folds and execution "
-                    "assumptions. Raw-event CVD requires same-boundary receive-time checkpoints, continuous eligible "
-                    "one-minute coverage and one stable stream seed between confirmed price pivots. Both underlying "
-                    "feeds retain freshness, provenance and sequence-integrity gates. CVD-only cannot select MARKET "
-                    "urgency; it requires a favorable LIMIT retracement. Results are descriptive, not calibrated uplift."
+                    "Nine raw-Spot replay ablations compare aggressor-only, L2-only, combined, confirmed-pivot CVD-only, "
+                    "combined-with-CVD, absorption-only, exhaustion-only, and combined-or-pattern alternatives on the "
+                    "same chronological folds and execution assumptions. Absorption/exhaustion use same-minute closed "
+                    "M1 price response, observed aggressor delta and sequence-validated L2. Exhaustion requires a median "
+                    "baseline from at least five consecutive prior UTC minute buckets; the current bucket is excluded. "
+                    "Pattern-only routes cannot select MARKET urgency and require a favorable LIMIT retracement. The "
+                    "combined-or-pattern routes use MARKET only when the base delta+L2 route itself confirms. All variants "
+                    "retain freshness, provenance and sequence-integrity gates. Results are descriptive, not calibrated uplift."
                     if is_raw_replay else
                     "Three directional-vote ablations (aggressor-only, L2-only and combined) use the same fixed "
                     "candle strategy, chronological folds and execution assumptions. Both feeds pass their existing "

@@ -70,6 +70,7 @@ class AggTradeCvdState:
     """
 
     symbol: str
+    seed_trade_id: int | None = None
     last_agg_trade_id: int | None = None
     cumulative_delta: Decimal = Decimal("0")
     cumulative_quote_delta: Decimal = Decimal("0")
@@ -100,6 +101,7 @@ class AggTradeCvdState:
         first_id = _int_value(first_trade_id, "first session trade ID")
         if first_id < 0 or not isinstance(session_date, date) or isinstance(session_date, datetime):
             raise OrderFlowStateError("A non-negative first trade ID and UTC date (not datetime) are required.")
+        self.seed_trade_id = first_id
         self.last_agg_trade_id = first_id - 1
         self.cumulative_delta = Decimal("0")
         self.cumulative_quote_delta = Decimal("0")
@@ -204,6 +206,7 @@ class AggTradeCvdState:
             raise
         trade_id = parsed[0]
         if self.last_agg_trade_id is None:
+            self.seed_trade_id = trade_id
             self.last_agg_trade_id = trade_id - 1
             self.session_date_utc = parsed[5]
             self.coverage_complete = False
@@ -264,6 +267,7 @@ class AggTradeCvdState:
             cvd_status = "COMPLETE_SINCE_STATE_SEED"
         return {
             "symbol": self.symbol,
+            "cvd_seed_trade_id": self.seed_trade_id,
             "last_agg_trade_id": self.last_agg_trade_id,
             "cumulative_delta_observed": float(self.cumulative_delta),
             "cumulative_quote_delta_observed": float(self.cumulative_quote_delta),

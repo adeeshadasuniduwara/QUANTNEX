@@ -822,3 +822,11 @@ CVD divergence is implemented as a research-only raw Binance Spot replay feature
 - Walk-forward variants now include CVD_DIVERGENCE_ONLY and COMBINED_CVD when raw Spot events are supplied. Combined CVD requires all three directional votes (aggressor delta, L2 depth and CVD divergence). CVD-only is not allowed to trigger MARKET urgency and needs a valid favorable LIMIT zone.
 - Existing live default remains the validated aggressor + L2 COMBINED gate. No live strategy threshold or signal frequency was relaxed.
 - Deterministic fixtures are added for positive and negative cases. They are not backtest performance evidence; local retained archive coverage and out-of-sample ablations remain required before any predictive-value claim.
+
+
+
+## 2026-11-25 — Runner HTTP 451 handling for USDⓈ-M smoke
+
+The GitHub-hosted scheduled smoke log confirmed a distinct provider restriction: Spot metadata returned 1,376 eligible pairs and its 20-pair sample completed, while USDⓈ-M `/fapi/v1/exchangeInfo` returned HTTP 451 before any Futures contract was scanned. This must not be mislabeled as WAIT or Futures validation.
+
+C25 preserves the HTTP status through the USDⓈ-M data and signal exceptions. The smoke runner now emits `FUTURES UNAVAILABLE` and continues to report Spot independently for HTTP 451. HTTP 403/418/429 remain failures; rate limiting is not treated as a harmless skip. If 451 occurs during candle retrieval, the Futures sample stops with an explicit incomplete-coverage message. This improves CI diagnostics only; it does not expand Futures capabilities. USDⓈ-M remains candle-only and requires a local-network provider check; COIN-M remains unsupported.

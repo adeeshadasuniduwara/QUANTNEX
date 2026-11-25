@@ -130,3 +130,36 @@ def test_usdm_chart_accepts_short_history_for_newly_listed_pairs(monkeypatch):
     rows = asyncio.run(futures.fetch_binance_usdm_candles("NEWUSDT", "1m", 210))
     assert len(rows) == 1
     assert rows[0]["close"] == 102
+
+
+
+def test_usdm_http_451_status_is_typed_and_not_retried_across_hosts():
+    class FakeResponse:
+        status_code = 451
+
+        def raise_for_status(self):
+            raise AssertionError("HTTP 451 must be classified before raise_for_status")
+
+    class FakeClient:
+        calls = 0
+
+        async def get(self, *args, **kwargs):
+            self.calls += 1
+            return FakeResponse()
+
+    client = FakeClient()
+    with pytest.raises(futures.BinanceUsdMDataError, match="451") as caught:
+        asyncio.run(futures._request_json(client, "/fapi/v1/exchangeInfo"))
+    assert caught.value.status_code == 451
+    assert client.calls == 1
+
+
+def test_usdm_exchange_info_wrapper_preserves_http_451(monkeypatch):
+    async def blocked(*_args, **_kwargs):
+        raise futures.BinanceUsdMDataError("region unavailable (451)", status_code=451)
+
+    monkeypatch.setattr(futures, "_request_json", blocked)
+    monkeypatch.setattr(futures, "_CACHE", None)
+    with pytest.raises(futures.BinanceUsdMDataError, match="exchangeInfo") as caught:
+        asyncio.run(futures.get_binance_usdm_symbol_info(force_refresh=True))
+    assert caught.value.status_code == 451

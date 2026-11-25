@@ -127,3 +127,15 @@ def test_futures_analysis_api_records_a_separate_futures_source(monkeypatch):
     assert result["market_type"] == "BINANCE_USDM_FUTURES"
     assert db.committed is True
     assert published and published[0][-1]["symbol"] == "BTCUSDT.P"
+
+
+
+def test_futures_signal_error_preserves_provider_http_status(monkeypatch):
+    async def blocked(*_args, **_kwargs):
+        from app.binance_usdm_market_data import BinanceUsdMDataError
+        raise BinanceUsdMDataError("provider unavailable (451)", status_code=451)
+
+    monkeypatch.setattr(engine, "fetch_binance_usdm_candles", blocked)
+    with pytest.raises(engine.BinanceUsdMSignalError, match="451") as caught:
+        asyncio.run(engine.analyze_usdm_futures_signal("BTCUSDT", "5m", 6))
+    assert caught.value.status_code == 451

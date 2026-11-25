@@ -1395,3 +1395,42 @@ Measure whether observed Binance Spot aggressor-side delta, sequence-validated L
 3. Run the raw-event walk-forward on a retained local Spot archive. Report raw event count separately from eligible checkpoint count, pivot/CVD coverage, fold trade count, win rate, expectancy, profit factor, drawdown and estimated costs. If coverage is sparse, report no performance conclusion.
 4. Investigate the 2026-11-24 main smoke workflow run #45379203111: the dynamic Spot/USDⓈ-M scan step failed. The accessible run summary identifies the failed step but does not expose its provider error text, so the exact cause is not asserted here.
 5. Keep USDⓈ-M in candle-only monitor scope until live provider access and its own order-flow adapter are verified; GitHub-hosted requests previously returned HTTP 451. COIN-M remains unsupported.
+
+
+
+## 2026-11-25 C24 — Causal CVD divergence merged and post-merge verified
+
+- PR [#306](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/306) was squash-merged to main as `59600f332917e1d4715ad473a1de254adfe31890`.
+- The merge was based on main `d32d7108902fb5c28718b74acb739fc14869b846`; the reviewed branch was 27 commits ahead and 0 behind. The final diff touched only the Spot CVD state, CVD classifier, walk-forward ablations, deterministic tests and the two progress documents.
+- PR CI passed: **655 tests on Python 3.12**, **655 tests on Python 3.14**, backend schema/compile test and Web syntax checks.
+- Post-merge main CI passed on the exact merge SHA: Backend CI, Backend/Web CI and Telegram update notification workflow.
+- The feature remains research-only. The live/default signal gate remains COMBINED (observed aggressor delta + sequence-validated L2); CVD divergence is not a live vote or calibrated probability. No profitability/uplift claim is made because the local retained raw-event archive has not been available to this runner.
+
+
+## C25 — Keep runner-restricted USDⓈ-M separate from Spot smoke health (in progress)
+
+### Evidence that triggered this fix
+- Scheduled live smoke run [#45379203111](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45379203111) on 2026-11-24 was inspected from its actual job log.
+- Binance Spot `exchangeInfo` returned **1,376 eligible Spot pairs**. The rotating sample completed **20/20** requests without Spot provider errors; all 20 were WAIT because there was no qualifying directional setup. The live Order Flow confirmation gate was not exercised.
+- USDⓈ-M discovery returned **HTTP 451** from `/fapi/v1/exchangeInfo` on the GitHub-hosted runner. Zero Futures contracts were scanned. This is a provider-access restriction, not a Futures WAIT and not evidence that the Futures engine passed.
+
+### Change on `fix/usdm-451-smoke-provider-skip-20261125`
+- `BinanceUsdMDataError` now retains the HTTP status code. The market-data adapter and candle-only signal wrapper preserve it when adding context.
+- The read-only smoke runner reports HTTP 451 as `FUTURES UNAVAILABLE`, explicitly states that Futures was not scanned, and continues to report Spot independently. It does not manufacture WAIT or claim Futures validation.
+- HTTP 403, 418 and 429 remain provider failures; in particular, rate limits are not silently skipped.
+- If HTTP 451 appears during Futures candle retrieval after metadata succeeds, the Futures sample stops and reports incomplete provider access rather than counting it as a WAIT.
+- No live trading, order placement, Spot threshold changes or Futures Order Flow claims were introduced.
+
+### Tests added
+- HTTP 451 is typed and does not fan out to alternate hosts.
+- The HTTP status survives exchangeInfo and signal-engine exception wrapping.
+- A runner HTTP 451 leaves an otherwise successful Spot smoke run successful while clearly marking Futures unavailable.
+- HTTP 429 remains a failing provider condition.
+
+### Verification status / next steps
+1. Run Backend CI on Python 3.12 and 3.14 plus Web checks; do not merge until all are green.
+2. Review the complete diff and confirm only the three USDⓈ-M/smoke modules, their tests and progress documents changed; inspect for secrets and accidental live-order paths.
+3. Verify PR base/head/mergeability, merge only after CI passes, then verify main and post-merge checks.
+4. Re-run the scheduled/manual live smoke. A runner HTTP 451 should now be an explicit Futures-unavailable status while Spot success/failure remains independently meaningful.
+5. Obtain a local-network USDⓈ-M read-only provider check before claiming live Futures market-data coverage. USDⓈ-M remains candle-only; COIN-M remains unsupported.
+6. Continue the core signal milestone with actual retained Spot raw-event replay and chronological ablations. Report eligible checkpoint coverage and OOS metrics only when supported; fixtures alone do not prove profitability.

@@ -68,6 +68,7 @@ def evaluate_cvd_divergence(
             "symbol": normalized_symbol,
             "timeframe_seconds": timeframe_seconds if isinstance(timeframe_seconds, int) else None,
             "as_of_ms": decision_at_ms if isinstance(decision_at_ms, int) else None,
+            "coverage": "UNAVAILABLE_OR_INCOMPLETE",
             "coverage_is_complete": False,
             **extra,
         }
@@ -699,7 +700,14 @@ def evaluate_order_flow_confirmation(
             cvd_divergence.get("method") != "CONFIRMED_PRICE_SWING_PIVOTS_VS_RECEIVE_TIME_CVD"
             or cvd_divergence.get("symbol") != snapshot.get("symbol")
             or cvd_divergence.get("coverage_is_complete") is not False
-            or cvd_divergence.get("coverage") != "ELIGIBLE_CONTIGUOUS_ONE_MINUTE_CHECKPOINTS_SINCE_STABLE_CAPTURE_SEED"
+            or cvd_divergence.get("coverage") not in {
+                "ELIGIBLE_CONTIGUOUS_ONE_MINUTE_CHECKPOINTS_SINCE_STABLE_CAPTURE_SEED",
+                "UNAVAILABLE_OR_INCOMPLETE",
+            }
+            or (cvd_status_value in {"BULLISH_DIVERGENCE", "BEARISH_DIVERGENCE"} and (
+                cvd_divergence.get("coverage") != "ELIGIBLE_CONTIGUOUS_ONE_MINUTE_CHECKPOINTS_SINCE_STABLE_CAPTURE_SEED"
+                or cvd_confirmed_at is None
+            ))
             or isinstance(cvd_as_of, bool) or not isinstance(cvd_as_of, int) or cvd_as_of <= 0
             or isinstance(cvd_confirmed_at, bool) or (cvd_confirmed_at is not None and not isinstance(cvd_confirmed_at, int))
             or cvd_as_of > int(clock.timestamp() * 1000) + 2_000

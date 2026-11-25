@@ -1177,3 +1177,51 @@ def test_cvd_walk_forward_ablation_requires_raw_receive_time_checkpoints(mode):
             "BTCUSDT", {}, {}, {}, 5.0, 10_000.0, 0, 0,
             order_flow_confirmation_mode=mode,
         ))
+
+
+def test_raw_replay_trade_count_baseline_uses_only_five_or_more_consecutive_prior_buckets():
+    from app.signal_backtest import _raw_replay_trade_count_baseline
+
+    start_ms = int(datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc).timestamp() * 1000)
+    checkpoints = []
+    for index, count in enumerate([10, 20, 30, 40, 50, 999]):
+        bucket = start_ms + index * 60_000
+        checkpoints.append({
+            "symbol": "BTCUSDT",
+            "capture_bucket_ms": bucket,
+            "live_trade_count": count,
+            "eligible_for_order_flow_replay": True,
+            "coverage_is_complete": False,
+            "coverage_status": "OBSERVED_CONTIGUOUS_CAPTURE_NOT_FULL_SESSION",
+            "capture_gap_detected": False,
+            "depth_is_continuous": True,
+        })
+
+    assert _raw_replay_trade_count_baseline(checkpoints, 5) == 30.0
+
+    gap = [row for index, row in enumerate(checkpoints) if index != 4]
+    assert _raw_replay_trade_count_baseline(gap, len(gap) - 1) is None
+
+    incomplete = [dict(row) for row in checkpoints]
+    incomplete[4]["eligible_for_order_flow_replay"] = False
+    assert _raw_replay_trade_count_baseline(incomplete, 5) is None
+
+
+def test_raw_replay_trade_count_baseline_excludes_current_and_future_buckets():
+    from app.signal_backtest import _raw_replay_trade_count_baseline
+
+    start_ms = int(datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc).timestamp() * 1000)
+    checkpoints = []
+    for index, count in enumerate([10, 20, 30, 40, 50, 5000, 9000]):
+        bucket = start_ms + index * 60_000
+        checkpoints.append({
+            "symbol": "BTCUSDT",
+            "capture_bucket_ms": bucket,
+            "live_trade_count": count,
+            "eligible_for_order_flow_replay": True,
+            "coverage_is_complete": False,
+            "coverage_status": "OBSERVED_CONTIGUOUS_CAPTURE_NOT_FULL_SESSION",
+            "capture_gap_detected": False,
+            "depth_is_continuous": True,
+        })
+    assert _raw_replay_trade_count_baseline(checkpoints, 5) == 30.0

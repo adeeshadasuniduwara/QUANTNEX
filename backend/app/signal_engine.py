@@ -459,7 +459,13 @@ def select_binance_entry(
 ) -> dict[str, Any] | None:
     """Choose a marketable entry or a technically justified resting limit."""
     evidence_mode = str(order_flow_evidence_mode or "").strip().upper()
-    if evidence_mode not in {"COMBINED", "AGGRESSOR_ONLY", "L2_ONLY", "CVD_DIVERGENCE_ONLY", "COMBINED_CVD"}:
+    pattern_modes = {
+        "ABSORPTION_ONLY", "EXHAUSTION_ONLY",
+        "COMBINED_OR_ABSORPTION", "COMBINED_OR_EXHAUSTION",
+    }
+    if evidence_mode not in {
+        "COMBINED", "AGGRESSOR_ONLY", "L2_ONLY", "CVD_DIVERGENCE_ONLY", "COMBINED_CVD", *pattern_modes
+    }:
         raise ValueError("Order Flow entry evidence mode is unsupported.")
     settings = settings or {}
     spread = float(execution["spread_bps"])
@@ -532,17 +538,32 @@ def select_binance_entry(
         cvd_supports_direction = order_flow_decision.get("cvd_supports_direction") is True
         if evidence_mode in {"CVD_DIVERGENCE_ONLY", "COMBINED_CVD"} and not isinstance(cvd_divergence, dict):
             return None
+        pattern_status = str(order_flow_decision.get("pattern_status") or "")
+        pattern_supports_direction = order_flow_decision.get("pattern_supports_direction") is True
+        pattern_kind = (
+            "ABSORPTION" if evidence_mode in {"ABSORPTION_ONLY", "COMBINED_OR_ABSORPTION"}
+            else "EXHAUSTION"
+        )
+        pattern_matches_mode = pattern_status.endswith("_" + pattern_kind)
         directional_votes = {
             "COMBINED": delta_supports_direction and depth_supports_direction,
             "AGGRESSOR_ONLY": delta_supports_direction,
             "L2_ONLY": depth_supports_direction,
             "CVD_DIVERGENCE_ONLY": cvd_supports_direction,
             "COMBINED_CVD": delta_supports_direction and depth_supports_direction and cvd_supports_direction,
+            "ABSORPTION_ONLY": pattern_matches_mode and pattern_supports_direction,
+            "EXHAUSTION_ONLY": pattern_matches_mode and pattern_supports_direction,
+            "COMBINED_OR_ABSORPTION": order_flow_decision.get("accepted") is True,
+            "COMBINED_OR_EXHAUSTION": order_flow_decision.get("accepted") is True,
         }
+        pattern_only = evidence_mode in {"ABSORPTION_ONLY", "EXHAUSTION_ONLY"}
+        pattern_route = order_flow_decision.get("confirmation_route") in {"ABSORPTION_PATTERN", "EXHAUSTION_PATTERN"}
         market_flow_confirmed = (
             directional_votes[evidence_mode]
             and depth_sequence_validated
             and evidence_mode != "CVD_DIVERGENCE_ONLY"
+            and not pattern_only
+            and not pattern_route
         )
         flow_evidence = {
             "status": "MARKET_FLOW_ALIGNED" if market_flow_confirmed else "LIMIT_PREFERRED",
@@ -554,6 +575,11 @@ def select_binance_entry(
             "l2_depth_supports_direction": depth_supports_direction,
             "cvd_divergence_supports_direction": cvd_supports_direction,
             "cvd_divergence": cvd_divergence if evidence_mode in {"CVD_DIVERGENCE_ONLY", "COMBINED_CVD"} else None,
+            "pattern_status": pattern_status or None,
+            "pattern_direction": order_flow_decision.get("pattern_direction"),
+            "pattern_supports_direction": pattern_supports_direction,
+            "pattern_evidence": order_flow_decision.get("pattern_evidence", []),
+            "confirmation_route": order_flow_decision.get("confirmation_route"),
             "depth_sequence_validated": depth_sequence_validated,
             "decision_status": order_flow_decision.get("status"),
             "support_count": order_flow_decision.get("support_count"),
@@ -564,12 +590,14 @@ def select_binance_entry(
             "depth_snapshot_update_id": order_flow_snapshot.get("depth_snapshot_update_id"),
             "data_provenance": order_flow_snapshot.get("data_provenance"),
             "method": (
+                "Absorption/exhaustion pattern route is research-only; MARKET urgency is disabled and a favorable LIMIT is required."
+                if pattern_only or pattern_route else
                 "CVD divergence is swing context only; MARKET urgency is disabled and a favorable LIMIT is required."
                 if evidence_mode == "CVD_DIVERGENCE_ONLY" else
                 "MARKET urgency requires aligned aggressor delta, sequence-validated L2 depth and confirmed CVD divergence."
                 if evidence_mode == "COMBINED_CVD" else
-                "MARKET urgency uses both aggressor delta and sequence-validated L2 depth."
-                if evidence_mode == "COMBINED" else
+                "MARKET urgency uses both aggressor delta and sequence-validated L2 depth; a combined-or-pattern variant may instead qualify through a same-minute absorption/exhaustion pattern, which requires LIMIT."
+                if evidence_mode in {"COMBINED", "COMBINED_OR_ABSORPTION", "COMBINED_OR_EXHAUSTION"} else
                 "MARKET urgency uses only aggressor delta direction; L2 remains a freshness and sequence-integrity gate."
                 if evidence_mode == "AGGRESSOR_ONLY" else
                 "MARKET urgency uses only L2 depth direction; aggressor trades remain a freshness and provenance gate."
@@ -1467,6 +1495,24 @@ async def build_signal(
             else:
                 order_flow_mode = "CANDLE_ONLY_REPLAY_BASELINE"
 
+            pattern_modes = {
+                "ABSORPTION_ONLY", "EXHAUSTION_ONLY",
+                "COMBINED_OR_ABSORPTION", "COMBINED_OR_EXHAUSTION",
+            }
+            if order_flow_confirmation_mode_override in pattern_modes:
+                if order_flow_mode != "HISTORICAL_RAW_EVENT_REPLAY" or candles_override is None or not isinstance(order_flow_snapshot, dict):
+                    raise MarketDataError("Absorption/exhaustion ablations are restricted to raw Binance Spot replay.")
+                one_minute = closed_candles(candles.get("1", []), "1min") if candles.get("1") else []
+                if not one_minute:
+                    raise MarketDataError("A fully closed one-minute candle is required for same-minute absorption/exhaustion replay.")
+                from .order_flow_patterns import detect_order_flow_patterns
+                order_flow_snapshot["auction_patterns"] = detect_order_flow_patterns(
+                    side,
+                    one_minute[-1],
+                    order_flow_snapshot,
+                    baseline_trade_count=order_flow_snapshot.get("baseline_trade_count"),
+                )
+
             if candles_override is not None and order_flow_snapshot is None:
                 order_flow_payload = {
                     "status": "NOT_AVAILABLE_CANDLE_ONLY_REPLAY",
@@ -1490,6 +1536,12 @@ async def build_signal(
                 order_flow_decision = decision
                 order_flow_payload = summarize_order_flow_snapshot(order_flow_snapshot, decision)
                 order_flow_payload["data_mode"] = order_flow_mode
+                if isinstance(order_flow_snapshot.get("auction_patterns"), dict):
+                    order_flow_payload["auction_patterns"] = order_flow_snapshot["auction_patterns"]
+                    if order_flow_confirmation_mode_override in pattern_modes:
+                        quality_filters["order_flow_pattern_confirmation"] = bool(
+                            decision.get("pattern_supports_direction")
+                        )
                 quality_filters["order_flow_confirmation"] = bool(decision["accepted"])
                 if order_flow_mode == "PUBLIC_WEBSOCKET_STREAM" and order_flow_snapshot.get("depth_is_continuous") is True:
                     from .order_flow_patterns import detect_order_flow_patterns

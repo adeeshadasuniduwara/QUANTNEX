@@ -133,6 +133,7 @@ class AggTradeCvdState:
         timestamp_ms = _int_value(first_trade_time_ms, "first stream seed timestamp")
         if first_id < 0 or timestamp_ms < 0:
             raise OrderFlowStateError("Stream seed trade ID and timestamp must be non-negative.")
+        self.seed_trade_id = first_id
         try:
             seed_date = datetime.fromtimestamp(timestamp_ms / 1000, timezone.utc).date()
         except (OverflowError, OSError, ValueError):

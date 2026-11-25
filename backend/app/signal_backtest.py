@@ -560,7 +560,12 @@ async def _simulate_slice(
     raw_order_flow_checkpoints: list[dict[str, Any]] | None = None,
     execution_end_epoch: float | None = None,
     order_flow_confirmation_mode: str | None = None,
+    score_mode: str | None = None,
 ) -> dict[str, Any]:
+    if score_mode is not None:
+        score_mode = str(score_mode).strip().upper()
+        if score_mode not in {"LEGACY_RAW", "CATEGORY_BALANCED"}:
+            raise ValueError("Signal replay score mode is unsupported.")
     primary_tf = str(settings.get("primary", "5"))
     if order_flow_confirmation_mode is not None:
         order_flow_confirmation_mode = str(order_flow_confirmation_mode).strip().upper()
@@ -768,6 +773,8 @@ async def _simulate_slice(
             build_kwargs["order_flow_mode_override"] = order_flow_mode
         if order_flow_confirmation_mode is not None:
             build_kwargs["order_flow_confirmation_mode_override"] = order_flow_confirmation_mode
+        if score_mode is not None:
+            build_kwargs["score_mode_override"] = score_mode
         result = await build_signal(settings, symbol, **build_kwargs)
         order_flow_result = result.get("order_flow") or {}
         if order_flow_result.get("data_mode") in {
@@ -870,6 +877,14 @@ async def _simulate_slice(
         index = max(index + 1, next_signal_index)
 
     metrics = _metrics(trades, counters, primary, start_index, end_index, settings)
+    metrics["score_mode"] = score_mode or "LEGACY_RAW"
+    metrics["score_out_of"] = 5 if score_mode == "CATEGORY_BALANCED" else 10
+    if score_mode == "CATEGORY_BALANCED":
+        metrics["score_threshold"] = max(
+            1, min(5, math.ceil(int(settings.get("min_score", 7)) * 5 / 10))
+        )
+    else:
+        metrics["score_threshold"] = int(settings.get("min_score", 7))
     metrics["_all_trades"] = trades
     metrics["_next_signal_index"] = index
     return metrics
@@ -1069,6 +1084,7 @@ async def run_signal_walk_forward(
         observations: list[dict[str, Any]] | None,
         raw_checkpoints: list[dict[str, Any]] | None = None,
         confirmation_mode: str | None = None,
+        score_mode: str | None = None,
     ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         sizes = [
             out_of_sample_decisions // fold_count
@@ -1090,6 +1106,7 @@ async def run_signal_walk_forward(
                 raw_order_flow_checkpoints=raw_checkpoints,
                 execution_end_epoch=oos_execution_end_epoch,
                 order_flow_confirmation_mode=confirmation_mode,
+                score_mode=score_mode,
             )
             raw_results.append(raw)
             public_folds.append({
@@ -1103,9 +1120,88 @@ async def run_signal_walk_forward(
         aggregate = _aggregate_fold_metrics(
             raw_results, primary, split_index - 1, len(primary) - 2, settings
         )
+        aggregate["score_mode"] = score_mode or "LEGACY_RAW"
+        aggregate["score_out_of"] = 5 if score_mode == "CATEGORY_BALANCED" else 10
+        aggregate["score_threshold"] = (
+            max(1, min(5, math.ceil(int(settings.get("min_score", 7)) * 5 / 10)))
+            if score_mode == "CATEGORY_BALANCED" else int(settings.get("min_score", 7))
+        )
         return aggregate, public_folds
 
     out_of_sample, out_of_sample_folds = await _run_oos_folds(None)
+
+    # Matched candle-only score ablation. Both models use identical chronological
+    # windows and execution assumptions; only the directional confirmation count
+    # changes. The balanced threshold preserves the legacy min_score ratio (0–10
+    # mapped to 0–5) rather than introducing a separately tuned parameter.
+    balanced_training_raw = await _simulate_slice(
+        symbol, candles_by_tf, symbol_info, settings, assumed_spread_bps,
+        assumed_depth_usd, first_valid, split_index - 1,
+        score_mode="CATEGORY_BALANCED",
+    )
+    balanced_training = _public_metrics(balanced_training_raw)
+    balanced_oos, balanced_oos_folds = await _run_oos_folds(
+        None, score_mode="CATEGORY_BALANCED"
+    )
+
+    def _score_metric_delta(key: str, digits: int = 3) -> float | int | None:
+        left = balanced_oos.get(key)
+        right = out_of_sample.get(key)
+        if (
+            isinstance(left, bool) or isinstance(right, bool)
+            or not isinstance(left, (int, float))
+            or not isinstance(right, (int, float))
+            or not math.isfinite(float(left)) or not math.isfinite(float(right))
+        ):
+            return None
+        delta = float(left) - float(right)
+        return int(delta) if digits == 0 else round(delta, digits)
+
+    legacy_min_score = int(settings.get("min_score", 7))
+    category_balanced_threshold = max(
+        1, min(5, math.ceil(legacy_min_score * 5 / 10))
+    )
+    score_comparison = {
+        "status": "EVALUATED",
+        "method": (
+            "Candle-only score ablation on identical chronological folds. CATEGORY_BALANCED "
+            "gives one vote to a unanimous baseline category, neutralizes mixed BUY/SELL "
+            "categories and excludes diagnostic-only methods. Its threshold is ceil(legacy "
+            "min_score × 5 / 10); no parameter is fitted on OOS data. Order Flow is evaluated "
+            "separately in order_flow_comparison."
+        ),
+        "threshold_mapping": {
+            "legacy_min_score": legacy_min_score,
+            "legacy_score_out_of": 10,
+            "category_balanced_threshold": category_balanced_threshold,
+            "category_balanced_score_out_of": 5,
+            "formula": "ceil(legacy_min_score * 5 / 10), clamped to 1..5",
+        },
+        "legacy_raw": {
+            "training": training,
+            "out_of_sample": out_of_sample,
+            "out_of_sample_folds": out_of_sample_folds,
+        },
+        "category_balanced": {
+            "training": balanced_training,
+            "out_of_sample": balanced_oos,
+            "out_of_sample_folds": balanced_oos_folds,
+        },
+        "out_of_sample_delta_category_balanced_minus_legacy": {
+            "trade_count": _score_metric_delta("trade_count", 0),
+            "win_rate_percentage_points": _score_metric_delta("win_rate_pct", 2),
+            "expectancy_r": _score_metric_delta("expectancy_r", 3),
+            "profit_factor": _score_metric_delta("profit_factor", 3),
+            "net_pnl_quote": _score_metric_delta("net_pnl_quote", 8),
+            "estimated_cost_quote": _score_metric_delta("estimated_cost_quote", 8),
+            "max_drawdown_r": _score_metric_delta("max_drawdown_r", 3),
+        },
+        "interpretation": (
+            "Descriptive research ablation only. No score mode is changed in live/default scans. "
+            "Compare expectancy, profit factor, drawdown and costs as well as trade count; "
+            "a higher win rate alone is not an improvement."
+        ),
+    }
 
     order_flow_replay = None
     order_flow_comparison = None
@@ -1332,6 +1428,7 @@ async def run_signal_walk_forward(
         "training": training,
         "out_of_sample": out_of_sample,
         "out_of_sample_folds": out_of_sample_folds,
+        "score_comparison": score_comparison,
         "order_flow_replay": order_flow_replay,
         "order_flow_comparison": order_flow_comparison,
         "assumptions": {
@@ -1356,7 +1453,7 @@ async def run_signal_walk_forward(
                 "malformed or non-sequenced snapshots fail closed; no stale forward-fill is allowed."
             ),
         },
-        "method": "Fixed-rule sequential walk-forward: one initial in-sample segment followed by non-overlapping OOS decision windows. No parameters are fit on the OOS windows; open positions are carried across fold boundaries.",
+        "method": "Fixed-rule sequential walk-forward: one initial in-sample segment followed by non-overlapping OOS decision windows. Legacy raw and category-balanced candle-only score variants use the same windows and execution assumptions; no parameters are fit on OOS windows and open positions are carried across fold boundaries.",
         "limitations": [
             "Historical order-book depth and bid/ask are unavailable; spread and depth are modeled assumptions.",
             "Fee estimates may differ from the user's Binance fee tier.",

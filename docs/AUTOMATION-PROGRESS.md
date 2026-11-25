@@ -1471,3 +1471,34 @@ Measure whether observed Binance Spot aggressor-side delta, sequence-validated L
 2. Merge only if all checks pass and main remains the exact base; verify post-merge CI.
 3. Add a research-only category-balanced walk-forward decision variant on identical chronological folds and identical fee/spread/slippage/limit-fill assumptions; retain legacy raw-count baseline.
 4. Run both models on the user's retained Spot history only after raw-event/CVD checkpoint coverage is validated. Report trades, expectancy, profit factor, drawdown and costs; do not infer uplift from synthetic fixtures.
+
+
+
+## 2026-11-25 C26 — Category-balanced evidence merged and post-merge verified
+
+- PR [#308](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/308) was squash-merged as `edf5d24b57fd10a726eab6413e707942b73445f5`, based on C25 main `6a9e4e357b5b64e8ce797f6739e48904398edadf`.
+- The reviewed diff touched only the strategy evidence registry, signal evidence payload, deterministic method/end-to-end tests and progress/roadmap docs. No live scoring gate or order path changed.
+- PR CI passed **664 tests on Python 3.12** and **664 tests on Python 3.14**, plus schema/compile and Web checks.
+- Post-merge main CI passed on exact SHA `edf5d24b57fd10a726eab6413e707942b73445f5`: **664 tests on Python 3.12**, **664 tests on Python 3.14**, Backend CI, Web check and Telegram notification workflow.
+
+
+## C27 — Matched category-balanced walk-forward ablation (in progress)
+
+### Change on `research/category-balanced-walk-forward-20261125`
+- Added an internal `score_mode_override` to the signal builder with two explicit modes: `LEGACY_RAW` (default) and `CATEGORY_BALANCED`.
+- The category-balanced mode uses one vote per unanimous baseline category, neutralizes a category with opposing BUY/SELL methods, and excludes diagnostic-only methods. It uses a transparent threshold mapping `ceil(legacy_min_score × 5 / 10)`, clamped to 1..5, preserving the legacy score threshold ratio.
+- Added a matched candle-only walk-forward comparison: both score modes use identical train/OOS windows, exchange tick filters, modeled spread/depth, fees, slippage, limit expiry/fill assumptions and cross-fold open-position handling.
+- The OOS report includes trade count, win rate and confidence interval, expectancy, profit factor, max drawdown, net PnL, estimated costs and per-fold metrics, plus category-balanced-minus-legacy deltas.
+- Order Flow ablations remain separately reported; the category score comparison is explicitly candle-only and must not be interpreted as an Order Flow result.
+- The live/default signal path remains `LEGACY_RAW`; this research mode is only passed by walk-forward replay. No live thresholds, signal frequency or execution gates were changed.
+
+### Tests added / extended
+- Existing synthetic long/short end-to-end fixtures now exercise both score modes and verify the 8/10 legacy threshold maps to 4/5 for category-balanced replay.
+- Walk-forward tests assert both modes are run on the same chronological folds and that the comparison exposes metrics and threshold mapping.
+- Unsupported score modes fail closed before market-data access.
+
+### Verification / next steps
+1. Run backend CI on Python 3.12/3.14 and Web checks; inspect complete diff, ensure only intended scoring/replay/tests/docs changed, and check no live route can select the research mode.
+2. Merge only after all checks pass and main remains the exact base; verify post-merge CI.
+3. Run a real archived Spot dataset through both modes only after candle/raw-event coverage, symbol filters and order-flow checkpoint integrity are validated.
+4. Report sample size, OOS trade count, win rate/CI, expectancy, profit factor, max drawdown and costs. A category-balanced variant with no trades or sparse archive coverage is inconclusive; do not claim uplift from fixtures.

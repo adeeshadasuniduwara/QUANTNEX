@@ -1366,3 +1366,32 @@ Measure whether observed Binance Spot aggressor-side delta, sequence-validated L
 3. Add a causal CVD-divergence classifier only from confirmed price pivots and same-boundary CVD observations; use hand-computed LONG/SHORT, false-divergence, gap, reset and stale-data fixtures.
 4. Measure CVD divergence and existing absorption/exhaustion patterns as separate ablations against the same candle-only baseline. Do not stack them as independent votes without incremental-value evidence.
 5. Continue Binance Spot signal-quality validation; keep USDⓈ-M and COIN-M capability claims restricted to verified support. Paper/replay only.
+
+
+## C24 — Causal confirmed-pivot CVD divergence research (in progress)
+
+### Checkpoint and scope
+- Started from latest main d32d7108902fb5c28718b74acb739fc14869b846, which already contains C22 raw-event walk-forward integration and C23 aggressor-only / L2-only / combined ablations.
+- Branch: feat/causal-cvd-divergence-walk-forward.
+- This phase is Binance Spot raw-event replay research only. It does not change the live default Order Flow gate (still COMBINED), alter strategy thresholds, create live signals, or place orders.
+
+### Implementation on the branch
+- AggTradeCvdState now records cvd_seed_trade_id in every state snapshot. A CVD comparison must use one stable stream seed; a changed seed cannot be mistaken for a continuous CVD series.
+- Added a causal divergence classifier using strict local price pivots. The default pivot window is two bars left and two bars right; the pivot is not known until both right-side candles have closed.
+- CVD is aligned to the latest eligible raw receive-time checkpoint at or before each pivot candle close (maximum two-second boundary age). The full interval between the two compared pivots must have eligible one-minute checkpoints, sequence-validated depth, contiguous trade state, no capture-gap marker, and the same CVD seed.
+- Bullish divergence is a confirmed lower price low with a higher same-boundary CVD low. Bearish divergence is a confirmed higher price high with a lower same-boundary CVD high. Equal pivots, missing boundaries, stale/ineligible checkpoints, seed changes, and incomplete captures do not create a vote.
+- The classifier explicitly reports UNAVAILABLE, NO_DIVERGENCE, BULLISH_DIVERGENCE, BEARISH_DIVERGENCE, or CONFLICTING_DIVERGENCE. It never labels a bounded stream-seeded series as full-session CVD.
+- Added research-only walk-forward variants CVD_DIVERGENCE_ONLY and COMBINED_CVD alongside the existing three variants. COMBINED_CVD requires aggressor delta, L2 depth and CVD divergence all to support the candidate. CVD_DIVERGENCE_ONLY can only choose a favorable LIMIT retracement; swing divergence is not treated as immediate MARKET urgency.
+- These modes require raw Spot receive-time checkpoints. Feature snapshots and candle-only history cannot silently supply a CVD time series. Live signal generation remains unchanged.
+
+### Tests added / verification status
+- Deterministic fixtures cover bullish and bearish divergence, no divergence, unconfirmed pivots, missing/ineligible minute boundaries, CVD seed changes, future checkpoint exclusion, malformed candle timestamps, symbol mismatch, unavailable CVD as neutral WAIT, CVD-only LIMIT behavior, combined-vote hard requirements, future-dated divergence rejection, and stable CVD seed provenance.
+- The C24 tests have been added but have NOT yet been executed in this checkpoint. Do not mark the phase verified until GitHub Actions runs the complete relevant backend matrix and post-merge checks.
+- No walk-forward performance result is claimed. The user's local retained raw archive is not available to this automation runtime; synthetic fixtures validate code paths only, not profitability or incremental predictive value.
+
+### Current blockers and exact next steps
+1. Review the complete branch diff and run backend CI / Python 3.12 and 3.14 tests; fix every regression before merge.
+2. Create a PR against latest main, verify mergeability and all required checks, inspect the final diff and secret scan, then merge only if all checks pass. Verify main and post-merge CI.
+3. Run the raw-event walk-forward on a retained local Spot archive. Report raw event count separately from eligible checkpoint count, pivot/CVD coverage, fold trade count, win rate, expectancy, profit factor, drawdown and estimated costs. If coverage is sparse, report no performance conclusion.
+4. Investigate the 2026-11-24 main smoke workflow run #45379203111: the dynamic Spot/USDⓈ-M scan step failed. The accessible run summary identifies the failed step but does not expose its provider error text, so the exact cause is not asserted here.
+5. Keep USDⓈ-M in candle-only monitor scope until live provider access and its own order-flow adapter are verified; GitHub-hosted requests previously returned HTTP 451. COIN-M remains unsupported.

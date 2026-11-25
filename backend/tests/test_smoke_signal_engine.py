@@ -308,3 +308,41 @@ def test_usdm_http_429_remains_a_provider_failure(monkeypatch, capsys):
     assert result == 1
     assert "symbol discovery failed" in output
     assert "429" in output
+
+
+
+def test_usdm_http_451_during_candle_scan_stops_remaining_futures_pairs(monkeypatch, capsys):
+    import smoke_signal_engine as smoke
+
+    futures_calls = []
+
+    async def fake_spot_universe():
+        return ["BTCUSDT"]
+
+    async def fake_spot_build(*_args):
+        return {"provider": "Binance Spot", "signal": None, "confluence_score": 0}
+
+    async def fake_usdm_universe():
+        return ["BTCUSDT", "ETHUSDT"]
+
+    async def blocked_candles(symbol, *_args, **_kwargs):
+        futures_calls.append(symbol)
+        raise smoke.BinanceUsdMSignalError("candle provider blocked (451)", status_code=451)
+
+    monkeypatch.setattr(smoke, "get_binance_spot_symbols", fake_spot_universe)
+    monkeypatch.setattr(smoke, "build_signal", fake_spot_build)
+    monkeypatch.setattr(smoke, "get_binance_usdm_symbols", fake_usdm_universe)
+    monkeypatch.setattr(smoke, "analyze_usdm_futures_signal", blocked_candles)
+
+    result = asyncio.run(_run(
+        None, 8, universe_sample_size=1, sample_day=0,
+        include_usdm=True, usdm_universe_sample_size=2,
+    ))
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert futures_calls == ["BTCUSDT"]
+    assert "[FUTURES UNAVAILABLE]" in output
+    assert "during candle retrieval" in output
+    assert "coverage is incomplete" in output
+    assert "0 provider/error failure(s)" in output

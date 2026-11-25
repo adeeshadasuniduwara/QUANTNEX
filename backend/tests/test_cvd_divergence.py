@@ -31,11 +31,12 @@ def _candles(kind="bullish"):
     ]
 
 
-def _checkpoints(values=None, *, missing=(), ineligible=(), seed_changes=None):
+def _checkpoints(values=None, *, missing=(), ineligible=(), seed_changes=None, last_trade_ids=None):
     values = values or {1: 8, 2: 10, 3: 11, 4: 13, 5: 15, 6: 16, 7: 17}
     missing = set(missing)
     ineligible = set(ineligible)
     seed_changes = seed_changes or {}
+    last_trade_ids = last_trade_ids or {}
     rows = []
     for minute in range(1, 8):
         if minute in missing:
@@ -58,7 +59,7 @@ def _checkpoints(values=None, *, missing=(), ineligible=(), seed_changes=None):
                 "coverage_complete": True,
                 "gap_detected": False,
                 "cvd_seed_trade_id": seed_id,
-                "last_agg_trade_id": 100 + minute,
+                "last_agg_trade_id": last_trade_ids.get(minute, 100 + minute),
             },
             "depth_book": {"valid": True, "sequence_validated": True},
             "data_provenance": {
@@ -117,6 +118,7 @@ def test_price_and_cvd_moving_in_the_same_direction_is_not_divergence():
         ({"missing": (3,)}, "continuity"),
         ({"ineligible": (4,)}, "continuity"),
         ({"seed_changes": {4: 200}}, "seed"),
+        ({"last_trade_ids": {4: 102}}, "backwards"),
     ],
 )
 def test_cvd_divergence_fails_closed_on_missing_or_invalid_intervening_checkpoints(kwargs, reason):

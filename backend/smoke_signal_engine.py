@@ -110,6 +110,13 @@ async def _run_usdm(
     try:
         universe = await get_binance_usdm_symbols()
     except BinanceUsdMDataError as exc:
+        if exc.status_code == 451:
+            print(
+                "[FUTURES UNAVAILABLE] Binance USDⓈ-M returned HTTP 451 from this runner; "
+                "the Futures universe was not scanned. This is provider access restriction, "
+                "not a WAIT or a successful Futures validation. Spot checks continue independently."
+            )
+            return 0, 0, 0
         print(f"[ERROR] Binance USDⓈ-M symbol discovery failed: {exc}", file=sys.stderr)
         return 0, 0, 1
 
@@ -135,6 +142,7 @@ async def _run_usdm(
     successful = 0
     skipped = 0
     failures = 0
+    provider_unavailable = False
     for index, symbol in enumerate(symbols):
         try:
             result = await analyze_usdm_futures_signal(
@@ -162,6 +170,14 @@ async def _run_usdm(
             print("  Execution: DISABLED | Order Flow: NOT AVAILABLE | Market type: BINANCE_USDM_FUTURES")
             successful += 1
         except BinanceUsdMSignalError as exc:
+            if exc.status_code == 451:
+                provider_unavailable = True
+                print(
+                    "[FUTURES UNAVAILABLE] Binance USDⓈ-M returned HTTP 451 during candle retrieval; "
+                    f"stopping the Futures sample after {successful} completed scan(s). "
+                    "This is provider access restriction, not a WAIT."
+                )
+                break
             detail = str(exc)
             if any(marker in detail for marker in (
                 "At least 210 fully closed", "No closed valid", "insufficient closed"
@@ -184,6 +200,8 @@ async def _run_usdm(
         f"USDⓈ-M sample complete: {successful} successful scan(s), "
         f"{skipped} insufficient-history skip(s), {failures} provider/error failure(s)."
     )
+    if provider_unavailable:
+        print("USDⓈ-M coverage is incomplete because the public provider returned HTTP 451.")
     return successful, skipped, failures
 
 

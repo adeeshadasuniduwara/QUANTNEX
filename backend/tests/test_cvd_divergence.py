@@ -243,3 +243,15 @@ def test_cvd_confirmation_rejects_future_divergence_boundaries():
             "BUY", _confirmed_snapshot(divergence), now=now,
             evidence_mode="CVD_DIVERGENCE_ONLY",
         )
+
+
+def test_unavailable_cvd_is_a_neutral_wait_not_a_fabricated_vote():
+    now = datetime.fromtimestamp((BASE_MS + 7 * 60_000) / 1000, timezone.utc)
+    unavailable = _evaluate(checkpoints=_checkpoints(missing=(3,)))
+    decision = evaluate_order_flow_confirmation(
+        "BUY", _confirmed_snapshot(unavailable), now=now,
+        evidence_mode="CVD_DIVERGENCE_ONLY",
+    )
+    assert decision["accepted"] is False
+    assert decision["status"] == "NEUTRAL"
+    assert decision["cvd_supports_direction"] is False

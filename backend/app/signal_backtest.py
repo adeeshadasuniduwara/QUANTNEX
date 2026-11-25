@@ -8,6 +8,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from .signal_engine import build_signal, round_price_to_tick
+from .order_flow import evaluate_cvd_divergence
 from .order_flow_replay import replay_spot_order_flow_events
 
 TIMEFRAME_MINUTES = {"1": 1, "5": 5, "15": 15, "30": 30, "50": 50, "60": 60, "240": 240}
@@ -522,6 +523,11 @@ def _metrics(trades: list[dict[str, Any]], counters: dict[str, int], candles: li
         "order_flow_replay_enabled": bool(counters.get("order_flow_enabled", 0)),
         "order_flow_raw_event_replay_enabled": bool(counters.get("order_flow_raw_event_replay_enabled", 0)),
         "order_flow_raw_event_checkpoint_matches": counters.get("order_flow_raw_event_checkpoint_matches", 0),
+        "order_flow_cvd_divergence_evaluated": counters.get("order_flow_cvd_divergence_evaluated", 0),
+        "order_flow_cvd_divergence_bullish": counters.get("order_flow_cvd_divergence_bullish", 0),
+        "order_flow_cvd_divergence_bearish": counters.get("order_flow_cvd_divergence_bearish", 0),
+        "order_flow_cvd_divergence_no_divergence": counters.get("order_flow_cvd_divergence_no_divergence", 0),
+        "order_flow_cvd_divergence_unavailable": counters.get("order_flow_cvd_divergence_unavailable", 0),
         "order_flow_decision_points": counters.get("order_flow_decision_points", 0),
         "order_flow_snapshot_matches": counters.get("order_flow_snapshot_matches", 0),
         "order_flow_missing_snapshots": counters.get("order_flow_missing_snapshots", 0),
@@ -558,8 +564,10 @@ async def _simulate_slice(
     primary_tf = str(settings.get("primary", "5"))
     if order_flow_confirmation_mode is not None:
         order_flow_confirmation_mode = str(order_flow_confirmation_mode).strip().upper()
-        if order_flow_confirmation_mode not in {"COMBINED", "AGGRESSOR_ONLY", "L2_ONLY"}:
-            raise ValueError("Order Flow ablation mode must be COMBINED, AGGRESSOR_ONLY or L2_ONLY.")
+        if order_flow_confirmation_mode not in {"COMBINED", "AGGRESSOR_ONLY", "L2_ONLY", "CVD_DIVERGENCE_ONLY", "COMBINED_CVD"}:
+            raise ValueError("Order Flow ablation mode is unsupported.")
+        if order_flow_confirmation_mode in {"CVD_DIVERGENCE_ONLY", "COMBINED_CVD"} and raw_order_flow_checkpoints is None:
+            raise ValueError("CVD divergence ablations require raw Binance Spot receive-time checkpoints.")
     enabled = list(dict.fromkeys(
         [str(item) for item in settings.get("enabled", ["60", "30", "15", "5", "1"])]
         + [primary_tf, str(settings.get("trend", "60"))]
@@ -594,6 +602,11 @@ async def _simulate_slice(
         "order_flow_missing_snapshots": 0, "order_flow_stale_snapshots": 0,
         "order_flow_invalid_snapshots": 0, "order_flow_confirmed_candidates": 0,
         "order_flow_rejected_candidates": 0,
+        "order_flow_cvd_divergence_evaluated": 0,
+        "order_flow_cvd_divergence_bullish": 0,
+        "order_flow_cvd_divergence_bearish": 0,
+        "order_flow_cvd_divergence_no_divergence": 0,
+        "order_flow_cvd_divergence_unavailable": 0,
     }
     trades: list[dict[str, Any]] = []
     index = max(0, start_index)
@@ -706,6 +719,25 @@ async def _simulate_slice(
                 raw_order_flow_checkpoints, raw_checkpoint_epochs, symbol, as_of_epoch, settings
             )
             order_flow_mode = "HISTORICAL_RAW_EVENT_REPLAY"
+
+        if raw_order_flow_checkpoints is not None:
+            cvd_divergence = evaluate_cvd_divergence(
+                windows[primary_tf], raw_order_flow_checkpoints, symbol,
+                timeframe_seconds=TIMEFRAME_MINUTES[primary_tf] * 60,
+                decision_at_ms=int(round(as_of_epoch * 1000)),
+            )
+            counters["order_flow_cvd_divergence_evaluated"] += 1
+            cvd_status = cvd_divergence.get("status")
+            if cvd_status == "BULLISH_DIVERGENCE":
+                counters["order_flow_cvd_divergence_bullish"] += 1
+            elif cvd_status == "BEARISH_DIVERGENCE":
+                counters["order_flow_cvd_divergence_bearish"] += 1
+            elif cvd_status == "NO_DIVERGENCE":
+                counters["order_flow_cvd_divergence_no_divergence"] += 1
+            else:
+                counters["order_flow_cvd_divergence_unavailable"] += 1
+            order_flow_override = dict(order_flow_override or {})
+            order_flow_override["cvd_divergence"] = cvd_divergence
 
         if order_flow_mode is not None:
             counters["order_flow_decision_points"] += 1
@@ -867,6 +899,11 @@ def _aggregate_fold_metrics(
         "order_flow_invalid_snapshots": "order_flow_invalid_snapshots",
         "order_flow_confirmed_candidates": "order_flow_confirmed_candidates",
         "order_flow_rejected_candidates": "order_flow_rejected_candidates",
+        "order_flow_cvd_divergence_evaluated": "order_flow_cvd_divergence_evaluated",
+        "order_flow_cvd_divergence_bullish": "order_flow_cvd_divergence_bullish",
+        "order_flow_cvd_divergence_bearish": "order_flow_cvd_divergence_bearish",
+        "order_flow_cvd_divergence_no_divergence": "order_flow_cvd_divergence_no_divergence",
+        "order_flow_cvd_divergence_unavailable": "order_flow_cvd_divergence_unavailable",
     }
     counters = {key: 0 for key in counter_fields}
     counters["order_flow_enabled"] = int(any(
@@ -1106,12 +1143,20 @@ async def run_signal_walk_forward(
                     "order_flow_confirmed_candidates", "order_flow_rejected_candidates",
                     "order_flow_coverage_pct", "order_flow_candidate_confirmation_pct",
                     "order_flow_raw_event_checkpoint_matches",
+                    "order_flow_cvd_divergence_evaluated",
+                    "order_flow_cvd_divergence_bullish",
+                    "order_flow_cvd_divergence_bearish",
+                    "order_flow_cvd_divergence_no_divergence",
+                    "order_flow_cvd_divergence_unavailable",
                 )
                 return {key: metrics.get(key) for key in keys}
 
             variant_results: dict[str, dict[str, Any]] = {}
             variant_full_results: dict[str, tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]] = {}
-            variant_modes = ("AGGRESSOR_ONLY", "L2_ONLY", "COMBINED")
+            variant_modes = (
+                ("AGGRESSOR_ONLY", "L2_ONLY", "COMBINED", "CVD_DIVERGENCE_ONLY", "COMBINED_CVD")
+                if is_raw_replay else ("AGGRESSOR_ONLY", "L2_ONLY", "COMBINED")
+            )
             for confirmation_mode in variant_modes:
                 training_raw = await _simulate_slice(
                     symbol, candles_by_tf, symbol_info, settings, assumed_spread_bps,

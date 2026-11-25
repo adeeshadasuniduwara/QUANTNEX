@@ -117,7 +117,7 @@ def test_price_and_cvd_moving_in_the_same_direction_is_not_divergence():
     [
         ({"missing": (3,)}, "continuity"),
         ({"ineligible": (4,)}, "continuity"),
-        ({"seed_changes": {4: 200}}, "seed"),
+        ({"seed_changes": {4: 200}, "last_trade_ids": {4: 200}}, "seed"),
         ({"last_trade_ids": {4: 102}}, "backwards"),
     ],
 )

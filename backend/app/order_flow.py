@@ -124,7 +124,11 @@ def evaluate_cvd_divergence(
         if not isinstance(checkpoint, dict):
             return unavailable(f"Raw Order Flow checkpoint {index} is not an object.")
         checkpoint_ms = checkpoint.get("decision_at_ms")
-        if isinstance(checkpoint_ms, bool) or not isinstance(checkpoint_ms, int) or checkpoint_ms <= previous_checkpoint_ms:
+        if isinstance(checkpoint_ms, bool) or not isinstance(checkpoint_ms, int):
+            return unavailable("Raw Order Flow checkpoints must have integer receive-time boundaries.")
+        if checkpoint_ms > decision_at_ms:
+            break
+        if checkpoint_ms <= previous_checkpoint_ms:
             return unavailable("Raw Order Flow checkpoints must have unique increasing receive-time boundaries.")
         previous_checkpoint_ms = checkpoint_ms
         if checkpoint.get("market_type") != "BINANCE_SPOT" or str(checkpoint.get("symbol") or "").upper() != normalized_symbol:
@@ -138,9 +142,8 @@ def evaluate_cvd_divergence(
             return unavailable(f"Raw Order Flow checkpoint {index} has an invalid UTC decision timestamp.")
         if abs(stamp_ms - checkpoint_ms) > 2:
             return unavailable("Raw Order Flow checkpoint timestamp fields disagree.")
-        if checkpoint_ms <= decision_at_ms:
-            eligible_checkpoints.append(checkpoint)
-            checkpoint_times.append(checkpoint_ms)
+        eligible_checkpoints.append(checkpoint)
+        checkpoint_times.append(checkpoint_ms)
     if not eligible_checkpoints:
         return unavailable("No raw Order Flow checkpoint exists at or before the decision boundary.")
 

@@ -101,19 +101,25 @@ def evaluate_cvd_divergence(
             if stamp.tzinfo is None or stamp.utcoffset() is None:
                 raise ValueError()
             open_ms = int(stamp.astimezone(timezone.utc).timestamp() * 1000)
+        except (TypeError, ValueError, OverflowError):
+            return unavailable(f"Price candle {index} has an invalid UTC timestamp.")
+        if open_ms <= previous_open_ms:
+            return unavailable("Price candles must be unique and chronological.")
+        previous_open_ms = open_ms
+        close_ms = open_ms + timeframe_ms
+        if close_ms > decision_at_ms:
+            break
+        try:
             low = float(candle["low"])
             high = float(candle["high"])
         except (KeyError, TypeError, ValueError, OverflowError):
-            return unavailable(f"Price candle {index} has an invalid UTC timestamp or range.")
-        if open_ms <= previous_open_ms or not math.isfinite(low) or not math.isfinite(high) or low <= 0 or high < low:
-            return unavailable("Price candles must be unique, chronological, finite and valid.")
-        previous_open_ms = open_ms
-        close_ms = open_ms + timeframe_ms
-        if close_ms <= decision_at_ms:
-            candles.append({
-                "index": index, "open_ms": open_ms, "close_ms": close_ms,
-                "low": low, "high": high,
-            })
+            return unavailable(f"Closed price candle {index} has an invalid range.")
+        if not math.isfinite(low) or not math.isfinite(high) or low <= 0 or high < low:
+            return unavailable("Closed price candles must have finite, positive and valid ranges.")
+        candles.append({
+            "index": index, "open_ms": open_ms, "close_ms": close_ms,
+            "low": low, "high": high,
+        })
     if len(candles) < left_bars + right_bars + 2:
         return unavailable("Not enough fully closed candles to confirm two price pivots.")
 

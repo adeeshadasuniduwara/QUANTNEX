@@ -457,7 +457,11 @@ def select_binance_entry(
     order_flow_decision: dict[str, Any] | None = None,
     order_flow_evidence_mode: str = "COMBINED",
 ) -> dict[str, Any] | None:
-    """Choose a marketable entry or a technically justified resting limit."""
+    """Choose MARKET or a technically justified LIMIT using flow route and execution constraints.
+
+    Raw-replay absorption/exhaustion routes are intentionally LIMIT-only; they
+    are not treated as immediate aggressor urgency.
+    """
     evidence_mode = str(order_flow_evidence_mode or "").strip().upper()
     pattern_modes = {
         "ABSORPTION_ONLY", "EXHAUSTION_ONLY",

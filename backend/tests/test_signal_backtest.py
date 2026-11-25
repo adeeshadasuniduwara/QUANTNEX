@@ -94,10 +94,14 @@ def test_signal_walk_forward_uses_sequential_oos_folds_and_costs(monkeypatch):
         "30": _candles(500, 30),
         "60": _candles(250, 60),
     }
-    calls = {"count": 0}
+    calls = {"count": 0, "score_modes": set()}
 
-    async def fake_build_signal(settings, symbol, *, candles_override, execution_context_override, replay_as_of):
+    async def fake_build_signal(
+        settings, symbol, *, candles_override, execution_context_override,
+        replay_as_of, score_mode_override=None,
+    ):
         calls["count"] += 1
+        calls["score_modes"].add(score_mode_override or "LEGACY_RAW")
         latest = candles_override["5"][-1]["time"]
         as_of_epoch = _epoch(replay_as_of.isoformat())
         assert as_of_epoch > _epoch(latest)
@@ -149,6 +153,20 @@ def test_signal_walk_forward_uses_sequential_oos_folds_and_costs(monkeypatch):
     assert result["out_of_sample"]["estimated_cost_quote"] > 0
     assert result["out_of_sample"]["buy_and_hold_return_pct"] is not None
     assert result["assumptions"]["spread_bps"] == 5
+    assert calls["score_modes"] == {"LEGACY_RAW", "CATEGORY_BALANCED"}
+    comparison = result["score_comparison"]
+    assert comparison["status"] == "EVALUATED"
+    assert comparison["threshold_mapping"] == {
+        "legacy_min_score": 7,
+        "legacy_score_out_of": 10,
+        "category_balanced_threshold": 4,
+        "category_balanced_score_out_of": 5,
+        "formula": "ceil(legacy_min_score * 5 / 10), clamped to 1..5",
+    }
+    assert comparison["category_balanced"]["training"]["score_mode"] == "CATEGORY_BALANCED"
+    assert comparison["category_balanced"]["out_of_sample"]["score_out_of"] == 5
+    assert comparison["category_balanced"]["out_of_sample"]["fold_count"] == 3
+    assert "expectancy_r" in comparison["out_of_sample_delta_category_balanced_minus_legacy"]
 
 
 def test_signal_walk_forward_consumes_raw_receive_time_events_without_future_checkpoints(monkeypatch):

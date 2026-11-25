@@ -1427,3 +1427,13 @@ def test_binance_entry_selector_supports_short_market_when_both_flow_components_
     assert selected is not None
     assert selected["entry_type"] == "MARKET"
     assert selected["order_flow_execution_evidence"]["market_urgency_confirmed"] is True
+
+
+
+def test_build_signal_rejects_unsupported_score_mode_before_market_data_calls():
+    import asyncio
+
+    with pytest.raises(ValueError, match="score mode"):
+        asyncio.run(signal_engine.build_signal(
+            {}, "BTCUSDT", score_mode_override="UNSUPPORTED"
+        ))

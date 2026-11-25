@@ -836,3 +836,9 @@ C25 preserves the HTTP status through the USDⓈ-M data and signal exceptions. T
 ## 2026-11-25 — Conflict-aware category-balanced strategy evidence
 
 The legacy raw confirmation count can count correlated methods multiple times within TREND and MOMENTUM (for example, 60m EMA plus 60m trend alignment, and MACD direction reused by ADX strength). A separate research diagnostic now gives at most one vote per baseline category when all methods in that category agree. Mixed BUY/SELL evidence neutralizes that category; diagnostic-only OHLCV VWAP evidence is excluded. The balanced count is exposed in the signal evidence payload, but the live raw score and thresholds remain unchanged. The next step is a matched chronological walk-forward ablation against the legacy baseline before considering any live scoring change.
+
+
+
+## 2026-11-25 — Matched category-balanced walk-forward ablation
+
+The category-balanced diagnostic now has an internal replay-only decision mode. Its threshold preserves the legacy min-score ratio by mapping 0–10 to 0–5 with `ceil(legacy_min_score × 5 / 10)`. The walk-forward runner compares legacy raw-count and category-balanced candle-only models on the same chronological train/OOS windows and execution-cost assumptions. It reports OOS metrics and deltas but does not change the live/default signal mode. Order Flow variants remain a separate ablation so the score comparison cannot be mistaken for an Order Flow result. Validation on real retained history remains necessary before any live score decision.

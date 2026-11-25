@@ -1222,8 +1222,12 @@ async def build_signal(
     order_flow_mode_override: str | None = None,
     order_flow_confirmation_mode_override: str | None = None,
     replay_as_of: datetime | None = None,
+    score_mode_override: str | None = None,
 ) -> dict[str, Any]:
     symbol = str(symbol).upper()
+    score_mode = str(score_mode_override or "LEGACY_RAW").strip().upper()
+    if score_mode not in {"LEGACY_RAW", "CATEGORY_BALANCED"}:
+        raise ValueError("Signal score mode is unsupported.")
     as_of = replay_as_of or datetime.now(timezone.utc)
     if as_of.tzinfo is None:
         as_of = as_of.replace(tzinfo=timezone.utc)
@@ -1315,13 +1319,37 @@ async def build_signal(
         analysis, primary, trend, in_zone=in_zone, observed_at=as_of.isoformat(),
         candles=candles.get(primary, []), as_of=as_of,
     )
-    buy = list(strategy_evidence["buy_reasons"])
-    sell = list(strategy_evidence["sell_reasons"])
-    bscore=min(10,len(buy));sscore=min(10,len(sell))
-    threshold=int(settings.get("min_score",7))
-    if bscore>=threshold and bscore>sscore: side="BUY";checks=buy;score=bscore
-    elif sscore>=threshold and sscore>bscore: side="SELL";checks=sell;score=sscore
-    else: checks=buy if bscore>=sscore else sell;score=max(bscore,sscore)
+    if score_mode == "CATEGORY_BALANCED":
+        legacy_threshold = int(settings.get("min_score", 7))
+        if isinstance(settings.get("min_score", 7), bool) or not 1 <= legacy_threshold <= 10:
+            raise ValueError("Category-balanced replay requires the legacy min_score to be between 1 and 10.")
+        score_out_of = 5
+        threshold = max(1, min(5, math.ceil(legacy_threshold * score_out_of / 10)))
+        balanced = strategy_evidence["category_balanced_counts"]
+        buy_categories = strategy_evidence["category_balanced_categories"]["BUY"]
+        sell_categories = strategy_evidence["category_balanced_categories"]["SELL"]
+        buy = [f"{category} category vote" for category in buy_categories]
+        sell = [f"{category} category vote" for category in sell_categories]
+        bscore = balanced["BUY"]
+        sscore = balanced["SELL"]
+    else:
+        buy = list(strategy_evidence["buy_reasons"])
+        sell = list(strategy_evidence["sell_reasons"])
+        bscore = min(10, len(buy))
+        sscore = min(10, len(sell))
+        threshold = int(settings.get("min_score", 7))
+        score_out_of = 10
+    if bscore >= threshold and bscore > sscore:
+        side = "BUY"
+        checks = buy
+        score = bscore
+    elif sscore >= threshold and sscore > bscore:
+        side = "SELL"
+        checks = sell
+        score = sscore
+    else:
+        checks = buy if bscore >= sscore else sell
+        score = max(bscore, sscore)
     # Directional quality gate: no signal against the selected primary/trend bias,
     # with weak ADX or an overextended RSI. Enabled higher timeframes must broadly agree.
     quality_filters={"primary_bias_aligned":False,"trend_bias_aligned":False,"adx_strength":False,
@@ -1739,7 +1767,9 @@ async def build_signal(
                 "tp2": round(tp2, price_precision),
                 "tp3": round(tp3, price_precision),
                 "score": score,
-                "out_of": 10,
+                "out_of": score_out_of,
+                "score_mode": score_mode,
+                "score_threshold": threshold,
                 "confirmations": checks,
                 "strategy_evidence": {
                     "registry_version": strategy_evidence["registry_version"],
@@ -1796,7 +1826,15 @@ async def build_signal(
     )
     return {"symbol":symbol,"provider":provider_label,"generated_at":generated_at,
             "signal":signal,"execution_quality":execution_quality,
-            "confluence_score":score,"score_out_of":10,"score_note":"Legacy rule-based confluence count, not a measured win probability; diagnostic methods such as OHLCV VWAP do not change the score.",
+            "confluence_score":score,"score_out_of":score_out_of,
+            "score_mode":score_mode,"score_threshold":threshold,
+            "score_note":(
+                "Research-only category-balanced count: one vote per unanimous baseline category; "
+                "opposing category evidence is neutral. Threshold is ratio-mapped from the legacy 0–10 setting; "
+                "this is not a calibrated probability."
+                if score_mode == "CATEGORY_BALANCED" else
+                "Legacy rule-based confluence count, not a measured win probability; diagnostic methods such as OHLCV VWAP do not change the score."
+            ),
             "timeframes":{tf:{"bias":v["bias"],"close":round(v["close"],price_precision),"ema20":round(v["ema20"],price_precision),
                 "ema50":round(v["ema50"],price_precision),"ema200":round(v["ema200"],price_precision) if v["ema200"] is not None else None,"macd_histogram":round(v["macd_histogram"],price_precision),
                 "rsi":round(v["rsi"],1),"adx":round(v["adx"],1),"atr":round(v["atr"],price_precision),

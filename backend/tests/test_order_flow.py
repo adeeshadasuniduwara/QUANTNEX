@@ -355,6 +355,10 @@ def _raw_replay_pattern_snapshot(*, delta_ratio=-0.55, depth_imbalance=0.30, exh
         "data_sources": {"trades": "raw fixture", "depth": "raw replay fixture"},
     })
     snapshot["order_book"]["source"] = "BINANCE_SPOT_SEQUENCE_VALIDATED_DEPTH_REPLAY"
+    snapshot["data_provenance"].update({
+        "decision_clock": "RECEIVED_AT_MS",
+        "capture_scope": "bounded raw archive",
+    })
     snapshot["trade_count"] = 100
     snapshot["auction_patterns"] = detect_order_flow_patterns(
         "BUY", candle, snapshot, baseline_trade_count=40 if exhaustion else None

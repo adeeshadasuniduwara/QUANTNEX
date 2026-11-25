@@ -247,3 +247,64 @@ def test_usdm_smoke_runs_even_when_spot_exchange_info_is_unavailable(monkeypatch
     assert "Binance Spot symbol discovery failed" in output
     assert "[FUTURES WAIT] BTCUSDT.P" in output
     assert "1 provider/error failure(s)" in output
+
+
+
+def test_usdm_http_451_is_reported_as_unavailable_without_failing_spot_smoke(monkeypatch, capsys):
+    import smoke_signal_engine as smoke
+
+    spot_calls = []
+
+    async def fake_spot_universe():
+        return ["BTCUSDT"]
+
+    async def fake_spot_build(_settings, symbol):
+        spot_calls.append(symbol)
+        return {"provider": "Binance Spot", "signal": None, "confluence_score": 0}
+
+    async def blocked_usdm_universe():
+        raise smoke.BinanceUsdMDataError("exchangeInfo unavailable (451)", status_code=451)
+
+    monkeypatch.setattr(smoke, "get_binance_spot_symbols", fake_spot_universe)
+    monkeypatch.setattr(smoke, "build_signal", fake_spot_build)
+    monkeypatch.setattr(smoke, "get_binance_usdm_symbols", blocked_usdm_universe)
+
+    result = asyncio.run(_run(
+        None, 8, universe_sample_size=1, sample_day=0,
+        include_usdm=True, usdm_universe_sample_size=1,
+    ))
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert spot_calls == ["BTCUSDT"]
+    assert "[FUTURES UNAVAILABLE]" in output
+    assert "HTTP 451" in output
+    assert "not a WAIT" in output
+    assert "0 provider/error failure(s)" in output
+
+
+def test_usdm_http_429_remains_a_provider_failure(monkeypatch, capsys):
+    import smoke_signal_engine as smoke
+
+    async def fake_spot_universe():
+        return ["BTCUSDT"]
+
+    async def fake_spot_build(*_args):
+        return {"provider": "Binance Spot", "signal": None, "confluence_score": 0}
+
+    async def rate_limited_usdm_universe():
+        raise smoke.BinanceUsdMDataError("rate limited (429)", status_code=429)
+
+    monkeypatch.setattr(smoke, "get_binance_spot_symbols", fake_spot_universe)
+    monkeypatch.setattr(smoke, "build_signal", fake_spot_build)
+    monkeypatch.setattr(smoke, "get_binance_usdm_symbols", rate_limited_usdm_universe)
+
+    result = asyncio.run(_run(
+        None, 8, universe_sample_size=1, sample_day=0,
+        include_usdm=True, usdm_universe_sample_size=1,
+    ))
+
+    output = capsys.readouterr().err
+    assert result == 1
+    assert "symbol discovery failed" in output
+    assert "429" in output

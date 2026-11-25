@@ -234,7 +234,11 @@ def test_signal_walk_forward_consumes_raw_receive_time_events_without_future_che
     assert replay["decision_clock"] == "RECEIVED_AT_MS"
     assert observed["raw_mode"] > 0
     assert observed["available"] > 0
-    expected_modes = {"AGGRESSOR_ONLY", "L2_ONLY", "COMBINED", "CVD_DIVERGENCE_ONLY", "COMBINED_CVD"}
+    expected_modes = {
+        "AGGRESSOR_ONLY", "L2_ONLY", "COMBINED", "CVD_DIVERGENCE_ONLY", "COMBINED_CVD",
+        "ABSORPTION_ONLY", "EXHAUSTION_ONLY",
+        "COMBINED_OR_ABSORPTION", "COMBINED_OR_EXHAUSTION",
+    }
     assert observed["modes"] == expected_modes
     assert set(replay["variants"]) == expected_modes
     assert set(result["order_flow_comparison"]["variants"]) == expected_modes

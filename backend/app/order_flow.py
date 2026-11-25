@@ -609,8 +609,9 @@ def evaluate_order_flow_confirmation(
     if side not in {"BUY", "SELL"}:
         raise OrderFlowDataError("side must be BUY or SELL.")
     normalized_evidence_mode = str(evidence_mode or "").strip().upper()
-    if normalized_evidence_mode not in {"COMBINED", "AGGRESSOR_ONLY", "L2_ONLY"}:
-        raise OrderFlowDataError("evidence_mode must be COMBINED, AGGRESSOR_ONLY or L2_ONLY.")
+    valid_modes = {"COMBINED", "AGGRESSOR_ONLY", "L2_ONLY", "CVD_DIVERGENCE_ONLY", "COMBINED_CVD"}
+    if normalized_evidence_mode not in valid_modes:
+        raise OrderFlowDataError("evidence_mode must be COMBINED, AGGRESSOR_ONLY, L2_ONLY, CVD_DIVERGENCE_ONLY or COMBINED_CVD.")
     try:
         trade_age_limit = float(max_trade_age_seconds)
         depth_age_limit = float(max_depth_age_seconds)
@@ -681,10 +682,45 @@ def evaluate_order_flow_confirmation(
         ("Aggressor trade delta", delta_value),
         ("L2 quote-notional depth imbalance", depth_value),
     )
+    cvd_divergence = None
+    cvd_direction = None
+    cvd_vote = 0.0
+    cvd_supports_direction = False
+    if normalized_evidence_mode in {"CVD_DIVERGENCE_ONLY", "COMBINED_CVD"}:
+        cvd_divergence = snapshot.get("cvd_divergence")
+        if not isinstance(cvd_divergence, dict):
+            raise OrderFlowDataError("This Order Flow evidence mode requires causal CVD-divergence evidence.")
+        cvd_status_value = str(cvd_divergence.get("status") or "")
+        cvd_direction = cvd_divergence.get("direction")
+        cvd_as_of = cvd_divergence.get("as_of_ms")
+        cvd_confirmed_at = cvd_divergence.get("confirmed_at_ms")
+        if (
+            cvd_divergence.get("method") != "CONFIRMED_PRICE_SWING_PIVOTS_VS_RECEIVE_TIME_CVD"
+            or cvd_divergence.get("symbol") != snapshot.get("symbol")
+            or cvd_divergence.get("coverage_is_complete") is not False
+            or cvd_divergence.get("coverage") != "ELIGIBLE_CONTIGUOUS_ONE_MINUTE_CHECKPOINTS_SINCE_STABLE_CAPTURE_SEED"
+            or isinstance(cvd_as_of, bool) or not isinstance(cvd_as_of, int) or cvd_as_of <= 0
+            or isinstance(cvd_confirmed_at, bool) or (cvd_confirmed_at is not None and not isinstance(cvd_confirmed_at, int))
+            or cvd_as_of > int(clock.timestamp() * 1000) + 2_000
+            or (cvd_confirmed_at is not None and cvd_confirmed_at > cvd_as_of)
+        ):
+            raise OrderFlowDataError("CVD-divergence evidence has invalid provenance or a future confirmation boundary.")
+        if cvd_status_value == "BULLISH_DIVERGENCE" and cvd_direction == "BUY":
+            cvd_vote = 1.0
+        elif cvd_status_value == "BEARISH_DIVERGENCE" and cvd_direction == "SELL":
+            cvd_vote = -1.0
+        elif cvd_status_value in {"NO_DIVERGENCE", "UNAVAILABLE", "CONFLICTING_DIVERGENCE"} and cvd_direction is None:
+            cvd_vote = 0.0
+        else:
+            raise OrderFlowDataError("CVD-divergence status and direction are inconsistent.")
+        cvd_supports_direction = cvd_vote * direction > 0
+    cvd_observation = ("Confirmed-pivot CVD divergence", cvd_vote)
     observations = {
         "COMBINED": all_observations,
         "AGGRESSOR_ONLY": all_observations[:1],
         "L2_ONLY": all_observations[1:],
+        "CVD_DIVERGENCE_ONLY": (cvd_observation,),
+        "COMBINED_CVD": all_observations + (cvd_observation,),
     }[normalized_evidence_mode]
     supporting: list[str] = []
     conflicting: list[str] = []
@@ -705,6 +741,13 @@ def evaluate_order_flow_confirmation(
         status = "MIXED"
     else:
         status = "NEUTRAL"
+    cvd_required_vote_met = (
+        normalized_evidence_mode not in {"CVD_DIVERGENCE_ONLY", "COMBINED_CVD"}
+        or cvd_supports_direction
+    )
+    if status == "CONFIRMED" and not cvd_required_vote_met:
+        status = "CVD_DIVERGENCE_CONFLICTS" if cvd_vote * direction < 0 else "CVD_DIVERGENCE_NOT_CONFIRMED"
+    accepted = status == "CONFIRMED" and cvd_required_vote_met
     if feed_mode == "PUBLIC_WEBSOCKET_STREAM":
         depth_limitations = [
             "L2 depth is sequence-validated only from the current REST snapshot bridge; any update-ID gap invalidates it until a new bridge succeeds.",
@@ -733,7 +776,7 @@ def evaluate_order_flow_confirmation(
         session_limitation = "Full UTC session delta is unavailable without a verified UTC session-start anchor and contiguous trade-ID coverage."
     return {
         "status": status,
-        "accepted": status == "CONFIRMED",
+        "accepted": accepted,
         "side": side,
         "support_count": len(supporting),
         "conflict_count": len(conflicting),
@@ -744,6 +787,10 @@ def evaluate_order_flow_confirmation(
         "conflicting_evidence": conflicting,
         "neutral_evidence": neutral,
         "evidence_mode": normalized_evidence_mode,
+        "required_vote_met": cvd_required_vote_met,
+        "cvd_direction": cvd_direction,
+        "cvd_supports_direction": cvd_supports_direction,
+        "cvd_divergence": cvd_divergence,
         "method": (
             f"directional sign ablation {normalized_evidence_mode.lower()} v1; not calibrated as win probability"
         ),
@@ -782,6 +829,7 @@ def summarize_order_flow_snapshot(
         "window_delta_scope": snapshot.get("window_delta_scope"),
         "cvd_value": snapshot.get("cvd_value"),
         "cvd_status": snapshot.get("cvd_status"),
+        "cvd_divergence": snapshot.get("cvd_divergence"),
         "session_timezone": snapshot.get("session_timezone"),
         "session_delta": snapshot.get("session_delta"),
         "session_delta_scope": snapshot.get("session_delta_scope"),

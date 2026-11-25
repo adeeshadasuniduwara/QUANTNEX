@@ -340,6 +340,38 @@ def evaluate_strategy_registry(
         }
         for side in ("BUY", "SELL")
     }
+
+    # Research-only category balancing prevents correlated baseline methods
+    # from multiplying one directional vote. A category contributes one vote
+    # only when every baseline method in that category agrees; a mixed category
+    # is explicitly neutral. Diagnostic-only methods (for example OHLCV VWAP)
+    # never enter this score.
+    baseline_by_category: dict[str, dict[str, list[str]]] = {}
+    for item in evidence:
+        if not item.counts_for_baseline:
+            continue
+        baseline_by_category.setdefault(item.category, {"BUY": [], "SELL": []})[
+            item.side
+        ].append(item.method_id)
+
+    category_balanced_categories = {"BUY": [], "SELL": []}
+    category_balanced_methods = {"BUY": {}, "SELL": {}}
+    category_conflicts: dict[str, dict[str, list[str]]] = {}
+    for category in sorted(baseline_by_category):
+        by_side = baseline_by_category[category]
+        active_sides = [side for side in ("BUY", "SELL") if by_side[side]]
+        if len(active_sides) == 1:
+            side = active_sides[0]
+            category_balanced_categories[side].append(category)
+            category_balanced_methods[side][category] = list(by_side[side])
+        elif len(active_sides) == 2:
+            category_conflicts[category] = {
+                side: list(by_side[side]) for side in ("BUY", "SELL")
+            }
+
+    category_balanced_counts = {
+        side: len(category_balanced_categories[side]) for side in ("BUY", "SELL")
+    }
     return {
         "registry_version": 1,
         "evidence": [item.as_dict() for item in evidence],
@@ -356,4 +388,11 @@ def evaluate_strategy_registry(
         "categories": categories,
         "category_methods": category_methods,
         "category_score_status": "DIAGNOSTIC_ONLY_NOT_USED_FOR_LIVE_DECISIONS",
+        "category_balanced_counts": category_balanced_counts,
+        "category_balanced_categories": category_balanced_categories,
+        "category_balanced_methods": category_balanced_methods,
+        "category_conflicts": category_conflicts,
+        "category_balanced_score_status": (
+            "RESEARCH_DIAGNOSTIC_ONLY_ONE_VOTE_PER_UNANIMOUS_BASELINE_CATEGORY"
+        ),
     }

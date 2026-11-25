@@ -1437,3 +1437,91 @@ def test_build_signal_rejects_unsupported_score_mode_before_market_data_calls():
         asyncio.run(signal_engine.build_signal(
             {}, "BTCUSDT", score_mode_override="UNSUPPORTED"
         ))
+
+
+def test_absorption_pattern_entry_is_limit_only_even_when_market_order_is_available():
+    from app.signal_engine import select_binance_entry
+
+    execution = {
+        "best_bid": 100.00, "best_ask": 100.02, "mid_price": 100.01,
+        "spread_bps": 2.0, "order_types": ["LIMIT", "MARKET"],
+        "limit_order_constraints_valid": True, "market_order_constraints_valid": True,
+        "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
+    }
+    snapshot = {
+        "market_type": "BINANCE_SPOT",
+        "delta_ratio": -0.55,
+        "trade_count": 100,
+        "trade_data_age_seconds": 1.0,
+        "depth_data_age_seconds": 1.0,
+        "depth_is_continuous": True,
+        "depth_observed_at": datetime.now(timezone.utc).isoformat(),
+        "depth_snapshot_update_id": 123,
+        "data_provenance": {
+            "candle_volume_used": False,
+            "bid_ask_semantics": "Aggressor-side inferred trade delta",
+        },
+        "order_book": {"depth_imbalance": 0.30},
+    }
+    decision = {
+        "accepted": True,
+        "evidence_mode": "ABSORPTION_ONLY",
+        "confirmation_route": "ABSORPTION_PATTERN",
+        "pattern_status": "BUY_ABSORPTION",
+        "pattern_direction": "BUY",
+        "pattern_supports_direction": True,
+        "pattern_evidence": ["aggressive selling absorbed by bids"],
+    }
+    selected = select_binance_entry(
+        "BUY", 100.0, 2.0, {"low": 99.6, "high": 99.8, "source": "BULLISH_FVG"},
+        execution, order_flow_snapshot=snapshot, order_flow_decision=decision,
+        order_flow_evidence_mode="ABSORPTION_ONLY",
+    )
+    assert selected is not None
+    assert selected["entry_type"] == "LIMIT"
+    assert selected["order_flow_execution_evidence"]["market_urgency_confirmed"] is False
+    assert selected["order_flow_execution_evidence"]["confirmation_route"] == "ABSORPTION_PATTERN"
+
+
+def test_combined_or_pattern_route_is_limit_only_but_base_combined_route_can_use_market():
+    from app.signal_engine import select_binance_entry
+
+    execution = {
+        "best_bid": 100.00, "best_ask": 100.02, "mid_price": 100.01,
+        "spread_bps": 2.0, "order_types": ["LIMIT", "MARKET"],
+        "limit_order_constraints_valid": True, "market_order_constraints_valid": True,
+        "bid_depth_quote": 20000.0, "ask_depth_quote": 20000.0,
+    }
+    common = {
+        "market_type": "BINANCE_SPOT",
+        "depth_is_continuous": True,
+        "data_provenance": {"candle_volume_used": False, "bid_ask_semantics": "Aggressor-side inferred trade delta"},
+        "order_book": {"depth_imbalance": 0.30},
+    }
+    pattern_route = select_binance_entry(
+        "BUY", 100.0, 2.0, {"low": 99.6, "high": 99.8, "source": "BULLISH_FVG"},
+        execution,
+        order_flow_snapshot={**common, "delta_ratio": -0.55},
+        order_flow_decision={
+            "accepted": True, "evidence_mode": "COMBINED_OR_ABSORPTION",
+            "confirmation_route": "ABSORPTION_PATTERN",
+            "pattern_status": "BUY_ABSORPTION", "pattern_direction": "BUY",
+            "pattern_supports_direction": True, "pattern_evidence": ["bid absorption"],
+        },
+        order_flow_evidence_mode="COMBINED_OR_ABSORPTION",
+    )
+    base_route = select_binance_entry(
+        "BUY", 100.0, 2.0, None, execution,
+        order_flow_snapshot={**common, "delta_ratio": 0.25},
+        order_flow_decision={
+            "accepted": True, "evidence_mode": "COMBINED_OR_ABSORPTION",
+            "confirmation_route": "COMBINED_DELTA_L2",
+            "pattern_status": "NO_PATTERN", "pattern_direction": None,
+            "pattern_supports_direction": False,
+        },
+        order_flow_evidence_mode="COMBINED_OR_ABSORPTION",
+    )
+    assert pattern_route is not None and pattern_route["entry_type"] == "LIMIT"
+    assert pattern_route["order_flow_execution_evidence"]["market_urgency_confirmed"] is False
+    assert base_route is not None and base_route["entry_type"] == "MARKET"
+    assert base_route["order_flow_execution_evidence"]["market_urgency_confirmed"] is True

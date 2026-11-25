@@ -2,7 +2,8 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.order_flow import evaluate_cvd_divergence
+from app.order_flow import evaluate_cvd_divergence, evaluate_order_flow_confirmation
+from app.signal_engine import select_binance_entry
 
 
 BASE_MS = 1_795_248_000_000
@@ -114,7 +115,7 @@ def test_price_and_cvd_moving_in_the_same_direction_is_not_divergence():
     ("kwargs", "reason"),
     [
         ({"missing": (3,)}, "continuity"),
-        ({"ineligible": (4,)}, "same-boundary"),
+        ({"ineligible": (4,)}, "continuity"),
         ({"seed_changes": {4: 200}}, "seed"),
     ],
 )
@@ -158,3 +159,87 @@ def test_checkpoint_order_and_symbol_are_validated():
     result = _evaluate(checkpoints=checkpoints)
     assert result["status"] == "UNAVAILABLE"
     assert "match" in result["reason"].lower()
+
+
+def _confirmed_snapshot(cvd_divergence, *, delta_ratio=0.25, depth_imbalance=0.2):
+    now = datetime.fromtimestamp((BASE_MS + 7 * 60_000) / 1000, timezone.utc)
+    return {
+        "symbol": "BTCUSDT",
+        "market_type": "BINANCE_SPOT",
+        "trade_count": 10,
+        "trade_data_age_seconds": 1.0,
+        "delta_ratio": delta_ratio,
+        "data_provenance": {
+            "candle_volume_used": False,
+            "bid_ask_semantics": "Aggressor-side inferred trade volume",
+        },
+        "data_sources": {"trades": "fixture", "depth": "fixture"},
+        "depth_is_continuous": True,
+        "depth_snapshot_update_id": 123,
+        "depth_observed_at": now.isoformat(),
+        "feed_mode": "RAW_EVENT_REPLAY",
+        "order_book": {"depth_imbalance": depth_imbalance},
+        "cvd_divergence": cvd_divergence,
+    }
+
+
+def test_cvd_only_confirmation_is_directional_but_never_market_urgent():
+    from datetime import datetime
+
+    divergence = _evaluate()
+    now = datetime.fromtimestamp((BASE_MS + 7 * 60_000) / 1000, timezone.utc)
+    snapshot = _confirmed_snapshot(divergence, delta_ratio=-0.25, depth_imbalance=-0.2)
+    decision = evaluate_order_flow_confirmation(
+        "BUY", snapshot, now=now, evidence_mode="CVD_DIVERGENCE_ONLY"
+    )
+    assert decision["accepted"] is True
+    assert decision["cvd_supports_direction"] is True
+    assert decision["evidence_mode"] == "CVD_DIVERGENCE_ONLY"
+
+    execution = {
+        "best_bid": 100.0, "best_ask": 100.02, "mid_price": 100.01,
+        "spread_bps": 2.0, "bid_depth_quote": 20_000.0, "ask_depth_quote": 20_000.0,
+        "order_types": ["LIMIT", "MARKET"],
+        "limit_order_constraints_valid": True, "market_order_constraints_valid": True,
+    }
+    selected = select_binance_entry(
+        "BUY", 100.0, 2.0, {"low": 99.6, "high": 99.8, "source": "BULLISH_FVG"},
+        execution, order_flow_snapshot=snapshot, order_flow_decision=decision,
+        order_flow_evidence_mode="CVD_DIVERGENCE_ONLY",
+    )
+    assert selected is not None
+    assert selected["entry_type"] == "LIMIT"
+    assert selected["order_flow_execution_evidence"]["market_urgency_confirmed"] is False
+
+
+def test_combined_cvd_requires_aggressor_l2_and_divergence_alignment():
+    from datetime import datetime
+
+    divergence = _evaluate()
+    now = datetime.fromtimestamp((BASE_MS + 7 * 60_000) / 1000, timezone.utc)
+    conflicting = _confirmed_snapshot(divergence, delta_ratio=-0.25, depth_imbalance=-0.2)
+    rejected = evaluate_order_flow_confirmation(
+        "BUY", conflicting, now=now, evidence_mode="COMBINED_CVD"
+    )
+    assert rejected["accepted"] is False
+
+    aligned = _confirmed_snapshot(divergence, delta_ratio=0.25, depth_imbalance=0.2)
+    accepted = evaluate_order_flow_confirmation(
+        "BUY", aligned, now=now, evidence_mode="COMBINED_CVD"
+    )
+    assert accepted["accepted"] is True
+    assert accepted["required_vote_met"] is True
+    assert accepted["support_count"] == 3
+
+
+def test_cvd_confirmation_rejects_future_divergence_boundaries():
+    from datetime import datetime
+
+    divergence = _evaluate()
+    divergence = {**divergence, "as_of_ms": BASE_MS + 8 * 60_000}
+    now = datetime.fromtimestamp((BASE_MS + 7 * 60_000) / 1000, timezone.utc)
+    with pytest.raises(ValueError, match="future confirmation boundary"):
+        evaluate_order_flow_confirmation(
+            "BUY", _confirmed_snapshot(divergence), now=now,
+            evidence_mode="CVD_DIVERGENCE_ONLY",
+        )

@@ -41,7 +41,11 @@ async def _cache_guard():
 
 
 class BinanceUsdMDataError(RuntimeError):
-    pass
+    """USDⓈ-M provider/data failure with an optional HTTP status for safe classification."""
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 async def _request_json(client: httpx.AsyncClient, path: str,
@@ -52,11 +56,13 @@ async def _request_json(client: httpx.AsyncClient, path: str,
             response = await client.get(base + path, params=params)
             if response.status_code in {418, 429, 403, 451}:
                 raise BinanceUsdMDataError(
-                    f"Binance USDⓈ-M public endpoint blocked or rate-limited ({response.status_code}); retry later."
+                    f"Binance USDⓈ-M public endpoint blocked or rate-limited ({response.status_code}); retry later.",
+                    status_code=response.status_code,
                 )
             if 400 <= response.status_code < 500 and response.status_code not in {408, 425}:
                 raise BinanceUsdMDataError(
-                    f"Binance USDⓈ-M rejected the request ({response.status_code})."
+                    f"Binance USDⓈ-M rejected the request ({response.status_code}).",
+                    status_code=response.status_code,
                 )
             response.raise_for_status()
             payload = response.json()
@@ -84,7 +90,12 @@ async def get_binance_usdm_symbol_info(force_refresh: bool = False) -> dict[str,
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(12, connect=4)) as client:
                 payload = await _request_json(client, "/fapi/v1/exchangeInfo")
-        except (BinanceUsdMDataError, httpx.HTTPError, ValueError, TypeError) as exc:
+        except BinanceUsdMDataError as exc:
+            raise BinanceUsdMDataError(
+                f"Could not retrieve USDⓈ-M exchangeInfo: {exc}",
+                status_code=exc.status_code,
+            ) from exc
+        except (httpx.HTTPError, ValueError, TypeError) as exc:
             raise BinanceUsdMDataError(f"Could not retrieve USDⓈ-M exchangeInfo: {exc}") from exc
         if not isinstance(payload, dict) or not isinstance(payload.get("symbols"), list):
             raise BinanceUsdMDataError("Binance returned invalid USDⓈ-M exchange metadata.")
@@ -136,7 +147,12 @@ async def fetch_binance_usdm_candles(symbol: str, interval: str, limit: int = 10
             payload = await _request_json(client, "/fapi/v1/klines", {
                 "symbol": normalized, "interval": interval, "limit": int(limit)
             })
-    except (BinanceUsdMDataError, httpx.HTTPError, ValueError, TypeError) as exc:
+    except BinanceUsdMDataError as exc:
+        raise BinanceUsdMDataError(
+            f"Could not load {normalized} USDⓈ-M candles: {exc}",
+            status_code=exc.status_code,
+        ) from exc
+    except (httpx.HTTPError, ValueError, TypeError) as exc:
         raise BinanceUsdMDataError(f"Could not load {normalized} USDⓈ-M candles: {exc}") from exc
     if not isinstance(payload, list):
         raise BinanceUsdMDataError("Binance returned invalid USDⓈ-M kline data.")

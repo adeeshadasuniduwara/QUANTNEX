@@ -70,7 +70,6 @@ class AggTradeCvdState:
     """
 
     symbol: str
-    seed_trade_id: int | None = None
     last_agg_trade_id: int | None = None
     cumulative_delta: Decimal = Decimal("0")
     cumulative_quote_delta: Decimal = Decimal("0")
@@ -90,6 +89,7 @@ class AggTradeCvdState:
     _coverage_before_gap: bool = field(default=False, repr=False)
     _session_coverage_before_gap: bool = field(default=False, repr=False)
     _session_date_before_gap: date | None = field(default=None, repr=False)
+    seed_trade_id: int | None = None
 
     def __post_init__(self) -> None:
         self.symbol = str(self.symbol).upper()

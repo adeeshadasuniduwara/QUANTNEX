@@ -25,14 +25,25 @@ def detect_order_flow_patterns(
         raise ValueError("A candle and verified order-flow snapshot are required.")
     if snapshot.get("market_type") != "BINANCE_SPOT":
         raise ValueError("Order-flow patterns require Binance Spot provenance.")
-    if snapshot.get("feed_mode") != "PUBLIC_WEBSOCKET_STREAM" or snapshot.get("depth_is_continuous") is not True:
-        raise ValueError("Order-flow patterns require a sequence-validated public WebSocket stream.")
+    feed_mode = str(snapshot.get("feed_mode") or "")
+    if feed_mode not in {"PUBLIC_WEBSOCKET_STREAM", "RAW_EVENT_REPLAY"} or snapshot.get("depth_is_continuous") is not True:
+        raise ValueError("Order-flow patterns require sequence-validated public Spot depth.")
     provenance = snapshot.get("data_provenance")
     if not isinstance(provenance, dict) or provenance.get("candle_volume_used") is not False:
         raise ValueError("Order-flow pattern input is missing verified trade-side provenance.")
     order_book = snapshot.get("order_book")
     if not isinstance(order_book, dict):
         raise ValueError("Order-flow pattern input is missing L2 book metrics.")
+    if feed_mode == "RAW_EVENT_REPLAY":
+        if (
+            snapshot.get("eligible_for_order_flow_replay") is not True
+            or snapshot.get("coverage_is_complete") is not False
+            or snapshot.get("coverage_status") != "OBSERVED_CONTIGUOUS_CAPTURE_NOT_FULL_SESSION"
+            or snapshot.get("capture_gap_detected") is not False
+            or provenance.get("decision_clock") != "RECEIVED_AT_MS"
+            or order_book.get("source") != "BINANCE_SPOT_SEQUENCE_VALIDATED_DEPTH_REPLAY"
+        ):
+            raise ValueError("Raw replay patterns require an eligible bounded receive-time checkpoint and validated depth.")
 
     def finite(value: Any, label: str) -> float:
         if isinstance(value, bool):
@@ -174,7 +185,22 @@ def detect_order_flow_patterns(
             "trade_count": int(trade_count),
             "baseline_trade_count": baseline,
         },
-        "method": "observed aggressor delta + sequence-validated L2 + candle price response; not calibrated probability",
+        "method": "AGGRESSOR_DELTA_L2_CANDLE_RESPONSE_ABSORPTION_EXHAUSTION",
+        "method_version": 1,
+        "market_type": "BINANCE_SPOT",
+        "symbol": str(snapshot.get("symbol") or "").upper() or None,
+        "feed_mode": feed_mode,
+        "candle_minute": candle_time.isoformat(),
+        "trade_observed_at": trade_time.isoformat(),
+        "depth_observed_at": depth_time.isoformat(),
+        "coverage_status": snapshot.get("coverage_status"),
+        "coverage_is_complete": snapshot.get("coverage_is_complete"),
+        "data_provenance": {
+            "candle_volume_used": provenance.get("candle_volume_used"),
+            "bid_ask_semantics": provenance.get("bid_ask_semantics"),
+            "decision_clock": provenance.get("decision_clock"),
+            "capture_scope": provenance.get("capture_scope"),
+        },
         "reason": reason,
         "limitations": [
             "Binance Spot venue only; not consolidated multi-venue flow.",

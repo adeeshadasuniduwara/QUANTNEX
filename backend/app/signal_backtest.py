@@ -1256,12 +1256,12 @@ async def run_signal_walk_forward(
                 "out_of_sample_folds": order_flow_out_of_sample_folds,
                 "variants": variant_results,
                 "method": (
-                    "Three directional-vote ablations (aggressor-only, L2-only and combined) use the same fixed "
-                    "candle strategy, chronological folds and execution assumptions. Both feeds pass their existing "
-                    "freshness, provenance and feed-specific integrity gates in every variant; only the named "
-                    "component's directional vote is removed. Raw Binance Spot checkpoints are selected only at or "
-                    "before each candle decision. OOS positions remain blocked until modeled exit across fold "
-                    "boundaries. Results are descriptive, not calibrated predictive uplift."
+                    "Five directional-vote ablations (aggressor-only, L2-only, combined, confirmed-pivot CVD-only "
+                    "and combined-with-CVD) use the same fixed candle strategy, chronological folds and execution "
+                    "assumptions. Raw-event CVD requires same-boundary receive-time checkpoints, continuous eligible "
+                    "one-minute coverage and one stable stream seed between confirmed price pivots. Both underlying "
+                    "feeds retain freshness, provenance and sequence-integrity gates. CVD-only cannot select MARKET "
+                    "urgency; it requires a favorable LIMIT retracement. Results are descriptive, not calibrated uplift."
                     if is_raw_replay else
                     "Three directional-vote ablations (aggressor-only, L2-only and combined) use the same fixed "
                     "candle strategy, chronological folds and execution assumptions. Both feeds pass their existing "

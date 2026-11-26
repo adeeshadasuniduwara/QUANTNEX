@@ -11,7 +11,12 @@ import math
 from datetime import datetime, timezone
 import sys
 
-from app.signal_engine import MarketDataError, build_signal, get_binance_spot_symbols
+import httpx
+
+from app.binance_public import get_binance_public_json
+from app.signal_engine import (
+    MarketDataError, build_signal, get_binance_spot_symbol_info, get_binance_spot_symbols,
+)
 from app.binance_usdm_market_data import BinanceUsdMDataError, get_binance_usdm_symbols
 from app.binance_usdm_signal_engine import BinanceUsdMSignalError, analyze_usdm_futures_signal
 
@@ -94,6 +99,164 @@ def _format_order_flow_diagnostics(result: dict) -> str:
             if formatted is not None:
                 fields.append(f"{key}={formatted}")
     return "  Order Flow: " + " | ".join(fields)
+
+
+def select_order_flow_probe_symbols(
+    universe: list[str], ticker_rows: list[dict], *, limit: int = 1
+) -> list[str]:
+    """Choose a small live-feed health sample from current eligible USDT Spot pairs.
+
+    Ranking uses Binance's 24-hour quoteVolume, not a hard-coded coin shortlist.
+    This is a feed-health sentinel only; it does not limit the signal universe.
+    """
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValueError("Order Flow probe limit must be a positive integer.")
+    if not isinstance(ticker_rows, list):
+        raise ValueError("Binance 24-hour ticker response must be a list.")
+
+    eligible = {
+        str(symbol).strip().upper()
+        for symbol in universe
+        if isinstance(symbol, str) and str(symbol).strip()
+    }
+    volume_by_symbol: dict[str, float] = {}
+    for row in ticker_rows:
+        if not isinstance(row, dict):
+            continue
+        symbol = str(row.get("symbol") or "").strip().upper()
+        if symbol not in eligible or not symbol.endswith("USDT"):
+            continue
+        try:
+            quote_volume = float(row.get("quoteVolume"))
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if not math.isfinite(quote_volume) or quote_volume <= 0:
+            continue
+        volume_by_symbol[symbol] = max(volume_by_symbol.get(symbol, 0.0), quote_volume)
+
+    ranked = sorted(volume_by_symbol, key=lambda symbol: (-volume_by_symbol[symbol], symbol))
+    return ranked[:limit]
+
+
+async def _load_spot_order_flow_probe_symbols(
+    universe: list[str], *, limit: int = 1
+) -> list[str]:
+    """Rank eligible USDT pairs by live Binance 24-hour quote volume."""
+    async with httpx.AsyncClient(timeout=httpx.Timeout(10, connect=3)) as client:
+        tickers, _source = await get_binance_public_json(
+            client, "/api/v3/ticker/24hr"
+        )
+    return select_order_flow_probe_symbols(universe, tickers, limit=limit)
+
+
+async def _run_spot_order_flow_probe(
+    universe: list[str], *, wait_seconds: float = 8.0
+) -> tuple[int, int]:
+    """Independently verify live Spot aggTrade + sequence-valid L2 readiness.
+
+    A candle WAIT does not prevent this probe. It never creates a trading signal
+    and never places an order. A not-ready stream is reported as a probe failure,
+    not as a signal WAIT.
+    """
+    if (
+        isinstance(wait_seconds, bool)
+        or not isinstance(wait_seconds, (int, float))
+        or not math.isfinite(float(wait_seconds))
+        or not 0 < float(wait_seconds) <= 30
+    ):
+        print("[ORDER FLOW PROBE ERROR] wait_seconds must be between 0 and 30.", file=sys.stderr)
+        return 0, 1
+
+    try:
+        symbols = await _load_spot_order_flow_probe_symbols(universe, limit=1)
+        if not symbols:
+            raise MarketDataError(
+                "No eligible USDT-quoted Spot pair with positive 24-hour quote volume was found."
+            )
+    except Exception as exc:
+        print(
+            f"[ORDER FLOW PROBE ERROR] Could not select a live Spot feed sample: "
+            f"{type(exc).__name__}: {str(exc)[:180]}",
+            file=sys.stderr,
+        )
+        return 0, 1
+
+    from app.binance_order_flow_manager import get_binance_spot_order_flow_manager
+
+    manager = get_binance_spot_order_flow_manager()
+    ready = 0
+    failures = 0
+    try:
+        for symbol in symbols:
+            try:
+                info = await get_binance_spot_symbol_info(symbol)
+                filters = info.get("filters") if isinstance(info, dict) else None
+                price_filter = filters.get("PRICE_FILTER") if isinstance(filters, dict) else None
+                tick_size = price_filter.get("tickSize") if isinstance(price_filter, dict) else None
+                if not tick_size:
+                    raise MarketDataError(f"{symbol} has no exchangeInfo PRICE_FILTER tick size.")
+
+                result = await manager.get_snapshot(
+                    symbol, str(tick_size), wait_seconds=float(wait_seconds)
+                )
+                flow = result.get("order_flow") if isinstance(result, dict) else None
+                book = flow.get("order_book") if isinstance(flow, dict) else None
+                provenance = flow.get("data_provenance") if isinstance(flow, dict) else None
+                is_ready = bool(
+                    isinstance(result, dict)
+                    and result.get("market_type") == "BINANCE_SPOT"
+                    and result.get("signal_ready") is True
+                    and isinstance(flow, dict)
+                    and flow.get("feed_mode") == "PUBLIC_WEBSOCKET_STREAM"
+                    and flow.get("depth_is_continuous") is True
+                    and isinstance(book, dict)
+                    and isinstance(provenance, dict)
+                    and provenance.get("candle_volume_used") is False
+                )
+                if is_ready:
+                    fields = [
+                        f"trades={_format_diagnostic_value(flow.get('trade_count')) or 'n/a'}",
+                        f"delta_ratio={_format_diagnostic_value(flow.get('delta_ratio')) or 'n/a'}",
+                        f"spread_bps={_format_diagnostic_value(book.get('spread_bps')) or 'n/a'}",
+                        f"depth_imbalance={_format_diagnostic_value(book.get('depth_imbalance')) or 'n/a'}",
+                        f"cvd={_format_diagnostic_value(flow.get('cvd_value')) or 'n/a'}",
+                        f"cvd_scope={_format_diagnostic_value(flow.get('cvd_scope')) or 'n/a'}",
+                    ]
+                    print(f"[ORDER FLOW READY] {symbol} | " + " | ".join(fields))
+                    ready += 1
+                else:
+                    status = _format_diagnostic_value(result.get("status")) if isinstance(result, dict) else None
+                    reason = None
+                    if isinstance(result, dict):
+                        reason = (
+                            _format_diagnostic_value(result.get("last_error"))
+                            or _format_diagnostic_value(result.get("order_flow_error"))
+                        )
+                    print(
+                        f"[ORDER FLOW NOT READY] {symbol} | status={status or 'UNKNOWN'}"
+                        + (f" | reason={reason}" if reason else "")
+                    )
+                    failures += 1
+            except Exception as exc:
+                print(
+                    f"[ORDER FLOW PROBE ERROR] {symbol} | {type(exc).__name__}: {str(exc)[:180]}",
+                    file=sys.stderr,
+                )
+                failures += 1
+    finally:
+        try:
+            await manager.stop()
+        except Exception as exc:
+            print(
+                f"[ORDER FLOW PROBE CLEANUP ERROR] {type(exc).__name__}: {str(exc)[:160]}",
+                file=sys.stderr,
+            )
+            failures += 1
+
+    print(
+        f"Spot Order Flow probe complete: {ready} ready, {failures} not-ready/error."
+    )
+    return ready, failures
 
 
 async def _run_usdm(
@@ -213,6 +376,8 @@ async def _run(
     sample_day: int | None = None,
     include_usdm: bool = False,
     usdm_universe_sample_size: int = 20,
+    include_order_flow_probe: bool = False,
+    order_flow_probe_wait_seconds: float = 8.0,
 ) -> int:
     settings = {**DEFAULT_SETTINGS, "min_score": max(8, min(10, min_score))}
     spot_successful = 0
@@ -315,6 +480,15 @@ async def _run(
         if index + 1 < len(spot_symbols):
             await asyncio.sleep(0.1)
 
+
+    order_flow_ready = 0
+    order_flow_failures = 0
+    if include_order_flow_probe and spot_universe:
+        order_flow_ready, order_flow_failures = await _run_spot_order_flow_probe(
+            spot_universe, wait_seconds=order_flow_probe_wait_seconds
+        )
+
+
     usdm_successful = 0
     usdm_skipped = 0
     usdm_failures = 0
@@ -325,12 +499,14 @@ async def _run(
             sample_day=sample_day,
         )
 
-    total_failures = spot_failures + usdm_failures
+    total_failures = spot_failures + usdm_failures + order_flow_failures
     total_skipped = spot_skipped + usdm_skipped
     print("-" * 72)
     print(
         f"Finished: {spot_successful} successful Spot scan(s), "
         f"{usdm_successful} successful USDⓈ-M scan(s), "
+        f"{order_flow_ready} ready Spot Order Flow probe(s), "
+        f"{order_flow_failures} Order Flow probe failure(s), "
         f"{total_skipped} insufficient-history skip(s), {total_failures} provider/error failure(s)."
     )
     print(
@@ -368,6 +544,17 @@ def main() -> int:
         help="Number of dynamically discovered active USDⓈ-M perpetuals to scan in candle-only monitor mode.",
     )
     parser.add_argument(
+        "--skip-order-flow-probe",
+        action="store_true",
+        help="Skip the independent live Spot aggTrade and sequence-validated depth health probe.",
+    )
+    parser.add_argument(
+        "--order-flow-probe-wait-seconds",
+        type=float,
+        default=8.0,
+        help="Maximum time to wait for the live Spot Order Flow stream to become sequence-valid (1–30 seconds).",
+    )
+    parser.add_argument(
         "--skip-usdm",
         action="store_true",
         help="Skip the separate USDⓈ-M Futures candle-only smoke sample.",
@@ -387,6 +574,8 @@ def main() -> int:
         sample_day=args.sample_day,
         include_usdm=not args.skip_usdm,
         usdm_universe_sample_size=args.usdm_universe_sample_size,
+        include_order_flow_probe=not args.skip_order_flow_probe,
+        order_flow_probe_wait_seconds=args.order_flow_probe_wait_seconds,
     ))
 
 

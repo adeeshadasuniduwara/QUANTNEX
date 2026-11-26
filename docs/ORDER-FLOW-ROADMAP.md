@@ -842,3 +842,16 @@ The legacy raw confirmation count can count correlated methods multiple times wi
 ## 2026-11-25 — Matched category-balanced walk-forward ablation
 
 The category-balanced diagnostic now has an internal replay-only decision mode. Its threshold preserves the legacy min-score ratio by mapping 0–10 to 0–5 with `ceil(legacy_min_score × 5 / 10)`. The walk-forward runner compares legacy raw-count and category-balanced candle-only models on the same chronological train/OOS windows and execution-cost assumptions. It reports OOS metrics and deltas but does not change the live/default signal mode. Order Flow variants remain a separate ablation so the score comparison cannot be mistaken for an Order Flow result. Validation on real retained history remains necessary before any live score decision.
+
+
+## C28 — Independent live Spot Order Flow smoke probe
+
+The live candle smoke now has a separate read-only Order Flow feed-health check. This is necessary because a valid candle WAIT can prevent the signal engine from opening a live stream; therefore a green candle scan alone does not verify aggTrade or diff-depth ingestion.
+
+- Probe symbol selection is dynamic: intersect current Spot exchangeInfo-eligible symbols with Binance /api/v3/ticker/24hr, keep USDT-quoted symbols with finite positive quoteVolume, and rank by descending 24-hour quote volume. The default probe uses one sentinel pair; this is not a static trading shortlist and does not restrict signal eligibility.
+- The probe uses the authoritative PRICE_FILTER tickSize and the existing bounded BinanceSpotOrderFlowManager. It requires signal_ready, BINANCE_SPOT, PUBLIC_WEBSOCKET_STREAM, sequence-continuous depth, an order-book payload and candle_volume_used=false.
+- The result is kept distinct from signal generation: ORDER FLOW READY is feed-health only; ORDER FLOW NOT READY and ORDER FLOW PROBE ERROR are explicit failures, not market WAITs. Failure contributes to the smoke process exit code.
+- Reported CVD remains complete only since the bounded bootstrap seed. Full UTC-session delta is not inferred. The probe does not claim a full-session footprint, does not place orders and does not change the live signal gate.
+- CLI controls: --skip-order-flow-probe opts out explicitly; --order-flow-probe-wait-seconds bounds stream bootstrap wait (1–30 seconds).
+
+This check still samples one liquid Spot pair, not every eligible pair. Full dynamic signal-universe coverage and continuous per-symbol Order Flow capture remain separate requirements. USDⓈ-M remains candle-only and COIN-M unsupported.

@@ -30,6 +30,8 @@ python .\smoke_signal_engine.py --symbols XAUUSD
 - `[FUTURES WAIT]`: USDⓈ-M candles loaded successfully but no qualifying candle-confluence setup exists.
 - `[SKIP]` / `[FUTURES SKIP]`: the pair/contract is valid but does not yet have enough fully closed history.
 - `[ERROR]` / `[FUTURES ERROR]`: a provider, configuration or data-validation problem prevented the scan. The error text identifies the market and failure.
+- `[ORDER FLOW READY]`: the independent live Spot probe received public aggregate trades and reconstructed a sequence-validated L2 book for its selected liquid pair. Delta is inferred from Binance's buyer-is-maker flag; CVD is complete only since the bounded stream seed.
+- `[ORDER FLOW NOT READY]` / `[ORDER FLOW PROBE ERROR]`: the live stream did not reach safe readiness or a provider/data check failed. This is not a candle WAIT and makes the smoke command exit non-zero.
 
 Crypto uses public Binance Spot candles with Coinbase fallback for BTC/ETH/SOL. Gold uses the local read-only MT5 feed when enabled, then Twelve Data when configured as fallback.
 
@@ -46,13 +48,17 @@ GitHub Actions runs the read-only **QUANTNEX Live Crypto Signal Smoke** workflow
 - COIN-M remains unsupported and is not scanned.
 - Newly listed Spot pairs or Futures contracts without enough closed history are reported as skips; provider/data failures remain errors and fail the job.
 
+The default command also runs a separate Spot Order Flow health probe even when every candle scan returns WAIT. It ranks eligible USDT-quoted Spot pairs by Binance `/api/v3/ticker/24hr` quote volume, selects one feed-health sentinel, starts the bounded read-only stream manager and waits up to eight seconds for both aggTrade continuity and a sequence-validated depth book. It does not force a signal or change strategy thresholds. The probe is only a live feed-health sample, not a full-universe Order Flow scan.
+
+Use `--skip-order-flow-probe` to omit that independent check, or `--order-flow-probe-wait-seconds 15` to allow a longer bootstrap window (1–30 seconds). A failed/not-ready probe is counted as a provider/quality failure so the command cannot report a completely green run when the required Spot live Order Flow feed was not verified.
+
 Run both dynamic samples locally with:
 
 ```powershell
 python .\\smoke_signal_engine.py --universe-sample-size 20 --usdm-universe-sample-size 20
 ```
 
-Use `--skip-usdm` to omit the Futures sample, or pass `--symbols BTCUSDT,ETHUSDT` to constrain only the Spot sample. Coinbase fallback remains limited to BTC/ETH/SOL. This cloud check does not test the local MT5 terminal or Gold feed.
+Use `--skip-usdm` to omit the Futures sample, or pass `--symbols BTCUSDT,ETHUSDT` to constrain only the candle Spot sample. The independent Order Flow sentinel is still chosen from the full current eligible USDT Spot universe unless `--skip-order-flow-probe` is supplied. Coinbase fallback remains limited to BTC/ETH/SOL. This cloud check does not test the local MT5 terminal or Gold feed.
 
 The scheduled run on 2026-11-16 failed before scanning because the GitHub runner could not retrieve Binance Spot `exchangeInfo` metadata from the single configured REST host. The shared public REST host failover was merged separately; successful provider smoke runs must still be checked independently from replay/strategy performance. A live WAIT is not proof of strategy quality, and a successful data scan is not proof of profitability.
 

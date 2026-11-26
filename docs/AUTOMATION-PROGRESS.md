@@ -1539,3 +1539,19 @@ Measure whether observed Binance Spot aggressor-side delta, sequence-validated L
 3. Inspect the next post-merge scheduled/manual log for ORDER FLOW READY. If the GitHub runner cannot reach the stream, preserve that as an explicit provider limitation; do not convert it to a pass.
 4. Continue the primary signal milestone with retained raw Spot archive coverage and matched walk-forward ablations. Synthetic fixtures and a one-symbol live feed probe do not prove strategy profitability or all-pair live Order Flow coverage.
 5. USDⓈ-M remains candle-only and GitHub-runner HTTP 451-restricted; COIN-M remains unsupported.
+
+
+## 2026-11-26 C28 — Independent live Spot Order Flow smoke probe merged and post-merge verified
+
+- PR [#311](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/311) was squash-merged as 13e53d6af697d5b262d5cced500cda6cb7acd414, based on main db12ba42b0177387fd359f4cbba52f6b72adc235.
+- The final PR diff was limited to the live smoke runner, its deterministic tests, and the smoke/progress/Order Flow documentation. It added no secrets, private API use, order placement, live trading, or strategy threshold changes.
+- PR CI passed **675 tests on Python 3.12** and **675 tests on Python 3.14**, plus schema/compile and Web checks.
+- Main was verified at exact merge SHA 13e53d6af697d5b262d5cced500cda6cb7acd414. Post-merge main CI passed **675 tests on Python 3.12**, **675 tests on Python 3.14**, Web checks, Backend CI and Telegram update notification workflow.
+- The new live probe has not yet been observed against Binance from a post-merge scheduled run. Its deterministic tests verify readiness gating and failure reporting only. Do not report live aggTrade/depth connectivity until the next actual workflow log shows ORDER FLOW READY.
+- Current known provider limitation remains: GitHub-hosted USDⓈ-M exchangeInfo returned HTTP 451 on 2026-11-25, so no Futures contracts were scanned. Spot smoke remains a rotating 20-pair sample from the dynamic eligible universe; the new Order Flow probe checks one dynamically selected high-volume USDT pair only.
+
+### Next exact steps
+1. Inspect the next scheduled/manual QUANTNEX Live Crypto Signal Smoke log for the independent Spot Order Flow probe result. If it is not ready, inspect the actual error and keep it a provider/data failure rather than a signal WAIT.
+2. Obtain a retained local Spot raw-event archive and run the existing receive-time replay/walk-forward pipeline. Report raw event count, eligible checkpoint count, capture coverage, chronological OOS trade count, win rate/interval, expectancy, profit factor, drawdown and estimated costs only if the sample supports them.
+3. Keep the live default score as LEGACY_RAW and the Spot Order Flow gate as COMBINED until matched historical evidence justifies a change. Category-balanced and CVD-divergence variants remain research-only.
+4. Keep USDⓈ-M candle-only until its own public provider and market-specific execution/order-flow contracts are verified; COIN-M remains unsupported.

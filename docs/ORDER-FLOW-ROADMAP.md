@@ -855,3 +855,8 @@ The live candle smoke now has a separate read-only Order Flow feed-health check.
 - CLI controls: --skip-order-flow-probe opts out explicitly; --order-flow-probe-wait-seconds bounds stream bootstrap wait (1–30 seconds).
 
 This check still samples one liquid Spot pair, not every eligible pair. Full dynamic signal-universe coverage and continuous per-symbol Order Flow capture remain separate requirements. USDⓈ-M remains candle-only and COIN-M unsupported.
+
+
+### C28 merge verification — 2026-11-26
+
+PR #311 was squash-merged as 13e53d6af697d5b262d5cced500cda6cb7acd414. The live smoke runner now performs an independent, dynamic high-volume USDT Spot Order Flow health probe by default. PR and post-merge main CI both passed 675 tests on Python 3.12 and 675 tests on Python 3.14, with Web/schema/compile checks also passing. No live Binance stream result is claimed yet: the next scheduled workflow log must confirm ORDER FLOW READY or expose a provider limitation.

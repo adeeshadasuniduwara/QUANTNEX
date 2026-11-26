@@ -1502,3 +1502,40 @@ Measure whether observed Binance Spot aggressor-side delta, sequence-validated L
 2. Merge only after all checks pass and main remains the exact base; verify post-merge CI.
 3. Run a real archived Spot dataset through both modes only after candle/raw-event coverage, symbol filters and order-flow checkpoint integrity are validated.
 4. Report sample size, OOS trade count, win rate/CI, expectancy, profit factor, max drawdown and costs. A category-balanced variant with no trades or sparse archive coverage is inconclusive; do not claim uplift from fixtures.
+
+
+## 2026-11-25 C27 — Category-balanced matched walk-forward merged and verified
+
+- PR [#309](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/309) was merged to main as db12ba42b0177387fd359f4cbba52f6b72adc235.
+- The matched candle-only comparison runs LEGACY_RAW and CATEGORY_BALANCED across the same chronological train/OOS folds and execution assumptions. The category-balanced threshold is ratio-mapped from the legacy threshold; no live/default score mode or Order Flow gate was changed.
+- PR CI passed **670 tests on Python 3.12** and **670 tests on Python 3.14**, plus schema/compile and Web checks.
+- Post-merge main CI passed on the exact main SHA db12ba42b0177387fd359f4cbba52f6b72adc235: **670 tests on Python 3.12**, **670 tests on Python 3.14**, Web checks and Telegram update workflow.
+- Scheduled live run [#45589374289](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45589374289) independently confirmed Spot metadata discovery and 20/20 live Spot candle scans (1,376 eligible pairs discovered, 20 WAIT, 0 Spot provider errors). The Order Flow gate was not evaluated because no candle setup qualified. USDⓈ-M again returned HTTP 451 before any Futures pair was scanned. This is not a signal-quality or Futures validation result.
+- No OOS performance/uplift claim is made: the local retained raw-event archive remains unavailable to this automation runtime.
+
+## C28 — Independent live Spot Order Flow smoke probe (in progress)
+
+### Finding
+- The dynamic live candle smoke can complete with all WAIT results while never exercising the mandatory live Spot Order Flow gate. The 2026-11-25 run explicitly reported NOT_EVALUATED_NO_DIRECTIONAL_SETUP for all 20 sampled pairs. This proves successful candle ingestion for that rotating sample, not that the public aggTrade/WebSocket/depth pipeline was reachable during the run.
+- The existing live signal path remains intentionally conditional: it opens/uses a bounded Spot Order Flow stream only after a directional candle setup qualifies. Do not weaken that rule or manufacture a signal just to test the feed.
+
+### Change on feat/live-spot-orderflow-smoke-probe-20261126
+- Added an independent, read-only live Spot Order Flow health probe to the smoke CLI. It ranks current eligible USDT-quoted Spot pairs by Binance 24-hour quote volume and selects a small feed-health sentinel dynamically; this does not limit the signal universe.
+- The probe obtains the symbol's current exchangeInfo tick size, starts/reuses the existing bounded stream manager, and requires observed public aggTrades plus a sequence-validated diff-depth book with explicit no-candle-volume provenance.
+- It reports ORDER FLOW READY, ORDER FLOW NOT READY, or ORDER FLOW PROBE ERROR separately from candle SIGNAL/WAIT. It reports CVD scope as stream-seed-bounded and never claims full-session CVD.
+- A not-ready/error result contributes to the smoke command's non-zero exit status. The probe is enabled by default in the CLI; --skip-order-flow-probe is an explicit diagnostic opt-out and --order-flow-probe-wait-seconds bounds the bootstrap wait.
+- No strategy threshold, scoring mode, signal frequency, entry selector, live-order path or broker setting changed.
+
+### Deterministic tests added
+- Dynamic probe selection ranks only currently eligible USDT Spot symbols with finite positive 24-hour quote volume.
+- Invalid selection inputs are rejected.
+- A ready probe requires Spot market type, public WebSocket aggTrade provenance, sequence-continuous depth and explicit candle_volume_used=false.
+- Bootstrap/depth-bridging is reported as not-ready rather than as a signal WAIT.
+- Probe failure affects the smoke process exit status; manager cleanup is verified.
+
+### Verification / next steps
+1. Run backend CI on Python 3.12/3.14 and Web checks; inspect the full diff and confirm no secrets or order-placement paths were introduced.
+2. Create/review a PR against latest main; merge only after all checks pass and the diff remains limited to smoke diagnostics/tests/docs.
+3. Inspect the next post-merge scheduled/manual log for ORDER FLOW READY. If the GitHub runner cannot reach the stream, preserve that as an explicit provider limitation; do not convert it to a pass.
+4. Continue the primary signal milestone with retained raw Spot archive coverage and matched walk-forward ablations. Synthetic fixtures and a one-symbol live feed probe do not prove strategy profitability or all-pair live Order Flow coverage.
+5. USDⓈ-M remains candle-only and GitHub-runner HTTP 451-restricted; COIN-M remains unsupported.

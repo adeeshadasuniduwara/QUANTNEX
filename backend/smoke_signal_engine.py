@@ -14,6 +14,7 @@ import sys
 import httpx
 
 from app.binance_public import get_binance_public_json
+from app.binance_order_flow_manager import get_binance_spot_order_flow_manager
 from app.signal_engine import (
     MarketDataError, build_signal, get_binance_spot_symbol_info, get_binance_spot_symbols,
 )
@@ -180,8 +181,6 @@ async def _run_spot_order_flow_probe(
             file=sys.stderr,
         )
         return 0, 1
-
-    from app.binance_order_flow_manager import get_binance_spot_order_flow_manager
 
     manager = get_binance_spot_order_flow_manager()
     ready = 0

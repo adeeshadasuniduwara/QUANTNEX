@@ -186,8 +186,30 @@ def write_archive_atomic(path: str | Path, document: dict[str, Any]) -> Path:
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary_path, target)
+        # Publish with an atomic create-if-absent operation. os.replace() is
+        # atomic, but it overwrites a destination that another process may
+        # create after the initial exists() check. A same-directory hard link
+        # exposes the already-fsynced complete file and fails if target exists.
+        try:
+            os.link(temporary_path, target)
+        except FileExistsError:
+            raise OrderFlowArchiveExportError(
+                "Destination already exists; choose a new output path to avoid overwriting local data."
+            ) from None
+        try:
+            temporary_path.unlink(missing_ok=True)
+        except OSError:
+            # The destination is already complete and safely published. A
+            # leftover temporary hard link is harmless and must not invalidate it.
+            pass
         return target
+    except OrderFlowArchiveExportError:
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
     except (OSError, TypeError, ValueError) as exc:
         if temporary_path is not None:
             try:

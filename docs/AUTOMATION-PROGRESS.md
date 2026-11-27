@@ -1613,3 +1613,30 @@ Measure whether observed Binance Spot aggressor-side delta, sequence-validated L
 1. Run the new exporter tests and full backend CI on Python 3.12/3.14; review the complete diff and security surface before merge.
 2. Use a real local archive when available to run receive-time replay, hand-check CVD/delta/session boundaries, and only then report OOS metrics.
 3. Keep live scoring and the combined aggressor+L2 gate unchanged. USDⓈ-M HTTP 451 and COIN-M unsupported remain explicit market-type blockers.
+
+### C30 verification observed on 2026-11-27
+- The archive-export commit `8a6eb39b241336d5172e9b5a8539d196bd45e722` is present on current `main`.
+- Main CI run [#45959244446](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45959244446) passed Backend CI on Python 3.12 and 3.14 plus Web syntax checks; [#45959244416](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45959244416) passed compile/schema checks; [#45959244401](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45959244401) passed the Telegram update workflow.
+- The exporter still has not been run against the user's local database in this runtime. The real archive and OOS performance dependency remains open.
+
+## 2026-11-27 C31 — Atomic no-overwrite publication for raw-event archives (in progress)
+
+### Finding
+- C30's archive writer checked that the destination did not exist, then used `os.replace`. A second process could create the destination after the check but before replace; the replace would silently overwrite that newly created file. That contradicts the exporter's no-overwrite safety promise and risks replacing a user's archive during concurrent exports.
+
+### Change on `fix/spot-orderflow-archive-no-overwrite-race-20261127`
+- Keep writing and fsyncing a temporary file in the destination directory.
+- Publish it using same-directory `os.link`, an atomic create-if-absent operation. If another process creates the destination after the initial check, publication fails with an explicit already-exists error and preserves the existing file.
+- Remove the temporary hard link after successful publication. If cleanup alone fails, the completed destination remains valid.
+- Add a deterministic race regression test that creates a competing destination between the initial check and publication, then asserts the existing bytes are preserved and no temporary file remains.
+
+### Safety / validation boundary
+- This change affects only local research-archive export. It does not change signal scoring, market data, Order Flow gates, replay decisions, execution, credentials, or trading mode.
+- The hard-link operation requires the temporary file and destination to remain on the same filesystem; the implementation creates the temporary file in the destination directory. If the filesystem disallows hard links, export fails closed rather than falling back to an overwrite-capable operation.
+- Run focused exporter tests, full Backend CI on Python 3.12/3.14, schema/compile and Web checks. Review the complete diff before merge.
+- The local raw archive is still not available in the automation Library; no raw-event OOS metrics are claimed.
+
+### Next exact steps
+1. Verify the new race test and existing exporter tests on CI; merge only if all checks pass and the reviewed diff remains limited to the exporter, its tests and progress docs.
+2. Use the documented local export and validate the archive manifest, capture gaps, sequence continuity and eligible receive-time checkpoints before walk-forward ablations.
+3. Keep live `LEGACY_RAW` scoring and `COMBINED` aggressor+L2 confirmation unchanged until same-fold retained-history evidence supports a change.

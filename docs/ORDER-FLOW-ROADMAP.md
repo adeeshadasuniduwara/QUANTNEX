@@ -892,3 +892,9 @@ The previous C28 statement that a post-merge live probe result was still pending
 - Manifest always declares `coverage_is_complete=false`, records capture-gap markers and explicitly limits CVD/session interpretation. This export is an input for research, not a claim of full-session coverage.
 - No exchange connection, database schema creation, account credentials, order placement or strategy change is performed by the exporter.
 - Local use is documented in `docs/LOCAL-SIGNAL-SMOKE-TEST.md`. The automation Library did not contain the user's retained local archive, so real local OOS metrics remain blocked until an archive is provided.
+
+## C31 — Raw archive no-overwrite race protection
+
+The C30 local Spot archive exporter originally performed an existence check followed by `os.replace`. Although the replacement is atomic, it can overwrite a destination created by another process between those operations. C31 changes publication to a same-directory hard-link create-if-absent operation after the temporary JSON file has been flushed and fsynced. A competing destination causes an explicit failure; existing bytes are preserved. Filesystems that do not permit hard links fail closed rather than reverting to overwrite-capable behavior.
+
+A deterministic test creates the destination during the publication window and verifies the pre-existing contents remain unchanged and the temporary file is cleaned up. This is an archive-integrity safeguard only; it does not change signal strategy, market-data, Order Flow, or execution logic. The local retained archive and raw-event OOS validation remain outstanding.

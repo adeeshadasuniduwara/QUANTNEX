@@ -317,23 +317,23 @@ def _zone_touch(
     )]
 
 
-def _fair_value_gap_retest(context: dict[str, Any]) -> list[MethodEvidence]:
+def _fair_value_gap_zone_touch(context: dict[str, Any]) -> list[MethodEvidence]:
     structure = context["analysis"].get(context["primary"], {}).get("structure", {})
     return (
-        _zone_touch(context, field="bullish_fvg", method_id="fair_value_gap_retest",
-                    side="BUY", label="bullish fair-value gap")
-        + _zone_touch(context, field="bearish_fvg", method_id="fair_value_gap_retest",
-                      side="SELL", label="bearish fair-value gap")
+        _zone_touch(context, field="bullish_fvg", method_id="fair_value_gap_zone_touch",
+                    side="BUY", label="bullish fair-value gap zone")
+        + _zone_touch(context, field="bearish_fvg", method_id="fair_value_gap_zone_touch",
+                      side="SELL", label="bearish fair-value gap zone")
     ) if isinstance(structure, dict) else []
 
 
-def _order_block_retest(context: dict[str, Any]) -> list[MethodEvidence]:
+def _order_block_zone_overlap(context: dict[str, Any]) -> list[MethodEvidence]:
     structure = context["analysis"].get(context["primary"], {}).get("structure", {})
     return (
-        _zone_touch(context, field="bullish_order_block", method_id="order_block_retest",
-                    side="BUY", label="bullish order block")
-        + _zone_touch(context, field="bearish_order_block", method_id="order_block_retest",
-                      side="SELL", label="bearish order block")
+        _zone_touch(context, field="bullish_order_block", method_id="order_block_zone_overlap",
+                    side="BUY", label="bullish order-block zone")
+        + _zone_touch(context, field="bearish_order_block", method_id="order_block_zone_overlap",
+                      side="SELL", label="bearish order-block zone")
     ) if isinstance(structure, dict) else []
 
 
@@ -377,16 +377,16 @@ def _breaker_block_reclaim(context: dict[str, Any]) -> list[MethodEvidence]:
     return evidence
 
 
-def _support_zone_retest(context: dict[str, Any]) -> list[MethodEvidence]:
+def _support_zone_touch(context: dict[str, Any]) -> list[MethodEvidence]:
     return _zone_touch(
-        context, field="support_zone", method_id="support_zone_retest",
+        context, field="support_zone", method_id="support_zone_touch",
         side="BUY", label="support zone",
     )
 
 
-def _resistance_zone_retest(context: dict[str, Any]) -> list[MethodEvidence]:
+def _resistance_zone_touch(context: dict[str, Any]) -> list[MethodEvidence]:
     return _zone_touch(
-        context, field="resistance_zone", method_id="resistance_zone_retest",
+        context, field="resistance_zone", method_id="resistance_zone_touch",
         side="SELL", label="resistance zone",
     )
 
@@ -439,11 +439,11 @@ STRATEGY_METHOD_REGISTRY: tuple[StrategyMethod, ...] = (
     StrategyMethod("zone_location", "LOCATION", _zone_location),
     StrategyMethod("trend_timeframe_alignment", "TREND", _trend_timeframe_alignment),
     StrategyMethod("rolling_vwap_proxy", "VALUE", _rolling_vwap_proxy),
-    StrategyMethod("fair_value_gap_retest", "LOCATION", _fair_value_gap_retest),
-    StrategyMethod("order_block_retest", "LOCATION", _order_block_retest),
+    StrategyMethod("fair_value_gap_zone_touch", "LOCATION", _fair_value_gap_zone_touch),
+    StrategyMethod("order_block_zone_overlap", "LOCATION", _order_block_zone_overlap),
     StrategyMethod("breaker_block_reclaim", "LOCATION", _breaker_block_reclaim),
-    StrategyMethod("support_zone_retest", "LOCATION", _support_zone_retest),
-    StrategyMethod("resistance_zone_retest", "LOCATION", _resistance_zone_retest),
+    StrategyMethod("support_zone_touch", "LOCATION", _support_zone_touch),
+    StrategyMethod("resistance_zone_touch", "LOCATION", _resistance_zone_touch),
     StrategyMethod("premium_discount_location", "LOCATION", _premium_discount_location),
 )
 

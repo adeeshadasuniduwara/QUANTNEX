@@ -1640,3 +1640,35 @@ Measure whether observed Binance Spot aggressor-side delta, sequence-validated L
 1. Verify the new race test and existing exporter tests on CI; merge only if all checks pass and the reviewed diff remains limited to the exporter, its tests and progress docs.
 2. Use the documented local export and validate the archive manifest, capture gaps, sequence continuity and eligible receive-time checkpoints before walk-forward ablations.
 3. Keep live `LEGACY_RAW` scoring and `COMBINED` aggressor+L2 confirmation unchanged until same-fold retained-history evidence supports a change.
+
+
+## 2026-11-27 C32 — Granular structure-zone method evidence (in progress)
+
+### Repository checkpoint
+- Started from latest verified `main` commit `2725d6ff217125974518d73bdfdb036b2f19b241`, which contains the C31 atomic no-overwrite archive publication fix.
+- Audited current method registry, structure calculation and the live smoke workflow. The latest verified live probe remains run [#45792719695](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45792719695): one USDCUSDT Spot sentinel reported ORDER FLOW READY; 20/20 rotating candle samples were WAIT; USDⓈ-M exchangeInfo returned HTTP 451. No newer smoke run exists at this checkpoint.
+- Open PR #313 is a GitHub updater cache change, not part of the signal engine; it was inspected but not merged as part of this core-signal phase. Other stale UI/feature PRs were not pulled into this signal work.
+
+### Finding
+- `backend/app/signal_engine.py` already computes distinct FVG, order-block, breaker-block, support/resistance and premium/discount structure fields from fully closed candles.
+- `backend/app/signal_methods.py` represented all of those with a single `zone_location` baseline vote. That obscured which structure concept was present and prevented method-specific diagnostics/ablation.
+- Adding each zone as a live confluence vote would risk counting correlated price-location observations multiple times without independent OOS evidence.
+
+### Changes on `feat/explicit-structure-zone-method-evidence-20261127`
+- Added separate diagnostic registry methods for FVG retest, order-block retest, breaker reclaim, support-zone retest, resistance-zone retest and premium/discount location.
+- Retest evidence requires the latest closed decision price to be inside a valid finite zone. Breaker evidence requires a closed-price reclaim beyond the existing zone boundary. Premium/discount evidence includes the swing high/low and equilibrium values.
+- Every new method is explicitly `CLOSED_OHLC_STRUCTURE`, `UNWEIGHTED_DIAGNOSTIC_ONLY`, and excluded from the baseline score and category-balanced votes.
+- Preserved the legacy combined `zone_location` vote and all live scoring thresholds, Order Flow confirmation, MARKET/LIMIT selection, risk controls and paper-only execution policy.
+- Added deterministic BUY/SELL and malformed/untouched-zone tests.
+
+### Verification status
+- Implementation and regression tests are committed on the feature branch. GitHub Actions/PR checks have not yet been run; do not claim the new tests pass until CI reports them.
+- No raw Spot archive was found in the user's Library search. The C30/C31 exporter is still awaiting a real local database archive; no raw-event walk-forward or profitability uplift is claimed.
+- USDⓈ-M remains blocked from this GitHub runner by HTTP 451; COIN-M remains unsupported.
+
+### Next exact steps
+1. Inspect the complete branch diff and run focused plus full Python 3.12/3.14 CI, schema/compile and Web checks.
+2. Create/review a PR against current `main`; merge only if all relevant checks pass and the diff does not alter the live score or execution path.
+3. Verify main and post-merge checks.
+4. Keep granular zone methods diagnostic-only until matched chronological OOS ablations on validated retained Spot raw events show incremental value.
+5. Obtain a local bounded raw Spot archive, inspect manifest/gaps/receive-time checkpoints, then run the existing same-fold AGGRESSOR_ONLY, L2_ONLY, COMBINED, CVD_DIVERGENCE_ONLY and COMBINED_CVD comparisons.

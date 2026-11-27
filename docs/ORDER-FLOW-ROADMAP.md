@@ -882,3 +882,13 @@ The previous C28 statement that a post-merge live probe result was still pending
 - Deterministic end-to-end and smoke-output regression tests were added. PR CI passed **676 tests on Python 3.12** and **676 tests on Python 3.14**, plus schema/compile and Web checks.
 - Post-merge main CI passed on the exact merge SHA: [Backend CI #45957721587](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45957721587), [Backend/Web CI #45957721569](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45957721569), and [Telegram Update Notifications #45957721729](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45957721729). Backend suites passed **676 tests on Python 3.12** and **676 tests on Python 3.14**; Web checks passed.
 - This makes WAIT outcomes more diagnosable; it does not make a WAIT a successful signal or establish predictive improvement.
+
+
+## C30 — Bounded local raw-event archive export
+
+- Add a read-only CLI to export retained Binance Spot `aggTrade`, `depthSnapshot`, `depthUpdate` and `captureGap` rows from the existing local database into a manifest-bearing JSON archive.
+- Query by receive time (not exchange event time), validate symbol/market/provenance/session identifiers and event timestamps, and preserve chronological receive order.
+- Fail closed for empty, truncated, count-mismatched, mixed-symbol/market, malformed or oversized windows. Do not write partial archives.
+- Manifest always declares `coverage_is_complete=false`, records capture-gap markers and explicitly limits CVD/session interpretation. This export is an input for research, not a claim of full-session coverage.
+- No exchange connection, database schema creation, account credentials, order placement or strategy change is performed by the exporter.
+- Local use is documented in `docs/LOCAL-SIGNAL-SMOKE-TEST.md`. The automation Library did not contain the user's retained local archive, so real local OOS metrics remain blocked until an archive is provided.

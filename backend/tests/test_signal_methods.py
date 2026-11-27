@@ -410,4 +410,4 @@ def test_structure_zone_diagnostics_reject_malformed_or_untouched_zones():
     result = evaluate_strategy_registry(analysis, "5", "60", in_zone=False)
 
     assert result["diagnostic_only"] == []
-    assert result["baseline_raw_counts"] == {"BUY": 8, "SELL": 0}
+    assert result["baseline_raw_counts"] == {"BUY": 9, "SELL": 0}

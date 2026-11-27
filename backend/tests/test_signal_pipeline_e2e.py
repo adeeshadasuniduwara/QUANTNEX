@@ -423,6 +423,60 @@ def test_real_signal_pipeline_generates_a_resting_limit_at_ob_zone(monkeypatch):
     assert signal["execution_quality"]["accepted"] is True
 
 
+def test_signal_pipeline_explains_directional_quality_filter_rejections(monkeypatch):
+    now = datetime.now(timezone.utc)
+
+    async def fake_fetch(interval, _outputsize, _symbol):
+        return _synthetic_setup("BUY", interval, now), "Binance Spot"
+
+    zone = {"low": 101.0, "high": 101.2}
+    structure = {
+        "bos_mss": "BULLISH", "liquidity_sweep": "BULLISH",
+        "bullish_fvg": zone, "bullish_order_block": None,
+        "bullish_breaker_block": None, "bullish_ifvg": None,
+        "bearish_fvg": None, "bearish_order_block": None,
+        "bearish_breaker_block": None, "bearish_ifvg": None,
+        "premium_discount": "DISCOUNT", "swing_low": 99.0, "swing_high": 105.0,
+    }
+
+    def analysis_with_bearish_trend(rows):
+        seconds = (
+            datetime.fromisoformat(rows[1]["time"])
+            - datetime.fromisoformat(rows[0]["time"])
+        ).total_seconds()
+        return {
+            "bias": "BEARISH" if seconds == 3600 else "BULLISH",
+            "close": 100.0, "ema20": 99.8, "ema50": 99.5,
+            "ema200": 99.0, "macd_histogram": 0.2, "rsi": 55.0,
+            "adx": 25.0, "atr": 2.0, "structure": structure,
+        }
+
+    def qualifying_registry(*_args, **_kwargs):
+        return {"buy_reasons": [f"BUY evidence {index}" for index in range(8)], "sell_reasons": []}
+
+    async def valid_spot_symbol(candidate):
+        return candidate == "BTCUSDT"
+
+    monkeypatch.setattr(signal_engine, "is_binance_spot_symbol", valid_spot_symbol)
+    monkeypatch.setattr(signal_engine, "fetch_candles_with_provider", fake_fetch)
+    monkeypatch.setattr(signal_engine, "inspect_tf", analysis_with_bearish_trend)
+    monkeypatch.setattr(signal_engine, "evaluate_strategy_registry", qualifying_registry)
+    settings = {
+        "primary": "5", "trend": "60",
+        "enabled": ["60", "30", "15", "5", "1"], "min_score": 8,
+    }
+
+    result = asyncio.run(signal_engine.build_signal(settings, "BTCUSDT"))
+
+    assert result["status"] == "WAIT"
+    assert result["signal"] is None
+    assert result["quality_filters"]["primary_bias_aligned"] is True
+    assert result["quality_filters"]["trend_bias_aligned"] is False
+    assert result["wait_reasons"] == [
+        "Directional candidate rejected by quality filters: trend timeframe bias misaligned."
+    ]
+    assert result["message"] == "WAIT — " + result["wait_reasons"][0]
+
 def test_signal_pipeline_returns_wait_when_spread_blocks_market_and_limit(monkeypatch):
     now = datetime.now(timezone.utc)
 

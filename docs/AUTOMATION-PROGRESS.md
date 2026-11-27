@@ -1555,3 +1555,30 @@ Measure whether observed Binance Spot aggressor-side delta, sequence-validated L
 2. Obtain a retained local Spot raw-event archive and run the existing receive-time replay/walk-forward pipeline. Report raw event count, eligible checkpoint count, capture coverage, chronological OOS trade count, win rate/interval, expectancy, profit factor, drawdown and estimated costs only if the sample supports them.
 3. Keep the live default score as LEGACY_RAW and the Spot Order Flow gate as COMBINED until matched historical evidence justifies a change. Category-balanced and CVD-divergence variants remain research-only.
 4. Keep USDⓈ-M candle-only until its own public provider and market-specific execution/order-flow contracts are verified; COIN-M remains unsupported.
+
+
+## 2026-11-27 C29 — Verified live Spot feed and explicit WAIT reasons
+
+### Repository checkpoint
+- Audited latest `main` at `015d33d392c912a108e105f3f35ba3c5711cf2db`, open PRs/issues, recent commits, smoke workflow and current Order Flow roadmap. No open non-PR issues were returned. PR #313 is an unrelated GitHub API cache change; it is not part of the signal milestone and was not merged in this run.
+- The latest completed scheduled smoke run is [#45792719695](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45792719695). Its full job log was inspected rather than relying only on the green workflow badge.
+
+### Verified live evidence
+- Binance Spot exchangeInfo returned **1,381 eligible pairs**. The rotating live sample completed **20/20**; all 20 were WAIT and all reported `NOT_EVALUATED_NO_DIRECTIONAL_SETUP`. There were no Spot provider errors or insufficient-history skips.
+- The independent probe selected **USDCUSDT** by current eligible-universe intersection and 24-hour quote volume. It reported **ORDER FLOW READY** with 1,000 aggTrades, delta ratio −0.1447, spread 0.09989 bps, depth imbalance −0.06656 and CVD approximately −494,400 scoped only since the bounded stream-state seed.
+- This is the first verified post-C28 live Spot aggTrade + sequence-validated L2 result on the GitHub runner. It verifies one sentinel stream, not all pairs, full-session CVD, a qualified signal, or profitability.
+- USDⓈ-M returned HTTP 451 at exchangeInfo; 0 Futures contracts were scanned. COIN-M remains unsupported.
+
+### C29 code change — explicit signal WAIT diagnostics
+- The signal builder previously returned the same generic WAIT message when a directional candidate was rejected by primary/trend bias, ADX, RSI, MACD or timeframe-consensus gates. The booleans were present in `quality_filters`, but the caller had to infer the rejection.
+- Add explicit, stable human-readable rejection reasons without changing any threshold, score, strategy rule or eligibility decision.
+- Add structured `wait_reasons` to the additive signal response. Below-threshold and tied BUY/SELL evidence receive concise explanations; execution and Order Flow veto reasons retain their existing detailed rejection text.
+- Print the WAIT reason in the live smoke log so a green provider scan is diagnostically useful even when no signal qualifies.
+- Add deterministic end-to-end coverage for a candidate that meets the score threshold but fails the higher-timeframe trend gate, plus smoke-output coverage. No live signal is fabricated and the Order Flow gate is not weakened.
+
+### Verification status / exact next steps
+1. Run focused signal-pipeline and smoke tests, then full Backend CI on Python 3.12/3.14 and Web checks.
+2. Review the complete branch diff and security/order-placement surface; create a PR against current main and merge only after all required checks pass.
+3. Obtain and validate a retained local Spot raw-event archive before publishing raw-event OOS/ablation metrics. This automation runtime has not located such an archive in the Library; do not invent sample counts or performance results.
+4. Keep the live default score and combined aggressor+L2 gate unchanged. CVD divergence/category-balanced scoring remain research-only until same-fold retained-history evidence supports any change.
+5. Continue to record USDⓈ-M HTTP 451 as a provider access blocker, not WAIT; keep COIN-M unsupported.

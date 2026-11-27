@@ -1,3 +1,5 @@
+import pytest
+
 from app.signal_methods import (
     STRATEGY_METHOD_REGISTRY,
     evaluate_strategy_registry,
@@ -322,3 +324,92 @@ def test_category_balanced_score_excludes_diagnostic_only_vwap_proxy():
     assert result["category_balanced_counts"] == {"BUY": 5, "SELL": 0}
     assert "VALUE" not in result["category_balanced_categories"]["BUY"]
     assert result["category_conflicts"] == {}
+
+
+def _structure_zone_analysis(side: str):
+    analysis = _analysis(side)
+    primary = analysis["5"]
+    primary["close"] = 100.0
+    structure = primary["structure"]
+    if side == "BUY":
+        structure.update({
+            "bullish_fvg": {"low": 99.5, "high": 100.5},
+            "bullish_order_block": {"low": 99.7, "high": 100.3},
+            "bullish_breaker_block": {"low": 98.0, "high": 99.0},
+            "support_zone": {"low": 99.8, "high": 100.2},
+            "resistance_zone": {"low": 101.0, "high": 102.0},
+            "premium_discount": "DISCOUNT",
+            "equilibrium": 101.0,
+            "swing_low": 95.0,
+            "swing_high": 105.0,
+        })
+    else:
+        structure.update({
+            "bearish_fvg": {"low": 99.5, "high": 100.5},
+            "bearish_order_block": {"low": 99.7, "high": 100.3},
+            "bearish_breaker_block": {"low": 101.0, "high": 102.0},
+            "support_zone": {"low": 98.0, "high": 99.0},
+            "resistance_zone": {"low": 99.8, "high": 100.2},
+            "premium_discount": "PREMIUM",
+            "equilibrium": 99.0,
+            "swing_low": 95.0,
+            "swing_high": 105.0,
+        })
+    return analysis
+
+
+@pytest.mark.parametrize("side", ["BUY", "SELL"])
+def test_structure_zone_methods_are_separate_diagnostics_without_changing_live_score(side):
+    analysis = _structure_zone_analysis(side)
+    result = evaluate_strategy_registry(
+        analysis, "5", "60", in_zone=True,
+        observed_at="2026-11-27T07:00:00+00:00",
+    )
+
+    diagnostic = result["diagnostic_only"]
+    ids = {item["method_id"] for item in diagnostic}
+    assert ids == {
+        "fair_value_gap_zone_touch",
+        "order_block_zone_overlap",
+        "breaker_block_reclaim",
+        "support_zone_touch" if side == "BUY" else "resistance_zone_touch",
+        "premium_discount_location",
+    }
+    assert all(item["side"] == side for item in diagnostic)
+    assert all(item["source"] == "CLOSED_OHLC_STRUCTURE" for item in diagnostic)
+    assert all(item["calibration"] == "UNWEIGHTED_DIAGNOSTIC_ONLY" for item in diagnostic)
+    assert all(item["counts_for_baseline"] is False for item in diagnostic)
+    assert all(item["observed_at"] == "2026-11-27T07:00:00+00:00" for item in diagnostic)
+
+    # The legacy score and its one combined location vote remain unchanged.
+    assert result["baseline_raw_counts"] == (
+        {"BUY": 10, "SELL": 0} if side == "BUY" else {"BUY": 0, "SELL": 10}
+    )
+    assert result["category_balanced_counts"] == (
+        {"BUY": 5, "SELL": 0} if side == "BUY" else {"BUY": 0, "SELL": 5}
+    )
+    assert result["buy_reasons" if side == "BUY" else "sell_reasons"][-2] == (
+        "OB / FVG / breaker or premium-discount zone"
+    )
+    for methods in result["category_balanced_methods"].values():
+        for method_ids in methods.values():
+            assert not ids.intersection(method_ids)
+
+
+def test_structure_zone_diagnostics_reject_malformed_or_untouched_zones():
+    analysis = _analysis("BUY")
+    primary = analysis["5"]
+    primary["close"] = 100.0
+    primary["structure"].update({
+        "bullish_fvg": {"low": 101.0, "high": 99.0},
+        "bullish_order_block": {"low": float("nan"), "high": 101.0},
+        "bullish_breaker_block": {"low": 101.0, "high": 102.0},
+        "support_zone": {"low": 99.0, "high": 99.5},
+        "resistance_zone": {"low": 101.0, "high": 102.0},
+        "premium_discount": "EQUILIBRIUM",
+    })
+
+    result = evaluate_strategy_registry(analysis, "5", "60", in_zone=False)
+
+    assert result["diagnostic_only"] == []
+    assert result["baseline_raw_counts"] == {"BUY": 9, "SELL": 0}

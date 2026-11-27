@@ -1675,8 +1675,8 @@ Measure whether observed Binance Spot aggressor-side delta, sequence-validated L
 
 
 ### C32 PR #318 validation update — 2026-11-27
-- PR [#318](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/318) targets `main` at `2725d6ff217125974518d73bdfdb036b2f19b241`; branch head after correction is `2adc05b695ccf6694b7dea4598cbd9c27a125401`.
+- PR [#318](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/318) targets `main` at `2725d6ff217125974518d73bdfdb036b2f19b241`; final reviewed branch head after the zone-touch naming refinement is `40c9240b8f8472e3ed929ee70b5907e56640c6f0`.
 - Initial CI on the first test commit failed during collection because the test import contained literal escaped newline characters. This was traced from the job log and corrected; no failing run was treated as successful.
-- Corrected Backend CI and Backend/Web CI both passed: **692 tests on Python 3.12**, **692 tests on Python 3.14**, compile/schema checks and Web syntax checks.
+- The first corrected head passed **692 tests on Python 3.12** and **692 tests on Python 3.14**. After renaming the evidence as zone-touch/overlap rather than claiming unproven retests, final-head Backend CI [#45965333915](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45965333915) and Backend/Web CI [#45965333648](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45965333648) also passed: **692 tests on Python 3.12**, **692 tests on Python 3.14**, compile/schema checks and Web syntax checks.
 - Full diff was reviewed and limited to the method registry, tests and two progress/roadmap documents. No score threshold, live Order Flow gate, MARKET/LIMIT selection, execution path, secret or credential changed.
-- PR #318 is mergeable and awaiting final pre-merge verification. After merge, verify the exact main commit and post-merge checks before treating C32 as complete.
+- PR #318 is mergeable and awaiting final pre-merge verification on the documented final head. After merge, verify the exact main commit and post-merge checks before treating C32 as complete.

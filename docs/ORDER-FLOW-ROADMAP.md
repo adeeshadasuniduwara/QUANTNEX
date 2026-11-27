@@ -931,3 +931,18 @@ The candle structure engine already emits separate closed-candle fields for bull
 - The first corrected head passed **692 tests on Python 3.12** and **692 tests on Python 3.14**. After refining method names to say zone touch/overlap rather than claiming a prior-close retest, final-head Backend CI [#45965333915](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45965333915) and Backend/Web CI [#45965333648](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45965333648) passed **692 tests on Python 3.12**, **692 tests on Python 3.14**, compile/schema checks and Web syntax checks.
 - Full diff scope remains four intended files: method registry, its deterministic tests, automation progress and Order Flow roadmap. No secrets, provider changes, score changes, order-placement paths or live-trading enablement were added.
 - Final reviewed head: `40c9240b8f8472e3ed929ee70b5907e56640c6f0`. PR is mergeable and remains open pending final diff/status recheck. Post-merge main verification is still required.
+
+
+### C32 merge and post-merge verification — 2026-11-27
+- PR [#318](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/318) was squash-merged as `980ca0b68b2c137f6bd0b1fde827730b87c5d5da`.
+- The merged change adds six diagnostic-only methods: FVG zone touch, order-block zone overlap, breaker-block reclaim, support-zone touch, resistance-zone touch and premium/discount location. The legacy baseline `zone_location` vote and live score are unchanged.
+- PR and final-head checks passed **692 tests on Python 3.12** and **692 tests on Python 3.14**, plus compile/schema and Web checks.
+- Main was verified at merge commit `980ca0b68b2c137f6bd0b1fde827730b87c5d5da`. Post-merge Backend CI [#45965931186](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45965931186) and Backend/Web CI [#45965931064](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45965931064) passed **692 tests on Python 3.12**, **692 tests on Python 3.14**, compile/schema and Web checks. Telegram update workflow [#45965931157](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45965931157) passed.
+- These methods are exposed under signal `strategy_evidence.diagnostic_only` but remain excluded from live scoring and category-balanced votes. They are observations, not calibrated independent predictors.
+- C32 is a method-observability/registry improvement, not a predictive-performance milestone. The local retained Spot raw-event archive remains unavailable to this runtime; no raw-event OOS, CVD uplift, win-rate improvement or profitability claim is made.
+
+### Next core-signal work
+1. Obtain a bounded local Binance Spot raw-event archive using the documented exporter, inspect manifest/capture gaps and validate receive-time checkpoints.
+2. Run the existing matched same-fold candle-only, AGGRESSOR_ONLY, L2_ONLY, COMBINED, CVD_DIVERGENCE_ONLY and COMBINED_CVD comparisons; report sample/coverage and full risk-adjusted metrics.
+3. Continue improving the causal method registry only where precise source data, tests and measurable incremental value exist. Keep all new methods diagnostic-only until evidence justifies otherwise.
+4. Keep USDⓈ-M HTTP 451 as a provider access blocker, Futures Order Flow unsupported, and COIN-M unsupported until separately verified.

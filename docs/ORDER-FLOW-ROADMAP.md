@@ -898,3 +898,28 @@ The previous C28 statement that a post-merge live probe result was still pending
 The C30 local Spot archive exporter originally performed an existence check followed by `os.replace`. Although the replacement is atomic, it can overwrite a destination created by another process between those operations. C31 changes publication to a same-directory hard-link create-if-absent operation after the temporary JSON file has been flushed and fsynced. A competing destination causes an explicit failure; existing bytes are preserved. Filesystems that do not permit hard links fail closed rather than reverting to overwrite-capable behavior.
 
 A deterministic test creates the destination during the publication window and verifies the pre-existing contents remain unchanged and the temporary file is cleaned up. This is an archive-integrity safeguard only; it does not change signal strategy, market-data, Order Flow, or execution logic. The local retained archive and raw-event OOS validation remain outstanding.
+
+
+## C32 — Granular causal structure-zone evidence (in progress)
+
+### Finding
+The candle structure engine already emits separate closed-candle fields for bullish/bearish FVGs, order blocks, breaker blocks, ATR-padded support/resistance and premium/discount. The method registry exposed only one combined `zone_location` vote, so the report could not distinguish which structure zone was actually touched or reclaimed. Treating each correlated zone as another live score vote would inflate confluence without evidence.
+
+### Change on `feat/explicit-structure-zone-method-evidence-20261127`
+- Add separate registry diagnostics for fair-value-gap retests, order-block retests, breaker-block reclaims, support retests, resistance retests and premium/discount location.
+- Zone retests require the latest fully closed decision price to lie inside a finite, positive, correctly ordered zone. Breaker evidence requires a close beyond the corresponding breaker boundary. Premium/discount evidence records the confirmed swing range and equilibrium used by the existing structure calculation.
+- Every new method is tagged `CLOSED_OHLC_STRUCTURE`, `UNWEIGHTED_DIAGNOSTIC_ONLY` and `counts_for_baseline=false`.
+- Preserve the existing single combined `zone_location` baseline reason, legacy raw score, category-balanced score, signal threshold, Order Flow gate, entry selector and all execution safety rules.
+- No OHLCV candle volume is interpreted as bid/ask or aggressor flow; no new indicator parameters are introduced.
+
+### Deterministic validation
+- Add BUY and SELL fixtures for FVG/OB touches, breaker reclaim, support/resistance touch and premium/discount location.
+- Assert the granular methods remain diagnostics, do not enter category-balanced votes and do not change legacy raw confluence.
+- Add malformed, reversed, non-finite and untouched-zone negative coverage.
+
+### Next exact steps
+1. Run focused `test_signal_methods.py`, full Backend CI on Python 3.12 and 3.14, schema/compile and Web checks.
+2. Review the complete diff for method-ID consistency, accidental score changes, secrets and execution-path changes; create a PR against latest `main`.
+3. Merge only after all relevant checks pass, then verify the merge commit and post-merge CI.
+4. Keep these methods diagnostic-only until matched chronological raw-event OOS/ablation evidence supports any scoring use.
+5. Continue the separate retained-local-archive blocker: no real raw-event OOS metrics can be reported until the local Spot archive is supplied and its receive-time coverage passes replay eligibility.

@@ -88,6 +88,8 @@ def test_archive_export_rejects_truncated_or_count_mismatched_windows():
     {"market_type": "BINANCE_USDM_FUTURES"},
     {"received_at_ms": START_MS + 20_000},
     {"event_type": "unsupported"},
+    {"stream_session_id": "invalid-session"},
+    {"source": "UNKNOWN_SOURCE"},
 ])
 def test_archive_export_rejects_mixed_or_out_of_window_events(mutation):
     event = {**_event(1), **mutation}
@@ -103,3 +105,5 @@ def test_archive_writer_uses_valid_json_and_atomic_destination(tmp_path):
     assert saved["manifest"]["coverage_is_complete"] is False
     assert saved["events"][0]["payload"]["m"] is False
     assert list(target.parent.glob("*.tmp")) == []
+    with pytest.raises(OrderFlowArchiveExportError, match="already exists"):
+        write_archive_atomic(target, document)

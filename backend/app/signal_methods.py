@@ -377,15 +377,17 @@ def _breaker_block_reclaim(context: dict[str, Any]) -> list[MethodEvidence]:
     return evidence
 
 
-def _support_resistance_retest(context: dict[str, Any]) -> list[MethodEvidence]:
-    structure = context["analysis"].get(context["primary"], {}).get("structure", {})
-    if not isinstance(structure, dict):
-        return []
-    return (
-        _zone_touch(context, field="support_zone", method_id="support_zone_retest",
-                    side="BUY", label="support zone")
-        + _zone_touch(context, field="resistance_zone", method_id="resistance_zone_retest",
-                      side="SELL", label="resistance zone")
+def _support_zone_retest(context: dict[str, Any]) -> list[MethodEvidence]:
+    return _zone_touch(
+        context, field="support_zone", method_id="support_zone_retest",
+        side="BUY", label="support zone",
+    )
+
+
+def _resistance_zone_retest(context: dict[str, Any]) -> list[MethodEvidence]:
+    return _zone_touch(
+        context, field="resistance_zone", method_id="resistance_zone_retest",
+        side="SELL", label="resistance zone",
     )
 
 
@@ -436,7 +438,8 @@ STRATEGY_METHOD_REGISTRY: tuple[StrategyMethod, ...] = (
     StrategyMethod("fair_value_gap_retest", "LOCATION", _fair_value_gap_retest),
     StrategyMethod("order_block_retest", "LOCATION", _order_block_retest),
     StrategyMethod("breaker_block_reclaim", "LOCATION", _breaker_block_reclaim),
-    StrategyMethod("support_resistance_retest", "LOCATION", _support_resistance_retest),
+    StrategyMethod("support_zone_retest", "LOCATION", _support_zone_retest),
+    StrategyMethod("resistance_zone_retest", "LOCATION", _resistance_zone_retest),
     StrategyMethod("premium_discount_location", "LOCATION", _premium_discount_location),
 )
 

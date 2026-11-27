@@ -1352,6 +1352,7 @@ async def build_signal(
         score = max(bscore, sscore)
     # Directional quality gate: no signal against the selected primary/trend bias,
     # with weak ADX or an overextended RSI. Enabled higher timeframes must broadly agree.
+    quality_filter_failures: list[str] = []
     quality_filters={"primary_bias_aligned":False,"trend_bias_aligned":False,"adx_strength":False,
                      "rsi_not_extreme":False,"macd_direction":False,"timeframe_consensus":False}
     if side:
@@ -1386,7 +1387,7 @@ async def build_signal(
     entry_rejection_reason = (
         "Directional candidate rejected by quality filters: "
         + ", ".join(quality_filter_failures) + "."
-        if "quality_filter_failures" in locals() and quality_filter_failures
+        if quality_filter_failures
         else None
     )
     entry_choice = None

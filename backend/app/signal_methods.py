@@ -408,6 +408,10 @@ def _premium_discount_location(context: dict[str, Any]) -> list[MethodEvidence]:
         return []
     if close <= 0 or swing_low <= 0 or swing_high < swing_low:
         return []
+    if (location == "DISCOUNT" and close >= equilibrium) or (
+        location == "PREMIUM" and close < equilibrium
+    ):
+        return []
     return [MethodEvidence(
         "premium_discount_location", "LOCATION", side, context["primary"],
         f"Closed price is in the {location.lower()} half of the confirmed swing range",

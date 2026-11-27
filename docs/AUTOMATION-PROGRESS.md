@@ -1655,8 +1655,8 @@ Measure whether observed Binance Spot aggressor-side delta, sequence-validated L
 - Adding each zone as a live confluence vote would risk counting correlated price-location observations multiple times without independent OOS evidence.
 
 ### Changes on `feat/explicit-structure-zone-method-evidence-20261127`
-- Added separate diagnostic registry methods for FVG retest, order-block retest, breaker reclaim, support-zone retest, resistance-zone retest and premium/discount location.
-- Retest evidence requires the latest closed decision price to be inside a valid finite zone. Breaker evidence requires a closed-price reclaim beyond the existing zone boundary. Premium/discount evidence includes the swing high/low and equilibrium values.
+- Added separate diagnostic registry methods for FVG zone touch, order-block overlap, breaker reclaim, support-zone touch, resistance-zone touch and premium/discount location.
+- Zone-touch/overlap evidence requires the latest closed decision price to be inside a valid finite zone. These are not labelled retests because this registry context does not compare the prior close to prove a transition into the zone. Breaker evidence requires a closed-price reclaim beyond the existing zone boundary. Premium/discount evidence includes the swing high/low and equilibrium values.
 - Every new method is explicitly `CLOSED_OHLC_STRUCTURE`, `UNWEIGHTED_DIAGNOSTIC_ONLY`, and excluded from the baseline score and category-balanced votes.
 - Preserved the legacy combined `zone_location` vote and all live scoring thresholds, Order Flow confirmation, MARKET/LIMIT selection, risk controls and paper-only execution policy.
 - Added deterministic BUY/SELL and malformed/untouched-zone tests.

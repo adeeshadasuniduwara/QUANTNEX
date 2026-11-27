@@ -1675,11 +1675,11 @@ Measure whether observed Binance Spot aggressor-side delta, sequence-validated L
 
 
 ### C32 PR #318 validation update — 2026-11-27
-- PR [#318](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/318) targets `main` at `2725d6ff217125974518d73bdfdb036b2f19b241`; final reviewed branch head after the zone-touch naming refinement is `40c9240b8f8472e3ed929ee70b5907e56640c6f0`.
+- PR [#318](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/318) targets `main` at `2725d6ff217125974518d73bdfdb036b2f19b241`; final reviewed branch head after the zone-touch naming and provenance refinements is `97969545359b350ee42839b93f1c2acaa5b06f7a`.
 - Initial CI on the first test commit failed during collection because the test import contained literal escaped newline characters. This was traced from the job log and corrected; no failing run was treated as successful.
 - The first corrected head passed **692 tests on Python 3.12** and **692 tests on Python 3.14**. After renaming the evidence as zone-touch/overlap rather than claiming unproven retests, final-head Backend CI [#45965333915](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45965333915) and Backend/Web CI [#45965333648](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45965333648) also passed: **692 tests on Python 3.12**, **692 tests on Python 3.14**, compile/schema checks and Web syntax checks.
 - Full diff was reviewed and limited to the method registry, tests and two progress/roadmap documents. No score threshold, live Order Flow gate, MARKET/LIMIT selection, execution path, secret or credential changed.
-- PR #318 is mergeable and awaiting final pre-merge verification on the documented final head. After merge, verify the exact main commit and post-merge checks before treating C32 as complete.
+- This pre-merge status was superseded by the C32 merge and post-merge verification entry below.
 
 
 ## 2026-11-27 C32 — Merged and post-merge verified

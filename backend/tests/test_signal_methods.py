@@ -369,10 +369,10 @@ def test_structure_zone_methods_are_separate_diagnostics_without_changing_live_s
     diagnostic = result["diagnostic_only"]
     ids = {item["method_id"] for item in diagnostic}
     assert ids == {
-        "fair_value_gap_retest",
-        "order_block_retest",
+        "fair_value_gap_zone_touch",
+        "order_block_zone_overlap",
         "breaker_block_reclaim",
-        "support_zone_retest" if side == "BUY" else "resistance_zone_retest",
+        "support_zone_touch" if side == "BUY" else "resistance_zone_touch",
         "premium_discount_location",
     }
     assert all(item["side"] == side for item in diagnostic)

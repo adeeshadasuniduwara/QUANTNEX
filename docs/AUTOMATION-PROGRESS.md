@@ -1590,3 +1590,26 @@ Measure whether observed Binance Spot aggressor-side delta, sequence-validated L
 - Main was verified at exact merge SHA `521e923e73c50b7f3923737adbece64951d0c8ea`. Post-merge [Backend CI #45957721587](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45957721587) and [Backend/Web CI #45957721569](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45957721569) passed **676 tests on Python 3.12**, **676 tests on Python 3.14**, and Web checks. [Telegram Update Notifications #45957721729](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45957721729) also passed.
 - C29 is a diagnostics/reliability improvement, not a signal-quality or profitability milestone. The next substantive validation dependency is retained, causally complete-enough Binance Spot raw-event data; the Library search in this run found no such archive.
 - Continue without weakening the live default `LEGACY_RAW` score or `COMBINED` aggressor+L2 gate. The 2026-11-26 smoke run verified one live sentinel feed only; all 20 candle samples remained WAIT, and USDⓈ-M was blocked by HTTP 451.
+
+
+## 2026-11-27 C30 — Local retained Spot raw-event archive export
+
+### Why
+- The raw-event replay/walk-forward pipeline exists, but this automation runtime found no retained local Binance Spot raw-event archive in the Library and the latest smoke run had no uploaded artifact. Without real retained events, no honest raw-event OOS/ablation metrics can be produced.
+
+### Implementation
+- Add `backend/export_spot_order_flow_archive.py` to export existing local DB rows by `RECEIVED_AT_MS` into a JSON file with a manifest.
+- Validate the Binance Spot symbol, time range, event type/source, stream-session ID, receive-time window, row IDs and event timestamps. Sort by receive time and retain explicit `captureGap` events.
+- Fail closed when no events exist, counts disagree, the query is truncated, or the 5,000-event replay cap is exceeded. Never emit a partial archive.
+- The manifest always marks `coverage_is_complete=false`, records event/session/gap counts and warns that the first trade is only a CVD seed and no full UTC-session coverage is inferred.
+- Atomic file writing refuses to overwrite an existing destination. The tool reads the existing local database only; it does not create tables, connect to Binance, read credentials, alter settings or place orders.
+- Add deterministic tests for UTC timestamp validation, archive provenance, capture-gap accounting, truncation/count rejection, invalid source/session data and safe file output.
+
+### Local handoff
+- Document a PowerShell command in `docs/LOCAL-SIGNAL-SMOKE-TEST.md` for exporting a bounded archive from the same local database used by QUANTNEX.
+- The user can later provide the JSON archive for real raw-event replay. A bounded archive still cannot prove complete exchange capture; the replay engine retains its existing fail-closed coverage and freshness gates.
+
+### Validation / next
+1. Run the new exporter tests and full backend CI on Python 3.12/3.14; review the complete diff and security surface before merge.
+2. Use a real local archive when available to run receive-time replay, hand-check CVD/delta/session boundaries, and only then report OOS metrics.
+3. Keep live scoring and the combined aggressor+L2 gate unchanged. USDⓈ-M HTTP 451 and COIN-M unsupported remain explicit market-type blockers.

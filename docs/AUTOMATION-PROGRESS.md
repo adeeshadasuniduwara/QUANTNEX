@@ -1582,3 +1582,11 @@ Measure whether observed Binance Spot aggressor-side delta, sequence-validated L
 3. Obtain and validate a retained local Spot raw-event archive before publishing raw-event OOS/ablation metrics. This automation runtime has not located such an archive in the Library; do not invent sample counts or performance results.
 4. Keep the live default score and combined aggressor+L2 gate unchanged. CVD divergence/category-balanced scoring remain research-only until same-fold retained-history evidence supports any change.
 5. Continue to record USDⓈ-M HTTP 451 as a provider access blocker, not WAIT; keep COIN-M unsupported.
+
+### C29 merge and post-merge verification — 2026-11-27
+- PR [#314](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/314) was squash-merged as `521e923e73c50b7f3923737adbece64951d0c8ea`.
+- The reviewed seven-file diff changed only signal WAIT explanations, smoke output, deterministic tests and project documentation. No strategy score, thresholds, MARKET/LIMIT selection, Order Flow gate, live-order route, credential or secret surface changed.
+- PR checks passed: **676 tests on Python 3.12**, **676 tests on Python 3.14**, Backend CI, schema/compile and Web checks.
+- Main was verified at exact merge SHA `521e923e73c50b7f3923737adbece64951d0c8ea`. Post-merge [Backend CI #45957721587](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45957721587) and [Backend/Web CI #45957721569](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45957721569) passed **676 tests on Python 3.12**, **676 tests on Python 3.14**, and Web checks. [Telegram Update Notifications #45957721729](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45957721729) also passed.
+- C29 is a diagnostics/reliability improvement, not a signal-quality or profitability milestone. The next substantive validation dependency is retained, causally complete-enough Binance Spot raw-event data; the Library search in this run found no such archive.
+- Continue without weakening the live default `LEGACY_RAW` score or `COMBINED` aggressor+L2 gate. The 2026-11-26 smoke run verified one live sentinel feed only; all 20 candle samples remained WAIT, and USDⓈ-M was blocked by HTTP 451.

@@ -273,6 +273,156 @@ def _trend_timeframe_alignment(context: dict[str, Any]) -> list[MethodEvidence]:
     )]
 
 
+def _zone_touch(
+    context: dict[str, Any],
+    *,
+    field: str,
+    method_id: str,
+    side: str,
+    label: str,
+) -> list[MethodEvidence]:
+    """Report a closed-candle price touch of one existing structure zone.
+
+    These granular zone observations are diagnostic only. The legacy
+    zone_location vote remains the sole baseline location vote until matched
+    out-of-sample ablations establish incremental value.
+    """
+    primary = context["analysis"].get(context["primary"], {})
+    structure = primary.get("structure", {})
+    zone = structure.get(field) if isinstance(structure, dict) else None
+    if not isinstance(zone, dict):
+        return []
+    low = _finite(zone.get("low"), float("nan"))
+    high = _finite(zone.get("high"), float("nan"))
+    close = _finite(primary.get("close"), float("nan"))
+    if (
+        not all(math.isfinite(value) for value in (low, high, close))
+        or low <= 0 or high < low or close < low or close > high
+    ):
+        return []
+    return [MethodEvidence(
+        method_id, "LOCATION", side, context["primary"],
+        f"Closed price is inside {label}",
+        source="CLOSED_OHLC_STRUCTURE",
+        calibration="UNWEIGHTED_DIAGNOSTIC_ONLY",
+        counts_for_baseline=False,
+        details={
+            "zone_field": field,
+            "zone_low": low,
+            "zone_high": high,
+            "decision_close": close,
+            "location": "INSIDE_ZONE",
+            "definition": "Current fully closed candle close is within the existing causal structure zone.",
+        },
+    )]
+
+
+def _fair_value_gap_retest(context: dict[str, Any]) -> list[MethodEvidence]:
+    structure = context["analysis"].get(context["primary"], {}).get("structure", {})
+    return (
+        _zone_touch(context, field="bullish_fvg", method_id="fair_value_gap_retest",
+                    side="BUY", label="bullish fair-value gap")
+        + _zone_touch(context, field="bearish_fvg", method_id="fair_value_gap_retest",
+                      side="SELL", label="bearish fair-value gap")
+    ) if isinstance(structure, dict) else []
+
+
+def _order_block_retest(context: dict[str, Any]) -> list[MethodEvidence]:
+    structure = context["analysis"].get(context["primary"], {}).get("structure", {})
+    return (
+        _zone_touch(context, field="bullish_order_block", method_id="order_block_retest",
+                    side="BUY", label="bullish order block")
+        + _zone_touch(context, field="bearish_order_block", method_id="order_block_retest",
+                      side="SELL", label="bearish order block")
+    ) if isinstance(structure, dict) else []
+
+
+def _breaker_block_reclaim(context: dict[str, Any]) -> list[MethodEvidence]:
+    primary = context["analysis"].get(context["primary"], {})
+    structure = primary.get("structure", {})
+    if not isinstance(structure, dict):
+        return []
+    close = _finite(primary.get("close"), float("nan"))
+    if not math.isfinite(close) or close <= 0:
+        return []
+    evidence: list[MethodEvidence] = []
+    for field, side, label in (
+        ("bullish_breaker_block", "BUY", "bullish"),
+        ("bearish_breaker_block", "SELL", "bearish"),
+    ):
+        zone = structure.get(field)
+        if not isinstance(zone, dict):
+            continue
+        low = _finite(zone.get("low"), float("nan"))
+        high = _finite(zone.get("high"), float("nan"))
+        if not all(math.isfinite(value) for value in (low, high)) or low <= 0 or high < low:
+            continue
+        reclaimed = close > high if side == "BUY" else close < low
+        if not reclaimed:
+            continue
+        evidence.append(MethodEvidence(
+            "breaker_block_reclaim", "LOCATION", side, context["primary"],
+            f"Closed price reclaimed the {label} breaker zone",
+            source="CLOSED_OHLC_STRUCTURE",
+            calibration="UNWEIGHTED_DIAGNOSTIC_ONLY",
+            counts_for_baseline=False,
+            details={
+                "zone_field": field,
+                "zone_low": low,
+                "zone_high": high,
+                "decision_close": close,
+                "confirmation": "CLOSE_ABOVE_ZONE" if side == "BUY" else "CLOSE_BELOW_ZONE",
+            },
+        ))
+    return evidence
+
+
+def _support_resistance_retest(context: dict[str, Any]) -> list[MethodEvidence]:
+    structure = context["analysis"].get(context["primary"], {}).get("structure", {})
+    if not isinstance(structure, dict):
+        return []
+    return (
+        _zone_touch(context, field="support_zone", method_id="support_zone_retest",
+                    side="BUY", label="support zone")
+        + _zone_touch(context, field="resistance_zone", method_id="resistance_zone_retest",
+                      side="SELL", label="resistance zone")
+    )
+
+
+def _premium_discount_location(context: dict[str, Any]) -> list[MethodEvidence]:
+    primary = context["analysis"].get(context["primary"], {})
+    structure = primary.get("structure", {})
+    if not isinstance(structure, dict):
+        return []
+    location = str(structure.get("premium_discount") or "").upper()
+    side = "BUY" if location == "DISCOUNT" else "SELL" if location == "PREMIUM" else None
+    if side is None:
+        return []
+    close = _finite(primary.get("close"), float("nan"))
+    equilibrium = _finite(structure.get("equilibrium"), float("nan"))
+    swing_high = _finite(structure.get("swing_high"), float("nan"))
+    swing_low = _finite(structure.get("swing_low"), float("nan"))
+    if not all(math.isfinite(value) for value in (close, equilibrium, swing_high, swing_low)):
+        return []
+    if close <= 0 or swing_low <= 0 or swing_high < swing_low:
+        return []
+    return [MethodEvidence(
+        "premium_discount_location", "LOCATION", side, context["primary"],
+        f"Closed price is in the {location.lower()} half of the confirmed swing range",
+        source="CLOSED_OHLC_STRUCTURE",
+        calibration="UNWEIGHTED_DIAGNOSTIC_ONLY",
+        counts_for_baseline=False,
+        details={
+            "decision_close": close,
+            "equilibrium": equilibrium,
+            "swing_low": swing_low,
+            "swing_high": swing_high,
+            "location": location,
+            "definition": "Price relative to the midpoint of the latest confirmed swing high/low range.",
+        },
+    )]
+
+
 STRATEGY_METHOD_REGISTRY: tuple[StrategyMethod, ...] = (
     StrategyMethod("ema_trend", "TREND", _ema_trend),
     StrategyMethod("macd_momentum", "MOMENTUM", _macd_momentum),
@@ -283,6 +433,11 @@ STRATEGY_METHOD_REGISTRY: tuple[StrategyMethod, ...] = (
     StrategyMethod("zone_location", "LOCATION", _zone_location),
     StrategyMethod("trend_timeframe_alignment", "TREND", _trend_timeframe_alignment),
     StrategyMethod("rolling_vwap_proxy", "VALUE", _rolling_vwap_proxy),
+    StrategyMethod("fair_value_gap_retest", "LOCATION", _fair_value_gap_retest),
+    StrategyMethod("order_block_retest", "LOCATION", _order_block_retest),
+    StrategyMethod("breaker_block_reclaim", "LOCATION", _breaker_block_reclaim),
+    StrategyMethod("support_resistance_retest", "LOCATION", _support_resistance_retest),
+    StrategyMethod("premium_discount_location", "LOCATION", _premium_discount_location),
 )
 
 

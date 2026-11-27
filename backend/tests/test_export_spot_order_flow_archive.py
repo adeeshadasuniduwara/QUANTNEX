@@ -90,6 +90,8 @@ def test_archive_export_rejects_truncated_or_count_mismatched_windows():
     {"event_type": "unsupported"},
     {"stream_session_id": "invalid-session"},
     {"source": "UNKNOWN_SOURCE"},
+    {"source": ["WEBSOCKET"]},
+    {"event_type": ["aggTrade"]},
 ])
 def test_archive_export_rejects_mixed_or_out_of_window_events(mutation):
     event = {**_event(1), **mutation}

@@ -898,3 +898,12 @@ The previous C28 statement that a post-merge live probe result was still pending
 The C30 local Spot archive exporter originally performed an existence check followed by `os.replace`. Although the replacement is atomic, it can overwrite a destination created by another process between those operations. C31 changes publication to a same-directory hard-link create-if-absent operation after the temporary JSON file has been flushed and fsynced. A competing destination causes an explicit failure; existing bytes are preserved. Filesystems that do not permit hard links fail closed rather than reverting to overwrite-capable behavior.
 
 A deterministic test creates the destination during the publication window and verifies the pre-existing contents remain unchanged and the temporary file is cleaned up. This is an archive-integrity safeguard only; it does not change signal strategy, market-data, Order Flow, or execution logic. The local retained archive and raw-event OOS validation remain outstanding.
+
+### C31 merge verification — 2026-11-27
+
+PR [#317](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/317) was squash-merged as `2725d6ff217125974518d73bdfdb036b2f19b241`. The archive writer now publishes its fully flushed temporary file with same-directory atomic create-if-absent hard-link semantics, preserving a competing destination. The four-file diff was reviewed and contained only the exporter, regression tests and progress documentation.
+
+PR and post-merge CI passed **689 tests on Python 3.12** and **689 tests on Python 3.14**, schema/compile checks, Web syntax checks and Telegram update notification. Main was verified at the exact merge SHA. This is a local archive-integrity fix only; it does not add raw-event sample data or OOS evidence.
+
+The latest available scheduled live scan remains run [#45792719695](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45792719695), before the latest C29–C31 main changes. It verified one Spot feed sentinel and 20/20 candle scans with WAIT; USDⓈ-M was unavailable with HTTP 451. A new post-C31 live smoke result is still pending.
+

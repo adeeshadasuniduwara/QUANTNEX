@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 import json
 
 import pytest
+import export_spot_order_flow_archive as exporter
 
 from export_spot_order_flow_archive import (
     OrderFlowArchiveExportError,
@@ -109,3 +110,30 @@ def test_archive_writer_uses_valid_json_and_atomic_destination(tmp_path):
     assert list(target.parent.glob("*.tmp")) == []
     with pytest.raises(OrderFlowArchiveExportError, match="already exists"):
         write_archive_atomic(target, document)
+
+
+def test_cli_closes_database_and_redacts_connection_details_on_failure(monkeypatch, capsys):
+    class FakeDatabase:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    database = FakeDatabase()
+    monkeypatch.setattr(exporter, "SessionLocal", lambda: database)
+
+    def fail_query(*_args, **_kwargs):
+        raise RuntimeError("postgresql://private-user:private-password@example.invalid/db")
+
+    monkeypatch.setattr(exporter, "load_order_flow_market_events_by_receive_time", fail_query)
+    result = exporter.main([
+        "--symbol", "BTCUSDT",
+        "--start", "2026-11-26T00:00:00Z",
+        "--end", "2026-11-27T00:00:00Z",
+        "--output", "unused.json",
+    ])
+    captured = capsys.readouterr()
+    assert result == 2
+    assert database.closed is True
+    assert "private-password" not in captured.err
+    assert "local database read/export failed" in captured.err

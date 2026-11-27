@@ -1,5 +1,8 @@
 from datetime import datetime, timezone
 import json
+from pathlib import Path
+
+import export_spot_order_flow_archive as archive_export
 
 import pytest
 
@@ -109,3 +112,21 @@ def test_archive_writer_uses_valid_json_and_atomic_destination(tmp_path):
     assert list(target.parent.glob("*.tmp")) == []
     with pytest.raises(OrderFlowArchiveExportError, match="already exists"):
         write_archive_atomic(target, document)
+
+def test_archive_writer_does_not_overwrite_destination_created_during_publish(tmp_path, monkeypatch):
+    events = [_event(1)]
+    document = build_archive_document("BTCUSDT", START_MS, START_MS + 10_000, _loaded(events))
+    target = tmp_path / "exports" / "btc.json"
+    real_link = archive_export.os.link
+
+    def create_competing_destination(source, destination):
+        Path(destination).write_text("keep existing archive", encoding="utf-8")
+        return real_link(source, destination)
+
+    monkeypatch.setattr(archive_export.os, "link", create_competing_destination)
+    with pytest.raises(OrderFlowArchiveExportError, match="already exists"):
+        write_archive_atomic(target, document)
+
+    assert target.read_text(encoding="utf-8") == "keep existing archive"
+    assert list(target.parent.glob("*.tmp")) == []
+

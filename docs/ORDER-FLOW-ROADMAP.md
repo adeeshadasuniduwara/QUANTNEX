@@ -907,7 +907,7 @@ The candle structure engine already emits separate closed-candle fields for bull
 
 ### Change on `feat/explicit-structure-zone-method-evidence-20261127`
 - Add separate registry diagnostics for fair-value-gap zone touches, order-block overlaps, breaker-block reclaims, support-zone touches, resistance-zone touches and premium/discount location.
-- Zone-touch/overlap evidence requires the latest fully closed decision price to lie inside a finite, positive, correctly ordered zone. These are not called retests because the registry context does not compare the prior close to prove a transition into the zone. Breaker evidence requires a close beyond the corresponding breaker boundary. Premium/discount evidence records the confirmed swing range and equilibrium used by the existing structure calculation.
+- Zone-touch/overlap evidence requires the latest fully closed decision price to lie inside a finite, positive, correctly ordered zone. These are not called retests because the registry context does not compare the prior close to prove a transition into the zone. Breaker evidence requires a close beyond the corresponding breaker boundary. Premium/discount evidence records the latest structure range and equilibrium used by the existing structure calculation.
 - Every new method is tagged `CLOSED_OHLC_STRUCTURE`, `UNWEIGHTED_DIAGNOSTIC_ONLY` and `counts_for_baseline=false`.
 - Preserve the existing single combined `zone_location` baseline reason, legacy raw score, category-balanced score, signal threshold, Order Flow gate, entry selector and all execution safety rules.
 - No OHLCV candle volume is interpreted as bid/ask or aggressor flow; no new indicator parameters are introduced.

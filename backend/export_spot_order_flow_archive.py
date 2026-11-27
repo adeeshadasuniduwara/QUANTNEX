@@ -101,7 +101,8 @@ def build_archive_document(
             raise OrderFlowArchiveExportError(f"Raw event {index} is not an object.")
         if event.get("market_type") != "BINANCE_SPOT" or event.get("symbol") != normalized_symbol:
             raise OrderFlowArchiveExportError("Every event must match the requested Binance Spot symbol.")
-        if event.get("event_type") not in _ALLOWED_EVENT_TYPES:
+        event_type = event.get("event_type")
+        if not isinstance(event_type, str) or event_type not in _ALLOWED_EVENT_TYPES:
             raise OrderFlowArchiveExportError(f"Raw event {index} has an unsupported event type.")
         row_id = event.get("id")
         received_ms = event.get("received_at_ms")
@@ -119,6 +120,7 @@ def build_archive_document(
         source = event.get("source")
         if (
             not isinstance(session_id, str) or not re.fullmatch(r"[0-9a-f]{32}", session_id)
+            or not isinstance(source, str)
             or source not in {"WEBSOCKET", "WEBSOCKET_BUFFER", "REST_BOOTSTRAP", "REST_GAP_BACKFILL"}
             or not isinstance(event.get("payload"), dict)
         ):
@@ -218,8 +220,17 @@ def main(argv: list[str] | None = None) -> int:
             db.close()
         document = build_archive_document(normalized_symbol, start_ms, end_ms, loaded)
         output = write_archive_atomic(args.output, document)
-    except (OrderFlowArchiveExportError, ValueError, OSError) as exc:
+    except OrderFlowArchiveExportError as exc:
         print(f"[ARCHIVE EXPORT ERROR] {type(exc).__name__}: {str(exc)[:240]}", file=sys.stderr)
+        return 2
+    except Exception as exc:
+        # Database-driver messages may contain connection details; keep them out
+        # of the console and exported diagnostics.
+        print(
+            f"[ARCHIVE EXPORT ERROR] {type(exc).__name__}: local database read/export failed; "
+            "check DATABASE_URL, table availability and the requested time range.",
+            file=sys.stderr,
+        )
         return 2
 
     manifest = document["manifest"]

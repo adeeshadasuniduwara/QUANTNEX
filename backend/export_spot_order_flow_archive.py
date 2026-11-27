@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import re
 import sys
 import tempfile
 from typing import Any
@@ -63,7 +64,7 @@ def build_archive_document(
     exported_at: datetime | None = None,
 ) -> dict[str, Any]:
     normalized_symbol = str(symbol or "").strip().upper()
-    if not normalized_symbol.isalnum() or not 5 <= len(normalized_symbol) <= 25:
+    if not re.fullmatch(r"[A-Z0-9]{5,25}", normalized_symbol):
         raise OrderFlowArchiveExportError("A valid Binance Spot symbol is required.")
     if any(isinstance(value, bool) or not isinstance(value, int) for value in (start_ms, end_ms)):
         raise OrderFlowArchiveExportError("Archive range must use integer epoch milliseconds.")
@@ -114,8 +115,14 @@ def build_archive_document(
             or row_id in seen_ids
         ):
             raise OrderFlowArchiveExportError(f"Raw event {index} has invalid identity or timestamps.")
-        if not isinstance(event.get("stream_session_id"), str) or not isinstance(event.get("payload"), dict):
-            raise OrderFlowArchiveExportError(f"Raw event {index} is missing session or payload data.")
+        session_id = event.get("stream_session_id")
+        source = event.get("source")
+        if (
+            not isinstance(session_id, str) or not re.fullmatch(r"[0-9a-f]{32}", session_id)
+            or source not in {"WEBSOCKET", "WEBSOCKET_BUFFER", "REST_BOOTSTRAP", "REST_GAP_BACKFILL"}
+            or not isinstance(event.get("payload"), dict)
+        ):
+            raise OrderFlowArchiveExportError(f"Raw event {index} is missing valid source, session or payload data.")
         seen_ids.add(row_id)
         normalized_events.append(event)
 
@@ -123,7 +130,10 @@ def build_archive_document(
     counts = Counter(item["event_type"] for item in normalized_events)
     sessions = sorted({item["stream_session_id"] for item in normalized_events})
     capture_gaps = counts.get("captureGap", 0)
-    exported = (exported_at or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    exported_source = exported_at or datetime.now(timezone.utc)
+    if exported_source.tzinfo is None or exported_source.utcoffset() is None:
+        raise OrderFlowArchiveExportError("exported_at must be timezone-aware.")
+    exported = exported_source.astimezone(timezone.utc)
     return {
         "manifest": {
             "schema_version": 1,
@@ -160,6 +170,8 @@ def build_archive_document(
 
 def write_archive_atomic(path: str | Path, document: dict[str, Any]) -> Path:
     target = Path(path).expanduser()
+    if target.exists():
+        raise OrderFlowArchiveExportError("Destination already exists; choose a new output path to avoid overwriting local data.")
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary_path: Path | None = None
     try:

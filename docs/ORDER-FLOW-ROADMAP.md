@@ -928,6 +928,6 @@ The candle structure engine already emits separate closed-candle fields for bull
 ### C32 PR verification update — 2026-11-27
 - PR [#318](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/318) was opened against latest `main` base `2725d6ff217125974518d73bdfdb036b2f19b241`.
 - The first CI attempt exposed a malformed escaped-newline test import during collection. The import was corrected on the feature branch; the failed run was not treated as a pass.
-- On corrected head `2adc05b695ccf6694b7dea4598cbd9c27a125401`, Backend CI and Backend/Web CI passed: **692 tests on Python 3.12**, **692 tests on Python 3.14**, compile/schema checks and Web syntax checks.
+- The first corrected head passed **692 tests on Python 3.12** and **692 tests on Python 3.14**. After refining method names to say zone touch/overlap rather than claiming a prior-close retest, final-head Backend CI [#45965333915](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45965333915) and Backend/Web CI [#45965333648](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45965333648) passed **692 tests on Python 3.12**, **692 tests on Python 3.14**, compile/schema checks and Web syntax checks.
 - Full diff scope remains four intended files: method registry, its deterministic tests, automation progress and Order Flow roadmap. No secrets, provider changes, score changes, order-placement paths or live-trading enablement were added.
-- PR is mergeable and remains open pending final diff/status recheck. Post-merge main verification is still required.
+- Final reviewed head: `40c9240b8f8472e3ed929ee70b5907e56640c6f0`. PR is mergeable and remains open pending final diff/status recheck. Post-merge main verification is still required.

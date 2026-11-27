@@ -1619,7 +1619,7 @@ Measure whether observed Binance Spot aggressor-side delta, sequence-validated L
 - Main CI run [#45959244446](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45959244446) passed Backend CI on Python 3.12 and 3.14 plus Web syntax checks; [#45959244416](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45959244416) passed compile/schema checks; [#45959244401](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45959244401) passed the Telegram update workflow.
 - The exporter still has not been run against the user's local database in this runtime. The real archive and OOS performance dependency remains open.
 
-## 2026-11-27 C31 — Atomic no-overwrite publication for raw-event archives (in progress)
+## 2026-11-27 C31 — Atomic no-overwrite publication for raw-event archives (merged and verified)
 
 ### Finding
 - C30's archive writer checked that the destination did not exist, then used `os.replace`. A second process could create the destination after the check but before replace; the replace would silently overwrite that newly created file. That contradicts the exporter's no-overwrite safety promise and risks replacing a user's archive during concurrent exports.
@@ -1636,7 +1636,16 @@ Measure whether observed Binance Spot aggressor-side delta, sequence-validated L
 - Run focused exporter tests, full Backend CI on Python 3.12/3.14, schema/compile and Web checks. Review the complete diff before merge.
 - The local raw archive is still not available in the automation Library; no raw-event OOS metrics are claimed.
 
+### C31 merge and post-merge verification — 2026-11-27
+- PR [#317](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/317) was squash-merged as `2725d6ff217125974518d73bdfdb036b2f19b241` from branch `fix/spot-orderflow-archive-no-overwrite-race-20261127`, based on main `8a6eb39b241336d5172e9b5a8539d196bd45e722`.
+- Reviewed diff: four files only — the archive exporter, its regression tests and the two progress documents. No credentials/secrets, order-placement routes, signal scoring, market-data or live-trading behavior were changed.
+- PR CI passed **689 tests on Python 3.12** and **689 tests on Python 3.14**, plus schema/compile and Web checks. The new race regression was included in both suites.
+- Main was verified at exact merge SHA `2725d6ff217125974518d73bdfdb036b2f19b241`. Post-merge Backend CI [#45961492283](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45961492283), Backend/Web CI [#45961492312](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45961492312) and Telegram Update Notifications [#45961492369](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45961492369) passed. Post-merge Python 3.12 and 3.14 suites each reported **689 passed**.
+- The latest available scheduled live smoke remains [#45792719695](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45792719695), which ran before C29/C30/C31's final main tip. It verified one USDCUSDT Spot aggTrade + sequence-validated L2 sentinel, while the 20 candle samples were WAIT; USDⓈ-M returned HTTP 451. No new live scan after C31 merge was available in this run.
+- C31 protects archive publication only. It does not produce retained raw data or OOS performance evidence; the local archive remains unavailable in the automation Library.
+
 ### Next exact steps
-1. Verify the new race test and existing exporter tests on CI; merge only if all checks pass and the reviewed diff remains limited to the exporter, its tests and progress docs.
-2. Use the documented local export and validate the archive manifest, capture gaps, sequence continuity and eligible receive-time checkpoints before walk-forward ablations.
+1. Use the documented local exporter on the user's QUANTNEX database and validate the manifest, receive-time window, session IDs, capture-gap markers, trade-ID continuity and depth sequence continuity before replay.
+2. Run raw-event receive-time replay and same-fold candle/aggressor/L2/combined/CVD/category-balanced walk-forward ablations only if eligible checkpoint coverage is sufficient; report trade count and net metrics with limitations.
 3. Keep live `LEGACY_RAW` scoring and `COMBINED` aggressor+L2 confirmation unchanged until same-fold retained-history evidence supports a change.
+4. Continue recording USDⓈ-M HTTP 451 as a provider-access blocker; COIN-M remains unsupported.

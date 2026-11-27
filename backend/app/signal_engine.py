@@ -1352,6 +1352,7 @@ async def build_signal(
         score = max(bscore, sscore)
     # Directional quality gate: no signal against the selected primary/trend bias,
     # with weak ADX or an overextended RSI. Enabled higher timeframes must broadly agree.
+    quality_filter_failures: list[str] = []
     quality_filters={"primary_bias_aligned":False,"trend_bias_aligned":False,"adx_strength":False,
                      "rsi_not_extreme":False,"macd_direction":False,"timeframe_consensus":False}
     if side:
@@ -1367,10 +1368,28 @@ async def build_signal(
                          "adx_strength":adx_ok,"rsi_not_extreme":rsi_ok,"macd_direction":macd_ok,
                          "timeframe_consensus":consensus_ok}
         if not all(quality_filters.values()):
+            quality_filter_labels = {
+                "primary_bias_aligned": "primary timeframe bias misaligned",
+                "trend_bias_aligned": "trend timeframe bias misaligned",
+                "adx_strength": "ADX below 18",
+                "rsi_not_extreme": "RSI outside the directional range",
+                "macd_direction": "MACD histogram opposes the candidate direction",
+                "timeframe_consensus": "higher-timeframe consensus below 60%",
+            }
+            quality_filter_failures = [
+                quality_filter_labels.get(key, key.replace("_", " "))
+                for key, passed in quality_filters.items()
+                if passed is False
+            ]
             side=None
     price_precision = 2 if symbol == "XAUUSD" else 8
     signal = None
-    entry_rejection_reason = None
+    entry_rejection_reason = (
+        "Directional candidate rejected by quality filters: "
+        + ", ".join(quality_filter_failures) + "."
+        if quality_filter_failures
+        else None
+    )
     entry_choice = None
     execution = None
     execution_quality = None
@@ -1817,14 +1836,26 @@ async def build_signal(
 
     provider_label = " + ".join(sorted(providers)) if providers else "Unknown"
     generated_at = as_of.isoformat()
-    message = (
-        "Signal setup and entry-quality filters passed."
-        if signal else
-        "WAIT — " + entry_rejection_reason
-        if entry_rejection_reason else
-        "WAIT — confluence threshold or directional quality filters not met."
-    )
+    if signal:
+        wait_reasons = []
+        message = "Signal setup and entry-quality filters passed."
+    elif entry_rejection_reason:
+        wait_reasons = [entry_rejection_reason]
+        message = "WAIT — " + entry_rejection_reason
+    elif score < threshold:
+        wait_reasons = [
+            f"Confluence score {score}/{score_out_of} is below the required "
+            f"threshold {threshold}/{score_out_of}."
+        ]
+        message = "WAIT — " + wait_reasons[0]
+    elif bscore == sscore:
+        wait_reasons = ["BUY and SELL evidence is tied; no directional side dominates."]
+        message = "WAIT — " + wait_reasons[0]
+    else:
+        wait_reasons = ["No directional setup passed the required quality and execution gates."]
+        message = "WAIT — " + wait_reasons[0]
     return {"symbol":symbol,"provider":provider_label,"generated_at":generated_at,
+            "wait_reasons":wait_reasons,
             "signal":signal,"execution_quality":execution_quality,
             "confluence_score":score,"score_out_of":score_out_of,
             "score_mode":score_mode,"score_threshold":threshold,

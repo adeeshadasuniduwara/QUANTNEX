@@ -25,7 +25,7 @@ python .\smoke_signal_engine.py --symbols XAUUSD
 ## Expected output
 
 - `[SIGNAL]`: fresh Spot candles were loaded and the current Spot strategy rules produced a candidate. Review the provider, timestamp and Entry/SL/TP levels.
-- `[WAIT]`: Spot data loaded successfully, but the current market conditions did not meet the minimum confluence/quality filters. This is not a feed failure.
+- `[WAIT]`: Spot data loaded successfully, but the current market conditions did not meet the minimum confluence/quality filters. The line includes a concise engine reason (for example, score below threshold, conflicting direction, or a failed trend/ADX/RSI/timeframe gate). This is not a feed failure.
 - `[FUTURES CANDLE SIGNAL]`: the separate USDⓈ-M Futures candle-only monitor produced a candidate. The printed levels are references, not executable orders.
 - `[FUTURES WAIT]`: USDⓈ-M candles loaded successfully but no qualifying candle-confluence setup exists.
 - `[SKIP]` / `[FUTURES SKIP]`: the pair/contract is valid but does not yet have enough fully closed history.

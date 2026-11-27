@@ -860,3 +860,16 @@ This check still samples one liquid Spot pair, not every eligible pair. Full dyn
 ### C28 merge verification — 2026-11-26
 
 PR #311 was squash-merged as 13e53d6af697d5b262d5cced500cda6cb7acd414. The live smoke runner now performs an independent, dynamic high-volume USDT Spot Order Flow health probe by default. PR and post-merge main CI both passed 675 tests on Python 3.12 and 675 tests on Python 3.14, with Web/schema/compile checks also passing. No live Binance stream result is claimed yet: the next scheduled workflow log must confirm ORDER FLOW READY or expose a provider limitation.
+
+
+## 2026-11-27 — First post-C28 live Spot Order Flow probe verified
+
+The scheduled run [#45792719695](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45792719695) on main `015d33d392c912a108e105f3f35ba3c5711cf2db` completed its dynamic Binance Spot sample and independent Order Flow probe:
+
+- Spot exchangeInfo discovered **1,381 eligible pairs**; the rotating sample completed **20/20** with **20 WAIT**, no insufficient-history skips and no Spot provider errors.
+- All 20 candle decisions reported `NOT_EVALUATED_NO_DIRECTIONAL_SETUP`; therefore the signal path's mandatory Order Flow confirmation gate was not exercised for those 20 candidates.
+- The independent probe selected **USDCUSDT** from current eligible USDT pairs by 24-hour quote volume and reported **ORDER FLOW READY**: 1,000 aggregate trades, delta ratio **−0.1447**, spread **0.09989 bps**, L2 depth imbalance **−0.06656**, and CVD approximately **−494,400** (complete only since the bounded stream-state seed).
+- This verifies one live Binance Spot public aggTrade stream and sequence-validated L2 book on the GitHub runner at that time. It does not establish full UTC-session CVD, all-pair Order Flow coverage, a qualified signal, or profitability.
+- USDⓈ-M exchangeInfo again returned HTTP **451** before contract discovery; no Futures candles were scanned. USDⓈ-M remains candle-only where reachable and COIN-M remains unsupported.
+
+The previous C28 statement that a post-merge live probe result was still pending is superseded by this run. Continue with causal retained-archive validation; do not treat a single sentinel stream as market-wide Order Flow coverage.

@@ -441,9 +441,16 @@ async def _run(
             provider = result.get("provider", "Unknown")
             signal = result.get("signal")
             if not signal:
+                reason = _format_diagnostic_value(result.get("message"))
+                if not reason:
+                    reasons = result.get("wait_reasons")
+                    reason = (
+                        _format_diagnostic_value(reasons[0])
+                        if isinstance(reasons, list) and reasons else None
+                    ) or "No qualifying setup."
                 print(
                     f"[WAIT] {symbol} | source={provider} | "
-                    f"confluence={result.get('confluence_score', 0)}/10"
+                    f"confluence={result.get('confluence_score', 0)}/10 | reason={reason}"
                 )
             else:
                 print(

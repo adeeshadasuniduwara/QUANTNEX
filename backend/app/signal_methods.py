@@ -414,7 +414,7 @@ def _premium_discount_location(context: dict[str, Any]) -> list[MethodEvidence]:
         return []
     return [MethodEvidence(
         "premium_discount_location", "LOCATION", side, context["primary"],
-        f"Closed price is in the {location.lower()} half of the confirmed swing range",
+        f"Closed price is in the {location.lower()} half of the latest structure range",
         source="CLOSED_OHLC_STRUCTURE",
         calibration="UNWEIGHTED_DIAGNOSTIC_ONLY",
         counts_for_baseline=False,
@@ -424,7 +424,7 @@ def _premium_discount_location(context: dict[str, Any]) -> list[MethodEvidence]:
             "swing_low": swing_low,
             "swing_high": swing_high,
             "location": location,
-            "definition": "Price relative to the midpoint of the latest confirmed swing high/low range.",
+            "definition": "Price relative to the latest structure-range midpoint; the structure engine may use its documented 30-bar fallback when confirmed pivots are unavailable.",
         },
     )]
 

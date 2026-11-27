@@ -1672,3 +1672,11 @@ Measure whether observed Binance Spot aggressor-side delta, sequence-validated L
 3. Verify main and post-merge checks.
 4. Keep granular zone methods diagnostic-only until matched chronological OOS ablations on validated retained Spot raw events show incremental value.
 5. Obtain a local bounded raw Spot archive, inspect manifest/gaps/receive-time checkpoints, then run the existing same-fold AGGRESSOR_ONLY, L2_ONLY, COMBINED, CVD_DIVERGENCE_ONLY and COMBINED_CVD comparisons.
+
+
+### C32 PR #318 validation update — 2026-11-27
+- PR [#318](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/318) targets `main` at `2725d6ff217125974518d73bdfdb036b2f19b241`; branch head after correction is `2adc05b695ccf6694b7dea4598cbd9c27a125401`.
+- Initial CI on the first test commit failed during collection because the test import contained literal escaped newline characters. This was traced from the job log and corrected; no failing run was treated as successful.
+- Corrected Backend CI and Backend/Web CI both passed: **692 tests on Python 3.12**, **692 tests on Python 3.14**, compile/schema checks and Web syntax checks.
+- Full diff was reviewed and limited to the method registry, tests and two progress/roadmap documents. No score threshold, live Order Flow gate, MARKET/LIMIT selection, execution path, secret or credential changed.
+- PR #318 is mergeable and awaiting final pre-merge verification. After merge, verify the exact main commit and post-merge checks before treating C32 as complete.

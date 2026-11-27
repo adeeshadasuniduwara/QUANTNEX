@@ -44,6 +44,8 @@ def test_smoke_run_scans_dynamic_sample_without_hardcoded_symbols(monkeypatch, c
             "provider": "Mocked Binance Spot",
             "signal": None,
             "confluence_score": 0,
+            "message": "WAIT — confluence score is below threshold.",
+            "wait_reasons": ["Confluence score is below threshold."],
             "order_flow": {
                 "status": "CONTRADICTED",
                 "accepted": False,
@@ -69,6 +71,7 @@ def test_smoke_run_scans_dynamic_sample_without_hardcoded_symbols(monkeypatch, c
     output = capsys.readouterr().out
     assert result == 0
     assert calls == rotating_symbol_sample(universe, 4, day_index=0)
+    assert "reason=WAIT — confluence score is below threshold." in output
     assert "Order Flow: status=CONTRADICTED | accepted=no" in output
     assert "delta=-3.5" in output
     assert "cvd_value=24" in output

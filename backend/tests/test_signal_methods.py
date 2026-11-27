@@ -1,4 +1,6 @@
-import pytest\n\nfrom app.signal_methods import (
+import pytest
+
+from app.signal_methods import (
     STRATEGY_METHOD_REGISTRY,
     evaluate_strategy_registry,
 )

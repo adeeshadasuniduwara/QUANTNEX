@@ -873,3 +873,12 @@ The scheduled run [#45792719695](https://github.com/adeeshadasuniduwara/QUANTNEX
 - USDⓈ-M exchangeInfo again returned HTTP **451** before contract discovery; no Futures candles were scanned. USDⓈ-M remains candle-only where reachable and COIN-M remains unsupported.
 
 The previous C28 statement that a post-merge live probe result was still pending is superseded by this run. Continue with causal retained-archive validation; do not treat a single sentinel stream as market-wide Order Flow coverage.
+
+## C29 — Explicit signal WAIT reasons (merged PR #314)
+
+- PR [#314](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/314) was squash-merged to `main` as `521e923e73c50b7f3923737adbece64951d0c8ea`.
+- `build_signal` now returns an additive `wait_reasons` array. Existing directional candidates rejected by the current primary/trend bias, ADX, RSI, MACD or timeframe-consensus checks name the failed checks. Below-threshold and tied BUY/SELL evidence also receive concise reasons.
+- The read-only Spot smoke output prints the engine WAIT reason. No strategy rules, score thresholds, method weights, Order Flow confirmation, MARKET/LIMIT selection, risk, or live execution behavior changed.
+- Deterministic end-to-end and smoke-output regression tests were added. PR CI passed **676 tests on Python 3.12** and **676 tests on Python 3.14**, plus schema/compile and Web checks.
+- Post-merge main CI passed on the exact merge SHA: [Backend CI #45957721587](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45957721587), [Backend/Web CI #45957721569](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45957721569), and [Telegram Update Notifications #45957721729](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45957721729). Backend suites passed **676 tests on Python 3.12** and **676 tests on Python 3.14**; Web checks passed.
+- This makes WAIT outcomes more diagnosable; it does not make a WAIT a successful signal or establish predictive improvement.

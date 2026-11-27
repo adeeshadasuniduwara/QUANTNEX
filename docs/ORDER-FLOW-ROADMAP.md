@@ -930,7 +930,7 @@ The candle structure engine already emits separate closed-candle fields for bull
 - The first CI attempt exposed a malformed escaped-newline test import during collection. The import was corrected on the feature branch; the failed run was not treated as a pass.
 - The first corrected head passed **692 tests on Python 3.12** and **692 tests on Python 3.14**. After refining method names to say zone touch/overlap rather than claiming a prior-close retest, final-head Backend CI [#45965333915](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45965333915) and Backend/Web CI [#45965333648](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45965333648) passed **692 tests on Python 3.12**, **692 tests on Python 3.14**, compile/schema checks and Web syntax checks.
 - Full diff scope remains four intended files: method registry, its deterministic tests, automation progress and Order Flow roadmap. No secrets, provider changes, score changes, order-placement paths or live-trading enablement were added.
-- Final reviewed head: `40c9240b8f8472e3ed929ee70b5907e56640c6f0`. PR is mergeable and remains open pending final diff/status recheck. Post-merge main verification is still required.
+- This pre-merge status was superseded by the C32 merge and post-merge verification entry below. Final reviewed PR head: `97969545359b350ee42839b93f1c2acaa5b06f7a`.
 
 
 ### C32 merge and post-merge verification — 2026-11-27

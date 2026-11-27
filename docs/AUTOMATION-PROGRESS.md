@@ -1680,3 +1680,17 @@ Measure whether observed Binance Spot aggressor-side delta, sequence-validated L
 - The first corrected head passed **692 tests on Python 3.12** and **692 tests on Python 3.14**. After renaming the evidence as zone-touch/overlap rather than claiming unproven retests, final-head Backend CI [#45965333915](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45965333915) and Backend/Web CI [#45965333648](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45965333648) also passed: **692 tests on Python 3.12**, **692 tests on Python 3.14**, compile/schema checks and Web syntax checks.
 - Full diff was reviewed and limited to the method registry, tests and two progress/roadmap documents. No score threshold, live Order Flow gate, MARKET/LIMIT selection, execution path, secret or credential changed.
 - PR #318 is mergeable and awaiting final pre-merge verification on the documented final head. After merge, verify the exact main commit and post-merge checks before treating C32 as complete.
+
+
+## 2026-11-27 C32 — Merged and post-merge verified
+
+- PR [#318](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/318) was squash-merged as `980ca0b68b2c137f6bd0b1fde827730b87c5d5da` from final reviewed head `97969545359b350ee42839b93f1c2acaa5b06f7a`.
+- The six new method diagnostics are exposed under `strategy_evidence.diagnostic_only`: FVG zone touch, order-block zone overlap, breaker-block reclaim, support-zone touch, resistance-zone touch and premium/discount location. They do not contribute to the legacy score or category-balanced score.
+- Final PR CI passed **692 tests on Python 3.12** and **692 tests on Python 3.14**, compile/schema and Web checks.
+- Main was verified at exact merge SHA `980ca0b68b2c137f6bd0b1fde827730b87c5d5da`. Post-merge Backend CI [#45965931186](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45965931186) and Backend/Web CI [#45965931064](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45965931064) passed **692 tests on Python 3.12**, **692 tests on Python 3.14**, compile/schema and Web checks. Telegram update workflow [#45965931157](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45965931157) passed.
+- The earlier CI collection failure from the escaped-newline import was corrected before merge and is recorded in the C32 PR validation entry. No failed run was treated as a pass.
+- No secrets, private credentials, new provider integrations, score changes, order placement or live-money gates were added.
+- The local raw Spot archive is still not available in this runtime. Raw-event walk-forward/ablation and predictive-uplift evidence remain blocked; no performance claim is made.
+
+### Next exact step
+Use the documented local export workflow to obtain a bounded Spot raw-event archive, validate its manifest, gap markers, sequence continuity and receive-time checkpoint coverage, then run matched chronological order-flow ablations. Keep C32 methods diagnostic-only until those results show incremental value.

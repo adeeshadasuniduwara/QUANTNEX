@@ -68,3 +68,19 @@ The scheduled run on 2026-11-16 failed before scanning because the GitHub runner
 - Scheduled main run [#45000648674](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45000648674) discovered 1,376 eligible Spot pairs and scanned 20 rotating pairs: 20 WAIT, zero provider errors and zero insufficient-history skips. No directional candidate passed, so Order Flow correctly reported `NOT_EVALUATED_NO_DIRECTIONAL_SETUP`. This is not a signal-quality or profitability result.
 - The USDⓈ-M PR smoke attempt [#45002095522](https://github.com/adeeshadasuniduwara/QUANTNEX/actions/runs/45002095522) received HTTP 451 from Binance `/fapi/v1/exchangeInfo` on the GitHub-hosted runner. Keep the failure visible. Do not report Futures scan success until a live request succeeds from an allowed network. The Futures monitor remains a separate candle-only path; COIN-M and Futures Order Flow are unsupported.
 - The smoke runner now continues the independent USDⓈ-M sample when Spot metadata discovery fails, but still exits non-zero if either provider fails. A successful Spot leg must not conceal a failed Futures leg.
+
+
+## Export retained local Spot raw events for research
+
+The live app's Spot stream manager stores public aggTrade, depth snapshot/diff and explicit capture-gap events in the local database. To provide a bounded archive for the causal replay/ablation tool, run this from the `backend` folder while using the same `.env` / `DATABASE_URL` as QUANTNEX:
+
+```powershell
+python .\\export_spot_order_flow_archive.py --symbol BTCUSDT --start 2026-11-26T00:00:00Z --end 2026-11-27T00:00:00Z --output .\\exports\\BTCUSDT-orderflow.json
+```
+
+- Replace the example symbol and UTC window with a period that exists in the local database. Raw events are retained for a bounded period; the default raw-event retention is seven days.
+- The exporter reads the existing database only. It does not connect to Binance, create tables, change settings, send Telegram messages or place orders.
+- The export is capped at 5,000 events, matching the replay limit. If the query is truncated, empty, malformed or over the cap, the export fails without writing a partial archive; narrow the time window and retry.
+- The JSON manifest reports event counts, stream sessions and explicit `captureGap` markers. `coverage_is_complete` is always false: a bounded local capture is not proof of complete exchange-event or full UTC-session coverage.
+- The exporter refuses to overwrite an existing destination. Use a new filename for each export.
+- The archive contains public Binance Spot market events only. It does not include API keys, account data, candles, execution quotes, fee tier or fills. Candles and execution costs must still be aligned separately for walk-forward research.

@@ -951,3 +951,12 @@ The candle structure engine already emits separate closed-candle fields for bull
 ## C33 — Session-scoped depth-event replay identity (2026-11-28)
 
 Depth snapshots and diff-depth updates are now de-duplicated within their stream session, not globally by update ID. Binance depth update IDs may overlap a previous capture session at reconnect/bootstrap; replay must preserve the new session's REST snapshot and first diff because the prior book is intentionally invalidated at the session boundary. Aggregate-trade IDs remain globally de-duplicated per symbol so reconnect duplicates cannot double-count inferred aggressor delta/CVD. Capture-gap markers remain permanent replay vetoes. The change is replay-only and leaves live scoring and execution gates unchanged; deterministic same-update-ID reconnect coverage and CI verification are pending.
+
+
+### C33 merge verification — 2026-11-28
+
+PR [#322](https://github.com/adeeshadasuniduwara/QUANTNEX/pull/322) merged to `main` as `84db025352679dcf46dad585cf254cc60f4c1782`. PR and post-merge CI passed **693 tests on Python 3.12** and **693 tests on Python 3.14**, plus compile/schema and Web checks. The replay now retains a new stream session's depth snapshot and diff even when their update IDs overlap the preceding session, while aggregate-trade IDs remain de-duplicated across sessions. This is data-integrity/replay correctness only, not predictive uplift.
+
+The latest inspected live smoke run (2026-11-27) discovered 1,381 eligible Spot pairs and completed a rotating 20-pair sample with 20 WAIT, no Spot provider errors, and one independent USDCUSDT aggTrade + sequence-valid L2 probe READY. Its CVD remained bounded since stream seed. USDⓈ-M returned HTTP 451 before discovery; COIN-M remains unsupported. No local retained Spot archive was found in the Library, so raw-event OOS and order-flow ablation metrics remain unverified.
+
+Next core work: validate a real retained Spot archive and run same-fold cost-adjusted ablations; separately audit the existing bounded USDⓈ-M capture/derivatives modules for integration into the Futures signal engine, with public-provider access and Futures replay tests as hard requirements.

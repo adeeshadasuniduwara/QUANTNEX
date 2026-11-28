@@ -287,3 +287,27 @@ def test_replay_rejects_future_receive_times_and_naive_clock():
         )
     with pytest.raises(OrderFlowReplayError, match="timezone-aware"):
         replay_spot_order_flow_events(events, "BTCUSDT", now=datetime(2026, 11, 23))
+
+
+def test_replay_keeps_same_depth_sequence_ids_when_rebootstrap_occurs_in_new_session():
+    events = _book_events(second_session=True)
+    # A reconnect can legitimately bootstrap from a snapshot whose lastUpdateId
+    # and first diff overlap the prior stream session. These are new observations
+    # for the new session, not duplicates to discard globally.
+    events[5]["payload"]["lastUpdateId"] = 499
+    events[5]["event_key"] = "499"
+    events[6]["payload"]["U"] = 500
+    events[6]["payload"]["u"] = 500
+    events[6]["event_key"] = "500"
+
+    result = replay_spot_order_flow_events(
+        events, "BTCUSDT", now=_now(offset_ms=180_000)
+    )
+
+    assert len(result) == 2
+    assert result[0]["eligible_for_order_flow_replay"] is True
+    assert result[1]["eligible_for_order_flow_replay"] is True
+    assert result[1]["stream_session_count"] == 2
+    assert result[1]["cvd_value"] == pytest.approx(3.5)
+    assert result[1]["depth_snapshot_update_id"] == 500
+    assert result[1]["depth_is_continuous"] is True

@@ -72,7 +72,11 @@ def _normalize_events(
     if not re.fullmatch(r"[A-Z0-9]{5,25}", normalized_symbol):
         raise OrderFlowReplayError("A valid Binance Spot symbol is required.")
 
-    seen: dict[tuple[str, str], tuple[int, str]] = {}
+    # Depth update IDs can recur after a reconnect. A new stream session must
+    # retain its own REST snapshot and first diff even when their exchange IDs
+    # match events captured in an earlier session. Aggregate-trade IDs remain
+    # symbol-global and are still de-duplicated across sessions.
+    seen: dict[tuple[str, str, str], tuple[int, str]] = {}
     normalized: list[dict[str, Any]] = []
     for index, source_event in enumerate(events):
         if not isinstance(source_event, dict):
@@ -147,7 +151,8 @@ def _normalize_events(
             event_key = gap_id
             normalized_payload = {"gap_id": gap_id, "reason": "RAW_CAPTURE_QUEUE_OVERFLOW"}
 
-        identity = (event_type, event_key)
+        dedupe_session = session if event_type in {"depthSnapshot", "depthUpdate"} else ""
+        identity = (event_type, event_key, dedupe_session)
         payload_fingerprint = repr(normalized_payload)
         previous = seen.get(identity)
         if previous is not None:

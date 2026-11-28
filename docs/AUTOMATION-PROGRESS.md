@@ -1694,3 +1694,25 @@ Measure whether observed Binance Spot aggressor-side delta, sequence-validated L
 
 ### Next exact step
 Use the documented local export workflow to obtain a bounded Spot raw-event archive, validate its manifest, gap markers, sequence continuity and receive-time checkpoint coverage, then run matched chronological order-flow ablations. Keep C32 methods diagnostic-only until those results show incremental value.
+
+
+## 2026-11-28 C33 — Preserve depth rebootstrap events across stream sessions (in progress)
+
+### Finding
+- The raw Spot replay normalizer de-duplicated every event using only `(event_type, exchange_event_id)`. That is correct for symbol-global aggregate-trade IDs, but not for depth bootstrap observations across reconnects.
+- A new WebSocket session can legitimately obtain a REST depth snapshot and first diff whose update IDs overlap the preceding session's final snapshot/diff. The replay loop correctly invalidates the old book at the session boundary, but the global de-duplicator could discard the new session's snapshot/diff before the loop saw them. That left the rebuilt book invalid and falsely rejected an otherwise continuous later checkpoint.
+
+### Change on `fix/spot-depth-rebootstrap-dedupe-20261128`
+- Scope depthSnapshot and depthUpdate de-duplication to `(event_type, exchange_event_id, stream_session_id)` so each session retains its own snapshot/diff bootstrap.
+- Keep aggregate-trade de-duplication symbol-global, preventing repeated trade IDs across reconnects from being double-counted in CVD.
+- Keep capture-gap markers fail-closed and retain existing exchange sequence validation; no order-flow gate, score, strategy, entry choice or execution behavior is changed.
+
+### Deterministic regression
+- Extend the two-session replay fixture so the second session deliberately reuses the first session's depth snapshot update ID and first diff update ID.
+- Require the second session to rebuild a valid book, preserve cumulative trade delta across sessions, and mark its checkpoint eligible only after the new snapshot/diff sequence is applied.
+
+### Verification / next steps
+1. Run focused `test_order_flow_replay.py` and the full Backend CI matrix on Python 3.12/3.14, plus compile/schema and Web checks.
+2. Inspect the complete four-file diff and ensure only replay identity, regression coverage and durable docs changed.
+3. Merge only if all relevant checks pass and the PR remains based on latest `main`; verify the merge SHA and post-merge CI.
+4. This fixes a replay correctness edge case; it does not create historical OOS evidence. The Library search still found no user-provided retained local Spot archive. Do not claim CVD/strategy uplift until real retained data is available.

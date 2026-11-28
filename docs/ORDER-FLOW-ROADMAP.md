@@ -946,3 +946,8 @@ The candle structure engine already emits separate closed-candle fields for bull
 2. Run the existing matched same-fold candle-only, AGGRESSOR_ONLY, L2_ONLY, COMBINED, CVD_DIVERGENCE_ONLY and COMBINED_CVD comparisons; report sample/coverage and full risk-adjusted metrics.
 3. Continue improving the causal method registry only where precise source data, tests and measurable incremental value exist. Keep all new methods diagnostic-only until evidence justifies otherwise.
 4. Keep USDⓈ-M HTTP 451 as a provider access blocker, Futures Order Flow unsupported, and COIN-M unsupported until separately verified.
+
+
+## C33 — Session-scoped depth-event replay identity (2026-11-28)
+
+Depth snapshots and diff-depth updates are now de-duplicated within their stream session, not globally by update ID. Binance depth update IDs may overlap a previous capture session at reconnect/bootstrap; replay must preserve the new session's REST snapshot and first diff because the prior book is intentionally invalidated at the session boundary. Aggregate-trade IDs remain globally de-duplicated per symbol so reconnect duplicates cannot double-count inferred aggressor delta/CVD. Capture-gap markers remain permanent replay vetoes. The change is replay-only and leaves live scoring and execution gates unchanged; deterministic same-update-ID reconnect coverage and CI verification are pending.

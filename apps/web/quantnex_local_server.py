@@ -10,6 +10,7 @@ import tempfile
 import threading
 import time
 import urllib.error
+import email.utils
 import urllib.request
 import zipfile
 from datetime import datetime, timezone
@@ -114,27 +115,41 @@ def _read_api_cache() -> dict:
         return {}
 
 
-def _write_api_cache(cache: dict, url: str, payload: dict, fetched_at: float) -> None:
-    entry = {"fetched_at": fetched_at, "data": payload}
+def _write_api_cache(cache: dict, url: str, entry: dict) -> None:
+    """Persist bounded response and retry metadata using an atomic replace."""
+    now = time.time()
     retained = {}
     for key, value in cache.items():
         if not isinstance(key, str) or not isinstance(value, dict):
             continue
-        if not isinstance(value.get("data"), dict):
-            continue
+        has_data = isinstance(value.get("data"), dict)
         try:
-            age = fetched_at - float(value.get("fetched_at", 0))
+            age = now - float(value.get("fetched_at", 0))
         except (TypeError, ValueError, OverflowError):
-            continue
-        if 0 <= age < API_CACHE_MAX_AGE_SECONDS:
+            age = -1
+        try:
+            retry_at = float(value.get("retry_after", 0) or 0)
+        except (TypeError, ValueError, OverflowError):
+            retry_at = 0
+        if (has_data and 0 <= age < API_CACHE_MAX_AGE_SECONDS) or now < retry_at <= now + API_CACHE_MAX_AGE_SECONDS:
             retained[key] = value
 
     retained[url] = entry
     if len(retained) > API_CACHE_MAX_ENTRIES:
+        def cache_recency(item):
+            value = item[1]
+            try:
+                fetched_at = float(value.get("fetched_at", 0) or 0)
+            except (TypeError, ValueError, OverflowError):
+                fetched_at = 0
+            try:
+                retry_at = float(value.get("retry_after", 0) or 0)
+            except (TypeError, ValueError, OverflowError):
+                retry_at = 0
+            return max(fetched_at, retry_at)
+
         retained = dict(sorted(
-            retained.items(),
-            key=lambda item: float(item[1]["fetched_at"]),
-            reverse=True,
+            retained.items(), key=cache_recency, reverse=True
         )[:API_CACHE_MAX_ENTRIES])
 
     temporary = API_CACHE_FILE.with_name(
@@ -152,51 +167,167 @@ def _write_api_cache(cache: dict, url: str, payload: dict, fetched_at: float) ->
             pass
 
 
+def _retry_after_timestamp(headers, failures: int) -> float:
+    """Honor GitHub's retry headers, then use a capped exponential backoff."""
+    now = time.time()
+    retry_after = str(headers.get("Retry-After", "") or "").strip()
+    if retry_after:
+        try:
+            delay = float(retry_after)
+            return now + min(24 * 60 * 60, max(1.0, delay))
+        except ValueError:
+            try:
+                parsed = email.utils.parsedate_to_datetime(retry_after)
+                return min(now + 24 * 60 * 60, max(now + 1.0, parsed.timestamp()))
+            except (TypeError, ValueError, OverflowError):
+                pass
+
+    reset = str(headers.get("X-RateLimit-Reset", "") or "").strip()
+    if reset:
+        try:
+            timestamp = float(reset)
+            if timestamp > now:
+                return min(now + 24 * 60 * 60, timestamp)
+        except (TypeError, ValueError, OverflowError):
+            pass
+
+    exponent = min(max(int(failures) - 1, 0), 7)
+    return now + min(60 * 60, 30 * (2 ** exponent))
+
+
+def _is_github_rate_limited(error: urllib.error.HTTPError) -> bool:
+    if error.code == 429:
+        return True
+    if error.code != 403:
+        return False
+    headers = error.headers or {}
+    if str(headers.get("X-RateLimit-Remaining", "")).strip() == "0":
+        return True
+    try:
+        body = error.read(4096).decode("utf-8", "replace").lower()
+    except Exception:
+        body = ""
+    return "rate limit" in body or "secondary rate" in body
+
+
+def _cached_response_age(entry: dict, now: float) -> float | None:
+    if not isinstance(entry, dict) or not isinstance(entry.get("data"), dict):
+        return None
+    try:
+        age = now - float(entry.get("fetched_at", 0))
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return age if 0 <= age < API_CACHE_MAX_AGE_SECONDS else None
+
+
 def _github_json_cached(url: str) -> dict:
+    if not url.startswith("https://api.github.com/"):
+        raise ValueError("Only GitHub REST API URLs can use this response cache.")
+
     cache = _read_api_cache()
     cached = cache.get(url)
-    cached_data = cached.get("data") if isinstance(cached, dict) else None
+    cached = cached if isinstance(cached, dict) else {}
+    cached_data = cached.get("data")
     now = time.time()
-    cached_age = None
+    cached_age = _cached_response_age(cached, now)
 
-    if isinstance(cached_data, dict):
-        try:
-            cached_age = now - float(cached.get("fetched_at", 0))
-        except (TypeError, ValueError, OverflowError):
-            cached_age = None
-        if cached_age is not None and 0 <= cached_age < API_CACHE_TTL_SECONDS:
+    if cached_age is not None and cached_age < API_CACHE_TTL_SECONDS:
+        return cached_data
+
+    try:
+        retry_at = float(cached.get("retry_after", 0) or 0)
+    except (TypeError, ValueError, OverflowError):
+        retry_at = 0
+    if retry_at > now:
+        if cached_age is not None:
             return cached_data
+        raise RuntimeError("GitHub API retry is delayed by its rate-limit/backoff window; no cached response is available.")
 
-    request = urllib.request.Request(
-        url,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "QUANTNEX-Web-Updater",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
-    )
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "QUANTNEX-Web-Updater",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    if cached.get("etag"):
+        headers["If-None-Match"] = str(cached["etag"])
+    if cached.get("last_modified"):
+        headers["If-Modified-Since"] = str(cached["last_modified"])
+    request = urllib.request.Request(url, headers=headers)
+
     try:
         with urllib.request.urlopen(request, timeout=25) as response:
             payload = json.loads(response.read().decode("utf-8"))
+            if not isinstance(payload, dict):
+                raise RuntimeError("GitHub returned an invalid update response.")
+            fetched_at = time.time()
+            entry = {
+                "fetched_at": fetched_at,
+                "data": payload,
+                "etag": response.headers.get("ETag"),
+                "last_modified": response.headers.get("Last-Modified"),
+                "retry_after": 0,
+                "failures": 0,
+            }
+            cache[url] = entry
+            _write_api_cache(cache, url, entry)
+            return payload
     except urllib.error.HTTPError as exc:
-        # Use stale data only inside the documented retention window. An old or
-        # future-dated cache entry must not hide a persistent GitHub/API failure.
-        if (
-            exc.code in (403, 429)
-            and isinstance(cached_data, dict)
-            and cached_age is not None
-            and 0 <= cached_age < API_CACHE_MAX_AGE_SECONDS
-        ):
+        if exc.code == 304 and cached_age is not None:
+            entry = dict(cached)
+            entry["fetched_at"] = time.time()
+            entry["retry_after"] = 0
+            entry["failures"] = 0
+            response_headers = exc.headers or {}
+            if response_headers.get("ETag"):
+                entry["etag"] = response_headers.get("ETag")
+            if response_headers.get("Last-Modified"):
+                entry["last_modified"] = response_headers.get("Last-Modified")
+            cache[url] = entry
+            _write_api_cache(cache, url, entry)
+            return cached_data
+
+        try:
+            failures = int(cached.get("failures", 0) or 0) + 1
+        except (TypeError, ValueError, OverflowError):
+            failures = 1
+
+        if _is_github_rate_limited(exc):
+            entry = dict(cached)
+            entry.update(
+                retry_after=_retry_after_timestamp(exc.headers or {}, failures),
+                failures=failures,
+            )
+            cache[url] = entry
+            _write_api_cache(cache, url, entry)
+            if cached_age is not None:
+                return cached_data
+            raise
+
+        if 500 <= exc.code < 600 and cached_age is not None:
+            entry = dict(cached)
+            entry.update(
+                retry_after=_retry_after_timestamp(exc.headers or {}, failures),
+                failures=failures,
+            )
+            cache[url] = entry
+            _write_api_cache(cache, url, entry)
             return cached_data
         raise
-
-    if not isinstance(payload, dict):
-        raise RuntimeError("GitHub returned an invalid update response.")
-
-    fetched_at = time.time()
-    cache[url] = {"fetched_at": fetched_at, "data": payload}
-    _write_api_cache(cache, url, payload, fetched_at)
-    return payload
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as exc:
+        if cached_age is not None:
+            try:
+                failures = int(cached.get("failures", 0) or 0) + 1
+            except (TypeError, ValueError, OverflowError):
+                failures = 1
+            entry = dict(cached)
+            entry.update(
+                retry_after=_retry_after_timestamp({}, failures),
+                failures=failures,
+            )
+            cache[url] = entry
+            _write_api_cache(cache, url, entry)
+            return cached_data
+        raise RuntimeError("GitHub API is temporarily unavailable and no cached response exists.") from exc
 
 
 def github_json(url: str) -> dict:
